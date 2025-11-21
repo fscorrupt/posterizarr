@@ -1,0 +1,1738 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://fscorrupt.github.io/posterizarr/modes/">
+      
+      
+        <link rel="prev" href="../configuration/">
+      
+      
+        <link rel="next" href="../uiinstallation/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../images/webhook.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+    
+    
+      
+        <title>Usage & Modes - Posterizarr</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#automatic-mode" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Posterizarr" class="md-header__button md-logo" aria-label="Posterizarr" data-md-component="logo">
+      
+  <img src="../images/logo_banner.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Posterizarr
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Usage & Modes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fscorrupt/posterizarr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fscorrupt/posterizarr
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Usage & Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../searchorder/" class="md-tabs__link">
+          
+  
+  
+  Advanced
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../showcase/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Posterizarr" class="md-nav__button md-logo" aria-label="Posterizarr" data-md-component="logo">
+      
+  <img src="../images/logo_banner.png" alt="logo">
+
+    </a>
+    Posterizarr
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fscorrupt/posterizarr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fscorrupt/posterizarr
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage & Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Modes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Modes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-mode-interactive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Mode (Interactive)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-mode-semi-automated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Mode (Semi Automated)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#poster-reset-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Poster reset Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sync-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sync Modes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sync Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jellyfin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Jellyfin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#emby" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emby
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tautulli-mode-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tautulli Mode Docker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tautulli-mode-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tautulli Mode Windows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sonarrradarr-mode-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sonarr/Radarr Mode Docker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gather-logs-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gather Logs Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../uiinstallation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manual UI Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../searchorder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Search Order
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../namingconvention/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Naming Convention
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platformandtools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform & Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../showcase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Showcase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-mode-interactive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Mode (Interactive)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-mode-semi-automated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Mode (Semi Automated)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#poster-reset-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Poster reset Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sync-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sync Modes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sync Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jellyfin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Jellyfin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#emby" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emby
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tautulli-mode-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tautulli Mode Docker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tautulli-mode-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tautulli Mode Windows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sonarrradarr-mode-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sonarr/Radarr Mode Docker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gather-logs-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gather Logs Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Usage & Modes</h1>
+
+<h3 id="automatic-mode">Automatic Mode</h3>
+<p>Run the script without any parameters:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="w">  </span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1
+</code></pre></div>
+<p>This will generate posters for your entire Plex library based on the configured settings.</p>
+<p>The posters are all placed in <code>AssetPath\...</code>. This can then be mounted in Kometa to use as the assets folder.</p>
+<h3 id="testing-mode">Testing Mode</h3>
+<p>Run the script with the <code>-Testing</code> flag. In this mode, the script will create pink posters/backgrounds with short, medium, and long texts (also in CAPS), using the values specified in the <code>config.json</code> file.</p>
+<p>These test images are placed in the script root under the <code>./test</code> folder.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>This is handy for testing your configuration before applying it en masse to the actual posters. You can see how and where the text would be applied, as well as the size of the textbox.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Testing</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Testing
+</code></pre></div>
+<h3 id="manual-mode-interactive">Manual Mode (Interactive)</h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Source picture gets edited by script and is then moved to desired asset location.</p>
+</div>
+<p>Run the script with the <code>-Manual</code> switch and add the desired extra switch for which poster you want to create <code>-MoviePosterCard</code> or <code>-ShowPosterCard</code> or<code>-SeasonPoster</code> or <code>-CollectionCard</code> or <code>-BackgroundCard</code> or <code>-TitleCard</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Manual</span> <span class="n">-MoviePosterCard</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Manual<span class="w"> </span>-MoviePosterCard
+</code></pre></div>
+<p>Follow the prompts to enter the source picture path (Container needs Access to it), media folder name, and movie/show title to manually create a custom poster.</p>
+<p><strong>Posterizarr Input Prompts</strong></p>
+<p><code>Enter local path or URL to source picture:</code></p>
+<ul>
+<li>Paste the image URL or provide the full local path to the image file you want to use as the poster source. This is the image that Posterizarr will base the new poster on.</li>
+</ul>
+<p><code>Enter Media Folder Name (as seen by Plex):</code></p>
+<ul>
+<li>The name of the local movie or show folder where the .mkv (or other media) file is stored. This should match the folder structure Plex recognizes.</li>
+</ul>
+<p><code>Enter Movie/Show/Collection Title:</code></p>
+<ul>
+<li>The title that will be displayed on the generated poster.</li>
+</ul>
+<p><code>Create Season Poster? (y/n):</code></p>
+<ul>
+<li>Type <code>y</code> if you're generating a season poster, otherwise <code>n</code>.</li>
+</ul>
+<p><code>Create TitleCard? (y/n):</code></p>
+<ul>
+<li>Type <code>y</code> if you also want to create a title card, otherwise <code>n</code>.</li>
+</ul>
+<p><code>Create Collection Poster? (y/n):</code></p>
+<ul>
+<li>Type <code>y</code> if you're generating a collection poster, otherwise <code>n</code>.</li>
+</ul>
+<p><code>Enter Plex Library Name:</code></p>
+<ul>
+<li>Enter the name of the Plex (or Jellyfin) library, e.g., "Movies" or "TV Shows".</li>
+</ul>
+<p><code>Enter Title Text:</code></p>
+<ul>
+<li>Enter the Title of the asset e.g., "Avatar".</li>
+</ul>
+<p><code>Enter Season Name:</code></p>
+<ul>
+<li>Enter the Title of the asset e.g., "Season 1".</li>
+<li>If you want to add Custom Text to Season poster please enter it via prefix <code>Title | Season 1</code></li>
+</ul>
+<h3 id="manual-mode-semi-automated">Manual Mode (Semi Automated)</h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>The source picture is moved (if local) or downloaded (if a URL - and moved), then edited and placed in the desired asset location.
+The -PicturePath parameter can accept either a local file path or a direct URL to an image.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Example on Windows:
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  -PicturePath &quot;C:\path\to\movie_bg.jpg&quot;
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>Example on Docker:
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  -PicturePath &quot;/path/to/movie_bg.jpg&quot;
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>Example with URL:
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>  -PicturePath &quot;https://posterurl.here/movie_bg.jpg&quot;
+</code></pre></div>
+<p><strong>Movie or Show Poster</strong></p>
+<p>To create a standard poster for a movie or a TV show's main entry:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Manual</span> <span class="n">-PicturePath</span> <span class="s2">&quot;C:\path\to\movie_bg.jpg&quot;</span> <span class="n">-Titletext</span> <span class="s2">&quot;The Martian&quot;</span> <span class="n">-FolderName</span> <span class="s2">&quot;The Martian (2015)&quot;</span> <span class="n">-LibraryName</span> <span class="s2">&quot;Movies&quot;</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Manual<span class="w"> </span>-PicturePath<span class="w"> </span><span class="s2">&quot;/path/to/movie_bg.jpg&quot;</span><span class="w"> </span>-Titletext<span class="w"> </span><span class="s2">&quot;The Martian&quot;</span><span class="w"> </span>-FolderName<span class="w"> </span><span class="s2">&quot;The Martian (2015)&quot;</span><span class="w"> </span>-LibraryName<span class="w"> </span><span class="s2">&quot;Movies&quot;</span>
+</code></pre></div>
+<p><strong>Season Poster</strong></p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Any season name ending in 0 or 00 (e.g., "Season 0", "Staffel 00") or matching a keyword like "Specials" will be handled as a Specials season.
+If you want to add Custom Text to Season poster please enter it via prefix <code>Title | Season 01</code> in <code>-SeasonPosterName</code></p>
+</div>
+<p>To create a poster for a specific season of a TV show, use the -SeasonPoster switch and provide the season name:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Manual</span> <span class="n">-SeasonPoster</span> <span class="n">-PicturePath</span> <span class="s2">&quot;C:\path\to\show_bg.jpg&quot;</span> <span class="n">-Titletext</span> <span class="s2">&quot;The Mandalorian&quot;</span> <span class="n">-FolderName</span> <span class="s2">&quot;The Mandalorian (2019)&quot;</span> <span class="n">-LibraryName</span> <span class="s2">&quot;TV Shows&quot;</span> <span class="n">-SeasonPosterName</span> <span class="s2">&quot;Season 1&quot;</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Manual<span class="w"> </span>-SeasonPoster<span class="w"> </span>-PicturePath<span class="w"> </span><span class="s2">&quot;/path/to/show_bg.jpg&quot;</span><span class="w"> </span>-Titletext<span class="w"> </span><span class="s2">&quot;The Mandalorian&quot;</span><span class="w"> </span>-FolderName<span class="w"> </span><span class="s2">&quot;The Mandalorian (2019)&quot;</span><span class="w"> </span>-LibraryName<span class="w"> </span><span class="s2">&quot;TV Shows&quot;</span><span class="w"> </span>-SeasonPosterName<span class="w"> </span><span class="s2">&quot;Season 1&quot;</span>
+</code></pre></div>
+<p><strong>Collection Poster</strong></p>
+<p>To create a poster for a media collection, use the -CollectionCard switch. The script will use the -Titletext for both the poster text and the folder name.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Manual</span> <span class="n">-CollectionCard</span> <span class="n">-PicturePath</span> <span class="s2">&quot;C:\path\to\collection_bg.jpg&quot;</span> <span class="n">-Titletext</span> <span class="s2">&quot;James Bond&quot;</span> <span class="n">-LibraryName</span> <span class="s2">&quot;Movies&quot;</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Manual<span class="w"> </span>-CollectionCard<span class="w"> </span>-PicturePath<span class="w"> </span><span class="s2">&quot;/path/to/collection_bg.jpg&quot;</span><span class="w"> </span>-Titletext<span class="w"> </span><span class="s2">&quot;James Bond&quot;</span><span class="w"> </span>-LibraryName<span class="w"> </span><span class="s2">&quot;Movies&quot;</span>
+</code></pre></div>
+<p><strong>Background Poster</strong></p>
+<p>To create a standard background poster for a movie or a TV show's main entry:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Manual</span> <span class="n">-BackgroundCard</span> <span class="n">-PicturePath</span> <span class="s2">&quot;C:\path\to\movie_bg.jpg&quot;</span> <span class="n">-Titletext</span> <span class="s2">&quot;The Martian&quot;</span> <span class="n">-FolderName</span> <span class="s2">&quot;The Martian (2015)&quot;</span> <span class="n">-LibraryName</span> <span class="s2">&quot;Movies&quot;</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Manual<span class="w"> </span>-BackgroundCard<span class="w"> </span>-PicturePath<span class="w"> </span><span class="s2">&quot;/path/to/movie_bg.jpg&quot;</span><span class="w"> </span>-Titletext<span class="w"> </span><span class="s2">&quot;The Martian&quot;</span><span class="w"> </span>-FolderName<span class="w"> </span><span class="s2">&quot;The Martian (2015)&quot;</span><span class="w"> </span>-LibraryName<span class="w"> </span><span class="s2">&quot;Movies&quot;</span>
+</code></pre></div>
+<p><strong>Episode Title Card</strong></p>
+<p>To create a 16:9 title card for a specific episode, use the -TitleCard switch and provide episode details:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Manual</span> <span class="n">-TitleCard</span> <span class="n">-PicturePath</span> <span class="s2">&quot;C:\path\to\episode_bg.jpg&quot;</span> <span class="n">-FolderName</span> <span class="s2">&quot;Breaking Bad (2008)&quot;</span> <span class="n">-LibraryName</span> <span class="s2">&quot;TV Shows&quot;</span> <span class="n">-EPTitleName</span> <span class="s2">&quot;Ozymandias&quot;</span> <span class="n">-SeasonPosterName</span> <span class="s2">&quot;Season 5&quot;</span> <span class="n">-EpisodeNumber</span> <span class="s2">&quot;14&quot;</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Manual<span class="w"> </span>-TitleCard<span class="w"> </span>-PicturePath<span class="w"> </span><span class="s2">&quot;/path/to/episode_bg.jpg&quot;</span><span class="w"> </span>-FolderName<span class="w"> </span><span class="s2">&quot;Breaking Bad (2008)&quot;</span><span class="w"> </span>-LibraryName<span class="w"> </span><span class="s2">&quot;TV Shows&quot;</span><span class="w"> </span>-EPTitleName<span class="w"> </span><span class="s2">&quot;Ozymandias&quot;</span><span class="w"> </span>-SeasonPosterName<span class="w"> </span><span class="s2">&quot;Season 5&quot;</span><span class="w"> </span>-EpisodeNumber<span class="w"> </span><span class="s2">&quot;14&quot;</span>
+</code></pre></div>
+<h3 id="backup-mode">Backup Mode</h3>
+<p>Run the script with the <code>-Backup</code> flag. In this mode, the script will download every artwork you have in plex, using the values specified in the <code>config.json</code> file.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>This is handy for creating a backup or if you want an second assetfolder with kometa/tcm EXIF data for jellyfin/emby.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Backup</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="w">  </span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-Backup
+</code></pre></div>
+<h3 id="poster-reset-mode">Poster reset Mode</h3>
+<p>Run the script with the <code>-PosterReset -LibraryToReset "Test Lib"</code> flag. In this mode, posterizarr will reset every artwork from a specifc plex lib.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-PosterReset</span> <span class="n">-LibraryToReset</span> <span class="s2">&quot;Test Lib&quot;</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="w">  </span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-PosterReset<span class="w"> </span>-LibraryToReset<span class="w"> </span><span class="s2">&quot;Test Lib&quot;</span>
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Note: This operation <strong>does not delete</strong> any artwork. It simply sets each item's poster to the first available poster from Plex’s metadata. This action cannot be undone, so proceed with caution.</p>
+</div>
+<h3 id="sync-modes">Sync Modes</h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>The script requires that library names in Plex and Emby/Jellyfin match exactly for the sync to work. It calculates the hash of the artwork from both servers to determine if there are differences, and only syncs the artwork if the hashes do not match.</p>
+</div>
+<h4 id="jellyfin">Jellyfin</h4>
+<p>Run the script with the <code>-SyncJelly</code> flag. In this mode, the script will sync every artwork you have in plex to jellyfin.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-SyncJelly</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="w">  </span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-SyncJelly
+</code></pre></div>
+<h4 id="emby">Emby</h4>
+<p>Run the script with the <code>-SyncEmby</code> flag. In this mode, the script will sync every artwork you have in plex to emby.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-SyncEmby</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="w">  </span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-SyncEmby
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>This is handy if you want to run the sync after a kometa run, then you have kometa ovlerayed images in jelly/emby</p>
+</div>
+<h3 id="tautulli-mode-docker">Tautulli Mode Docker</h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Tautulli and Posterizarr must run as a container in Docker</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If Discord is configured it will send a Notification on each trigger.</p>
+</div>
+<p>In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex, like a new show, movie or episode got added.</p>
+<p>To use it we need to configure a script in Tautulli, please follow these instructions.</p>
+<ol>
+<li>Make sure that you mount the <code>Posterizarr</code> directory to tautulli, cause the script needs the Path <code>/posterizarr</code>
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>volumes:
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>  - &quot;/opt/appdata/posterizarr:/posterizarr:rw&quot;
+</code></pre></div>
+   ⚠️ Note: This mount path is case-sensitive and must match exactly /posterizarr.</li>
+<li>Download the <a href="https://github.com/fscorrupt/posterizarr/blob/main/modules/trigger.py">trigger.py</a> from the GH and place it in the Tautulli Script dir -    <a href="https://github.com/Tautulli/Tautulli/wiki/Custom-Scripts">Tautulli-Wiki</a></li>
+<li>You may have to set <code>chmod +x</code> to the file.</li>
+<li>Open Tautulli and go to Settings -    <code>NOTIFICATION AGENTS</code></li>
+<li>Click on <code>Add a new notification agent</code> and select <code>Script</code></li>
+<li>Specify the script folder where you placed the script and select the script file.</li>
+<li>
+<p>You can specify a <code>Description</code> at the bottom like i did.</p>
+<p><img alt="backgroundtesting" src="../images/Tautulli_Step1.png" /></p>
+</li>
+<li>
+<p>Go to <code>Triggers</code>, scroll down and select <code>Recently Added</code>.</p>
+<p><img alt="backgroundtesting" src="../images/Tautulli_Step2.png" /></p>
+</li>
+<li>
+<p>Go to <code>Conditions</code>, you can now specify when the script should get called.</p>
+</li>
+<li>In my case i specified the <strong>Media Type</strong>: <code>episode, movie, show and season</code></li>
+<li>
+<p>I also excluded the <strong>Youtube</strong> Lib cause the videos i have there - <strong>do not</strong> have an <code>tmdb,tvdb or fanart ID</code>.</p>
+<ul>
+<li>This is an recommended setting, either exclude such libs or include only those libs where Posterizarr should create art for.</li>
+</ul>
+<p><img alt="backgroundtesting" src="../images/Tautulli_Step3.png" /></p>
+</li>
+<li>
+<p>Next go to Arguments -    Unfold <code>Recently Added</code> Menu and paste the following Argument, after that you can save it.</p>
+</li>
+<li><strong>Please do not change the Argument otherwise the script could fail.</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>&lt;movie&gt;RatingKey<span class="w"> </span><span class="s2">&quot;{rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/movie&gt;&lt;show&gt;RatingKey<span class="w"> </span><span class="s2">&quot;{rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/show&gt;&lt;season&gt;parentratingkey<span class="w"> </span><span class="s2">&quot;{parent_rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/season&gt;&lt;episode&gt;RatingKey<span class="w"> </span><span class="s2">&quot;{rating_key}&quot;</span><span class="w"> </span>parentratingkey<span class="w"> </span><span class="s2">&quot;{parent_rating_key}&quot;</span><span class="w"> </span>grandparentratingkey<span class="w"> </span><span class="s2">&quot;{grandparent_rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/episode&gt;
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>![backgroundtesting](images/Tautulli_Step4.png)
+</code></pre></div>
+<h3 id="tautulli-mode-windows">Tautulli Mode Windows</h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If Discord is configured it will send a Notification on each trigger.</p>
+</div>
+<p>In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex, like a new show, movie or episode got added.</p>
+<ol>
+<li>Open Tautulli and go to Settings -    <code>NOTIFICATION AGENTS</code></li>
+<li>Click on <code>Add a new notification agent</code> and select <code>Script</code></li>
+<li>Specify the script folder of Posterizarr and select the script file.</li>
+<li>Set the script timeout to <code>0</code>, which is unlimited. (The default is <code>30</code>, which would kill the script before it finishes.)</li>
+<li>
+<p>You can specify a <code>Description</code> at the bottom like i did.</p>
+<p><img alt="backgroundtesting" src="../images/Tautulli_windows_Step1.png" /></p>
+</li>
+<li>
+<p>Go to <code>Triggers</code>, scroll down and select <code>Recently Added</code>.</p>
+<p>![backgroundtesting](images/Tautulli_Step2.png</p>
+</li>
+<li>
+<p>Go to <code>Conditions</code>, you can now specify when the script should get called.</p>
+</li>
+<li>In my case i specified the <strong>Media Type</strong>: <code>episode, movie, show and season</code></li>
+<li>
+<p>I also excluded the <strong>Youtube</strong> Lib cause the videos i have there - <strong>do not</strong> have an <code>tmdb,tvdb or fanart ID</code>.</p>
+<ul>
+<li>This is an recommended setting, either exclude such libs or include only those libs where Posterizarr should create art for.</li>
+</ul>
+<p><img alt="backgroundtesting" src="../images/Tautulli_Step3.png" /></p>
+</li>
+<li>
+<p>Next go to Arguments -    Unfold <code>Recently Added</code> Menu and paste the following Argument, after that you can save it.</p>
+</li>
+<li><strong>Please do not change the Argument otherwise the script could fail.</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>&lt;movie&gt;RatingKey<span class="w"> </span><span class="s2">&quot;{rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/movie&gt;&lt;show&gt;RatingKey<span class="w"> </span><span class="s2">&quot;{rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/show&gt;&lt;season&gt;parentratingkey<span class="w"> </span><span class="s2">&quot;{parent_rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/season&gt;&lt;episode&gt;RatingKey<span class="w"> </span><span class="s2">&quot;{rating_key}&quot;</span><span class="w"> </span>parentratingkey<span class="w"> </span><span class="s2">&quot;{parent_rating_key}&quot;</span><span class="w"> </span>grandparentratingkey<span class="w"> </span><span class="s2">&quot;{grandparent_rating_key}&quot;</span><span class="w"> </span>mediatype<span class="w"> </span><span class="s2">&quot;{media_type}&quot;</span>&lt;/episode&gt;
+</code></pre></div>
+<p>![backgroundtesting](images/Tautulli_Step4.png</p>
+<h3 id="sonarrradarr-mode-docker">Sonarr/Radarr Mode Docker</h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Arrs and Posterizarr must run as a container in Docker</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If Discord is configured it will send a Notification on each trigger.</p>
+</div>
+<p>In this mode we use Sonarr/Radarr to trigger Posterizarr for an specific item in Plex/Jellyfin, like a new show, movie or episode got added.</p>
+<p>To use it we need to configure a script in Sonarr/Radarr, please follow these instructions.</p>
+<ol>
+<li>Ensure you mount the <code>Posterizarr</code> directory to your Sonarr/Radarr container, as the script requires access to <code>/posterizarr</code>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>volumes:
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>  - &quot;/opt/appdata/posterizarr:/posterizarr:rw&quot;
+</code></pre></div>
+   ⚠️ Note: This mount path is case-sensitive and must match exactly <code>/posterizarr</code>.</li>
+<li>Download <a href="https://github.com/fscorrupt/posterizarr/blob/main/modules/ArrTrigger.sh">ArrTrigger.sh</a> from GitHub and place it in your Sonarr/Radarr script directory.</li>
+<li>For example, create a <code>scripts</code> folder in <code>/opt/appdata/sonarr</code>, resulting in the path:
+     <code>/opt/appdata/sonarr/scripts/ArrTrigger.sh</code></li>
+<li>Make sure to set executable permissions: <code>chmod +x ArrTrigger.sh</code></li>
+<li>In Sonarr/Radarr, go to <strong>Settings</strong> → <strong>Connect</strong>.</li>
+<li>Click the <code>+</code> button and select <strong>Custom Script</strong>.</li>
+<li>Enter a name for the script.</li>
+<li>For <strong>Notification Triggers</strong>, select only <code>On File Import</code>.</li>
+<li>Under <strong>Path</strong>, browse to and select your <code>ArrTrigger.sh</code> script.</li>
+<li>Example: <code>/config/scripts/ArrTrigger.sh</code></li>
+<li>With this setup, the Arr suite will create a file in <code>/posterizarr/watcher</code> whenever a file is imported.</li>
+<li>The file will be named like: <code>recently_added_20250925114601966_1da214d7.posterizarr</code></li>
+<li>Posterizarr monitors this directory for files ending in <code>.posterizarr</code>.</li>
+<li>When such a file is detected, it <strong>waits</strong> up to <code>5 minutes</code>(based on fileage), then reads the file and triggers a Posterizarr run for the corresponding item.</li>
+</ol>
+<h3 id="gather-logs-mode">Gather Logs Mode</h3>
+<p>Run the script with the <code>-GatherLogs</code> flag. In this mode, the script collects logs, rotated logs, and database files into a single archive for troubleshooting.</p>
+<p>Crucially, the script sanitizes these files before zipping them automatically masking API keys, tokens, PINs, and sensitive hostnames. The result is saved in the script root as <code>posterizarr_support_&lt;timestamp&gt;.zip</code></p>
+<p>!!! tip Use this when reporting bugs or requesting support. It allows you to share comprehensive debugging information with the developer without manually scrubbing your credentials or private links from the files.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="p">.\</span><span class="n">Posterizarr</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-GatherLogs</span>
+</code></pre></div>
+<p>On <a href="../platformandtools/#docker">docker</a> this way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>posterizarr<span class="w"> </span>pwsh<span class="w"> </span>/app/Posterizarr.ps1<span class="w"> </span>-GatherLogs
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2025 fscorrupt
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/fscorrupt" target="_blank" rel="noopener" title="GitHub Profile" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/fYyJQSGt54" target="_blank" rel="noopener" title="Discord Server" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.annotate", "content.code.copy"], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      
+    
+  </body>
+</html>
