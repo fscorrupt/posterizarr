@@ -1,0 +1,36 @@
+{
+  "PrerequisitePart": {
+    "overlayfile": "overlay-innerglow.png",
+    "seasonoverlayfile": "overlay-innerglow.png",
+    "backgroundoverlayfile": "backgroundoverlay-innerglow.png",
+    "titlecardoverlayfile": "backgroundoverlay-innerglow.png",
+    "collectionoverlayfile": "overlay-innerglow.png",
+
+    "_comment1": "=== Resolution-specific overlays for posters ===",
+    "_comment_note": "Note: 8K and 720P overlays exist but require custom code to use",
+    "poster4k": "overlay-4k.png",
+    "Poster1080p": "overlay-1080p.png",
+    "UsePosterResolutionOverlays": "true",
+
+    "_comment2": "=== Resolution-specific overlays for backgrounds ===",
+    "Background4k": "overlay-4k.png",
+    "Background1080p": "overlay-1080p.png",
+    "UseBackgroundResolutionOverlays": "true",
+
+    "_comment3": "=== Resolution-specific overlays for title cards ===",
+    "TC4k": "overlay-4k.png",
+    "TC1080p": "overlay-1080p.png",
+    "UseTCResolutionOverlays": "true",
+
+    "_comment4": "=== HDR/Dolby Vision overlays (optional) ===",
+    "4KDoVi": "overlay-innerglow.png",
+    "4KHDR10": "overlay-innerglow.png",
+    "4KDoViHDR10": "overlay-innerglow.png",
+    "4KDoViBackground": "backgroundoverlay-innerglow.png",
+    "4KHDR10Background": "backgroundoverlay-innerglow.png",
+    "4KDoViHDR10Background": "backgroundoverlay-innerglow.png",
+    "4KDoViTC": "backgroundoverlay-innerglow.png",
+    "4KHDR10TC": "backgroundoverlay-innerglow.png",
+    "4KDoViHDR10TC": "backgroundoverlay-innerglow.png"
+  }
+}
