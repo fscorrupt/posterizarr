@@ -1,35 +1,39 @@
-<div is="emby-scroller" data-controller="configurationpage?name=PosterizarrConfigjs" class="view flex flex-direction-column scrollFrameY flex-grow" data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true" data-bindheader="true" data-title="Posterizarr">
-    <div class="scrollSlider flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page">
-        <div class="readOnlyContent auto-center" style="max-width: 800px;">
-            <h1 class="pageTitle">Posterizarr</h1>
+<div is="emby-scroller"
+     class="view flex flex-direction-column scrollFrameY flex-grow"
+     data-horizontal="false"
+     data-forcescrollbar="true"
+     data-centerfocus="true"
+     data-bindheader="true"
+     data-controller="__plugin/PosterizarrConfigjs"
+     data-title="Posterizarr">
 
-            <form id="PosterizarrConfigForm">
-                <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-                    <h2 style="margin-top:0;">Posterizarr Settings</h2>
-                    <p>Map your local /assets folder to your libraries using fuzzy folder matching.</p>
+  <div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page">
+    <form id="PosterizarrConfigForm" class="auto-center" style="max-width: 800px; width: 100%;">
+        <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+            <h1 class="pageTitle" style="margin-top:0;">Posterizarr Settings</h1>
+            <p>Map your local /assets folder to your libraries using fuzzy folder matching.</p>
 
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="txtAssetPath">Root Asset Folder Path</label>
-                        <input is="emby-input" type="text" id="txtAssetPath" />
-                        <div class="fieldDescription">The path where your library folders live (e.g., /assets).</div>
-                    </div>
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtAssetPath">Root Asset Folder Path</label>
+                <input is="emby-input" type="text" id="txtAssetPath" />
+                <div class="fieldDescription">The path where your library folders live (e.g., /assets).</div>
+            </div>
 
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" id="chkDebugMode" />
-                            <span>Enable Debug Mode</span>
-                        </label>
-                        <div class="fieldDescription checkboxFieldDescription">Enable detailed logging for troubleshooting file lookups.</div>
-                    </div>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkDebugMode" />
+                    <span>Enable Debug Mode</span>
+                </label>
+                <div class="fieldDescription checkboxFieldDescription">Enable detailed logging for troubleshooting file lookups.</div>
+            </div>
 
-                    <div style="margin-top: 2em;">
-                        <button is="emby-button" type="submit" class="raised button-submit block">
-                            <i class="md-icon">save</i>
-                            <span>Save</span>
-                        </button>
-                    </div>
-                </div>
-            </form>
+            <div style="margin-top: 2em;">
+                <button is="emby-button" type="submit" class="raised button-submit block">
+                    <i class="md-icon">save</i>
+                    <span>Save Settings</span>
+                </button>
+            </div>
         </div>
-    </div>
+    </form>
+  </div>
 </div>

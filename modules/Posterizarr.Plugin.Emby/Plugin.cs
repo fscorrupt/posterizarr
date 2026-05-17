@@ -10,8 +10,8 @@ namespace Posterizarr.Plugin
 {
     public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     {
-        public override string Name => "Posterizarr";
-        public override Guid Id => Guid.Parse("f62d8560-6123-4567-89ab-cdef12345678");
+        public override string Name => "Posterizarr Emby";
+        public override Guid Id => Guid.Parse("e62d8560-6123-4567-89ab-cdef12345678");
         public override string Description => "Maps local assets to library items as posters, backgrounds, or titlecards.";
 
         public static Plugin? Instance { get; private set; }

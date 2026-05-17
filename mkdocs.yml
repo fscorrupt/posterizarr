@@ -51,6 +51,7 @@ nav:
     - 'Kometa Integration': 'kometaintegration.md'
     - 'Manual UI Installation': 'uiinstallation.md'
     - 'Jellyfin Plugin': 'plugin.md'
+    - 'Emby Plugin': 'emby_plugin.md'
   - 'Advanced':
     - 'Search Order': 'searchorder.md'
     - 'Naming Convention': 'namingconvention.md'

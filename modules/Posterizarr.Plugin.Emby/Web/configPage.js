@@ -1,7 +1,7 @@
 define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (loading) {
     'use strict';
 
-    var pluginId = "f62d8560-6123-4567-89ab-cdef12345678";
+    var pluginId = "e62d8560-6123-4567-89ab-cdef12345678";
 
     function loadConfig(view) {
         loading.show();

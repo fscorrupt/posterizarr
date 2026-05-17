@@ -105,8 +105,8 @@ jobs:
             type=gha,scope=dev
           cache-to: type=gha,scope=${{ github.ref_name }},mode=max
 
-  build-plugin:
-    name: Build Jellyfin Plugin
+  build-plugins:
+    name: Build Plugins
     if: github.event_name != 'workflow_dispatch' || inputs.run_plugin == true
     runs-on: ubuntu-latest
     permissions:
@@ -121,10 +121,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 9.0.x
-
-      - name: Restore dependencies
-        run: dotnet restore modules/Posterizarr.Plugin/Posterizarr.Plugin.csproj
+          dotnet-version: |
+            8.0.x
+            9.0.x
 
       - name: Set Version String
         id: vars
@@ -136,21 +135,43 @@ jobs:
           fi
           echo "VERSION=$V_STR" >> $GITHUB_OUTPUT
 
-      - name: Build Plugin
+      - name: Restore dependencies (Jellyfin)
+        run: dotnet restore modules/Posterizarr.Plugin/Posterizarr.Plugin.csproj
+
+      - name: Build Jellyfin Plugin
         run: |
           dotnet build modules/Posterizarr.Plugin/Posterizarr.Plugin.csproj \
             --configuration Release \
             --no-restore \
             -p:Version=${{ steps.vars.outputs.VERSION }}
 
-      - name: Prepare Package
+      - name: Restore dependencies (Emby)
+        run: dotnet restore modules/Posterizarr.Plugin.Emby/Posterizarr.Plugin.Emby.csproj
+
+      - name: Build Emby Plugin
+        run: |
+          dotnet build modules/Posterizarr.Plugin.Emby/Posterizarr.Plugin.Emby.csproj \
+            --configuration Release \
+            --no-restore \
+            -p:Version=${{ steps.vars.outputs.VERSION }}
+
+      - name: Prepare Packages
         run: |
           mkdir -p release_package
-          cp modules/Posterizarr.Plugin/bin/Release/net9.0/Posterizarr.Plugin.dll release_package/
-          cd release_package
-          zip -r ../Posterizarr.Plugin_v${{ steps.vars.outputs.VERSION }}.zip *
+          
+          # Jellyfin
+          mkdir -p temp_jellyfin
+          cp modules/Posterizarr.Plugin/bin/Release/net9.0/Posterizarr.Plugin.dll temp_jellyfin/
+          cd temp_jellyfin
+          zip -r ../release_package/Posterizarr.Plugin_v${{ steps.vars.outputs.VERSION }}.zip *
           cd ..
-          mv Posterizarr.Plugin_v${{ steps.vars.outputs.VERSION }}.zip release_package/
+          
+          # Emby
+          mkdir -p temp_emby
+          cp modules/Posterizarr.Plugin.Emby/bin/Release/net8.0/Posterizarr.Plugin.Emby.dll temp_emby/
+          cd temp_emby
+          zip -r ../release_package/Posterizarr.Plugin.Emby_v${{ steps.vars.outputs.VERSION }}.zip *
+          cd ..
 
       - name: Push to Builds Branch (Dev Only)
         if: github.event_name != 'release'
@@ -168,7 +189,7 @@ jobs:
           cd builds_repo
           git add .
           if ! git diff --cached --quiet; then
-            git commit -m "build: update dev zip v${{ steps.vars.outputs.VERSION }}"
+            git commit -m "build: update dev zips v${{ steps.vars.outputs.VERSION }}"
             git push origin builds
           else
             echo "No changes to builds branch. Skipping push."
@@ -210,5 +231,5 @@ jobs:
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v3
         with:
-          files: release_package/Posterizarr.Plugin_v${{ steps.vars.outputs.VERSION }}.zip
+          files: release_package/*.zip
           token: ${{ secrets.GITHUB_TOKEN }}

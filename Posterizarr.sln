@@ -4,6 +4,8 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "modules", "modules", "{CA253913-39DE-BFD0-C9A3-4B7EC6FBDF17}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Posterizarr.Plugin.Emby", "modules\Posterizarr.Plugin.Emby\Posterizarr.Plugin.Emby.csproj", "{3E4A5B6C-7D8E-9F0A-1B2C-3D4E5F6A7B8C}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Posterizarr.Plugin", "modules\Posterizarr.Plugin\Posterizarr.Plugin.csproj", "{2F4617BC-4793-BFDD-80FB-6CB4698462D4}"
 EndProject
 Global
@@ -16,12 +18,17 @@ Global
 		{2F4617BC-4793-BFDD-80FB-6CB4698462D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2F4617BC-4793-BFDD-80FB-6CB4698462D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2F4617BC-4793-BFDD-80FB-6CB4698462D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E4A5B6C-7D8E-9F0A-1B2C-3D4E5F6A7B8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E4A5B6C-7D8E-9F0A-1B2C-3D4E5F6A7B8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E4A5B6C-7D8E-9F0A-1B2C-3D4E5F6A7B8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E4A5B6C-7D8E-9F0A-1B2C-3D4E5F6A7B8C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2F4617BC-4793-BFDD-80FB-6CB4698462D4} = {CA253913-39DE-BFD0-C9A3-4B7EC6FBDF17}
+		{3E4A5B6C-7D8E-9F0A-1B2C-3D4E5F6A7B8C} = {CA253913-39DE-BFD0-C9A3-4B7EC6FBDF17}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {1887C47B-7FC3-43E3-8694-A07D4246B39F}
