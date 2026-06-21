@@ -139,28 +139,22 @@ function GetTMDBLogo {
         }
         if ($response) {
             if ($response.images.logos) {
-                foreach ($lang in $global:LogoLanguageOrder) {
-                    if ($lang -ne 'null' -and $lang -ne 'xx') {
-                        if ($global:UseClearlogo -eq 'true') {
-                            $FavPoster = ($response.images.logos | Where-Object iso_639_1 -eq $lang)
-                        }
+                $logo = Get-TopMatchingItem -Items $response.images.logos -LanguageOrder $global:LogoLanguageOrder -SortProperty $global:TMDBVoteSorting -MatchScript {
+                    param($item, $lang)
+                    if ($global:UseClearlogo -ne 'true' -or $lang -eq 'null' -or $lang -eq 'xx') {
+                        return $false
                     }
 
-                    if ($FavPoster) {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = $FavPoster[0].file_path
-                        }
-                        Else {
-                            $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                        }
-                        $global:LogoUrl = "https://image.tmdb.org/t/p/original$posterpath"
-                        if ($lang -ne 'null' -and $lang -ne 'xx') {
-                            Write-Entry -Subtext "Found Logo with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        $global:LogoLanguage = $lang
-                        return $global:LogoUrl
-                        continue
+                    return $item.iso_639_1 -eq $lang
+                }
+
+                if ($logo) {
+                    $global:LogoUrl = "https://image.tmdb.org/t/p/original$($logo.file_path)"
+                    if ($logo.iso_639_1 -ne 'null' -and $logo.iso_639_1 -ne 'xx') {
+                        Write-Entry -Subtext "Found Logo with Language '$($logo.iso_639_1)' on TMDB" -Path $global:configLogging -Color Blue -log Info
                     }
+                    $global:LogoLanguage = $logo.iso_639_1
+                    return $global:LogoUrl
                 }
             }
             Else {
@@ -196,33 +190,25 @@ function GetTVDBLogo {
         }
         if ($response) {
             if ($response.data) {
-                foreach ($lang in $global:LogoLanguageOrder) {
-                    if ($lang -ne 'null') {
-                        if ($global:UseClearart -eq 'true') {
-                            if ($Type -eq 'series') {
-                                $global:tvdblogo = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '22' } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $global:tvdblogo = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '24' } | Sort-Object Score -Descending)
-                            }
-                        }
-                        elseif ($global:UseClearlogo -eq 'true') {
-                            if ($Type -eq 'series') {
-                                $global:tvdblogo = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '23' } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $global:tvdblogo = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '25' } | Sort-Object Score -Descending)
-                            }
-                        }
-                    }
+                $artworkType = if ($global:UseClearart -eq 'true') {
+                    if ($Type -eq 'series') { '22' } else { '24' }
+                }
+                elseif ($global:UseClearlogo -eq 'true') {
+                    if ($Type -eq 'series') { '23' } else { '25' }
+                }
 
-                    if ($global:tvdblogo) {
-                        $global:LogoUrl = $global:tvdblogo[0].image
-                        Write-Entry -Subtext "Found Logo with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                        $global:LogoLanguage = $lang
-                        return $global:LogoUrl
-                        continue
+                $logo = if ($artworkType) {
+                    Get-TopMatchingItem -Items $response.data.artworks -LanguageOrder $global:LogoLanguageOrder -SortProperty 'Score' -MatchScript {
+                        param($item, $lang)
+                        $item.language -like "$lang*" -and $item.type -eq $artworkType
                     }
+                }
+
+                if ($logo) {
+                    $global:LogoUrl = $logo.image
+                    Write-Entry -Subtext "Found Logo with Language '$($logo.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                    $global:LogoLanguage = $logo.language
+                    return $global:LogoUrl
                 }
             }
             Else {
@@ -260,15 +246,16 @@ function GetFanartLogo {
         }
 
         if ($field -and $entrytemp.$field) {
-            foreach ($lang in $global:LogoLanguageOrder) {
-                $matchedLogos = $entrytemp.$field | Where-Object { $_.lang -eq $lang }
+            $logo = Get-TopMatchingItem -Items $entrytemp.$field -LanguageOrder $global:LogoLanguageOrder -MatchScript {
+                param($item, $lang)
+                $item.lang -eq $lang
+            }
 
-                if ($matchedLogos) {
-                    $global:LogoUrl = $matchedLogos[0].url
-                    $global:LogoLanguage = $lang
-                    Write-Entry -Subtext "Found $field with Language '$lang' on FANART" -Path $global:configLogging -Color Blue -log Info
-                    return $global:LogoUrl
-                }
+            if ($logo) {
+                $global:LogoUrl = $logo.url
+                $global:LogoLanguage = $logo.lang
+                Write-Entry -Subtext "Found $field with Language '$($logo.lang)' on FANART" -Path $global:configLogging -Color Blue -log Info
+                return $global:LogoUrl
             }
         }
     }
@@ -1563,6 +1550,63 @@ function RemoveTrailingSlash($path) {
     }
     return $path
 }
+function Get-PreferredItem {
+    param(
+        [object[]]$Items,
+        [string]$SortProperty = 'primary'
+    )
+
+    if (-not $Items) {
+        return $null
+    }
+
+    if ($SortProperty -eq 'primary') {
+        return $Items[0]
+    }
+
+    return ($Items | Sort-Object $SortProperty -Descending | Select-Object -First 1)
+}
+function Get-TopMatchingItem {
+    param(
+        [object[]]$Items,
+        [string[]]$LanguageOrder,
+        [scriptblock]$MatchScript,
+        [string]$SortProperty = 'primary'
+    )
+
+    foreach ($lang in $LanguageOrder) {
+        $matchedItems = foreach ($item in $Items) {
+            if (& $MatchScript $item $lang) {
+                $item
+            }
+        }
+
+        if ($matchedItems) {
+            return Get-PreferredItem -Items $matchedItems -SortProperty $SortProperty
+        }
+    }
+
+    return $null
+}
+function Get-FilteredPreferredItem {
+    param(
+        [object[]]$Items,
+        [scriptblock]$FilterScript,
+        [string]$SortProperty = 'primary'
+    )
+
+    $filteredItems = foreach ($item in $Items) {
+        if (& $FilterScript $item) {
+            $item
+        }
+    }
+
+    if (-not $filteredItems) {
+        return $null
+    }
+
+    return Get-PreferredItem -Items $filteredItems -SortProperty $SortProperty
+}
 function Get-OptimalPointSize {
     param(
         [string]$text,
@@ -1667,7 +1711,6 @@ function GetTMDBMoviePoster {
             if ($response.images.posters) {
                 if ($global:WidthHeightFilter -eq 'true') {
                     $NoLangPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                    $NoLangPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                 }
                 Else {
                     $NoLangPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
@@ -1676,44 +1719,20 @@ function GetTMDBMoviePoster {
                     Write-Entry -Subtext "PreferTextless Value: $global:PosterPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
                     Write-Entry -Subtext "OnlyTextless Value: $global:PosterOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                     if ($global:PosterOnlyTextless -eq $false) {
-                        if ($global:WidthHeightFilter -eq 'true') {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $filteredPosters = $response.images.posters | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = $filteredPosters[0].file_path
-                                    Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
-                            }
-                            Else {
-                                $filteredPosters = $response.images.posters
-
-                                if ($filteredPosters) {
-                                    $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                    Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
+                        $selectedPoster = if ($global:WidthHeightFilter -eq 'true') {
+                            Get-FilteredPreferredItem -Items $response.images.posters -SortProperty $global:TMDBVoteSorting -FilterScript {
+                                param($item)
+                                $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                             }
                         }
-                        Else {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $filteredPosters = $response.images.posters
+                        else {
+                            Get-PreferredItem -Items $response.images.posters -SortProperty $global:TMDBVoteSorting
+                        }
 
-                                if ($filteredPosters) {
-                                    $posterpath = $filteredPosters[0].file_path
-                                }
-                            }
-                            Else {
-                                $filteredPosters = $response.images.posters
-
-                                if ($filteredPosters) {
-                                    $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                }
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
+                            if ($global:WidthHeightFilter -eq 'true') {
+                                Write-Entry -Subtext "Found a poster sized at - width: $($selectedPoster.width) | height: $($selectedPoster.height)" -Path $global:configLogging -Color White -log Info
                             }
                         }
                         if ($posterpath) {
@@ -1724,12 +1743,7 @@ function GetTMDBMoviePoster {
                             }
                             Write-Entry -Subtext "Found Poster with text on TMDB" -Path $global:configLogging -Color Blue -log Info
                             $global:PosterWithText = $true
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $global:TMDBAssetTextLang = $response.images.posters[0].iso_639_1
-                            }
-                            Else {
-                                $global:TMDBAssetTextLang = (($response.images.posters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
-                            }
+                            $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
                         }
                         $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
                         return $global:posterurl
@@ -1740,45 +1754,19 @@ function GetTMDBMoviePoster {
                     }
                 }
                 Else {
-                    if ($global:WidthHeightFilter -eq 'true') {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $filteredPosters = $response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = $filteredPosters[0].file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
-                        }
-                        Else {
-                            $filteredPosters = $response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
+                    $selectedPoster = if ($global:WidthHeightFilter -eq 'true') {
+                        Get-FilteredPreferredItem -Items $response.images.posters -SortProperty $global:TMDBVoteSorting -FilterScript {
+                            param($item)
+                            ($item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null) -and
+                            $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                         }
                     }
-                    Else {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $filteredPosters = $response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null }
-                            if ($filteredPosters) {
-                                $posterpath = $filteredPosters[0].file_path
-                            }
+                    else {
+                        Get-PreferredItem -Items ($response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null }) -SortProperty $global:TMDBVoteSorting
+                    }
 
-                        }
-                        Else {
-                            $filteredPosters = $response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null }
-
-                            if ($filteredPosters) {
-                                $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                            }
-                        }
+                    if ($selectedPoster) {
+                        $posterpath = $selectedPoster.file_path
                     }
                     if ($posterpath) {
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
@@ -1827,11 +1815,9 @@ function GetTMDBMoviePoster {
                         }
                     }
                     if ($FavPoster) {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = $FavPoster[0].file_path
-                        }
-                        Else {
-                            $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
+                        $selectedPoster = Get-PreferredItem -Items $FavPoster -SortProperty $global:TMDBVoteSorting
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
                         }
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                         if ($lang -eq 'null' -or $lang -eq 'xx') {
@@ -1842,7 +1828,7 @@ function GetTMDBMoviePoster {
                         Else {
                             Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
                         }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
+                        if ($lang -ne 'null' -and $lang -ne 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
                             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
@@ -1892,19 +1878,19 @@ function GetTMDBMovieBackground {
                                 $filteredPosters = $response.images.backdrops | Where-Object { $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
 
                                 if ($filteredPosters) {
-                                    $posterpath = $filteredPosters[0].file_path
-                                    Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
+                                    $bestPoster = Get-PreferredItem -Items $filteredPosters
+                                    $posterpath = $bestPoster.file_path
+                                    Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
                                 }
                                 else {
                                     Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
                                 }
                             }
                             Else {
-                                $filteredPosters = $response.images.backdrops | Where-Object { $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                    Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
+                                $selectedPoster = Get-PreferredItem -Items $response.images.backdrops -SortProperty $global:TMDBVoteSorting
+                                if ($selectedPoster) {
+                                    $posterpath = $selectedPoster.file_path
+                                    Write-Entry -Subtext "Found a poster sized at - width: $($selectedPoster.width) | height: $($selectedPoster.height)" -Path $global:configLogging -Color White -log Info
                                 }
                                 else {
                                     Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
@@ -1912,11 +1898,9 @@ function GetTMDBMovieBackground {
                             }
                         }
                         Else {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $posterpath = $response.images.backdrops[0].file_path
-                            }
-                            Else {
-                                $posterpath = (($response.images.backdrops | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
+                            $selectedPoster = Get-PreferredItem -Items $response.images.backdrops -SortProperty $global:TMDBVoteSorting
+                            if ($selectedPoster) {
+                                $posterpath = $selectedPoster.file_path
                             }
                         }
                         if ($posterpath) {
@@ -1927,12 +1911,7 @@ function GetTMDBMovieBackground {
                             }
                             Write-Entry -Subtext "Found background with text on TMDB" -Path $global:configLogging -Color Blue -log Info
                             $global:PosterWithText = $true
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $global:TMDBAssetTextLang = $response.images.backdrops[0].iso_639_1
-                            }
-                            Else {
-                                $global:TMDBAssetTextLang = (($response.images.backdrops | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
-                            }
+                            $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
                             return $global:posterurl
                         }
                         $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
@@ -1945,22 +1924,28 @@ function GetTMDBMovieBackground {
                 Else {
                     if ($global:WidthHeightFilter -eq 'true') {
                         if ($global:TMDBVoteSorting -eq 'primary') {
-                            $filteredPosters = $response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = $filteredPosters[0].file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
+                            $bestPoster = Get-FilteredPreferredItem -Items $response.images.backdrops -FilterScript {
+                                param($item)
+                                ($item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null) -and
+                                $item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight
+                            }
+                            if ($bestPoster) {
+                                $posterpath = $bestPoster.file_path
+                                Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
                             }
                             else {
                                 Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
                             }
                         }
                         Else {
-                            $filteredPosters = $response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
+                            $bestPoster = Get-FilteredPreferredItem -Items $response.images.backdrops -SortProperty $global:TMDBVoteSorting -FilterScript {
+                                param($item)
+                                ($item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null) -and
+                                $item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight
+                            }
+                            if ($bestPoster) {
+                                $posterpath = $bestPoster.file_path
+                                Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
                             }
                             else {
                                 Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
@@ -1968,11 +1953,9 @@ function GetTMDBMovieBackground {
                         }
                     }
                     Else {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = (($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })[0]).file_path
-                        }
-                        Else {
-                            $posterpath = (($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null } | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
+                        $selectedPoster = Get-PreferredItem -Items ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null }) -SortProperty $global:TMDBVoteSorting
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
                         }
                     }
                     if ($posterpath) {
@@ -2029,11 +2012,9 @@ function GetTMDBMovieBackground {
                         }
                     }
                     if ($FavPoster) {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = $FavPoster[0].file_path
-                        }
-                        Else {
-                            $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
+                        $selectedPoster = Get-PreferredItem -Items $FavPoster -SortProperty $global:TMDBVoteSorting
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
                         }
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                         if ($lang -eq 'null' -or $lang -eq 'xx') {
@@ -2042,7 +2023,7 @@ function GetTMDBMovieBackground {
                         Else {
                             Write-Entry -Subtext "Found background with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
                         }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
+                        if ($lang -ne 'null' -and $lang -ne 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
                             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
@@ -2112,11 +2093,12 @@ function GetTMDBShowPoster {
                                 if ($global:TMDBVoteSorting -eq 'primary') {
                                     $filteredPosters = $response.images.posters | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
 
-                                    if ($filteredPosters) {
-                                        $posterpath = $filteredPosters[0].file_path
-                                        $global:TMDBAssetTextLang = $filteredPosters[0].iso_639_1
-                                        Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                                    }
+                            if ($filteredPosters) {
+                                $bestPoster = Get-PreferredItem -Items $filteredPosters
+                                $posterpath = $bestPoster.file_path
+                                $global:TMDBAssetTextLang = $bestPoster.iso_639_1
+                                Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
+                            }
                                     else {
                                         Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
                                     }
@@ -2124,24 +2106,22 @@ function GetTMDBShowPoster {
                                 Else {
                                     $filteredPosters = $response.images.posters | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
 
-                                    if ($filteredPosters) {
-                                        $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                        $global:TMDBAssetTextLang = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
-                                        Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                                    }
+                            if ($filteredPosters) {
+                                $bestPoster = Get-PreferredItem -Items $filteredPosters -SortProperty $global:TMDBVoteSorting
+                                $posterpath = $bestPoster.file_path
+                                $global:TMDBAssetTextLang = $bestPoster.iso_639_1
+                                Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
+                            }
                                     else {
                                         Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
                                     }
                                 }
                             }
                             Else {
-                                if ($global:TMDBVoteSorting -eq 'primary') {
-                                    $posterpath = $response.images.posters[0].file_path
-                                    $global:TMDBAssetTextLang = $response.images.posters[0].iso_639_1
-                                }
-                                Else {
-                                    $posterpath = (($response.images.posters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                    $global:TMDBAssetTextLang = (($response.images.posters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
+                                $selectedPoster = Get-PreferredItem -Items $response.images.posters -SortProperty $global:TMDBVoteSorting
+                                if ($selectedPoster) {
+                                    $posterpath = $selectedPoster.file_path
+                                    $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
                                 }
                             }
                             if ($posterpath) {
@@ -2168,8 +2148,9 @@ function GetTMDBShowPoster {
                                 $filteredPosters = $response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
 
                                 if ($filteredPosters) {
-                                    $posterpath = $filteredPosters[0].file_path
-                                    Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
+                                    $bestPoster = Get-PreferredItem -Items $filteredPosters
+                                    $posterpath = $bestPoster.file_path
+                                    Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
                                 }
                                 else {
                                     Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
@@ -2179,8 +2160,9 @@ function GetTMDBShowPoster {
                                 $filteredPosters = $response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
 
                                 if ($filteredPosters) {
-                                    $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                    Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
+                                    $bestPoster = Get-PreferredItem -Items $filteredPosters -SortProperty $global:TMDBVoteSorting
+                                    $posterpath = $bestPoster.file_path
+                                    Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
                                 }
                                 else {
                                     Write-Entry -Subtext "No posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
@@ -2191,13 +2173,13 @@ function GetTMDBShowPoster {
                             if ($global:TMDBVoteSorting -eq 'primary') {
                                 $posterpath = ($response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                                 if ($posterpath) {
-                                    $posterpath = $posterpath[0].file_path
+                                    $posterpath = (Get-PreferredItem -Items $posterpath).file_path
                                 }
                             }
                             Else {
                                 $posterpath = ($response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null } | Sort-Object $global:TMDBVoteSorting -Descending)
                                 if ($posterpath) {
-                                    $posterpath = $posterpath[0].file_path
+                                    $posterpath = (Get-PreferredItem -Items $posterpath -SortProperty $global:TMDBVoteSorting).file_path
                                 }
                             }
                         }
@@ -2231,50 +2213,44 @@ function GetTMDBShowPoster {
             }
             if ($response) {
                 if ($response.images.posters) {
-                    foreach ($lang in $global:PreferredLanguageOrderTMDB) {
+                    $selectedPoster = Get-TopMatchingItem -Items $response.images.posters -LanguageOrder $global:PreferredLanguageOrderTMDB -SortProperty $global:TMDBVoteSorting -MatchScript {
+                        param($item, $lang)
+                        $isTextless = ($lang -eq 'null' -or $lang -eq 'xx')
+                        $matchesLanguage = if ($isTextless) {
+                            $item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null
+                        }
+                        else {
+                            $item.iso_639_1 -eq $lang
+                        }
+
+                        if (-not $matchesLanguage) {
+                            return $false
+                        }
+
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($lang -eq 'null' -or $lang -eq 'xx') {
-                                $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                                $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                            }
-                            Else {
-                                $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                            }
+                            return $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                         }
-                        Else {
-                            if ($lang -eq 'null' -or $lang -eq 'xx') {
-                                $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
-                            }
-                            Else {
-                                $FavPoster = ($response.images.posters | Where-Object iso_639_1 -eq $lang)
-                            }
-                        }
-                        if ($FavPoster) {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $posterpath = $FavPoster[0].file_path
-                            }
-                            Else {
-                                $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                            }
-                            $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                            if ($lang -eq 'null' -or $lang -eq 'xx') {
-                                Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
-                                $global:TextlessPoster = $true
-                                $global:PosterWithText = $null
-                            }
-                            Else {
-                                Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne 'null' -or $lang -eq 'xx') {
-                                $global:PosterWithText = $true
-                                $global:TMDBAssetTextLang = $lang
-                                $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
-                            }
-                            return $global:posterurl
-                            continue
-                        }
-                        $global:tmdbsearched = $true
+
+                        return $true
                     }
+
+                    if ($selectedPoster) {
+                        $posterpath = $selectedPoster.file_path
+                        $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
+                        if ($selectedPoster.iso_639_1 -eq 'null' -or $selectedPoster.iso_639_1 -eq 'xx' -or $selectedPoster.iso_3166_1 -eq 'XX' -or $selectedPoster.iso_3166_1 -eq $null -or $selectedPoster.iso_639_1 -eq $null) {
+                            Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
+                        }
+                        else {
+                            Write-Entry -Subtext "Found Poster with Language '$($selectedPoster.iso_639_1)' on TMDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
+                        }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
+                        return $global:posterurl
+                    }
+                    $global:tmdbsearched = $true
                 }
             }
             Else {
@@ -2312,39 +2288,20 @@ function GetTMDBSeasonPoster {
                 if (!$NoLangPoster) {
                     if (!$global:SeasonOnlyTextless) {
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $filteredPosters = $response.poster | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = $filteredPosters[0].file_path
-                                    $global:TMDBAssetTextLang = $filteredPosters[0].iso_639_1
-                                    Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No Season posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
-                            }
-                            Else {
-                                $filteredPosters = $response.posters | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                    $global:TMDBAssetTextLang = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
-                                    Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No Season posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
+                            $selectedPoster = Get-FilteredPreferredItem -Items $response.posters -SortProperty $global:TMDBVoteSorting -FilterScript {
+                                param($item)
+                                $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                             }
                         }
                         Else {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $posterpath = $response.posters[0].file_path
-                                $global:TMDBAssetTextLang = $response.posters[0].iso_639_1
-                            }
-                            Else {
-                                $posterpath = (($response.posters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                $global:TMDBAssetTextLang = (($response.posters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
+                            $selectedPoster = Get-PreferredItem -Items $response.posters -SortProperty $global:TMDBVoteSorting
+                        }
+
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
+                            $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
+                            if ($global:WidthHeightFilter -eq 'true') {
+                                Write-Entry -Subtext "Found a poster sized at - width: $($selectedPoster.width) | height: $($selectedPoster.height)" -Path $global:configLogging -Color White -log Info
                             }
                         }
                         if ($posterpath) {
@@ -2369,35 +2326,24 @@ function GetTMDBSeasonPoster {
                 }
                 Else {
                     if ($global:WidthHeightFilter -eq 'true') {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $filteredPosters = $response.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = $filteredPosters[0].file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No Season posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
+                        $selectedPoster = Get-FilteredPreferredItem -Items $response.posters -SortProperty $global:TMDBVoteSorting -FilterScript {
+                            param($item)
+                            ($item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null) -and
+                            $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                         }
-                        Else {
-                            $filteredPosters = $response.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
 
-                            if ($filteredPosters) {
-                                $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No Season posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
+                            Write-Entry -Subtext "Found a poster sized at - width: $($selectedPoster.width) | height: $($selectedPoster.height)" -Path $global:configLogging -Color White -log Info
+                        }
+                        else {
+                            Write-Entry -Subtext "No Season posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
                         }
                     }
                     Else {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = (($response.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })[0]).file_path
-                        }
-                        Else {
-                            $posterpath = (($response.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null } | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
+                        $selectedPoster = Get-PreferredItem -Items ($response.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null }) -SortProperty $global:TMDBVoteSorting
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
                         }
                     }
                     if ($posterpath) {
@@ -2442,100 +2388,86 @@ function GetTMDBSeasonPoster {
         if ($responseBackup) {
             if ($responseBackup.images.posters) {
                 Write-Entry -Subtext "Could not get a result with '$global:SeasonNumber' on TMDB, likely season number not in correct format, fallback to Show poster." -Path $global:configLogging -Color Blue -log Info
-                foreach ($lang in $global:PreferredSeasonLanguageOrderTMDB) {
+                $selectedPoster = Get-TopMatchingItem -Items $responseBackup.images.posters -LanguageOrder $global:PreferredSeasonLanguageOrderTMDB -SortProperty $global:TMDBVoteSorting -MatchScript {
+                    param($item, $lang)
+                    $isTextless = ($lang -eq 'null' -or $lang -eq 'xx')
+                    $matchesLanguage = if ($isTextless) {
+                        $item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null
+                    }
+                    else {
+                        $item.iso_639_1 -eq $lang
+                    }
+
+                    if (-not $matchesLanguage) {
+                        return $false
+                    }
+
                     if ($global:WidthHeightFilter -eq 'true') {
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                            $FavPoster = ($responseBackup.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                        }
-                        Else {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                        }
+                        return $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                     }
-                    Else {
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
-                        }
-                        Else {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object iso_639_1 -eq $lang)
-                        }
+
+                    return $true
+                }
+                if ($selectedPoster) {
+                    $posterpath = $selectedPoster.file_path
+                    $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
+                    if ($selectedPoster.iso_639_1 -eq 'null' -or $selectedPoster.iso_639_1 -eq 'xx' -or $selectedPoster.iso_3166_1 -eq 'XX' -or $selectedPoster.iso_3166_1 -eq $null -or $selectedPoster.iso_639_1 -eq $null) {
+                        Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
+                        $global:TextlessPoster = $true
+                        $global:PosterWithText = $null
                     }
-                    if ($FavPoster) {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = $FavPoster[0].file_path
-                        }
-                        Else {
-                            $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                        }
-                        $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
-                            $global:TextlessPoster = $true
-                            $global:PosterWithText = $null
-                        }
-                        Else {
-                            Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
-                            $global:PosterWithText = $true
-                            $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
-                        }
-                        Write-Entry -Subtext "Posterpath: $posterpath" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "PosterWithText: $global:PosterWithText" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "TMDBAssetTextLang: $global:TMDBAssetTextLang" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "TMDBAssetChangeUrl: $global:TMDBAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
-                        return $global:posterurl
-                        continue
+                    else {
+                        Write-Entry -Subtext "Found Poster with Language '$($selectedPoster.iso_639_1)' on TMDB" -Path $global:configLogging -Color Blue -log Info
+                        $global:PosterWithText = $true
+                        $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
                     }
+                    $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
+                    Write-Entry -Subtext "Posterpath: $posterpath" -Path $global:configLogging -Color Cyan -log Debug
+                    Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
+                    Write-Entry -Subtext "PosterWithText: $global:PosterWithText" -Path $global:configLogging -Color Cyan -log Debug
+                    Write-Entry -Subtext "TMDBAssetTextLang: $global:TMDBAssetTextLang" -Path $global:configLogging -Color Cyan -log Debug
+                    Write-Entry -Subtext "TMDBAssetChangeUrl: $global:TMDBAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
+                    return $global:posterurl
                 }
             }
         }
         if ($response) {
             if ($response.posters) {
-                foreach ($lang in $global:PreferredSeasonLanguageOrderTMDB) {
+                $selectedPoster = Get-TopMatchingItem -Items $response.posters -LanguageOrder $global:PreferredSeasonLanguageOrderTMDB -SortProperty $global:TMDBVoteSorting -MatchScript {
+                    param($item, $lang)
+                    $isTextless = ($lang -eq 'null' -or $lang -eq 'xx')
+                    $matchesLanguage = if ($isTextless) {
+                        $item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null
+                    }
+                    else {
+                        $item.iso_639_1 -eq $lang
+                    }
+
+                    if (-not $matchesLanguage) {
+                        return $false
+                    }
+
                     if ($global:WidthHeightFilter -eq 'true') {
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            $FavPoster = ($response.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                            $FavPoster = ($response.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                        }
-                        Else {
-                            $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                        }
+                        return $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                     }
-                    Else {
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
-                        }
-                        Else {
-                            $FavPoster = ($response.posters | Where-Object iso_639_1 -eq $lang)
-                        }
+
+                    return $true
+                }
+                if ($selectedPoster) {
+                    $posterpath = $selectedPoster.file_path
+                    $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
+                    if ($selectedPoster.iso_639_1 -eq 'null' -or $selectedPoster.iso_639_1 -eq 'xx' -or $selectedPoster.iso_3166_1 -eq 'XX' -or $selectedPoster.iso_3166_1 -eq $null -or $selectedPoster.iso_639_1 -eq $null) {
+                        Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
+                        $global:TextlessPoster = $true
+                        $global:PosterWithText = $null
                     }
-                    if ($FavPoster) {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = $FavPoster[0].file_path
-                        }
-                        Else {
-                            $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                        }
-                        $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
-                            $global:TextlessPoster = $true
-                            $global:PosterWithText = $null
-                        }
-                        Else {
-                            Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
-                            $global:PosterWithText = $true
-                            $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
-                        }
-                        return $global:posterurl
-                        continue
+                    else {
+                        Write-Entry -Subtext "Found Poster with Language '$($selectedPoster.iso_639_1)' on TMDB" -Path $global:configLogging -Color Blue -log Info
+                        $global:PosterWithText = $true
+                        $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
                     }
+                    $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
+                    return $global:posterurl
                 }
             }
             Else {
@@ -2578,46 +2510,24 @@ function GetTMDBShowBackground {
                     Write-Entry -Subtext "PreferTextless Value: $global:BackgroundPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
                     Write-Entry -Subtext "OnlyTextless Value: $global:BackgroundOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                     if ($global:BackgroundOnlyTextless -eq $false) {
-                        if ($global:WidthHeightFilter -eq 'true') {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $filteredPosters = $response.images.backdrops | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = $filteredPosters[0].file_path
-                                    $global:TMDBAssetTextLang = $filteredPosters[0].iso_639_1
-                                    Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
-                            }
-                            Else {
-                                $filteredPosters = $response.images.backdrops | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                    $global:TMDBAssetTextLang = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
-                                    Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
+                        $selectedPoster = if ($global:WidthHeightFilter -eq 'true') {
+                            Get-FilteredPreferredItem -Items $response.images.backdrops -SortProperty $global:TMDBVoteSorting -FilterScript {
+                                param($item)
+                                $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                             }
                         }
-                        Else {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $posterpath = $response.images.backdrops[0].file_path
-                                $global:TMDBAssetTextLang = $response.images.backdrops[0].iso_639_1
-                            }
-                            Else {
-                                $posterpath = (($response.images.backdrops | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                $global:TMDBAssetTextLang = (($response.images.backdrops | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
-                            }
+                        else {
+                            Get-PreferredItem -Items $response.images.backdrops -SortProperty $global:TMDBVoteSorting
                         }
-                        if ($posterpath) {
+
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
+                            $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
+                            if ($global:WidthHeightFilter -eq 'true') {
+                                Write-Entry -Subtext "Found a poster sized at - width: $($selectedPoster.width) | height: $($selectedPoster.height)" -Path $global:configLogging -Color White -log Info
+                            }
                             $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                             if ($global:FavProvider -ne 'fanart') {
-
                                 $global:Fallback = "fanart"
                                 $global:tmdbfallbackposterurl = $global:posterurl
                             }
@@ -2632,36 +2542,20 @@ function GetTMDBShowBackground {
                     }
                 }
                 Else {
-                    if ($global:WidthHeightFilter -eq 'true') {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $filteredPosters = $response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = $filteredPosters[0].file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
-                        }
-                        Else {
-                            $filteredPosters = $response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No Background posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
+                    $selectedPoster = if ($global:WidthHeightFilter -eq 'true') {
+                        Get-FilteredPreferredItem -Items $response.images.backdrops -SortProperty $global:TMDBVoteSorting -FilterScript {
+                            param($item)
+                            ($item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null) -and
+                            $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                         }
                     }
-                    Else {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = (($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })[0]).file_path
-                        }
-                        Else {
-                            $posterpath = (($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null } | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
+                    else {
+                        Get-PreferredItem -Items ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null }) -SortProperty $global:TMDBVoteSorting
+                    }
+                    if ($selectedPoster) {
+                        $posterpath = $selectedPoster.file_path
+                        if ($global:WidthHeightFilter -eq 'true') {
+                            Write-Entry -Subtext "Found a poster sized at - width: $($selectedPoster.width) | height: $($selectedPoster.height)" -Path $global:configLogging -Color White -log Info
                         }
                     }
                     if ($posterpath) {
@@ -2705,46 +2599,39 @@ function GetTMDBShowBackground {
         }
         if ($response) {
             if ($response.images.backdrops) {
-                foreach ($lang in $global:PreferredBackgroundLanguageOrderTMDB) {
+                $selectedPoster = Get-TopMatchingItem -Items $response.images.backdrops -LanguageOrder $global:PreferredBackgroundLanguageOrderTMDB -SortProperty $global:TMDBVoteSorting -MatchScript {
+                    param($item, $lang)
+                    $isTextless = ($lang -eq 'null' -or $lang -eq 'xx')
+                    $matchesLanguage = if ($isTextless) {
+                        $item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null
+                    }
+                    else {
+                        $item.iso_639_1 -eq $lang
+                    }
+
+                    if (-not $matchesLanguage) {
+                        return $false
+                    }
+
                     if ($global:WidthHeightFilter -eq 'true') {
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                            $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                        }
-                        Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
-                        }
+                        return $item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight
                     }
-                    Else {
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
-                        }
-                        Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object iso_639_1 -eq $lang)
-                        }
+
+                    return $true
+                }
+                if ($selectedPoster) {
+                    $posterpath = $selectedPoster.file_path
+                    $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
+                    if ($selectedPoster.iso_639_1 -eq 'null' -or $selectedPoster.iso_639_1 -eq 'xx' -or $selectedPoster.iso_3166_1 -eq 'XX' -or $selectedPoster.iso_3166_1 -eq $null -or $selectedPoster.iso_639_1 -eq $null) {
+                        Write-Entry -Subtext "Found background without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
                     }
-                    if ($FavPoster) {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = $FavPoster[0].file_path
-                        }
-                        Else {
-                            $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                        }
-                        $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                        if ($lang -eq 'null' -or $lang -eq 'xx') {
-                            Write-Entry -Subtext "Found background without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        Else {
-                            Write-Entry -Subtext "Found background with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
-                            $global:PosterWithText = $true
-                            $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
-                        }
-                        return $global:posterurl
-                        continue
+                    else {
+                        Write-Entry -Subtext "Found background with Language '$($selectedPoster.iso_639_1)' on TMDB" -Path $global:configLogging -Color Blue -log Info
+                        $global:PosterWithText = $true
+                        $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
                     }
+                    $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
+                    return $global:posterurl
                 }
                 if (!$global:posterurl) {
                     Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
@@ -2795,39 +2682,24 @@ function GetTMDBTitleCard {
                     Write-Entry -Subtext "OnlyTextless Value: $global:TCOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                     if ($global:TCOnlyTextless -eq $false) {
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $filteredPosters = $response.stills | Where-Object { $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = $filteredPosters[0].file_path
-                                    $global:TMDBAssetTextLang = $filteredPosters[0].iso_639_1
-                                    Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No TC posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
+                            $selectedPoster = Get-FilteredPreferredItem -Items $response.stills -SortProperty $global:TMDBVoteSorting -FilterScript {
+                                param($item)
+                                $item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight
                             }
-                            Else {
-                                $filteredPosters = $response.stills | Where-Object { $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-
-                                if ($filteredPosters) {
-                                    $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                    $global:TMDBAssetTextLang = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
-                                    Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                                }
-                                else {
-                                    Write-Entry -Subtext "No TC posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                                }
+                            if ($selectedPoster) {
+                                $posterpath = $selectedPoster.file_path
+                                $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
+                                Write-Entry -Subtext "Found a poster sized at - width: $($selectedPoster.width) | height: $($selectedPoster.height)" -Path $global:configLogging -Color White -log Info
+                            }
+                            else {
+                                Write-Entry -Subtext "No TC posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
                             }
                         }
                         Else {
-                            if ($global:TMDBVoteSorting -eq 'primary') {
-                                $posterpath = $response.stills[0].file_path
-                                $global:TMDBAssetTextLang = $response.stills[0].iso_639_1
-                            }
-                            Else {
-                                $posterpath = (($response.stills | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                $global:TMDBAssetTextLang = (($response.stills | Sort-Object $global:TMDBVoteSorting -Descending)[0]).iso_639_1
+                            $selectedPoster = Get-PreferredItem -Items $response.stills -SortProperty $global:TMDBVoteSorting
+                            if ($selectedPoster) {
+                                $posterpath = $selectedPoster.file_path
+                                $global:TMDBAssetTextLang = $selectedPoster.iso_639_1
                             }
                         }
                         if ($posterpath) {
@@ -2843,39 +2715,19 @@ function GetTMDBTitleCard {
                     }
                 }
                 Else {
-                    if ($global:WidthHeightFilter -eq 'true') {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $filteredPosters = $response.stills | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = $filteredPosters[0].file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $($filteredPosters[0].width) | height: $($filteredPosters[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No TC posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
-                        }
-                        Else {
-                            $filteredPosters = $response.stills | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-
-                            if ($filteredPosters) {
-                                $posterpath = (($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                                Write-Entry -Subtext "Found a poster sized at - width: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).width) | height: $((($filteredPosters | Sort-Object $global:TMDBVoteSorting -Descending)[0]).height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            else {
-                                Write-Entry -Subtext "No TC posters found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                            }
+                    $selectedPoster = if ($global:WidthHeightFilter -eq 'true') {
+                        Get-FilteredPreferredItem -Items $response.stills -SortProperty $global:TMDBVoteSorting -FilterScript {
+                            param($item)
+                            ($item.iso_639_1 -eq 'xx' -or $item.iso_3166_1 -eq 'XX' -or $item.iso_3166_1 -eq $null -or $item.iso_639_1 -eq $null) -and
+                            $item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight
                         }
                     }
-                    Else {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = (($response.stills | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })[0]).file_path
-                        }
-                        Else {
-                            $posterpath = (($response.stills | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null } | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
-                        }
+                    else {
+                        Get-PreferredItem -Items ($response.stills | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null }) -SortProperty $global:TMDBVoteSorting
                     }
-                    if ($posterpath) {
+
+                    if ($selectedPoster) {
+                        $posterpath = $selectedPoster.file_path
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                         Write-Entry -Subtext "Found Textless TC on TMDB" -Path $global:configLogging -Color Green -log Info
                         $global:TextlessPoster = $true
@@ -2928,11 +2780,9 @@ function GetTMDBTitleCard {
                         }
                     }
                     if ($FavPoster) {
-                        if ($global:TMDBVoteSorting -eq 'primary') {
-                            $posterpath = $FavPoster[0].file_path
-                        }
-                        Else {
-                            $posterpath = (($FavPoster | Sort-Object $global:TMDBVoteSorting -Descending)[0]).file_path
+                        $selectedPoster = Get-PreferredItem -Items $FavPoster -SortProperty $global:TMDBVoteSorting
+                        if ($selectedPoster) {
+                            $posterpath = $selectedPoster.file_path
                         }
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                         if ($lang -eq 'null' -or $lang -eq 'xx') {
@@ -2981,15 +2831,18 @@ function GetFanartMoviePoster {
                         Write-Entry -Subtext "PreferTextless Value: $global:PosterPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
                         Write-Entry -Subtext "OnlyTextless Value: $global:PosterOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                         if ($global:PosterOnlyTextless -eq $false) {
-                            $global:posterurl = ($entrytemp.movieposter)[0].url
-                            Write-Entry -Subtext "Found Poster with text on Fanart.tv"  -Path $global:configLogging -Color Blue -log Info
-                            $global:PosterWithText = $true
-                            $global:FANARTAssetTextLang = ($entrytemp.movieposter)[0].lang
+                            $selectedPoster = Get-PreferredItem -Items $entrytemp.movieposter
+                            if ($selectedPoster) {
+                                $global:posterurl = $selectedPoster.url
+                                Write-Entry -Subtext "Found Poster with text on Fanart.tv"  -Path $global:configLogging -Color Blue -log Info
+                                $global:PosterWithText = $true
+                                $global:FANARTAssetTextLang = $selectedPoster.lang
+                            }
                             $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
 
                             if ($global:FavProvider -eq 'FANART') {
                                 $global:Fallback = "TMDB"
-                                $global:fanartfallbackposterurl = ($entrytemp.movieposter)[0].url
+                                $global:fanartfallbackposterurl = $global:posterurl
                             }
                         }
                         Else {
@@ -3000,13 +2853,15 @@ function GetFanartMoviePoster {
                         continue
                     }
                     Else {
-                        $global:posterurl = ($entrytemp.movieposter | Where-Object lang -eq '00')[0].url
-                        Write-Entry -Subtext "Found Textless Poster on Fanart.tv" -Path $global:configLogging -Color Green -log Info
-                        $global:TextlessPoster = $true
-                        $global:PosterWithText = $null
-                        $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
-                        return $global:posterurl
-                        break
+                        $selectedPoster = Get-PreferredItem -Items ($entrytemp.movieposter | Where-Object lang -eq '00')
+                        if ($selectedPoster) {
+                            $global:posterurl = $selectedPoster.url
+                            Write-Entry -Subtext "Found Textless Poster on Fanart.tv" -Path $global:configLogging -Color Green -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
+                            $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
+                            return $global:posterurl
+                        }
                     }
                 }
             }
@@ -3029,24 +2884,23 @@ function GetFanartMoviePoster {
             if ($id) {
                 $entrytemp = Get-FanartTv -Type movies -id $id -ErrorAction SilentlyContinue
                 if ($entrytemp -and $entrytemp.movieposter) {
-                    foreach ($lang in $global:PreferredLanguageOrderFanart) {
-                        if (($entrytemp.movieposter | Where-Object lang -eq "$lang")) {
-                            $global:posterurl = ($entrytemp.movieposter)[0].url
-                            if ($lang -eq '00') {
-                                Write-Entry -Subtext "Found Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
-                                $global:TextlessPoster = $true
-                                $global:PosterWithText = $null
-                            }
-                            Else {
-                                Write-Entry -Subtext "Found Poster with Language '$lang' on FANART" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne '00') {
-                                $global:PosterWithText = $true
-                                $global:FANARTAssetTextLang = $lang
-                            }
-                            return $global:posterurl
-                            continue
+                    $selectedPoster = Get-TopMatchingItem -Items $entrytemp.movieposter -LanguageOrder $global:PreferredLanguageOrderFanart -MatchScript {
+                        param($item, $lang)
+                        $item.lang -eq $lang
+                    }
+                    if ($selectedPoster) {
+                        $global:posterurl = $selectedPoster.url
+                        if ($selectedPoster.lang -eq '00') {
+                            Write-Entry -Subtext "Found Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
                         }
+                        else {
+                            Write-Entry -Subtext "Found Poster with Language '$($selectedPoster.lang)' on FANART" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:FANARTAssetTextLang = $selectedPoster.lang
+                        }
+                        return $global:posterurl
                     }
                 }
             }
@@ -3071,41 +2925,46 @@ function GetFanartMovieBackground {
     foreach ($id in $ids) {
         if ($id) {
             $entrytemp = Get-FanartTv -Type movies -id $id -ErrorAction SilentlyContinue
-            if ($entrytemp -and $entrytemp.moviebackground) {
-                if (!($entrytemp.moviebackground | Where-Object lang -eq '')) {
-                    Write-Entry -Subtext "PreferTextless Value: $global:BackgroundPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
-                    Write-Entry -Subtext "OnlyTextless Value: $global:BackgroundOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
-                    if ($global:BackgroundOnlyTextless -eq $false) {
-                        $global:posterurl = ($entrytemp.moviebackground)[0].url
-                        Write-Entry -Subtext "Found Background with text on Fanart.tv"  -Path $global:configLogging -Color Blue -log Info
-                        $global:PosterWithText = $true
-                        $global:FANARTAssetTextLang = ($entrytemp.moviebackground)[0].lang
-                        $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
+                if ($entrytemp -and $entrytemp.moviebackground) {
+                    if (!($entrytemp.moviebackground | Where-Object lang -eq '')) {
+                        Write-Entry -Subtext "PreferTextless Value: $global:BackgroundPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
+                        Write-Entry -Subtext "OnlyTextless Value: $global:BackgroundOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
+                        if ($global:BackgroundOnlyTextless -eq $false) {
+                            $selectedPoster = Get-PreferredItem -Items $entrytemp.moviebackground
+                            if ($selectedPoster) {
+                                $global:posterurl = $selectedPoster.url
+                                Write-Entry -Subtext "Found Background with text on Fanart.tv"  -Path $global:configLogging -Color Blue -log Info
+                                $global:PosterWithText = $true
+                                $global:FANARTAssetTextLang = $selectedPoster.lang
+                            }
+                            $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
 
-                        if ($global:FavProvider -eq 'FANART') {
-                            $global:Fallback = "TMDB"
-                            $global:fanartfallbackposterurl = ($entrytemp.moviebackground)[0].url
+                            if ($global:FavProvider -eq 'FANART') {
+                                $global:Fallback = "TMDB"
+                                $global:fanartfallbackposterurl = $global:posterurl
+                            }
                         }
+                        Else {
+                            Write-Entry -Subtext "Found Background with text on FANART, skipping because you only want textless..." -Path $global:configLogging -Color Yellow -log Info
+                            $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
+                        }
+                    return $global:posterurl
+                    continue
                     }
                     Else {
-                        Write-Entry -Subtext "Found Background with text on FANART, skipping because you only want textless..." -Path $global:configLogging -Color Yellow -log Info
-                        $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
+                        $selectedPoster = Get-PreferredItem -Items ($entrytemp.moviebackground | Where-Object lang -eq '')
+                        if ($selectedPoster) {
+                            $global:posterurl = $selectedPoster.url
+                            Write-Entry -Subtext "Found Textless background on Fanart.tv" -Path $global:configLogging -Color Green -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
+                            $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
+                            return $global:posterurl
+                        }
                     }
-                    return $global:posterurl
-                    continue
-                }
-                Else {
-                    $global:posterurl = ($entrytemp.moviebackground | Where-Object lang -eq '')[0].url
-                    Write-Entry -Subtext "Found Textless background on Fanart.tv" -Path $global:configLogging -Color Green -log Info
-                    $global:TextlessPoster = $true
-                    $global:PosterWithText = $null
-                    $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
-                    return $global:posterurl
-                    continue
                 }
             }
         }
-    }
     if ($null -eq $ids[0] -and $null -eq $ids[1]) {
         Write-Entry -Subtext "Cannot search on FANART, missing IDs..." -Path $global:configLogging -Color Yellow -log Warning
     }
@@ -3130,16 +2989,18 @@ function GetFanartShowPoster {
                     Write-Entry -Subtext "PreferTextless Value: $global:PosterPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
                     Write-Entry -Subtext "OnlyTextless Value: $global:PosterOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                     if ($global:PosterOnlyTextless -eq $false) {
-                        $global:posterurl = ($entrytemp.tvposter)[0].url
-
-                        Write-Entry -Subtext "Found Poster with text on Fanart.tv" -Path $global:configLogging -Color Blue -log Info
-                        $global:PosterWithText = $true
-                        $global:FANARTAssetTextLang = ($entrytemp.tvposter)[0].lang
-                        $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                        $selectedPoster = Get-PreferredItem -Items $entrytemp.tvposter
+                        if ($selectedPoster) {
+                            $global:posterurl = $selectedPoster.url
+                            Write-Entry -Subtext "Found Poster with text on Fanart.tv" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:FANARTAssetTextLang = $selectedPoster.lang
+                            $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                        }
 
                         if ($global:FavProvider -eq 'FANART') {
                             $global:Fallback = "TMDB"
-                            $global:fanartfallbackposterurl = ($entrytemp.tvposter)[0].url
+                            $global:fanartfallbackposterurl = $global:posterurl
                         }
                     }
                     Else {
@@ -3153,13 +3014,15 @@ function GetFanartShowPoster {
                     continue
                 }
                 Else {
-                    $global:posterurl = ($entrytemp.tvposter | Where-Object lang -eq '00')[0].url
-                    Write-Entry -Subtext "Found Textless Poster on Fanart.tv" -Path $global:configLogging -Color Green -log Info
-                    $global:TextlessPoster = $true
-                    $global:PosterWithText = $null
-                    $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
-                    return $global:posterurl
-                    break
+                    $selectedPoster = Get-PreferredItem -Items ($entrytemp.tvposter | Where-Object lang -eq '00')
+                    if ($selectedPoster) {
+                        $global:posterurl = $selectedPoster.url
+                        Write-Entry -Subtext "Found Textless Poster on Fanart.tv" -Path $global:configLogging -Color Green -log Info
+                        $global:TextlessPoster = $true
+                        $global:PosterWithText = $null
+                        $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                        return $global:posterurl
+                    }
                 }
             }
         }
@@ -3186,24 +3049,23 @@ function GetFanartShowPoster {
         if ($id) {
             $entrytemp = Get-FanartTv -Type tv -id $id -ErrorAction SilentlyContinue
             if ($entrytemp -and $entrytemp.tvposter) {
-                foreach ($lang in $global:PreferredSeasonLanguageOrderFanart) {
-                    if (($entrytemp.tvposter | Where-Object lang -eq "$lang")) {
-                        $global:posterurl = ($entrytemp.tvposter)[0].url
-                        if ($lang -eq '00') {
-                            Write-Entry -Subtext "Found Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
-                            $global:TextlessPoster = $true
-                            $global:PosterWithText = $null
-                        }
-                        Else {
-                            Write-Entry -Subtext "Found Poster with Language '$lang' on FANART" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne '00') {
-                            $global:PosterWithText = $true
-                            $global:FANARTAssetTextLang = $lang
-                        }
-                        return $global:posterurl
-                        continue
+                $selectedPoster = Get-TopMatchingItem -Items $entrytemp.tvposter -LanguageOrder $global:PreferredSeasonLanguageOrderFanart -MatchScript {
+                    param($item, $lang)
+                    $item.lang -eq $lang
+                }
+                if ($selectedPoster) {
+                    $global:posterurl = $selectedPoster.url
+                    if ($selectedPoster.lang -eq '00') {
+                        Write-Entry -Subtext "Found Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
+                        $global:TextlessPoster = $true
+                        $global:PosterWithText = $null
                     }
+                    Else {
+                        Write-Entry -Subtext "Found Poster with Language '$($selectedPoster.lang)' on FANART" -Path $global:configLogging -Color Blue -log Info
+                        $global:PosterWithText = $true
+                        $global:FANARTAssetTextLang = $selectedPoster.lang
+                    }
+                    return $global:posterurl
                 }
             }
         }
@@ -3227,22 +3089,25 @@ function GetFanartShowBackground {
     $id = $global:tvdbid
     $entrytemp = $null
 
-    if ($id) {
-        $entrytemp = Get-FanartTv -Type tv -id $id -ErrorAction SilentlyContinue
+        if ($id) {
+            $entrytemp = Get-FanartTv -Type tv -id $id -ErrorAction SilentlyContinue
         if ($entrytemp -and $entrytemp.showbackground) {
             if (!($entrytemp.showbackground | Where-Object lang -eq '')) {
                 Write-Entry -Subtext "PreferTextless Value: $global:BackgroundPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
                 Write-Entry -Subtext "OnlyTextless Value: $global:BackgroundOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                 if ($global:BackgroundOnlyTextless -eq $false) {
-                    $global:posterurl = ($entrytemp.showbackground)[0].url
-                    Write-Entry -Subtext "Found Background with text on Fanart.tv"  -Path $global:configLogging -Color Blue -log Info
-                    $global:PosterWithText = $true
-                    $global:FANARTAssetTextLang = ($entrytemp.showbackground)[0].lang
-                    $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                    $selectedPoster = Get-PreferredItem -Items $entrytemp.showbackground
+                    if ($selectedPoster) {
+                        $global:posterurl = $selectedPoster.url
+                        Write-Entry -Subtext "Found Background with text on Fanart.tv"  -Path $global:configLogging -Color Blue -log Info
+                        $global:PosterWithText = $true
+                        $global:FANARTAssetTextLang = $selectedPoster.lang
+                        $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                    }
 
                     if ($global:FavProvider -eq 'FANART') {
                         $global:Fallback = "TMDB"
-                        $global:fanartfallbackposterurl = ($entrytemp.showbackground)[0].url
+                        $global:fanartfallbackposterurl = $global:posterurl
                     }
                 }
                 Else {
@@ -3253,13 +3118,15 @@ function GetFanartShowBackground {
                 continue
             }
             Else {
-                $global:posterurl = ($entrytemp.showbackground | Where-Object lang -eq '')[0].url
-                Write-Entry -Subtext "Found Textless background on Fanart.tv" -Path $global:configLogging -Color Green -log Info
-                $global:TextlessPoster = $true
-                $global:PosterWithText = $null
-                $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
-                return $global:posterurl
-                continue
+                $selectedPoster = Get-PreferredItem -Items ($entrytemp.showbackground | Where-Object lang -eq '')
+                if ($selectedPoster) {
+                    $global:posterurl = $selectedPoster.url
+                    Write-Entry -Subtext "Found Textless background on Fanart.tv" -Path $global:configLogging -Color Green -log Info
+                    $global:TextlessPoster = $true
+                    $global:PosterWithText = $null
+                    $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                    return $global:posterurl
+                }
             }
         }
     }
@@ -3283,36 +3150,42 @@ function GetFanartSeasonPoster {
             $entrytemp = Get-FanartTv -Type tv -id $id -ErrorAction SilentlyContinue
             if ($entrytemp.seasonposter) {
                 if ($global:SeasonNumber -match '\b\d{1,2}\b') {
-                    $NoLangPoster = ($entrytemp.seasonposter | Where-Object { $_.lang -eq '00' -and $_.Season -eq $global:SeasonNumber } | Sort-Object likes)
+                    $NoLangPoster = ($entrytemp.seasonposter | Where-Object { $_.lang -eq '00' -and $_.Season -eq $global:SeasonNumber })
                     if ($NoLangPoster) {
-                        $global:posterurl = ($NoLangPoster | Sort-Object likes)[0].url
-                        Write-Entry -Subtext "Found Season Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
-                        $global:TextlessPoster = $true
-                        $global:PosterWithText = $null
-                        $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
-                        Write-Entry -Subtext "NoLangPoster: $NoLangPoster" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "TextlessPoster: $global:TextlessPoster" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "FANARTAssetChangeUrl: $global:FANARTAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
+                        $selectedPoster = Get-PreferredItem -Items $NoLangPoster -SortProperty 'likes'
+                        if ($selectedPoster) {
+                            $global:posterurl = $selectedPoster.url
+                            Write-Entry -Subtext "Found Season Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
+                            $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                            Write-Entry -Subtext "NoLangPoster: $NoLangPoster" -Path $global:configLogging -Color Cyan -log Debug
+                            Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
+                            Write-Entry -Subtext "TextlessPoster: $global:TextlessPoster" -Path $global:configLogging -Color Cyan -log Debug
+                            Write-Entry -Subtext "FANARTAssetChangeUrl: $global:FANARTAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
+                        }
                     }
                     Else {
                         if (!$global:SeasonOnlyTextless) {
                             Write-Entry -Subtext "No Textless Season Poster on FANART" -Path $global:configLogging -Color Blue -log Info
                             foreach ($lang in $global:PreferredSeasonLanguageOrderFanart) {
-                                $FoundPoster = ($entrytemp.seasonposter | Where-Object { $_.lang -eq "$lang" -and $_.Season -eq $global:SeasonNumber } | Sort-Object likes)
+                                $FoundPoster = ($entrytemp.seasonposter | Where-Object { $_.lang -eq "$lang" -and $_.Season -eq $global:SeasonNumber })
                                 if ($FoundPoster) {
-                                    $global:posterurl = $FoundPoster[0].url
-                                    Write-Entry -Subtext "Found season Poster with Language '$lang' on FANART" -Path $global:configLogging -Color Blue -log Info
-                                    $global:PosterWithText = $true
-                                    $global:FANARTAssetTextLang = $lang
-                                    $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
-                                    $global:FANARTSeasonFallback = $global:posterurl
-                                    Write-Entry -Subtext "FoundPoster: $FoundPoster" -Path $global:configLogging -Color Cyan -log Debug
-                                    Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
-                                    Write-Entry -Subtext "PosterWithText: $global:PosterWithText" -Path $global:configLogging -Color Cyan -log Debug
-                                    Write-Entry -Subtext "FANARTAssetTextLang: $global:FANARTAssetTextLang" -Path $global:configLogging -Color Cyan -log Debug
-                                    Write-Entry -Subtext "FANARTAssetChangeUrl: $global:FANARTAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
-                                    return $global:posterurl
+                                    $selectedPoster = Get-PreferredItem -Items $FoundPoster -SortProperty 'likes'
+                                    if ($selectedPoster) {
+                                        $global:posterurl = $selectedPoster.url
+                                        Write-Entry -Subtext "Found season Poster with Language '$lang' on FANART" -Path $global:configLogging -Color Blue -log Info
+                                        $global:PosterWithText = $true
+                                        $global:FANARTAssetTextLang = $lang
+                                        $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                                        $global:FANARTSeasonFallback = $global:posterurl
+                                        Write-Entry -Subtext "FoundPoster: $FoundPoster" -Path $global:configLogging -Color Cyan -log Debug
+                                        Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
+                                        Write-Entry -Subtext "PosterWithText: $global:PosterWithText" -Path $global:configLogging -Color Cyan -log Debug
+                                        Write-Entry -Subtext "FANARTAssetTextLang: $global:FANARTAssetTextLang" -Path $global:configLogging -Color Cyan -log Debug
+                                        Write-Entry -Subtext "FANARTAssetChangeUrl: $global:FANARTAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
+                                        return $global:posterurl
+                                    }
                                 }
                             }
                         }
@@ -3325,35 +3198,33 @@ function GetFanartSeasonPoster {
                 Else {
                     Write-Entry -Subtext "Could not get a result with '$global:SeasonNumber' on Fanart, likely season number not in correct format, fallback to Show poster." -Path $global:configLogging -Color Blue -log Info
                     if ($entrytemp -and $entrytemp.tvposter) {
-                        foreach ($lang in $global:PreferredSeasonLanguageOrderFanart) {
-                            if (($entrytemp.tvposter | Where-Object lang -eq "$lang")) {
-                                $global:posterurl = ($entrytemp.tvposter)[0].url
-                                if ($lang -eq '00') {
-                                    Write-Entry -Subtext "Found Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
-                                    $global:TextlessPoster = $true
-                                    $global:PosterWithText = $null
+                        $selectedPoster = Get-TopMatchingItem -Items $entrytemp.tvposter -LanguageOrder $global:PreferredSeasonLanguageOrderFanart -MatchScript {
+                            param($item, $lang)
+                            $item.lang -eq $lang -and $item.Season -eq $global:SeasonNumber
+                        }
+                        if ($selectedPoster) {
+                            $global:posterurl = $selectedPoster.url
+                            if ($selectedPoster.lang -eq '00') {
+                                Write-Entry -Subtext "Found Poster without Language on FANART" -Path $global:configLogging -Color Blue -log Info
+                                $global:TextlessPoster = $true
+                                $global:PosterWithText = $null
+                                $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
+                            }
+                            Else {
+                                if (!$global:SeasonOnlyTextless) {
+                                    Write-Entry -Subtext "Found Poster with Language '$($selectedPoster.lang)' on FANART" -Path $global:configLogging -Color Blue -log Info
+                                    $global:PosterWithText = $true
+                                    $global:FANARTAssetTextLang = $selectedPoster.lang
                                     $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
-                                }
-                                Else {
-                                    if (!$global:SeasonOnlyTextless) {
-                                        Write-Entry -Subtext "Found Poster with Language '$lang' on FANART" -Path $global:configLogging -Color Blue -log Info
-                                    }
-                                }
-                                if (!$global:SeasonOnlyTextless -and !$global:TextlessPoster) {
-                                    if ($lang -ne '00') {
-                                        $global:PosterWithText = $true
-                                        $global:FANARTAssetTextLang = $lang
-                                        $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
-                                        $global:FANARTSeasonFallback = $global:posterurl
-                                    }
+                                    $global:FANARTSeasonFallback = $global:posterurl
                                 }
                                 Else {
                                     Write-Entry -Subtext "Found Poster with text on FANART, skipping because you only want textless..." -Path $global:configLogging -Color Yellow -log Info
                                     $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
                                     $global:posterurl = $null
                                 }
-                                return $global:posterurl
                             }
+                            return $global:posterurl
                         }
                     }
                 }
@@ -3383,9 +3254,12 @@ function GetFanartSeasonPoster {
             $entrytemp = Get-FanartTv -Type tv -id $id -ErrorAction SilentlyContinue
             if ($entrytemp.seasonposter) {
                 foreach ($lang in $global:PreferredSeasonLanguageOrderFanart) {
-                    $FoundPoster = ($entrytemp.seasonposter | Where-Object { $_.lang -eq "$lang" -and $_.Season -eq $global:SeasonNumber } | Sort-Object likes)
+                    $FoundPoster = ($entrytemp.seasonposter | Where-Object { $_.lang -eq "$lang" -and $_.Season -eq $global:SeasonNumber })
                     if ($FoundPoster) {
-                        $global:posterurl = $FoundPoster[0].url
+                        $selectedPoster = Get-PreferredItem -Items $FoundPoster -SortProperty 'likes'
+                        if ($selectedPoster) {
+                            $global:posterurl = $selectedPoster.url
+                        }
                     }
                     if ($global:posterurl) {
                         if ($lang -eq '00') {
@@ -3439,17 +3313,18 @@ function GetTVDBMoviePoster {
             }
             if ($response) {
                 if ($response.data.artworks) {
-                    if ($global:WidthHeightFilter -eq 'true') {
-                        $global:posterurltmp = ($response.data.artworks | Where-Object { $null -eq $_.language -and $_.type -eq '14' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                    }
-                    Else {
-                        $global:posterurltmp = ($response.data.artworks | Where-Object { $null -eq $_.language -and $_.type -eq '14' } | Sort-Object Score -Descending)
+                    $bestPoster = Get-FilteredPreferredItem -Items $response.data.artworks -SortProperty 'Score' -FilterScript {
+                        param($item)
+                        $matchesLanguage = $null -eq $item.language
+                        $matchesType = $item.type -eq '14'
+                        $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight)
+                        return $matchesLanguage -and $matchesType -and $matchesSize
                     }
                     $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
-                    if ($global:posterurltmp) {
-                        $global:posterurl = $global:posterurltmp[0].image
+                    if ($bestPoster) {
+                        $global:posterurl = $bestPoster.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            Write-Entry -Subtext "Found a poster sized at - width: $($global:posterurltmp[0].width) | height: $($global:posterurltmp[0].height)" -Path $global:configLogging -Color White -log Info
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
                         }
                         Write-Entry -Subtext "Found Textless Poster on TVDB" -Path $global:configLogging -Color Blue -log Info
                         return $global:posterurl
@@ -3458,48 +3333,35 @@ function GetTVDBMoviePoster {
                         Write-Entry -Subtext "PreferTextless Value: $global:PosterPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
                         Write-Entry -Subtext "OnlyTextless Value: $global:PosterOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                         if ($global:PosterOnlyTextless -eq $false) {
-                            foreach ($lang in $global:PreferredLanguageOrderTVDB) {
+                            $bestPoster = Get-TopMatchingItem -Items $response.data.artworks -LanguageOrder $global:PreferredLanguageOrderTVDB -SortProperty 'Score' -MatchScript {
+                                param($item, $lang)
+                                $matchesLanguage = if ($lang -eq 'null') { $null -eq $item.language } else { $item.language -like "$lang*" }
+                                $matchesType = $item.type -eq '14'
+                                $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight)
+                                return $matchesLanguage -and $matchesType -and $matchesSize
+                            }
+
+                            if ($bestPoster) {
+                                $global:posterurl = $bestPoster.image
                                 if ($global:WidthHeightFilter -eq 'true') {
-                                    if ($lang -eq 'null') {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '14' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                                    }
-                                    Else {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '14' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                                    }
+                                    Write-Entry -Subtext "Found a poster sized at - width: $($bestPoster.width) | height: $($bestPoster.height)" -Path $global:configLogging -Color White -log Info
+                                }
+                                if ($bestPoster.language -eq $null) {
+                                    Write-Entry -Subtext "Found Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
+                                    $global:TextlessPoster = $true
+                                    $global:PosterWithText = $null
                                 }
                                 Else {
-                                    if ($lang -eq 'null') {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '14' } | Sort-Object Score -Descending)
-                                    }
-                                    Else {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '14' } | Sort-Object Score -Descending)
+                                    Write-Entry -Subtext "Found Poster with Language '$($bestPoster.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                                    $global:PosterWithText = $true
+                                    $global:TVDBAssetTextLang = $bestPoster.language
+                                    if ($global:FavProvider -eq 'TVDB') {
+                                        $global:Fallback = "TMDB"
+                                        $global:TVDBfallbackposterurl = $bestPoster.image
                                     }
                                 }
-                                if ($LangArtwork) {
-                                    $global:posterurl = $LangArtwork[0].image
-                                    if ($global:WidthHeightFilter -eq 'true') {
-                                        Write-Entry -Subtext "Found a poster sized at - width: $($LangArtwork[0].width) | height: $($LangArtwork[0].height)" -Path $global:configLogging -Color White -log Info
-                                    }
-                                    if ($lang -eq 'null') {
-                                        Write-Entry -Subtext "Found Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
-                                        $global:TextlessPoster = $true
-                                        $global:PosterWithText = $null
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Found Poster with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                                    }
-                                    if ($lang -ne 'null') {
-                                        $global:PosterWithText = $true
-                                        $global:TVDBAssetTextLang = $lang
-                                        if ($global:FavProvider -eq 'TVDB') {
-                                            $global:Fallback = "TMDB"
-                                            $global:TVDBfallbackposterurl = $LangArtwork[0].image
-                                        }
-                                    }
-                                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
-                                    return $global:posterurl
-                                    continue
-                                }
+                                $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                                return $global:posterurl
                             }
                         }
                         Else {
@@ -3530,44 +3392,30 @@ function GetTVDBMoviePoster {
             }
             if ($response) {
                 if ($response.data.artworks) {
-                    foreach ($lang in $global:PreferredLanguageOrderTVDB) {
+                    $bestArtwork = Get-TopMatchingItem -Items $response.data.artworks -LanguageOrder $global:PreferredLanguageOrderTVDB -SortProperty 'Score' -MatchScript {
+                        param($item, $lang)
+                        $matchesLanguage = if ($lang -eq 'null') { $null -eq $item.language } else { $item.language -like "$lang*" }
+                        $matchesType = $item.type -eq '14'
+                        $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight)
+                        return $matchesLanguage -and $matchesType -and $matchesSize
+                    }
+                    if ($bestArtwork) {
+                        $global:posterurl = $bestArtwork.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '14' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '14' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
+                        }
+                        if ($bestArtwork.language -eq $null) {
+                            Write-Entry -Subtext "Found Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
                         }
                         Else {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '14' } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '14' } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found Poster with Language '$($bestArtwork.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:TVDBAssetTextLang = $bestArtwork.language
                         }
-                        if ($LangArtwork) {
-                            $global:posterurl = $LangArtwork[0].image
-                            if ($global:WidthHeightFilter -eq 'true') {
-                                Write-Entry -Subtext "Found a poster sized at - width: $($LangArtwork[0].width) | height: $($LangArtwork[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            if ($lang -eq 'null') {
-                                Write-Entry -Subtext "Found Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
-                                $global:TextlessPoster = $true
-                                $global:PosterWithText = $null
-                            }
-                            Else {
-                                Write-Entry -Subtext "Found Poster with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne 'null') {
-                                $global:PosterWithText = $true
-                                $global:TVDBAssetTextLang = $lang
-                            }
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
-                            return $global:posterurl
-                            continue
-                        }
+                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                        return $global:posterurl
                     }
                 }
                 Else {
@@ -3606,9 +3454,16 @@ function GetTVDBMovieBackground {
                         $NoLangArtwork = $response.data.artworks | Where-Object { $null -eq $_.language -and $_.type -eq '15' }
                     }
                     if ($NoLangArtwork) {
-                        $global:posterurl = ($NoLangArtwork | Sort-Object Score -Descending)[0].image
+                        $bestArtwork = Get-FilteredPreferredItem -Items $response.data.artworks -SortProperty 'Score' -FilterScript {
+                            param($item)
+                            $matchesLanguage = $null -eq $item.language
+                            $matchesType = $item.type -eq '15'
+                            $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight)
+                            return $matchesLanguage -and $matchesType -and $matchesSize
+                        }
+                        $global:posterurl = $bestArtwork.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            Write-Entry -Subtext "Found a poster sized at - width: $(($NoLangArtwork | Sort-Object Score -Descending)[0].width) | height: $(($NoLangArtwork | Sort-Object Score -Descending)[0].height)" -Path $global:configLogging -Color White -log Info
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
                         }
                         Write-Entry -Subtext "Found Textless Background on TVDB" -Path $global:configLogging -Color Blue -log Info
                         $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
@@ -3618,47 +3473,33 @@ function GetTVDBMovieBackground {
                         Write-Entry -Subtext "PreferTextless Value: $global:BackgroundPreferTextless" -Path $global:configLogging -Color Cyan -log Debug
                         Write-Entry -Subtext "OnlyTextless Value: $global:BackgroundOnlyTextless" -Path $global:configLogging -Color Cyan -log Debug
                         if ($global:BackgroundOnlyTextless -eq $false) {
-                            # Trying other languages
-                            foreach ($lang in $global:PreferredBackgroundLanguageOrderTVDB) {
+                            $bestArtwork = Get-TopMatchingItem -Items $response.data.artworks -LanguageOrder $global:PreferredBackgroundLanguageOrderTVDB -SortProperty 'Score' -MatchScript {
+                                param($item, $lang)
+                                $matchesLanguage = if ($lang -eq 'null') { $null -eq $item.language } else { $item.language -like "$lang*" }
+                                $matchesType = $item.type -eq '15'
+                                $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight)
+                                return $matchesLanguage -and $matchesType -and $matchesSize
+                            }
+
+                            if ($bestArtwork) {
+                                $global:posterurl = $bestArtwork.image
                                 if ($global:WidthHeightFilter -eq 'true') {
-                                    if ($lang -eq 'null') {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '15' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight } | Sort-Object Score -Descending)
-                                    }
-                                    Else {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '15' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight } | Sort-Object Score -Descending)
-                                    }
+                                    Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
+                                }
+                                if ($bestArtwork.language -eq $null) {
+                                    Write-Entry -Subtext "Found Background without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
                                 }
                                 Else {
-                                    if ($lang -eq 'null') {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '15' } | Sort-Object Score -Descending)
-                                    }
-                                    Else {
-                                        $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '15' } | Sort-Object Score -Descending)
+                                    Write-Entry -Subtext "Found Background with Language '$($bestArtwork.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                                    $global:PosterWithText = $true
+                                    $global:TVDBAssetTextLang = $bestArtwork.language
+                                    if ($global:FavProvider -eq 'TVDB') {
+                                        $global:Fallback = "TMDB"
+                                        $global:TVDBfallbackposterurl = $bestArtwork.image
                                     }
                                 }
-                                if ($LangArtwork) {
-                                    $global:posterurl = $LangArtwork[0].image
-                                    if ($global:WidthHeightFilter -eq 'true') {
-                                        Write-Entry -Subtext "Found a poster sized at - width: $($LangArtwork[0].width) | height: $($LangArtwork[0].height)" -Path $global:configLogging -Color White -log Info
-                                    }
-                                    if ($lang -eq 'null') {
-                                        Write-Entry -Subtext "Found Background without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Found Background with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                                    }
-                                    if ($lang -ne 'null') {
-                                        $global:PosterWithText = $true
-                                        $global:TVDBAssetTextLang = $lang
-                                        if ($global:FavProvider -eq 'TVDB') {
-                                            $global:Fallback = "TMDB"
-                                            $global:TVDBfallbackposterurl = $LangArtwork[0].image
-                                        }
-                                    }
-                                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
-                                    return $global:posterurl
-                                    continue
-                                }
+                                $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                                return $global:posterurl
                             }
                             if (!$global:posterurl) {
                                 Write-Entry -Subtext "No background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
@@ -3693,42 +3534,29 @@ function GetTVDBMovieBackground {
             }
             if ($response) {
                 if ($response.data.artworks) {
-                    foreach ($lang in $global:PreferredBackgroundLanguageOrderTVDB) {
+                    $bestArtwork = Get-TopMatchingItem -Items $response.data.artworks -LanguageOrder $global:PreferredBackgroundLanguageOrderTVDB -SortProperty 'Score' -MatchScript {
+                        param($item, $lang)
+                        $matchesLanguage = if ($lang -eq 'null') { $null -eq $item.language } else { $item.language -like "$lang*" }
+                        $matchesType = $item.type -eq '15'
+                        $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight)
+                        return $matchesLanguage -and $matchesType -and $matchesSize
+                    }
+                    if ($bestArtwork) {
+                        $global:posterurl = $bestArtwork.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '15' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '15' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
+                        }
+                        if ($bestArtwork.language -eq $null) {
+                            Write-Entry -Subtext "Found Background without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
                         }
                         Else {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '15' } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '15' } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found Background with Language '$($bestArtwork.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:TVDBAssetTextLang = $bestArtwork.language
                         }
-                        if ($LangArtwork) {
-                            $global:posterurl = $LangArtwork[0].image
-                            if ($global:WidthHeightFilter -eq 'true') {
-                                Write-Entry -Subtext "Found a poster sized at - width: $($LangArtwork[0].width) | height: $($LangArtwork[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            if ($lang -eq 'null') {
-                                Write-Entry -Subtext "Found Background without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            Else {
-                                Write-Entry -Subtext "Found Background with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne 'null') {
-                                $global:PosterWithText = $true
-                                $global:TVDBAssetTextLang = $lang
-                            }
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
-                            return $global:posterurl
-                            continue
-                        }
+                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                        return $global:posterurl
+                        continue
                     }
                     if (!$global:posterurl) {
                         Write-Entry -Subtext "No background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
@@ -3772,9 +3600,16 @@ function GetTVDBShowPoster {
                         $NoLangImageUrl = $response.data.artworks | Where-Object { $null -eq $_.language -and $_.type -eq '2' }
                     }
                     if ($NoLangImageUrl) {
-                        $global:posterurl = $NoLangImageUrl[0].image
+                        $bestArtwork = Get-FilteredPreferredItem -Items $response.data.artworks -SortProperty 'Score' -FilterScript {
+                            param($item)
+                            $matchesLanguage = $null -eq $item.language
+                            $matchesType = $item.type -eq '2'
+                            $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight)
+                            return $matchesLanguage -and $matchesType -and $matchesSize
+                        }
+                        $global:posterurl = $bestArtwork.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            Write-Entry -Subtext "Found a poster sized at - width: $($NoLangImageUrl[0].width) | height: $($NoLangImageUrl[0].height)" -Path $global:configLogging -Color White -log Info
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
                         }
                         Write-Entry -Subtext "Found Textless Poster on TVDB" -Path $global:configLogging -Color Blue -log Info
                         $global:TextlessPoster = $true
@@ -3823,44 +3658,30 @@ function GetTVDBShowPoster {
             }
             if ($response) {
                 if ($response.data) {
-                    foreach ($lang in $global:PreferredLanguageOrderTVDB) {
+                    $bestArtwork = Get-TopMatchingItem -Items $response.data.artworks -LanguageOrder $global:PreferredLanguageOrderTVDB -SortProperty 'Score' -MatchScript {
+                        param($item, $lang)
+                        $matchesLanguage = if ($lang -eq 'null') { $null -eq $item.language } else { $item.language -like "$lang*" }
+                        $matchesType = $item.type -eq '2'
+                        $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight)
+                        return $matchesLanguage -and $matchesType -and $matchesSize
+                    }
+                    if ($bestArtwork) {
+                        $global:posterurl = $bestArtwork.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '2' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '2' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
+                        }
+                        if ($bestArtwork.language -eq $null) {
+                            Write-Entry -Subtext "Found Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
                         }
                         Else {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '2' } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '2' } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found Poster with Language '$($bestArtwork.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:TVDBAssetTextLang = $bestArtwork.language
                         }
-                        if ($LangArtwork) {
-                            $global:posterurl = $LangArtwork[0].image
-                            if ($global:WidthHeightFilter -eq 'true') {
-                                Write-Entry -Subtext "Found a poster sized at - width: $($LangArtwork[0].width) | height: $($LangArtwork[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            if ($lang -eq 'null') {
-                                Write-Entry -Subtext "Found Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
-                                $global:TextlessPoster = $true
-                                $global:PosterWithText = $null
-                            }
-                            Else {
-                                Write-Entry -Subtext "Found Poster with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne 'null') {
-                                $global:PosterWithText = $true
-                                $global:TVDBAssetTextLang = $lang
-                            }
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)#artwork"
-                            return $global:posterurl
-                            continue
-                        }
+                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)#artwork"
+                        return $global:posterurl
                     }
                 }
                 Else {
@@ -3905,58 +3726,45 @@ function GetTVDBSeasonPoster {
 
                 }
                 if ($Seasonresponse) {
-                    foreach ($lang in $global:PreferredSeasonLanguageOrderTVDB) {
+                    $bestArtwork = Get-TopMatchingItem -Items $Seasonresponse.data.artwork -LanguageOrder $global:PreferredSeasonLanguageOrderTVDB -SortProperty 'Score' -MatchScript {
+                        param($item, $lang)
+                        $matchesLanguage = if ($lang -eq 'null') { $null -eq $item.language } else { $item.language -like "$lang*" }
+                        $matchesType = $item.type -eq '7'
+                        $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:PosterMinWidth -and $item.height -ge $global:PosterMinHeight)
+                        return $matchesLanguage -and $matchesType -and $matchesSize
+                    }
+                    if ($bestArtwork) {
+                        $global:posterurl = $bestArtwork.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($Seasonresponse.data.artwork | Where-Object { $_.language -like "" -and $_.type -eq '7' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($Seasonresponse.data.artwork  | Where-Object { $_.language -like "$lang*" -and $_.type -eq '7' -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
+                        }
+                        if ($bestArtwork.language -eq $null) {
+                            Write-Entry -Subtext "Found Season Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
                         }
                         Else {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($Seasonresponse.data.artwork | Where-Object { $_.language -like "" -and $_.type -eq '7' } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($Seasonresponse.data.artwork  | Where-Object { $_.language -like "$lang*" -and $_.type -eq '7' } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found Season Poster with Language '$($bestArtwork.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:TVDBAssetTextLang = $bestArtwork.language
                         }
-                        if ($LangArtwork) {
-                            $global:posterurl = $LangArtwork[0].image
-                            if ($global:WidthHeightFilter -eq 'true') {
-                                Write-Entry -Subtext "Found a poster sized at - width: $($LangArtwork[0].width) | height: $($LangArtwork[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            if ($lang -eq 'null') {
-                                Write-Entry -Subtext "Found Season Poster without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
-                                $global:TextlessPoster = $true
-                                $global:PosterWithText = $null
-                            }
-                            Else {
-                                Write-Entry -Subtext "Found Season Poster with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne 'null') {
-                                $global:PosterWithText = $true
-                                $global:TVDBAssetTextLang = $lang
-                            }
-                            if (!$global:SeasonOnlyTextless -and !$global:TextlessPoster) {
-                                $global:TVDBSeasonFallback = $global:posterurl
-                            }
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
-                            Write-Entry -Subtext "LangArtwork: $LangArtwork" -Path $global:configLogging -Color Cyan -log Debug
-                            Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
-                            Write-Entry -Subtext "TextlessPoster: $global:TextlessPoster" -Path $global:configLogging -Color Cyan -log Debug
-                            Write-Entry -Subtext "PosterWithText: $global:PosterWithText" -Path $global:configLogging -Color Cyan -log Debug
-                            Write-Entry -Subtext "TVDBAssetTextLang: $global:TVDBAssetTextLang" -Path $global:configLogging -Color Cyan -log Debug
-                            Write-Entry -Subtext "TVDBAssetChangeUrl: $global:TVDBAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
-                            if ($global:SeasonOnlyTextless -and $global:PosterWithText) {
-                                continue
-                            }
-                            Else {
-                                return $global:posterurl
-                            }
+                        if (!$global:SeasonOnlyTextless -and !$global:TextlessPoster) {
+                            $global:TVDBSeasonFallback = $global:posterurl
+                        }
+                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
+                        Write-Entry -Subtext "LangArtwork: $bestArtwork" -Path $global:configLogging -Color Cyan -log Debug
+                        Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
+                        Write-Entry -Subtext "TextlessPoster: $global:TextlessPoster" -Path $global:configLogging -Color Cyan -log Debug
+                        Write-Entry -Subtext "PosterWithText: $global:PosterWithText" -Path $global:configLogging -Color Cyan -log Debug
+                        Write-Entry -Subtext "TVDBAssetTextLang: $global:TVDBAssetTextLang" -Path $global:configLogging -Color Cyan -log Debug
+                        Write-Entry -Subtext "TVDBAssetChangeUrl: $global:TVDBAssetChangeUrl" -Path $global:configLogging -Color Cyan -log Debug
+                        if ($global:SeasonOnlyTextless -and $global:PosterWithText) {
                             continue
                         }
+                        Else {
+                            return $global:posterurl
+                        }
+                        continue
                     }
                     if (!$global:posterurl -and $global:PosterOnlyTextless -eq $true) {
                         Write-Entry -Subtext "No Textless Poster found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
@@ -3997,20 +3805,18 @@ function GetTVDBShowBackground {
                 if ($response.data -and $response.data.artworks) {
                     $artworksOfType3 = $response.data.artworks | Where-Object { $_.type -eq '3' }
                     if ($artworksOfType3) {
-                        $defaultImageurltemp = $artworksOfType3
-                        if ($defaultImageurltemp) {
-                            $defaultImageurl = $defaultImageurltemp[0].image
+                        $defaultImageurl = (Get-PreferredItem -Items $artworksOfType3).image
+                        $bestArtwork = Get-FilteredPreferredItem -Items $response.data.artworks -SortProperty 'Score' -FilterScript {
+                            param($item)
+                            $matchesLanguage = $null -eq $item.language
+                            $matchesType = $item.type -eq '3'
+                            $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight)
+                            return $matchesLanguage -and $matchesType -and $matchesSize
                         }
-                        if ($global:WidthHeightFilter -eq 'true') {
-                            $NoLangImageUrl = $response.data.artworks | Where-Object { $_.language -eq $null -and $_.type -eq '3' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
-                        }
-                        Else {
-                            $NoLangImageUrl = $response.data.artworks | Where-Object { $_.language -eq $null -and $_.type -eq '3' }
-                        }
-                        if ($NoLangImageUrl) {
-                            $global:posterurl = $NoLangImageUrl[0].image
+                        if ($bestArtwork) {
+                            $global:posterurl = $bestArtwork.image
                             if ($global:WidthHeightFilter -eq 'true') {
-                                Write-Entry -Subtext "Found a poster sized at - width: $($NoLangImageUrl[0].width) | height: $($NoLangImageUrl[0].height)" -Path $global:configLogging -Color White -log Info
+                                Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
                             }
                             Write-Entry -Subtext "Found Textless background on TVDB" -Path $global:configLogging -Color Blue -log Info
                             $global:TextlessPoster = $true
@@ -4058,43 +3864,30 @@ function GetTVDBShowBackground {
             }
             if ($response) {
                 if ($response.data) {
-                    foreach ($lang in $global:PreferredBackgroundLanguageOrderTVDB) {
+                    $bestArtwork = Get-TopMatchingItem -Items $response.data.artworks -LanguageOrder $global:PreferredBackgroundLanguageOrderTVDB -SortProperty 'Score' -MatchScript {
+                        param($item, $lang)
+                        $matchesLanguage = if ($lang -eq 'null') { $null -eq $item.language } else { $item.language -like "$lang*" }
+                        $matchesType = $item.type -eq '3'
+                        $matchesSize = $global:WidthHeightFilter -ne 'true' -or ($item.width -ge $global:BgTcMinWidth -and $item.height -ge $global:BgTcMinHeight)
+                        return $matchesLanguage -and $matchesType -and $matchesSize
+                    }
+                    if ($bestArtwork) {
+                        $global:posterurl = $bestArtwork.image
                         if ($global:WidthHeightFilter -eq 'true') {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '3' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '3' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found a poster sized at - width: $($bestArtwork.width) | height: $($bestArtwork.height)" -Path $global:configLogging -Color White -log Info
+                        }
+                        if ($bestArtwork.language -eq $null) {
+                            Write-Entry -Subtext "Found background without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
                         }
                         Else {
-                            if ($lang -eq 'null') {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "" -and $_.type -eq '3' } | Sort-Object Score -Descending)
-                            }
-                            Else {
-                                $LangArtwork = ($response.data.artworks | Where-Object { $_.language -like "$lang*" -and $_.type -eq '3' } | Sort-Object Score -Descending)
-                            }
+                            Write-Entry -Subtext "Found background with Language '$($bestArtwork.language)' on TVDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:PosterWithText = $true
+                            $global:TVDBAssetTextLang = $bestArtwork.language
                         }
-                        if ($LangArtwork) {
-                            $global:posterurl = $LangArtwork[0].image
-                            if ($global:WidthHeightFilter -eq 'true') {
-                                Write-Entry -Subtext "Found a poster sized at - width: $($LangArtwork[0].width) | height: $($LangArtwork[0].height)" -Path $global:configLogging -Color White -log Info
-                            }
-                            if ($lang -eq 'null') {
-                                Write-Entry -Subtext "Found background without Language on TVDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            Else {
-                                Write-Entry -Subtext "Found background with Language '$lang' on TVDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne 'null') {
-                                $global:PosterWithText = $true
-                                $global:TVDBAssetTextLang = $lang
-                            }
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/#artwork"
+                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/#artwork"
 
-                            return $global:posterurl
-                            continue
-                        }
+                        return $global:posterurl
+                        continue
                     }
                     if (!$global:posterurl) {
                         Write-Entry -Subtext "No background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
@@ -4704,85 +4497,178 @@ function RedactMediaServerUrl {
         return $url  # Return original if no match found
     }
 }
+function Get-RequestFailureSummary {
+    param(
+        [Parameter(Mandatory)]
+        [object]$ErrorRecord,
+        [string]$FallbackMessage = "Unknown error"
+    )
+
+    $message = $ErrorRecord.ErrorDetails.Message
+    $response = $ErrorRecord.Exception.Response
+
+    if ([string]::IsNullOrWhiteSpace($message) -and $response) {
+        if ($response.GetType().Name -eq 'HttpResponseMessage') {
+            try {
+                $message = $response.Content.ReadAsStringAsync().Result
+            }
+            catch {}
+        }
+        elseif ($response.GetResponseStream) {
+            try {
+                $stream = $response.GetResponseStream()
+                $reader = New-Object System.IO.StreamReader($stream)
+                $message = $reader.ReadToEnd()
+                $reader.Close()
+            }
+            catch {}
+        }
+    }
+
+    if ($message -match '^\s*\{.*\}\s*$') {
+        try {
+            $errorResponse = $message | ConvertFrom-Json -ErrorAction Stop
+            if ($errorResponse.title -or $errorResponse.status) {
+                return "Status: $($errorResponse.status), Title: $($errorResponse.title)"
+            }
+        }
+        catch {}
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($message)) {
+        return $message
+    }
+
+    return $FallbackMessage
+}
+function Invoke-LoggedDownload {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Uri,
+        [Parameter(Mandatory)]
+        [string]$OutFile,
+        [string]$SuccessMessage = $null,
+        [string]$FailureMessage = $null,
+        [hashtable]$Headers = $null,
+        [string]$SuccessColor = 'Green',
+        [string]$FailureColor = 'Red'
+    )
+
+    try {
+        if ($Headers) {
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $Headers -ErrorAction Stop
+        }
+        else {
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -ErrorAction Stop
+        }
+
+        if ($SuccessMessage) {
+            Write-Entry -Subtext $SuccessMessage -Path $global:configLogging -Color $SuccessColor -log Info
+        }
+
+        return $true
+    }
+    catch {
+        $message = if ($FailureMessage) { $FailureMessage } else { "Download failed: $(Get-RequestFailureSummary -ErrorRecord $_)" }
+        Write-Entry -Subtext $message -Path $global:configLogging -Color $FailureColor -log Error
+        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+        return $false
+    }
+}
+function Get-DownloadSourceDetails {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Url,
+        [string]$Label = 'Poster'
+    )
+
+    $details = [PSCustomObject]@{
+        Message      = "Downloading $Label from 'IMDB'"
+        AssetTextLang = $null
+        IsFallback   = $true
+        SourceName   = 'IMDB'
+    }
+
+    switch -Regex ($Url) {
+        '^https://image\.tmdb\.org' {
+            $details.Message = if ($global:PosterWithText) { "Downloading $Label with Text from 'TMDB'" } else { "Downloading Textless $Label from 'TMDB'" }
+            $details.AssetTextLang = $global:TMDBAssetTextLang
+            $details.IsFallback = ($global:FavProvider -ne 'TMDB')
+            $details.SourceName = 'TMDB'
+            break
+        }
+        '^https://assets\.fanart\.tv' {
+            $details.Message = if ($global:PosterWithText) { "Downloading $Label with Text from 'FANART'" } else { "Downloading Textless $Label from 'FANART'" }
+            $details.AssetTextLang = $global:FANARTAssetTextLang
+            $details.IsFallback = ($global:FavProvider -ne 'FANART')
+            $details.SourceName = 'FANART'
+            break
+        }
+        '^https://artworks\.thetvdb\.com' {
+            $details.Message = if ($global:PosterWithText) { "Downloading $Label with Text from 'TVDB'" } else { "Downloading Textless $Label from 'TVDB'" }
+            $details.AssetTextLang = $global:TVDBAssetTextLang
+            $details.IsFallback = ($global:FavProvider -ne 'TVDB')
+            $details.SourceName = 'TVDB'
+            break
+        }
+        "^$([regex]::Escape($PlexUrl))" {
+            $details.Message = "Downloading $Label from 'Plex'"
+            $details.IsFallback = ($global:FavProvider -ne 'PLEX')
+            $details.SourceName = 'PLEX'
+            break
+        }
+    }
+
+    return $details
+}
 function CheckPlexAccess {
     param (
         [string]$PlexUrl,
         [string]$PlexToken
     )
 
-    if ($PlexToken) {
-        Write-Entry -Message "Plex token found, checking access now..." -Path $global:configLogging -Color White -log Info
-        try {
-            $response = Invoke-WebRequest -Uri "$PlexUrl/library/sections/?X-Plex-Token=$PlexToken" -ErrorAction Stop -Headers $extraPlexHeaders
-            if ($response.StatusCode -eq 200) {
-                Write-Entry -Subtext "Plex access is working..." -Path $global:configLogging -Color Green -log Info
-                # Check if libs are available
-                [XML]$Libs = $response.Content
-                # Plex Debug info
-                $plexdebuginfo = Invoke-WebRequest -Uri "$PlexUrl/?X-Plex-Token=$PlexToken" -ErrorAction Stop -Headers $extraPlexHeaders
-                [XML]$plexdebuginfo = $plexdebuginfo.Content
-                Write-Entry -Subtext "Plex Server Version: $($plexdebuginfo.MediaContainer.version)" -Path $global:configLogging -Color Cyan -log Debug
-                Write-Entry -Subtext "My Plex Server: $($plexdebuginfo.MediaContainer.myPlex)"-Path $global:configLogging -Color Cyan -log Debug
-                Write-Entry -Subtext "Plex Server Signin State: $($plexdebuginfo.MediaContainer.myPlexSigninState)" -Path $global:configLogging -Color Cyan -log Debug
-                Write-Entry -Subtext "Plex Server allow Deletion: $($plexdebuginfo.MediaContainer.allowMediaDeletion)" -Path $global:configLogging -Color Cyan -log Debug
-                if ($Libs.MediaContainer.size -ge 1) {
-                    return $Libs
-                }
-                else {
-                    Write-Entry -Subtext "No libs on Plex, abort script now..." -Path $global:configLogging -Color Red -log Error
-                    # Clear Running File
-                    HandleScriptExit -Message "No Plex Libs found"
-                }
-            }
-            else {
-                Write-Entry -Message "Could not access Plex with this URL: $(RedactMediaServerUrl -url "$PlexUrl/library/sections/?X-Plex-Token=$PlexToken")" -Path $global:configLogging -Color Red -Log Error
-                Write-Entry -Subtext "Please check token and access..." -Path $global:configLogging -Color Red -log Error
-                $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+    $hasToken = -not [string]::IsNullOrWhiteSpace($PlexToken)
+    $libraryUri = if ($hasToken) { "$PlexUrl/library/sections/?X-Plex-Token=$PlexToken" } else { "$PlexUrl/library/sections" }
+    $debugUri = if ($hasToken) { "$PlexUrl/?X-Plex-Token=$PlexToken" } else { $PlexUrl }
+    $accessMessage = if ($hasToken) { "Plex token found, checking access now..." } else { "Checking Plex access now..." }
+    $failureUrl = if ($hasToken) { RedactMediaServerUrl -url $libraryUri } else { $libraryUri }
+    $noLibsMessage = if ($hasToken) { "No Plex Libs found" } else { "No libs on plex" }
 
-                # Clear Running File
-                HandleScriptExit -Message "Could not access plex"
-            }
-        }
-        catch {
-            Write-Entry -Subtext "Could not access Plex with this URL: $(RedactMediaServerUrl -url "$PlexUrl/library/sections/?X-Plex-Token=$PlexToken")" -Path $global:configLogging -Color Red -Log Error
-            Write-Entry -Subtext "Error occurred while accessing Plex server: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            # Clear Running File
-            HandleScriptExit -Message "Could not access plex"
-        }
-    }
-    else {
-        Write-Entry -Message "Checking Plex access now..." -Path $global:configLogging -Color White -log Info
-        try {
-            $result = Invoke-WebRequest -Uri "$PlexUrl/library/sections" -ErrorAction SilentlyContinue -Headers $extraPlexHeaders
-            if ($result.StatusCode -eq 200) {
-                Write-Entry -Subtext "Plex access is working..." -Path $global:configLogging -Color Green -log Info
-                # Check if libs are available
-                [XML]$Libs = $result.Content
-                # Plex Debug info
-                $plexdebuginfo = Invoke-WebRequest -Uri "$PlexUrl" -ErrorAction Stop -Headers $extraPlexHeaders
-                [XML]$plexdebuginfo = $plexdebuginfo.Content
-                Write-Entry -Subtext "Plex Server Version: $($plexdebuginfo.MediaContainer.version)" -Path $global:configLogging -Color Cyan -log Debug
-                Write-Entry -Subtext "My Plex Server: $($plexdebuginfo.MediaContainer.myPlex)"-Path $global:configLogging -Color Cyan -log Debug
-                Write-Entry -Subtext "Plex Server Signin State: $($plexdebuginfo.MediaContainer.myPlexSigninState)" -Path $global:configLogging -Color Cyan -log Debug
-                Write-Entry -Subtext "Plex Server allow Deletion: $($plexdebuginfo.MediaContainer.allowMediaDeletion)" -Path $global:configLogging -Color Cyan -log Debug
-                if ($Libs.MediaContainer.size -ge 1) {
+    Write-Entry -Message $accessMessage -Path $global:configLogging -Color White -log Info
+    try {
+        $response = Invoke-WebRequest -Uri $libraryUri -ErrorAction Stop -Headers $extraPlexHeaders
+        if ($response.StatusCode -eq 200) {
+            Write-Entry -Subtext "Plex access is working..." -Path $global:configLogging -Color Green -log Info
+            [XML]$Libs = $response.Content
+            $plexdebuginfo = Invoke-WebRequest -Uri $debugUri -ErrorAction Stop -Headers $extraPlexHeaders
+            [XML]$plexdebuginfo = $plexdebuginfo.Content
+            Write-Entry -Subtext "Plex Server Version: $($plexdebuginfo.MediaContainer.version)" -Path $global:configLogging -Color Cyan -log Debug
+            Write-Entry -Subtext "My Plex Server: $($plexdebuginfo.MediaContainer.myPlex)" -Path $global:configLogging -Color Cyan -log Debug
+            Write-Entry -Subtext "Plex Server Signin State: $($plexdebuginfo.MediaContainer.myPlexSigninState)" -Path $global:configLogging -Color Cyan -log Debug
+            Write-Entry -Subtext "Plex Server allow Deletion: $($plexdebuginfo.MediaContainer.allowMediaDeletion)" -Path $global:configLogging -Color Cyan -log Debug
+            if ($Libs.MediaContainer.size -ge 1) {
+                if (-not $hasToken) {
                     Write-Entry -Subtext "Found libs on Plex..." -Path $global:configLogging -Color White -log Info
-                    return $Libs
                 }
-                else {
-                    Write-Entry -Subtext "No libs on Plex, abort script now..." -Path $global:configLogging -Color Red -log Error
-                    HandleScriptExit -Message "No libs on plex"
-                }
+                return $Libs
             }
+            Write-Entry -Subtext "No libs on Plex, abort script now..." -Path $global:configLogging -Color Red -log Error
+            HandleScriptExit -Message $noLibsMessage
         }
-        catch {
-            Write-Entry -Subtext "Error occurred while accessing Plex server: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            Write-Entry -Subtext "Please check access and settings in Plex..." -Path $global:configLogging -Color Yellow -log Warning
+
+        Write-Entry -Message "Could not access Plex with this URL: $failureUrl" -Path $global:configLogging -Color Red -Log Error
+        Write-Entry -Subtext $(if ($hasToken) { "Please check token and access..." } else { "Please check access and settings in Plex..." }) -Path $global:configLogging -Color Red -log Error
+        if (-not $hasToken) {
             Write-Entry -Message "To be able to connect to Plex without authentication" -Path $global:configLogging -Color White -log Info
             Write-Entry -Message "You have to enter your IP range in 'Settings -> Network -> List of IP addresses and networks that are allowed without auth: '192.168.1.0/255.255.255.0''" -Path $global:configLogging -Color White -log Info
-            # Clear Running File
-            HandleScriptExit -Message "Could not access plex"
         }
+        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+        HandleScriptExit -Message "Could not access plex"
+    }
+    catch {
+        Write-Entry -Subtext "Could not access Plex with this URL: $failureUrl" -Path $global:configLogging -Color Red -Log Error
+        Write-Entry -Subtext "Error occurred while accessing Plex server: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+        HandleScriptExit -Message "Could not access plex"
     }
 }
 function CheckImageMagick {
@@ -4804,7 +4690,7 @@ function CheckImageMagick {
         else {
 
             $result = Invoke-WebRequest "https://imagemagick.org/archive/binaries/?C=M;O=D"
-            $LatestRelease = ($result.links.href | Where-Object { $_ -like '*portable-Q16-HDRI-x64.7z.zip' } | Sort-Object -Descending)[0]
+            $LatestRelease = $result.links.href | Where-Object { $_ -like '*portable-Q16-HDRI-x64.7z.zip' } | Sort-Object -Descending | Select-Object -First 1
 
             Write-Entry -Message "ImageMagick missing, please manually install/copy portable Imagemagick from here: https://imagemagick.org/archive/binaries/$LatestRelease" -Path $global:configLogging -Color Red -log Error
             $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
@@ -4839,66 +4725,51 @@ function CheckOverlayDimensions {
         [string]$TCoverlay4KHDR10,
         [string]$TCoverlay4KDoViHDR10
     )
-    # This function checks a single overlay's dimensions
-    function Test-Dimension {
-        param (
-            [string]$OverlayPath,
-            [string]$ExpectedSize,
-            [string]$OverlayName
-        )
+    $checks = @(
+        @{ Path = $Posteroverlay; Expected = $PosterSize; Name = "Poster overlay" }
+        @{ Path = $ShowPosteroverlay; Expected = $PosterSize; Name = "Show Poster overlay" }
+        @{ Path = $Seasonoverlay; Expected = $PosterSize; Name = "Season overlay" }
+        @{ Path = $Collectionoverlay; Expected = $PosterSize; Name = "Collection overlay" }
+        @{ Path = $Posteroverlay4k; Expected = $PosterSize; Name = "4K Poster overlay" }
+        @{ Path = $Posteroverlay1080p; Expected = $PosterSize; Name = "1080p Poster overlay" }
+        @{ Path = $Backgroundoverlay; Expected = $BackgroundSize; Name = "Background overlay" }
+        @{ Path = $ShowBackgroundoverlay; Expected = $BackgroundSize; Name = "Show Background overlay" }
+        @{ Path = $Titlecardoverlay; Expected = $BackgroundSize; Name = "TitleCard overlay" }
+        @{ Path = $Backgroundoverlay4k; Expected = $BackgroundSize; Name = "4K Background overlay" }
+        @{ Path = $Backgroundoverlay1080p; Expected = $BackgroundSize; Name = "1080p Background overlay" }
+        @{ Path = $TCoverlay4k; Expected = $BackgroundSize; Name = "4K TitleCard overlay" }
+        @{ Path = $TCoverlay1080p; Expected = $BackgroundSize; Name = "1080p TitleCard overlay" }
+        @{ Path = $Posteroverlay4KDoVi; Expected = $PosterSize; Name = "4K DoVi Poster overlay" }
+        @{ Path = $Posteroverlay4KHDR10; Expected = $PosterSize; Name = "4K HDR10 Poster overlay" }
+        @{ Path = $Posteroverlay4KDoViHDR10; Expected = $PosterSize; Name = "4K DoVi/HDR10 Poster overlay" }
+        @{ Path = $Backgroundoverlay4KDoVi; Expected = $BackgroundSize; Name = "4K DoVi Background overlay" }
+        @{ Path = $Backgroundoverlay4KHDR10; Expected = $BackgroundSize; Name = "4K HDR10 Background overlay" }
+        @{ Path = $Backgroundoverlay4KDoViHDR10; Expected = $BackgroundSize; Name = "4K DoVi/HDR10 Background overlay" }
+        @{ Path = $TCoverlay4KDoVi; Expected = $BackgroundSize; Name = "4K DoVi TitleCard overlay" }
+        @{ Path = $TCoverlay4KHDR10; Expected = $BackgroundSize; Name = "4K HDR10 TitleCard overlay" }
+        @{ Path = $TCoverlay4KDoViHDR10; Expected = $BackgroundSize; Name = "4K DoVi/HDR10 TitleCard overlay" }
+    )
 
-        # If the path is $null or empty (i.e., optional overlay not configured),
-        if ([string]::IsNullOrEmpty($OverlayPath)) {
-            return
+    foreach ($check in $checks) {
+        if ([string]::IsNullOrEmpty($check.Path)) {
+            continue
         }
 
         try {
-            $actualDimensions = & $magick $OverlayPath -format "%wx%h" info:
+            $actualDimensions = & $magick $check.Path -format "%wx%h" info:
 
-            if ($actualDimensions -eq $ExpectedSize) {
-                Write-Entry -Subtext "$OverlayName is correctly sized at: $ExpectedSize" -Path $global:configLogging -Color Cyan -log Info
+            if ($actualDimensions -eq $check.Expected) {
+                Write-Entry -Subtext "$($check.Name) is correctly sized at: $($check.Expected)" -Path $global:configLogging -Color Cyan -log Info
             }
             else {
-                Write-Entry -Subtext "$OverlayName is NOT correctly sized at: $ExpectedSize. Actual dimensions: $actualDimensions" -Path $global:configLogging -Color Yellow -log Warning
+                Write-Entry -Subtext "$($check.Name) is NOT correctly sized at: $($check.Expected). Actual dimensions: $actualDimensions" -Path $global:configLogging -Color Yellow -log Warning
             }
         }
         catch {
-            Write-Entry -Subtext "Failed to check dimensions for $OverlayName at path $OverlayPath. Error: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "Failed to check dimensions for $($check.Name) at path $($check.Path). Error: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
             $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
         }
     }
-
-    # Standard Poster Types (expect PosterSize)
-    Test-Dimension -OverlayPath $Posteroverlay -ExpectedSize $PosterSize -OverlayName "Poster overlay"
-    Test-Dimension -OverlayPath $ShowPosteroverlay -ExpectedSize $PosterSize -OverlayName "Show Poster overlay"
-    Test-Dimension -OverlayPath $Seasonoverlay -ExpectedSize $PosterSize -OverlayName "Season overlay"
-    Test-Dimension -OverlayPath $Collectionoverlay -ExpectedSize $PosterSize -OverlayName "Collection overlay"
-    Test-Dimension -OverlayPath $Posteroverlay4k -ExpectedSize $PosterSize -OverlayName "4K Poster overlay"
-    Test-Dimension -OverlayPath $Posteroverlay1080p -ExpectedSize $PosterSize -OverlayName "1080p Poster overlay"
-
-    # Standard Background/TC Types (expect BackgroundSize)
-    Test-Dimension -OverlayPath $Backgroundoverlay -ExpectedSize $BackgroundSize -OverlayName "Background overlay"
-    Test-Dimension -OverlayPath $ShowBackgroundoverlay -ExpectedSize $BackgroundSize -OverlayName "Show Background overlay"
-    Test-Dimension -OverlayPath $Titlecardoverlay -ExpectedSize $BackgroundSize -OverlayName "TitleCard overlay"
-    Test-Dimension -OverlayPath $Backgroundoverlay4k -ExpectedSize $BackgroundSize -OverlayName "4K Background overlay"
-    Test-Dimension -OverlayPath $Backgroundoverlay1080p -ExpectedSize $BackgroundSize -OverlayName "1080p Background overlay"
-    Test-Dimension -OverlayPath $TCoverlay4k -ExpectedSize $BackgroundSize -OverlayName "4K TitleCard overlay"
-    Test-Dimension -OverlayPath $TCoverlay1080p -ExpectedSize $BackgroundSize -OverlayName "1080p TitleCard overlay"
-
-    # 4K Poster Types (expect PosterSize)
-    Test-Dimension -OverlayPath $Posteroverlay4KDoVi -ExpectedSize $PosterSize -OverlayName "4K DoVi Poster overlay"
-    Test-Dimension -OverlayPath $Posteroverlay4KHDR10 -ExpectedSize $PosterSize -OverlayName "4K HDR10 Poster overlay"
-    Test-Dimension -OverlayPath $Posteroverlay4KDoViHDR10 -ExpectedSize $PosterSize -OverlayName "4K DoVi/HDR10 Poster overlay"
-
-    # 4K Background Types (expect BackgroundSize)
-    Test-Dimension -OverlayPath $Backgroundoverlay4KDoVi -ExpectedSize $BackgroundSize -OverlayName "4K DoVi Background overlay"
-    Test-Dimension -OverlayPath $Backgroundoverlay4KHDR10 -ExpectedSize $BackgroundSize -OverlayName "4K HDR10 Background overlay"
-    Test-Dimension -OverlayPath $Backgroundoverlay4KDoViHDR10 -ExpectedSize $BackgroundSize -OverlayName "4K DoVi/HDR10 Background overlay"
-
-    # 4K TC Types (expect BackgroundSize)
-    Test-Dimension -OverlayPath $TCoverlay4KDoVi -ExpectedSize $BackgroundSize -OverlayName "4K DoVi TitleCard overlay"
-    Test-Dimension -OverlayPath $TCoverlay4KHDR10 -ExpectedSize $BackgroundSize -OverlayName "4K HDR10 TitleCard overlay"
-    Test-Dimension -OverlayPath $TCoverlay4KDoViHDR10 -ExpectedSize $BackgroundSize -OverlayName "4K DoVi/HDR10 TitleCard overlay"
 }
 function InvokeMagickCommand {
     param (
@@ -5068,10 +4939,7 @@ function UploadOtherMediaServerArtwork {
 
     # Check if current image already has exif data
     $Imageinfo = Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/items/$itemId/images/?api_key=$OtherMediaServerApiKey"
-    $Imageinfotemp = $Imageinfo | Where-Object imagetype -eq $imageType | Select-Object Height, Width, Path
-    if ($Imageinfotemp) {
-        $Imageinfotemp = $imageinfotemp[0]
-    }
+    $Imageinfotemp = $Imageinfo | Where-Object imagetype -eq $imageType | Select-Object Height, Width, Path | Select-Object -First 1
     # Clear value to ensure no old data causes a false skip
     $value = $null
 
@@ -5094,7 +4962,7 @@ function UploadOtherMediaServerArtwork {
             }
             catch {
                 # Log as a warning (not error) so we know why the check failed, but don't stop the script
-                Write-Entry -Subtext "Exif check skipped (Image 404 or missing). Proceeding to upload. Error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                Write-Entry -Subtext "Exif check skipped (Image 404 or missing). Proceeding to upload. Error: $(Get-RequestFailureSummary -ErrorRecord $_ -FallbackMessage $_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
 
                 # Ensure temp file cleanup happens if the download partially succeeded or failed
                 if (Test-Path $tempFile) {
@@ -5146,18 +5014,8 @@ function UploadOtherMediaServerArtwork {
                 $UploadCount++
             }
             catch {
-                if ($_.Exception.Response -is [System.Net.Http.HttpResponseMessage] -and $_.Exception.Response.Content) {
-                    try {
-                        $response = $_.Exception.Response.Content.ReadAsStringAsync().Result
-                    }
-                    catch {
-                        $response = "Unable to read server response (content may be disposed)."
-                    }
-                    Write-Entry -Subtext "Failed to delete image. Server response: $response" -Path $global:configLogging -Color Red -log Error
-                }
-                else {
-                    Write-Entry -Subtext "Failed to delete image. Error: $_" -Path $global:configLogging -Color Red -log Error
-                }
+                $response = Get-RequestFailureSummary -ErrorRecord $_ -FallbackMessage "Unable to read server response (content may be disposed)."
+                Write-Entry -Subtext "Failed to delete image. Server response: $response" -Path $global:configLogging -Color Red -log Error
             }
             if ($global:ReplaceThumbwithBackdrop -eq 'true') {
                 # Make the API request to upload the Thumb image
@@ -5169,18 +5027,8 @@ function UploadOtherMediaServerArtwork {
                     $UploadCount++
                 }
                 catch {
-                    if ($_.Exception.Response -is [System.Net.Http.HttpResponseMessage] -and $_.Exception.Response.Content) {
-                        try {
-                            $response = $_.Exception.Response.Content.ReadAsStringAsync().Result
-                        }
-                        catch {
-                            $response = "Unable to read server response (content may be disposed)."
-                        }
-                        Write-Entry -Subtext "Failed to upload Thumb image. Server response: $response" -Path $global:configLogging -Color Red -log Error
-                    }
-                    else {
-                        Write-Entry -Subtext "Failed to upload Thumb image. Error: $_" -Path $global:configLogging -Color Red -log Error
-                    }
+                    $response = Get-RequestFailureSummary -ErrorRecord $_ -FallbackMessage "Unable to read server response (content may be disposed)."
+                    Write-Entry -Subtext "Failed to upload Thumb image. Server response: $response" -Path $global:configLogging -Color Red -log Error
                 }
             }
         }
@@ -5192,18 +5040,8 @@ function UploadOtherMediaServerArtwork {
             $UploadCount++
         }
         catch {
-            if ($_.Exception.Response -is [System.Net.Http.HttpResponseMessage] -and $_.Exception.Response.Content) {
-                try {
-                    $response = $_.Exception.Response.Content.ReadAsStringAsync().Result
-                }
-                catch {
-                    $response = "Unable to read server response (content may be disposed)."
-                }
-                Write-Entry -Subtext "Failed to upload image. Server response: $response" -Path $global:configLogging -Color Red -log Error
-            }
-            else {
-                Write-Entry -Subtext "Failed to upload image. Error: $_" -Path $global:configLogging -Color Red -log Error
-            }
+            $response = Get-RequestFailureSummary -ErrorRecord $_ -FallbackMessage "Unable to read server response (content may be disposed)."
+            Write-Entry -Subtext "Failed to upload image. Server response: $response" -Path $global:configLogging -Color Red -log Error
         }
     }
 }
@@ -5256,12 +5094,11 @@ function MassDownloadPlexArtwork {
 
         if ($ExifFound) {
             Write-Entry -Subtext "Artwork has exif data from posterizarr/kometa/tcm, using URL..." -Path $global:configLogging -Color Green -log Info
-            $global:posterurl = $ArtUrl
         }
         else {
             Write-Entry -Subtext "No posterizarr/kometa/tcm exif data found, using URL..." -Path $global:configLogging -Color Yellow -log Warning
-            $global:posterurl = $ArtUrl
         }
+        $global:posterurl = $ArtUrl
     }
     $Mode = "backup"
     Write-Entry -Message "Backup Mode Started..." -Path $global:configLogging -Color White -log Info
@@ -5897,23 +5734,8 @@ function MassDownloadPlexArtwork {
                         }
                         GetPlexArtworkUrl -ArtUrl $Arturl -TempImage $PosterImage
                         if ($global:posterurl) {
-                            try {
-                                Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                            }
-                            catch {
-                                if ($_.Exception.Response) {
-                                    $statusCode = $_.Exception.Response.StatusCode.value__
-                                }
-                                else {
-                                    $statusCode = $_.Exception.Message
-                                }
-                                Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-
-                            }
+                            Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
+                            $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage -SuccessMessage "Downloading Poster from 'Plex'" -SuccessColor 'DarkMagenta'
                             # Move file back to original naming with Brackets.
                             if (Get-ChildItem -LiteralPath $PosterImage -ErrorAction SilentlyContinue) {
                                 try {
@@ -6024,27 +5846,13 @@ function MassDownloadPlexArtwork {
                         Else {
                             $joinedTitle = $Titletext
                         }
-                        GetPlexArtworkUrl -ArtUrl $Arturl -TempImage $BackgroundImage
-                        if ($global:posterurl) {
-                            try {
-                                Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $BackgroundImage -ErrorAction Stop
-                            }
-                            catch {
-                                if ($_.Exception.Response) {
-                                    $statusCode = $_.Exception.Response.StatusCode.value__
-                                }
-                                else {
-                                    $statusCode = $_.Exception.Message
-                                }
-                                Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                    GetPlexArtworkUrl -ArtUrl $Arturl -TempImage $BackgroundImage
+                    if ($global:posterurl) {
+                        Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
+                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $BackgroundImage -SuccessMessage "Downloading Poster from 'Plex'" -SuccessColor 'DarkMagenta'
 
-                            }
-
-                            # Move file back to original naming with Brackets.
-                            if (Get-ChildItem -LiteralPath $backgroundImage -ErrorAction SilentlyContinue) {
+                        # Move file back to original naming with Brackets.
+                        if (Get-ChildItem -LiteralPath $backgroundImage -ErrorAction SilentlyContinue) {
                                 try {
                                     # Attempt to move the item
                                     Move-Item -LiteralPath $backgroundImage -Destination $backgroundImageoriginal -Force -ErrorAction Stop
@@ -6220,22 +6028,8 @@ function MassDownloadPlexArtwork {
                         $global:posterurl = $global:fanartfallbackposterurl
                     }
                     if ($global:posterurl) {
-                        try {
-                            Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                            Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                        }
-                        catch {
-                            if ($_.Exception.Response) {
-                                $statusCode = $_.Exception.Response.StatusCode.value__
-                            }
-                            else {
-                                $statusCode = $_.Exception.Message
-                            }
-                            Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                            $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                        }
+                        Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
+                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage -SuccessMessage "Downloading Poster from 'Plex'" -SuccessColor 'DarkMagenta'
                         if (Get-ChildItem -LiteralPath $PosterImage -ErrorAction SilentlyContinue) {
                             # Move file back to original naming with Brackets.
                             try {
@@ -6351,22 +6145,8 @@ function MassDownloadPlexArtwork {
                         $joinedTitle = $Titletext
                     }
                     if ($global:posterurl) {
-                        try {
-                            Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                            Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $BackgroundImage -ErrorAction Stop
-                        }
-                        catch {
-                            if ($_.Exception.Response) {
-                                $statusCode = $_.Exception.Response.StatusCode.value__
-                            }
-                            else {
-                                $statusCode = $_.Exception.Message
-                            }
-                            Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                            $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                        }
+                        Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
+                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $BackgroundImage -SuccessMessage "Downloading Poster from 'Plex'" -SuccessColor 'DarkMagenta'
                         # Move file back to original naming with Brackets.
                         if (Get-ChildItem -LiteralPath $backgroundImage -ErrorAction SilentlyContinue) {
                             try {
@@ -7022,57 +6802,38 @@ function SyncPlexArtwork {
     )
     $startmessage = $null
 
-    if ($show_skipped -eq 'true') {
-        Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-        $startmessage = $true
-    }
-    Else {
-        Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Debug
-        if ($global:logLevel -eq '3') {
-            $startmessage = $true
+    function Write-SyncStartMessage {
+        if (-not $startmessage) {
+            $level = if ($show_skipped -eq 'true') { 'Info' } else { 'Debug' }
+            Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log $level
+            if ($global:logLevel -eq '3' -or $show_skipped -eq 'true') {
+                Set-Variable -Scope 1 -Name startmessage -Value $true
+            }
         }
     }
+
+    Write-SyncStartMessage
 
     try {
         Write-Entry -Subtext "Fetching image from source: $(RedactMediaServerUrl -url $ArtUrl)" -Path $global:configLogging -Color Cyan -log Debug
         $imageResponse = Invoke-WebRequest -Uri $ArtUrl -Headers $extraPlexHeaders -UseBasicParsing -ErrorAction Stop
     }
     catch {
-        # Attempt to parse JSON error response
-        $errorResponse = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
-
-        if ($errorResponse) {
-            $errorTitle = $errorResponse.title
-            $errorStatus = $errorResponse.status
-            if (-not $startmessage) {
-                Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-            }
-            Write-Entry -Subtext "Failed to retrieve source image: Status: $errorStatus, Title: $errorTitle" -Path $global:configLogging -Color Red -log Error
-        }
-        else {
-            if (-not $startmessage) {
-                Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-            }
-            Write-Entry -Subtext "Failed to retrieve source image: Unknown error" -Path $global:configLogging -Color Red -log Error
-        }
-
+        Write-SyncStartMessage
+        Write-Entry -Subtext "Failed to retrieve source image: $(Get-RequestFailureSummary -ErrorRecord $_)" -Path $global:configLogging -Color Red -log Error
         return
     }
 
 
     if ($imageResponse.StatusCode -ne 200) {
-        if (-not $startmessage) {
-            Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-        }
+        Write-SyncStartMessage
         Write-Entry -Subtext "Unexpected response from source ($(RedactMediaServerUrl -url $ArtUrl)): $($imageResponse.StatusCode)" -Path $global:configLogging -Color Red -log Error
         return
     }
 
     $remoteImageBytes = $imageResponse.Content
     if (-not $remoteImageBytes) {
-        if (-not $startmessage) {
-            Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-        }
+        Write-SyncStartMessage
         Write-Entry -Subtext "Source image content is empty!" -Path $global:configLogging -Color Red -log Error
         return
     }
@@ -7090,32 +6851,14 @@ function SyncPlexArtwork {
         $existingImageResponse = Invoke-WebRequest -Uri $DestUrl -UseBasicParsing -ErrorAction Stop
     }
     catch {
-        # Attempt to parse JSON error response
-        $errorResponse = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
-
-        if ($errorResponse) {
-            $errorTitle = $errorResponse.title
-            $errorStatus = $errorResponse.status
-            if (-not $startmessage) {
-                Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-            }
-            Write-Entry -Subtext "Failed to retrieve destination image: Status: $errorStatus, Title: $errorTitle" -Path $global:configLogging -Color Red -log Error
-        }
-        else {
-            if (-not $startmessage) {
-                Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-            }
-            Write-Entry -Subtext "Failed to retrieve destination image: Unknown error" -Path $global:configLogging -Color Red -log Error
-        }
-
+        Write-SyncStartMessage
+        Write-Entry -Subtext "Failed to retrieve destination image: $(Get-RequestFailureSummary -ErrorRecord $_)" -Path $global:configLogging -Color Red -log Error
         return
     }
 
 
     if ($existingImageResponse.StatusCode -ne 200) {
-        if (-not $startmessage) {
-            Write-Entry -Message "Starting SyncPlexArtwork for: $title" -Path $global:configLogging -Color White -log Info
-        }
+        Write-SyncStartMessage
         Write-Entry -Subtext "Unexpected response from destination ($(RedactMediaServerUrl -url $DestUrl)): $($existingImageResponse.StatusCode)" -Path $global:configLogging -Color Red -log Error
         return
     }
@@ -7150,18 +6893,7 @@ function SyncPlexArtwork {
             Write-Entry -Subtext "Successfully deleted old artwork." -Path $global:configLogging -Color Green -log Info
         }
         catch {
-            # Attempt to parse JSON error response
-            $errorResponse = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
-
-            if ($errorResponse) {
-                $errorTitle = $errorResponse.title
-                $errorStatus = $errorResponse.status
-
-                Write-Entry -Subtext "Error deleting image: Status: $errorStatus, Title: $errorTitle" -Path $global:configLogging -Color Red -log Error
-            }
-            else {
-                Write-Entry -Subtext "Error deleting image: Unknown error" -Path $global:configLogging -Color Red -log Error
-            }
+            Write-Entry -Subtext "Error deleting image: $(Get-RequestFailureSummary -ErrorRecord $_)" -Path $global:configLogging -Color Red -log Error
         }
 
     }
@@ -7179,23 +6911,9 @@ function SyncPlexArtwork {
         }
         $UploadCount++
     }
-    catch {
-        # Attempt to parse JSON error response
-        $message = $_.ErrorDetails.Message
-        if ($message -match '^\s*\{.*\}\s*$') {
-            $errorResponse = $message | ConvertFrom-Json -ErrorAction SilentlyContinue
+        catch {
+            Write-Entry -Subtext "Error uploading image: $(Get-RequestFailureSummary -ErrorRecord $_)" -Path $global:configLogging -Color Red -log Error
         }
-
-        if ($errorResponse) {
-            $errorTitle = $errorResponse.title
-            $errorStatus = $errorResponse.status
-
-            Write-Entry -Subtext "Error uploading image: Status: $errorStatus, Title: $errorTitle" -Path $global:configLogging -Color Red -log Error
-        }
-        else {
-            Write-Entry -Subtext "Error uploading image: $message" -Path $global:configLogging -Color Red -log Error
-        }
-    }
 
 }
 function Send-UptimeKumaWebhook {
@@ -7249,23 +6967,36 @@ function Send-SummaryNotification {
         [string]$LibName
     )
 
+    function Get-AppriseBody {
+        switch ($ScriptMode) {
+            'backup' { return "Run took: $FormattedTimespawn`nIt Downloaded '$PosterCount' Images" }
+            'syncjelly' { return "Run took: $FormattedTimespawn`nIt Synced '$UploadCount' Images" }
+            'syncemby' { return "Run took: $FormattedTimespawn`nIt Synced '$UploadCount' Images" }
+            'logoupdater' { return "Run took: $FormattedTimespawn`nIt Matched '$MatchedCount' and Updated '$UploadCount' Logos" }
+            default { return "Run took: $FormattedTimespawn`nIt Created '$PosterCount' Images" }
+        }
+    }
+
+    function Get-DiscordDescription {
+        switch ($ScriptMode) {
+            'backup' { return "Backup Run took: $FormattedTimespawn" }
+            'syncjelly' { return "Sync Run took: $FormattedTimespawn" }
+            'syncemby' { return "Sync Run took: $FormattedTimespawn" }
+            'testing' { return "Test run took: $FormattedTimespawn" }
+            'tautulli' { return "Recently added Run took: $FormattedTimespawn" }
+            'arr' { return "Recently added Run took: $FormattedTimespawn" }
+            'logoupdater' { return "Logo Updater Run took: $FormattedTimespawn`nOn Lib - $LibName" }
+            default { return "Run took: $FormattedTimespawn" }
+        }
+    }
+
     if (-not ($global:NotifyUrl -and $global:SendNotification -eq 'true')) {
         return # Do nothing if notifications are off
     }
 
     # 1. Handle Apprise (Docker)
     if ($global:NotifyUrl -notlike '*discord*' -and $env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') {
-        $body = "Run took: $FormattedTimespawn`nIt Created '$PosterCount' Images"
-
-        if ($ScriptMode -eq 'backup') {
-            $body = "Run took: $FormattedTimespawn`nIt Downloaded '$PosterCount' Images"
-        }
-        if ($ScriptMode -eq 'syncjelly' -or $ScriptMode -eq 'syncemby') {
-            $body = "Run took: $FormattedTimespawn`nIt Synced '$UploadCount' Images"
-        }
-        if ($ScriptMode -eq 'logoupdater') {
-            $body = "Run took: $FormattedTimespawn`nIt Matched '$MatchedCount' and Updated '$UploadCount' Logos"
-        }
+        $body = Get-AppriseBody
 
         if ($ErrorCount -ge '1') {
             apprise --notification-type="failure" --title="Posterizarr" --body="$body`n`nDuring execution '$ErrorCount' Errors occurred, please check log." "$global:NotifyUrl"
@@ -7278,23 +7009,7 @@ function Send-SummaryNotification {
 
     # 2. Handle Discord
     if ($global:NotifyUrl -like '*discord*') {
-
-        $desc = "Run took: $FormattedTimespawn"
-        if ($ScriptMode -eq 'backup') {
-            $desc = "Backup Run took: $FormattedTimespawn"
-        }
-        if ($ScriptMode -eq 'syncjelly' -or $ScriptMode -eq 'syncemby') {
-            $desc = "Sync Run took: $FormattedTimespawn"
-        }
-        if ($ScriptMode -eq 'testing') {
-            $desc = "Test run took: $FormattedTimespawn"
-        }
-        if ($ScriptMode -eq 'tautulli' -or $ScriptMode -eq 'arr') {
-            $desc = "Recently added Run took: $FormattedTimespawn"
-        }
-        if ($ScriptMode -eq 'logoupdater') {
-            $desc = "Logo Updater Run took: $FormattedTimespawn`nOn Lib - $LibName"
-        }
+        $desc = Get-DiscordDescription
 
         if ($ErrorCount -ge '1') {
             $desc += "`nDuring execution Errors occurred, please check log."
@@ -10769,72 +10484,14 @@ Elseif ($Tautulli) {
                                     Write-Entry -Subtext "Copy local asset to: $PosterImage" -Path $global:configLogging -Color Green -log Info
                                 }
                                 Else {
-                                    try {
-                                        if (!$global:PlexartworkDownloaded) {
-                                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                                        }
-                                    }
-                                    catch {
-                                        if ($_.Exception.Response) {
-                                            $statusCode = $_.Exception.Response.StatusCode.value__
-                                        }
-                                        else {
-                                            $statusCode = $_.Exception.Message
-                                        }
-                                        Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
+                                    if (!$global:PlexartworkDownloaded) {
+                                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage
                                     }
                                     Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                    if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TMDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'FANART') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TVDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like "$PlexUrl*") {
-                                        Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:IsFallback = $true
-                                    }
+                                    $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                    Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                    $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                    $global:IsFallback = $downloadInfo.IsFallback
                                 }
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
@@ -11415,21 +11072,8 @@ Elseif ($Tautulli) {
                                     Write-Entry -Subtext "Copy local asset to: $BackgroundImage" -Path $global:configLogging -Color Green -log Info
                                 }
                                 Else {
-                                    try {
-                                        if (!$global:PlexartworkDownloaded) {
-                                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $BackgroundImage -ErrorAction Stop
-                                        }
-                                    }
-                                    catch {
-                                        if ($_.Exception.Response) {
-                                            $statusCode = $_.Exception.Response.StatusCode.value__
-                                        }
-                                        else {
-                                            $statusCode = $_.Exception.Message
-                                        }
-                                        Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
+                                    if (!$global:PlexartworkDownloaded) {
+                                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $BackgroundImage
                                     }
                                     Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
                                     if ($global:posterurl -like 'https://image.tmdb.org*') {
@@ -12177,55 +11821,10 @@ Elseif ($Tautulli) {
 
                                 }
                                 Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TMDBAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TMDBAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'TMDB') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:FANARTAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:FANARTAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'FANART') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TVDBAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TVDBAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'TVDB') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like "$PlexUrl*") {
-                                    Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                    if ($global:FavProvider -ne 'PLEX') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                Else {
-                                    Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                    $global:IsFallback = $true
-                                }
+                                $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                $global:IsFallback = $downloadInfo.IsFallback
                             }
                             $global:IsTruncated = $null
                             if ($global:ImageProcessing -eq 'true') {
@@ -13650,37 +13249,12 @@ Elseif ($Tautulli) {
 
                                         }
                                         Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                        if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            if ($global:FavProvider -ne 'FANART') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like "$PlexUrl*") {
-                                            Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                        Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                        $global:IsFallback = $downloadInfo.IsFallback
+                                        if ($global:posterurl -notmatch '^(https://image\.tmdb\.org|https://assets\.fanart\.tv|https://artworks\.thetvdb\.com|.*PlexUrl.*)') {
                                             $PosterUnknownCount++
-                                            $global:IsFallback = $true
                                         }
                                     }
                                     if (Get-ChildItem -LiteralPath $SeasonImage -ErrorAction SilentlyContinue) {
@@ -13985,39 +13559,10 @@ Elseif ($Tautulli) {
 
                                         }
                                         Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                        if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            $PosterUnknownCount++
-                                            if ($global:FavProvider -ne 'FANART') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like "$PlexUrl*") {
-                                            Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $PosterUnknownCount++
-                                            $global:IsFallback = $true
-                                        }
+                                        $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                        Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                        $global:IsFallback = $downloadInfo.IsFallback
                                     }
                                     if (Get-ChildItem -LiteralPath $SeasonImage -ErrorAction SilentlyContinue) {
                                         # Resize Image to 2000x3000
@@ -16707,63 +16252,11 @@ Elseif ($ArrTrigger) {
                                         Write-Entry -Subtext "Copy local asset to: $PosterImage" -Path $global:configLogging -Color Green -log Info
                                     }
                                     Else {
-                                        if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                            if ($global:PosterWithText) {
-                                                Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            }
-                                            if ($global:FavProvider -ne 'TMDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                            if ($global:PosterWithText) {
-                                                Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            }
-                                            if ($global:FavProvider -ne 'FANART') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                            if ($global:PosterWithText) {
-                                                Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            }
-                                            if ($global:FavProvider -ne 'TVDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:IsFallback = $true
-                                        }
-                                        try {
-                                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                                        }
-                                        catch {
-                                            if ($_.Exception.Response) {
-                                                $statusCode = $_.Exception.Response.StatusCode.value__
-                                            }
-                                            else {
-                                                $statusCode = $_.Exception.Message
-                                            }
-                                            Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                            $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                                        }
+                                        $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                        Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                        $global:IsFallback = $downloadInfo.IsFallback
+                                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage
                                     }
                                     $global:IsTruncated = $null
                                     if ($global:ImageProcessing -eq 'true') {
@@ -17968,63 +17461,11 @@ Elseif ($ArrTrigger) {
                                     Write-Entry -Subtext "Copy local asset to: $PosterImage" -Path $global:configLogging -Color Green -log Info
                                 }
                                 Else {
-                                    if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TMDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'FANART') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TVDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:IsFallback = $true
-                                    }
-                                    try {
-                                        $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                                    }
-                                    catch {
-                                        if ($_.Exception.Response) {
-                                            $statusCode = $_.Exception.Response.StatusCode.value__
-                                        }
-                                        else {
-                                            $statusCode = $_.Exception.Message
-                                        }
-                                        Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                                    }
+                                    $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                    Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                    $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                    $global:IsFallback = $downloadInfo.IsFallback
+                                    $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage
                                 }
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
@@ -19322,46 +18763,11 @@ Elseif ($ArrTrigger) {
                                         }
                                         Else {
                                             Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                            if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TMDBAssetTextLang
-                                                if ($global:FavProvider -ne 'TMDB') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:FANARTAssetTextLang
-                                                if ($global:FavProvider -ne 'FANART') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TVDBAssetTextLang
-                                                if ($global:FavProvider -ne 'TVDB') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $PosterUnknownCount++
-                                                $global:IsFallback = $true
-                                            }
-                                            try {
-                                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $SeasonImage -ErrorAction Stop
-                                            }
-                                            catch {
-                                                if ($_.Exception.Response) {
-                                                    $statusCode = $_.Exception.Response.StatusCode.value__
-                                                }
-                                                else {
-                                                    $statusCode = $_.Exception.Message
-                                                }
-                                                Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                                $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                                            }
+                                            $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                            Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                            $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                            $global:IsFallback = $downloadInfo.IsFallback
+                                            $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $SeasonImage
                                         }
                                         $global:IsTruncated = $null
                                         if ($global:ImageProcessing -eq 'true') {
@@ -21611,55 +21017,10 @@ Elseif ($ArrTrigger) {
 
                                         }
                                         Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                        if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                            if ($global:PosterWithText) {
-                                                Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            }
-                                            if ($global:FavProvider -ne 'TMDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                            if ($global:PosterWithText) {
-                                                Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            }
-                                            if ($global:FavProvider -ne 'FANART') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                            if ($global:PosterWithText) {
-                                                Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            }
-                                            if ($global:FavProvider -ne 'TVDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like "$PlexUrl*") {
-                                            Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:IsFallback = $true
-                                        }
+                                        $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                        Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                        $global:IsFallback = $downloadInfo.IsFallback
                                     }
                                     $global:IsTruncated = $null
                                     if ($global:ImageProcessing -eq 'true') {
@@ -22984,72 +22345,14 @@ Elseif ($ArrTrigger) {
                                     Write-Entry -Subtext "Copy local asset to: $PosterImage" -Path $global:configLogging -Color Green -log Info
                                 }
                                 Else {
-                                    try {
-                                        if (!$global:PlexartworkDownloaded) {
-                                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                                        }
-                                    }
-                                    catch {
-                                        if ($_.Exception.Response) {
-                                            $statusCode = $_.Exception.Response.StatusCode.value__
-                                        }
-                                        else {
-                                            $statusCode = $_.Exception.Message
-                                        }
-                                        Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
+                                    if (!$global:PlexartworkDownloaded) {
+                                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage
                                     }
                                     Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                    if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TMDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'FANART') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TVDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like "$PlexUrl*") {
-                                        Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:IsFallback = $true
-                                    }
+                                    $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                    Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                    $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                    $global:IsFallback = $downloadInfo.IsFallback
                                 }
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
@@ -24461,55 +23764,14 @@ Elseif ($ArrTrigger) {
                                             Write-Entry -Subtext "Copy local asset to: $SeasonImage" -Path $global:configLogging -Color Green -log Info
                                         }
                                         Else {
-                                            try {
-                                                if (!$global:PlexartworkDownloaded) {
-                                                    $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $SeasonImage -ErrorAction Stop
-                                                }
-                                            }
-                                            catch {
-                                                if ($_.Exception.Response) {
-                                                    $statusCode = $_.Exception.Response.StatusCode.value__
-                                                }
-                                                else {
-                                                    $statusCode = $_.Exception.Message
-                                                }
-                                                Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                                $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
+                                            if (!$global:PlexartworkDownloaded) {
+                                                $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $SeasonImage
                                             }
                                             Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                            if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TMDBAssetTextLang
-                                                if ($global:FavProvider -ne 'TMDB') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:FANARTAssetTextLang
-                                                if ($global:FavProvider -ne 'FANART') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TVDBAssetTextLang
-                                                if ($global:FavProvider -ne 'TVDB') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like "$PlexUrl*") {
-                                                Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                if ($global:FavProvider -ne 'PLEX') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $PosterUnknownCount++
-                                                $global:IsFallback = $true
-                                            }
+                                            $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                            Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                            $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                            $global:IsFallback = $downloadInfo.IsFallback
                                         }
                                         if (Get-ChildItem -LiteralPath $SeasonImage -ErrorAction SilentlyContinue) {
                                             $CommentArguments = "`"$SeasonImage`" -set `"comment`" `"created with posterizarr`" `"$SeasonImage`""
@@ -24813,38 +24075,10 @@ Elseif ($ArrTrigger) {
 
                                             }
                                             Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                            if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TMDBAssetTextLang
-                                                if ($global:FavProvider -ne 'TMDB') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:FANARTAssetTextLang
-                                                if ($global:FavProvider -ne 'FANART') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                                Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $global:AssetTextLang = $global:TVDBAssetTextLang
-                                                if ($global:FavProvider -ne 'TVDB') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            elseif ($global:posterurl -like "$PlexUrl*") {
-                                                Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                if ($global:FavProvider -ne 'PLEX') {
-                                                    $global:IsFallback = $true
-                                                }
-                                            }
-                                            Else {
-                                                Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $PosterUnknownCount++
-                                                $global:IsFallback = $true
-                                            }
+                                            $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                            Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                            $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                            $global:IsFallback = $downloadInfo.IsFallback
                                         }
                                         if (Get-ChildItem -LiteralPath $SeasonImage -ErrorAction SilentlyContinue) {
                                             # Resize Image to 2000x3000
@@ -28748,63 +27982,11 @@ Elseif ($OtherMediaServerUrl -and $OtherMediaServerApiKey -and $UseOtherMediaSer
                                     Write-Entry -Subtext "Copy local asset to: $PosterImage" -Path $global:configLogging -Color Green -log Info
                                 }
                                 Else {
-                                    if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TMDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'FANART') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TVDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:IsFallback = $true
-                                    }
-                                    try {
-                                        $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                                    }
-                                    catch {
-                                        if ($_.Exception.Response) {
-                                            $statusCode = $_.Exception.Response.StatusCode.value__
-                                        }
-                                        else {
-                                            $statusCode = $_.Exception.Message
-                                        }
-                                        Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                                    }
+                                    $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                    Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                    $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                    $global:IsFallback = $downloadInfo.IsFallback
+                                    $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage
                                 }
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
@@ -30004,63 +29186,11 @@ Elseif ($OtherMediaServerUrl -and $OtherMediaServerApiKey -and $UseOtherMediaSer
                                 Write-Entry -Subtext "Copy local asset to: $PosterImage" -Path $global:configLogging -Color Green -log Info
                             }
                             Else {
-                                if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TMDBAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TMDBAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'TMDB') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:FANARTAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:FANARTAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'FANART') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TVDBAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TVDBAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'TVDB') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                Else {
-                                    Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                    $global:IsFallback = $true
-                                }
-                                try {
-                                    $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                                }
-                                catch {
-                                    if ($_.Exception.Response) {
-                                        $statusCode = $_.Exception.Response.StatusCode.value__
-                                    }
-                                    else {
-                                        $statusCode = $_.Exception.Message
-                                    }
-                                    Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                    $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                                }
+                                $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                $global:IsFallback = $downloadInfo.IsFallback
+                                $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage
                             }
                             $global:IsTruncated = $null
                             if ($global:ImageProcessing -eq 'true') {
@@ -31372,46 +30502,11 @@ Elseif ($OtherMediaServerUrl -and $OtherMediaServerApiKey -and $UseOtherMediaSer
                                     }
                                     Else {
                                         Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                        if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            if ($global:FavProvider -ne 'FANART') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $PosterUnknownCount++
-                                            $global:IsFallback = $true
-                                        }
-                                        try {
-                                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $SeasonImage -ErrorAction Stop
-                                        }
-                                        catch {
-                                            if ($_.Exception.Response) {
-                                                $statusCode = $_.Exception.Response.StatusCode.value__
-                                            }
-                                            else {
-                                                $statusCode = $_.Exception.Message
-                                            }
-                                            Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                            $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
-                                        }
+                                        $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                        Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                        $global:IsFallback = $downloadInfo.IsFallback
+                                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $SeasonImage
                                     }
                                     $global:IsTruncated = $null
                                     if ($global:ImageProcessing -eq 'true') {
@@ -34536,72 +33631,14 @@ else {
                                     Write-Entry -Subtext "Copy local asset to: $PosterImage" -Path $global:configLogging -Color Green -log Info
                                 }
                                 Else {
-                                    try {
-                                        if (!$global:PlexartworkDownloaded) {
-                                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -ErrorAction Stop
-                                        }
-                                    }
-                                    catch {
-                                        if ($_.Exception.Response) {
-                                            $statusCode = $_.Exception.Response.StatusCode.value__
-                                        }
-                                        else {
-                                            $statusCode = $_.Exception.Message
-                                        }
-                                        Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                        $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
+                                    if (!$global:PlexartworkDownloaded) {
+                                        $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $PosterImage
                                     }
                                     Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                    if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TMDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'FANART') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                        if ($global:PosterWithText) {
-                                            Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        }
-                                        if ($global:FavProvider -ne 'TVDB') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    elseif ($global:posterurl -like "$PlexUrl*") {
-                                        Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:IsFallback = $true
-                                    }
+                                    $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                    Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                    $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                    $global:IsFallback = $downloadInfo.IsFallback
                                 }
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
@@ -36073,55 +35110,10 @@ else {
 
                                 }
                                 Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TMDBAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TMDBAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'TMDB') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:FANARTAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:FANARTAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'Fanart') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                    if ($global:PosterWithText) {
-                                        Write-Entry -Subtext "Downloading Poster with Text from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TVDBAssetTextLang
-                                    }
-                                    Else {
-                                        Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:AssetTextLang = $global:TVDBAssetTextLang
-                                    }
-                                    if ($global:FavProvider -ne 'TVDB') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                elseif ($global:posterurl -like "$PlexUrl*") {
-                                    Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                    if ($global:FavProvider -ne 'PLEX') {
-                                        $global:IsFallback = $true
-                                    }
-                                }
-                                Else {
-                                    Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                    $global:IsFallback = $true
-                                }
+                                $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                $global:IsFallback = $downloadInfo.IsFallback
                             }
                             $global:IsTruncated = $null
                             if ($global:ImageProcessing -eq 'true') {
@@ -37674,55 +36666,14 @@ else {
                                         Write-Entry -Subtext "Copy local asset to: $SeasonImage" -Path $global:configLogging -Color Green -log Info
                                     }
                                     Else {
-                                        try {
-                                            if (!$global:PlexartworkDownloaded) {
-                                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $SeasonImage -ErrorAction Stop
-                                            }
-                                        }
-                                        catch {
-                                            if ($_.Exception.Response) {
-                                                $statusCode = $_.Exception.Response.StatusCode.value__
-                                            }
-                                            else {
-                                                $statusCode = $_.Exception.Message
-                                            }
-                                            Write-Entry -Subtext "An error occurred while downloading the artwork: $statusCode" -Path $global:configLogging -Color Red -log Error
-                                            $global:errorCount++; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-
+                                        if (!$global:PlexartworkDownloaded) {
+                                            $null = Invoke-LoggedDownload -Uri $global:posterurl -OutFile $SeasonImage
                                         }
                                         Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                        if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            if ($global:FavProvider -ne 'FANART') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like "$PlexUrl*") {
-                                            Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $PosterUnknownCount++
-                                            $global:IsFallback = $true
-                                        }
+                                        $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                        Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                        $global:IsFallback = $downloadInfo.IsFallback
                                     }
                                     if (Get-ChildItem -LiteralPath $SeasonImage -ErrorAction SilentlyContinue) {
                                         $CommentArguments = "`"$SeasonImage`" -set `"comment`" `"created with posterizarr`" `"$SeasonImage`""
@@ -38026,39 +36977,10 @@ else {
 
                                         }
                                         Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
-                                        if ($global:posterurl -like 'https://image.tmdb.org*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            $PosterUnknownCount++
-                                            if ($global:FavProvider -ne 'FANART') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
-                                            Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        elseif ($global:posterurl -like "$PlexUrl*") {
-                                            Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
-                                                $global:IsFallback = $true
-                                            }
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Downloading Poster from 'IMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            $PosterUnknownCount++
-                                            $global:IsFallback = $true
-                                        }
+                                        $downloadInfo = Get-DownloadSourceDetails -Url $global:posterurl -Label 'Poster'
+                                        Write-Entry -Subtext $downloadInfo.Message -Path $global:configLogging -Color DarkMagenta -log Info
+                                        $global:AssetTextLang = $downloadInfo.AssetTextLang
+                                        $global:IsFallback = $downloadInfo.IsFallback
                                     }
                                     if (Get-ChildItem -LiteralPath $SeasonImage -ErrorAction SilentlyContinue) {
                                         # Resize Image to 2000x3000

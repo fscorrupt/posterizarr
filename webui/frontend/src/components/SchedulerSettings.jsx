@@ -24,37 +24,9 @@ import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import { formatDateTimeInTimezone } from "../utils/timeUtils";
+import { waitForLogFile } from "../utils/logUtils";
 
 const API_URL = "/api";
-
-// ============================================================================
-// WAIT FOR LOG FILE - Polls backend until log file exists
-// ============================================================================
-const waitForLogFile = async (logFileName, maxAttempts = 30, delayMs = 200) => {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const response = await fetch(`${API_URL}/logs/${logFileName}/exists`);
-      const data = await response.json();
-
-      if (data.exists) {
-        console.log(`Log file ${logFileName} exists after ${i + 1} attempts`);
-        return true;
-      }
-
-      // Wait before next attempt
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    } catch (error) {
-      console.error(`Error checking log file existence: ${error}`);
-      // Continue trying even if there's an error
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-
-  console.warn(
-    `Log file ${logFileName} not found after ${maxAttempts} attempts`
-  );
-  return false;
-};
 
 const SchedulerSettings = () => {
   const { t } = useTranslation();

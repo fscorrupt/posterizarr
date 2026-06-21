@@ -402,7 +402,6 @@ function LogViewer() {
 
   const connectWebSocket = (logFile) => {
     if (!logFile) {
-      console.warn("WebSocket connection skipped: no log file selected.");
       return;
     }
 
@@ -412,7 +411,6 @@ function LogViewer() {
         wsRef.current.readyState === WebSocket.CONNECTING)
     ) {
       if (currentLogFileRef.current === logFile) {
-        console.log(`Already connected to ${logFile}`);
         return;
       }
     }
@@ -421,12 +419,10 @@ function LogViewer() {
 
     try {
       const wsURL = getWebSocketURL(logFile);
-      console.log(`Connecting to WebSocket: ${wsURL}`);
       const ws = new WebSocket(wsURL);
       currentLogFileRef.current = logFile;
 
       ws.onopen = () => {
-        console.log(`WebSocket connected to ${logFile}`);
         setLogs([]); // <-- FIX: Clear logs on new connection
         setConnected(true);
         setIsReconnecting(false);
@@ -441,16 +437,10 @@ function LogViewer() {
               logBufferRef.current.push(parsedLine);
             }
           } else if (data.type === "log_file_changed") {
-            console.log(`Backend wants to switch to: ${data.log_file}`);
             if (selectedLog === currentLogFileRef.current) {
-              console.log(`Accepting backend log switch to: ${data.log_file}`);
               setSelectedLog(data.log_file);
               currentLogFileRef.current = data.log_file;
               showInfo(t("logViewer.switchedTo", { file: data.log_file }));
-            } else {
-              console.log(
-                `Ignoring backend log switch - user manually selected ${selectedLog}`
-              );
             }
           } else if (data.type === "error") {
             console.error("WebSocket error message:", data.message);
@@ -462,18 +452,15 @@ function LogViewer() {
       };
 
       ws.onerror = (error) => {
-        console.warn("WebSocket error:", error);
         setConnected(false);
       };
 
       ws.onclose = (event) => {
-        console.log(" WebSocket closed:", event.code);
         setConnected(false);
         if (!event.wasClean) {
           setIsReconnecting(true);
           showError(t("logViewer.disconnected"));
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`Reconnecting to ${currentLogFileRef.current}...`);
             connectWebSocket(currentLogFileRef.current);
           }, 2000);
         }
@@ -558,7 +545,6 @@ function LogViewer() {
     }
 
     if (selectedLog && selectedLog !== currentLogFileRef.current) {
-      console.log(`Selected log changed to: ${selectedLog}`);
       // fetchLogFile(selectedLog); // <-- REMOVED
       // Reconnect websocket to the new log file
       disconnectWebSocket();
@@ -811,10 +797,9 @@ function LogViewer() {
               {dropdownOpen && (
                 <div className="absolute z-10 w-full mt-2 bg-theme-card border border-theme-primary rounded-lg shadow-lg max-h-60 overflow-y-auto">
                   {availableLogs.map((log) => (
-                    <button
+                  <button
                       key={log.name}
                       onClick={() => {
-                        console.log(`User selected log: ${log.name}`);
                         setSelectedLog(log.name);
                         setDropdownOpen(false);
                       }}

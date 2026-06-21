@@ -73,37 +73,16 @@ function AppContent() {
       const hideScrollbars = localStorage.getItem("hide_scrollbars");
       const shouldHide = hideScrollbars ? JSON.parse(hideScrollbars) : false;
 
-      console.log(
-        "App.jsx: Updating scrollbar visibility, shouldHide:",
-        shouldHide
-      );
-      console.log("App.jsx: Current body classes:", document.body.className);
-      console.log(
-        "App.jsx: Current html classes:",
-        document.documentElement.className
-      );
-
       if (shouldHide) {
         document.body.classList.add("hide-scrollbars");
         document.documentElement.classList.add("hide-scrollbars");
-        console.log("App.jsx: Added hide-scrollbars class to body and html");
       } else {
         document.body.classList.remove("hide-scrollbars");
         document.documentElement.classList.remove("hide-scrollbars");
-        console.log(
-          "App.jsx: Removed hide-scrollbars class from body and html"
-        );
       }
-
-      console.log("App.jsx: New body classes:", document.body.className);
-      console.log(
-        "App.jsx: New html classes:",
-        document.documentElement.className
-      );
     };
 
     // Initial check
-    console.log("App.jsx: Setting up scrollbar visibility management");
     updateScrollbarVisibility();
 
     // Listen for storage changes (including from Dashboard component)
@@ -111,7 +90,6 @@ function AppContent() {
 
     // Custom event for same-window updates
     const handleScrollbarToggle = () => {
-      console.log("App.jsx: Received scrollbarToggle event");
       updateScrollbarVisibility();
     };
     window.addEventListener("scrollbarToggle", handleScrollbarToggle);
@@ -126,9 +104,6 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    console.log("Posterizarr UI started - UI-Logger active");
-    console.info(" UI logs will be saved to FrontendUI.log");
-
     return () => {
       // uiLogger.destroy();
     };

@@ -6,6 +6,7 @@
 
 export function setupFetchInterceptor() {
   const originalFetch = window.fetch;
+  window.originalFetch = originalFetch;
 
   window.fetch = function (url, options = {}) {
     const credentials = sessionStorage.getItem("auth_credentials");
@@ -25,16 +26,12 @@ export function setupFetchInterceptor() {
     // Call original fetch with modified options
     return originalFetch(url, options);
   };
-
-  console.log(
-    "Fetch interceptor installed - Auth headers will be added automatically"
-  );
 }
 
 export function removeFetchInterceptor() {
   // Restore original fetch if needed
   if (window.originalFetch) {
     window.fetch = window.originalFetch;
-    console.log("Fetch interceptor removed");
+    delete window.originalFetch;
   }
 }

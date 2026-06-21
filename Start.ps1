@@ -1,3 +1,122 @@
+function Test-PosterizarrUiAvailability {
+    param(
+        [Parameter(Mandatory)]
+        [string]$WebsiteUrl,
+        [int]$RetryIntervalSeconds = 5,
+        [int]$MaxWaitSeconds = 360
+    )
+
+    $startTime = Get-Date
+    $isOnline = $false
+
+    while (((Get-Date) - $startTime).TotalSeconds -lt $MaxWaitSeconds) {
+        try {
+            $response = Invoke-WebRequest -Uri $WebsiteUrl -UseBasicParsing -TimeoutSec $RetryIntervalSeconds -ErrorAction Stop
+            if ($response.StatusCode -eq 200) {
+                $isOnline = $true
+                break
+            }
+        }
+        catch {
+            if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401) {
+                $isOnline = $true
+                break
+            }
+        }
+        Start-Sleep -Seconds $RetryIntervalSeconds
+    }
+
+    $elapsed = (Get-Date) - $startTime
+    $totalSeconds = [math]::Round($elapsed.TotalSeconds)
+    $formattedTime = "{0}m {1}s" -f [math]::Floor($totalSeconds / 60), ($totalSeconds % 60)
+
+    [PSCustomObject]@{
+        IsOnline = $isOnline
+        FormattedTime = $formattedTime
+        MaxWaitSeconds = $MaxWaitSeconds
+    }
+}
+
+function Get-NextScheduledRun {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$RunTimes
+    )
+
+    $scheduledRuns = foreach ($runTime in $RunTimes) {
+        if (-not $runTime) {
+            continue
+        }
+
+        $parts = $runTime.Split(':')
+        if ($parts.Count -lt 2) {
+            continue
+        }
+
+        $nextTrigger = Get-Date -Hour $parts[0] -Minute $parts[1]
+        $currentTime = Get-Date
+        if ($nextTrigger -lt $currentTime) {
+            $nextTrigger = $nextTrigger.AddDays(1)
+        }
+
+        [PSCustomObject]@{
+            RunTime = $runTime
+            Offset = ($nextTrigger - $currentTime).TotalSeconds
+        }
+    }
+
+    $scheduledRuns | Sort-Object -Property Offset | Select-Object -First 1
+}
+
+function Get-PosterizarrTriggerArguments {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$TriggerLines,
+        [switch]$IsArr,
+        [string]$BaseName
+    )
+
+    $scriptArgs = @()
+    if ($IsArr) {
+        $scriptArgs += '-ArrTrigger'
+
+        if ($BaseName -match 'recently_added_(\d+)') {
+            $timestamp = $matches[1].Substring(0, 14)
+            $fileTime = [datetime]::ParseExact($timestamp, 'yyyyMMddHHmmss', $null)
+            $customWait = 300
+            if ($env:ARR_WAIT_TIME -as [int]) {
+                $customWait = [int]$env:ARR_WAIT_TIME
+                Write-Host "User defined wait time: $customWait seconds."
+            }
+
+            $waitTime = [Math]::Max(0, $customWait - ((Get-Date) - $fileTime).TotalSeconds)
+            if ($waitTime -gt 0) {
+                Write-Host "Waiting $([math]::Round($waitTime)) seconds for media server..."
+                Start-Sleep -Seconds $waitTime
+            }
+        }
+    }
+    else {
+        $scriptArgs += '-Tautulli'
+    }
+
+    foreach ($line in $TriggerLines) {
+        if ($line -match '^\[(.+)\]: (.+)$') {
+            $scriptArgs += "-$($matches[1])"
+            $scriptArgs += $matches[2]
+        }
+    }
+
+    $scriptArgs
+}
+
+function Wait-ForPosterizarrIdle {
+    while (Get-Process pwsh -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*Posterizarr.ps1*" }) {
+        Write-Warning "Posterizarr is already running. Waiting 20 seconds..."
+        Start-Sleep -Seconds 20
+    }
+}
+
 function ScriptSchedule {
     # Posterizarr File Watcher for Tautulli Recently Added Files
     $inputDir = "$env:APP_DATA/watcher"
@@ -21,45 +140,15 @@ function ScriptSchedule {
     Else {
         Write-Host "UI is being initialized. This can take a minute or two..."
         $websiteUrl = "http://localhost:$($env:APP_PORT)/"
-        $retryIntervalSeconds = 5
-        $maxWaitSeconds = 360
-        $UIstartTime = Get-Date
-        $isOnline = $false
+        $uiStatus = Test-PosterizarrUiAvailability -WebsiteUrl $websiteUrl
 
-        # Loop until the website is online or the timeout is reached.
-        while (((Get-Date) - $UIstartTime).TotalSeconds -lt $maxWaitSeconds) {
-            try {
-                $response = Invoke-WebRequest -Uri $websiteUrl -UseBasicParsing -TimeoutSec $retryIntervalSeconds -ErrorAction Stop
-                if ($response.StatusCode -eq 200) {
-                    $isOnline = $true
-                    break # Exit the loop since the website is online.
-                }
-            }
-            catch {
-                # If the server responds with 401 (Unauthorized), it means it IS online/running, just protected.
-                if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401) {
-                    $isOnline = $true
-                    break
-                }
-            }
-            Start-Sleep -Seconds $retryIntervalSeconds
-        }
-
-        # Final status message after the loop exits.
-        $UIendTime = Get-Date
-        $totalTime = $UIendTime - $UIstartTime
-        $totalSeconds = [math]::Round($totalTime.TotalSeconds)
-        $minutes = [math]::Floor($totalSeconds / 60)
-        $seconds = $totalSeconds % 60
-        $formattedTime = "{0}m {1}s" -f $minutes, $seconds
-
-        if ($isOnline) {
-            Write-Host "UI & Cache are now built and online after $formattedTime." -ForegroundColor Green
+        if ($uiStatus.IsOnline) {
+            Write-Host "UI & Cache are now built and online after $($uiStatus.FormattedTime)." -ForegroundColor Green
             Write-Host "    You can access it by going to: http://localhost:$($env:APP_PORT)/"
         }
         else {
-            Write-Host "UI did not become available within $maxWaitSeconds seconds." -ForegroundColor Red
-            Write-Host "    Total time waited: $formattedTime."
+            Write-Host "UI did not become available within $($uiStatus.MaxWaitSeconds) seconds." -ForegroundColor Red
+            Write-Host "    Total time waited: $($uiStatus.FormattedTime)."
         }
     }
 
@@ -71,20 +160,7 @@ function ScriptSchedule {
         $env:RUN_TIME = $env:RUN_TIME.ToLower()
 
         if ($env:RUN_TIME -ne "disabled") {
-            $NextScriptRun = $env:RUN_TIME -split ',' | ForEach-Object {
-                $Hour = $_.split(':')[0]
-                $Minute = $_.split(':')[1]
-                $NextTrigger = Get-Date -Hour $Hour -Minute $Minute
-                $CurrentTime = Get-Date
-                if ($NextTrigger -lt $CurrentTime) {
-                    $NextTrigger = $NextTrigger.AddDays(1)
-                }
-                $offset = $NextTrigger - $CurrentTime
-                [PSCustomObject]@{
-                    RunTime = $_
-                    Offset  = $offset.TotalSeconds
-                }
-            } | Sort-Object -Property Offset | Select-Object -First 1
+            $NextScriptRun = Get-NextScheduledRun -RunTimes ($env:RUN_TIME -split ',')
 
             # Use the nearest scheduled run time
             $NextScriptRunTime = $NextScriptRun.RunTime
@@ -101,13 +177,12 @@ function ScriptSchedule {
             if ($NextScriptRunOffset -le '60') {
                 $alreadydisplayed = $null
                 Start-Sleep $NextScriptRunOffset
-                $ScriptArgs = "-ContainerSchedule"
-                # Calling the Posterizarr Script
-                if ((Get-Process pwsh -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*Posterizarr.ps1*" })) {
+                $scriptArgs = @("-ContainerSchedule")
+                if (Get-Process pwsh -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*Posterizarr.ps1*" }) {
                     Write-Warning "There is currently running another Process of Posterizarr, skipping this run."
                 }
                 Else {
-                    pwsh -Command "$env:APP_ROOT/Posterizarr.ps1 $ScriptArgs"
+                    pwsh -File "$env:APP_ROOT/Posterizarr.ps1" @scriptArgs
                 }
             }
         }
@@ -121,75 +196,13 @@ function ScriptSchedule {
 
                 # Get trigger Values
                 $triggerargs = Get-Content $item.FullName
-
-                # Reset scriptargs
-                $IsTautulli = $false
-                if ($triggerargs -like '*arr_*') {
-                    $ScriptArgs = @("-ArrTrigger")
-                    # Extract timestamp from filename
-                    if ($item.BaseName -match 'recently_added_(\d+)') {
-                        $timestamp = $matches[1]
-                        # Take only the first 14 digits (yyyyMMddHHmmss)
-                        $timestamp14 = $timestamp.Substring(0,14)
-
-                        # Convert to datetime
-                        $fileTime = [datetime]::ParseExact($timestamp14, "yyyyMMddHHmmss", $null)
-
-                        # Default to 300 seconds if ARR_WAIT_TIME is not set or invalid
-                        $customWait = 300
-                        if ($env:ARR_WAIT_TIME -as [int]) {
-                            $customWait = [int]$env:ARR_WAIT_TIME
-                            write-host "User defined wait time: $customWait seconds."
-                        }
-
-                        # Calculate age in seconds
-                        $fileAge = (Get-Date) - $fileTime
-                        $waitTime = [Math]::Max(0, $customWait - $fileAge.TotalSeconds)  # x min buffer (default 5 min) minus age of file, so if file is already 3 min old, wait only 2 min, if file is already 5 min or older, don't wait at all
-
-                        if ($waitTime -gt 0) {
-                            write-host "Waiting $([math]::Round($waitTime)) seconds for media server..."
-                            Start-Sleep -Seconds $waitTime
-                        }
-                    }
-                    foreach ($line in $triggerargs) {
-                        if ($line -match '^\[(.+)\]: (.+)$') {
-                            $arg_name = $matches[1]
-                            $arg_value = $matches[2]
-
-                            # Add key/value to args
-                            $ScriptArgs += "-$arg_name"
-                            $ScriptArgs += $arg_value
-                        }
-                    }
-                } Else {
-                    $IsTautulli = $true
-                    $ScriptArgs = "-Tautulli"
-                    foreach ($line in $triggerargs) {
-                        if ($line -match '^\[(.+)\]: (.+)$') {
-                            $arg_name = $matches[1]
-                            $arg_value = $matches[2]
-                            $Scriptargs += " -$arg_name $arg_value"
-                        }
-                    }
-                }
+                $isArrTrigger = $triggerargs -like '*arr_*'
+                $scriptArgs = Get-PosterizarrTriggerArguments -TriggerLines $triggerargs -IsArr:$isArrTrigger -BaseName $item.BaseName
 
                 write-host "Building trigger args..."
-                # Wait until no other Posterizarr process is running
-                while (Get-Process pwsh -ErrorAction SilentlyContinue |
-                    Where-Object { $_.CommandLine -like "*Posterizarr.ps1*" }) {
-                    Write-Warning "Posterizarr is already running. Waiting 20 seconds..."
-                    Start-Sleep -Seconds 20
-                }
-
-                if ($IsTautulli) {
-                    Write-Host "Calling Posterizarr with these args: $ScriptArgs"
-                    pwsh -Command "$env:APP_ROOT/Posterizarr.ps1 $ScriptArgs"
-                } else {
-                    Write-Host "Calling Posterizarr with these args: $($ScriptArgs -join ' ')"
-
-                    # Call Posterizarr with Args
-                    pwsh -File "$env:APP_ROOT/Posterizarr.ps1" @ScriptArgs
-                }
+                Wait-ForPosterizarrIdle
+                Write-Host "Calling Posterizarr with these args: $($scriptArgs -join ' ')"
+                pwsh -File "$env:APP_ROOT/Posterizarr.ps1" @scriptArgs
 
 
                 write-host ""
@@ -250,6 +263,8 @@ function CompareScriptVersion {
 
                 # Check if local version is greater than remote (development version)
                 $displayVersion = $version
+                $statusColor = 'Green'
+                $statusSuffix = ''
                 if ($version -and $LatestScriptVersion) {
                     try {
                         $localParts = $version.Split('.') | ForEach-Object { [int]$_ }
@@ -270,19 +285,15 @@ function CompareScriptVersion {
                         if ($isGreater) {
                             $displayVersion = "$version-dev"
                             $global:IsDev = 'true'
-                            Write-Host "Current Script Version: $displayVersion | Latest Script Version: $LatestScriptVersion (Development version ahead of release)" -ForegroundColor Yellow
-                        }
-                        else {
-                            Write-Host "Current Script Version: $displayVersion | Latest Script Version: $LatestScriptVersion" -ForegroundColor Green
+                            $statusColor = 'Yellow'
+                            $statusSuffix = ' (Development version ahead of release)'
                         }
                     }
                     catch {
-                        Write-Host "Current Script Version: $displayVersion | Latest Script Version: $LatestScriptVersion" -ForegroundColor Green
                     }
                 }
-                else {
-                    Write-Host "Current Script Version: $displayVersion | Latest Script Version: $LatestScriptVersion" -ForegroundColor Green
-                }
+
+                Write-Host "Current Script Version: $displayVersion | Latest Script Version: $LatestScriptVersion$statusSuffix" -ForegroundColor $statusColor
             }
         }
         else {

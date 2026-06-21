@@ -38,6 +38,36 @@ import ScrollToButtons from "./ScrollToButtons"; // Used by child tabs
 import BackupAssets from "./BackupAssets";
 
 const API_URL = "/api";
+const OVERLAY_UPLOAD_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+];
+
+const getFileExtension = (filename = "") => {
+  const parts = filename.split(".");
+  return parts.length > 1 ? parts.pop().toUpperCase() : "";
+};
+
+const getFileExtensionLower = (filename = "") => {
+  const parts = filename.split(".");
+  return parts.length > 1 ? parts.pop().toLowerCase() : "";
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return "0 Bytes";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
+};
+
+const isOverlayUploadFile = (filename) =>
+  OVERLAY_UPLOAD_EXTENSIONS.includes(getFileExtensionLower(filename));
 
 // ##########################################################################
 // ## MAIN GALLERY HUB COMPONENT
@@ -674,35 +704,13 @@ function OverlayUploadView() {
   const [uploadPreview, setUploadPreview] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
-  // Helper functions duplicated for this component
-  const getFileExtension = (filename) => {
-    return filename.split(".").pop().toUpperCase();
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
-  };
-
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const fileExtension = file.name.split(".").pop().toLowerCase();
-    const validExtensions = [
-      "png",
-      "jpg",
-      "jpeg",
-      "ttf",
-      "otf",
-      "woff",
-      "woff2",
-    ];
+    const fileExtension = getFileExtensionLower(file.name);
 
-    if (!validExtensions.includes(fileExtension)) {
+    if (!isOverlayUploadFile(file.name)) {
       showError(t("overlayAssets.invalidFileType"));
       setUploadPreview(null);
       setSelectedFile(null);
@@ -948,19 +956,6 @@ function OverlayFilesView() {
       console.error("Error deleting file:", err);
       showError(t("overlayAssets.deleteError", { message: err.message }));
     }
-  };
-
-  // Helper functions duplicated for this component
-  const getFileExtension = (filename) => {
-    return filename.split(".").pop().toUpperCase();
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
 
   const filteredFiles = files.filter((file) => {

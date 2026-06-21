@@ -76,12 +76,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Extract metadata from asset
   const extractMetadata = () => {
-    console.log("=== AssetReplacer: Extracting Metadata ===");
-    console.log("Asset path:", asset.path);
-    console.log("Asset type:", asset.type);
-    console.log("Asset _dbData:", asset._dbData);
-    console.log("State dbData:", dbData);
-
     // Extract metadata from path including provider IDs if present
     let title = null;
     let showTitle = null;
@@ -94,7 +88,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
     // Extract library name (parent folder: "4K", "TV", etc.)
     const pathSegments = asset.path?.split(/[\/\\]/).filter(Boolean);
-    console.log("Path segments:", pathSegments);
 
     if (pathSegments && pathSegments.length > 0) {
       // Find library name - usually the top-level folder like "4K" or "TV"
@@ -102,14 +95,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         // Common library folder names
         if (pathSegments[i].match(/^(4K|TV|Movies|Series|Anime)$/i)) {
           libraryName = pathSegments[i];
-          console.log(`Found library name: ${libraryName}`);
           break;
         }
       }
       // If not found, use the first segment as library name
       if (!libraryName && pathSegments.length > 0) {
         libraryName = pathSegments[0];
-        console.log(`Using first segment as library name: ${libraryName}`);
       }
     }
 
@@ -122,11 +113,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     } else if (asset.path?.match(/S\d+E\d+/) || asset.type === "titlecard") {
       assetType = "titlecard";
     }
-    console.log(`Detected asset type: ${assetType}`);
 
     // For seasons and titlecards, extract title from parent folder (show name)
     if (assetType === "season" || assetType === "titlecard") {
-      console.log("Processing TV show asset (season or titlecard)");
       // Path format: ".../Show Name (Year) {tvdb-123}/Season01/..." or ".../Show Name (Year) {tvdb-123}/S01E01.jpg"
 
       if (pathSegments && pathSegments.length > 1) {
@@ -287,12 +276,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         if (dbSeasonMatch && seasonNumber === null) {
           seasonNumber = parseInt(dbSeasonMatch[1]);
-          console.log(`Season number from DB Title '${dbTitle}': ${seasonNumber}`);
         }
         if (dbEpisodeMatch) {
           if (seasonNumber === null) seasonNumber = parseInt(dbEpisodeMatch[1]);
           if (episodeNumber === null) episodeNumber = parseInt(dbEpisodeMatch[2]);
-          console.log(`Episode info from DB Title '${dbTitle}': S${seasonNumber}E${episodeNumber}`);
         }
       }
     }
@@ -304,7 +291,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         if (dbData.Title.includes("|")) {
           showTitle = dbData.Title.split("|")[0].trim();
           title = dbData.Title.split("|")[1].trim();
-          console.log(`Extracted Season Title from DB: ${title }`);
         } else {
           // Fallback: use "Season" + the raw number (no leading zero)
           title = seasonNumber === 0 ? "Specials" : `Season ${seasonNumber}`;
@@ -316,12 +302,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       } else if (assetType !== "titlecard") {
         // Standard override for Movies/Shows, skipping titlecards
         title  = dbData.Title;
-        console.log(`Using Title from database: ${title }`);
       }
     }
     if (dbData?.year) {
       year = parseInt(dbData.year);
-      console.log(`Using Year from database: ${year}`);
     }
 
     // Determine mediaType
@@ -334,10 +318,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     // 1. STRICT DATABASE CHECK (Primary Source of Trust)
     if (dbType.includes("movie")) {
       mediaType = "movie";
-      console.log("MediaType strictly determined by DB: movie");
     } else if (dbType.includes("show") || dbType.includes("series")) {
       mediaType = "tv";
-      console.log("MediaType strictly determined by DB: tv");
     }
     // 2. HEURISTIC FALLBACK (Only used if DB data is missing/inconclusive)
     else if (
@@ -352,30 +334,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       libName.includes("serier")
     ) {
       mediaType = "tv";
-      console.log(`MediaType determined by fallback heuristics: ${mediaType}`);
-    } else {
-      console.log(`Defaulting to: ${mediaType}`);
     }
-
-    console.log(`Backend asset.type: '${backendAssetType}'`);
-    console.log(`DB data Type: '${dbType}'`);
-    console.log(`Library Name: '${libName}'`);
-    console.log(`Derived mediaType: '${mediaType}'`);
 
     // Priority 1: Use provider IDs from database (most reliable source of truth)
     // Database fields: tmdbid, tvdbid, imdbid (from ImageChoices.db)
     if (dbData?.tmdbid) {
       tmdb_id = dbData.tmdbid;
-      console.log(`Using TMDB ID from database: ${tmdb_id}`);
     }
     if (dbData?.tvdbid) {
       tvdb_id = dbData.tvdbid;
-      console.log(`Using TVDB ID from database: ${tvdb_id}`);
     }
     // IMDB ID from database (if available)
     if (dbData?.imdbid && !imdb_id) {
       imdb_id = dbData.imdbid;
-      console.log(`Using IMDB ID from database: ${imdb_id}`);
     }
 
     // Priority 2: Fallback to extracting IDs from folder name if not in database
@@ -386,7 +357,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         const tmdbMatch = folderName.match(/[\[{(]tmdb-(\d+)[\]})]/i);
         if (tmdbMatch) {
           tmdb_id = tmdbMatch[1];
-          console.log(`Extracted TMDB ID from folder: ${tmdb_id}`);
         }
       }
 
@@ -395,7 +365,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         const tvdbMatch = folderName.match(/[\[{(]tvdb-(\d+)[\]})]/i);
         if (tvdbMatch) {
           tvdb_id = tvdbMatch[1];
-          console.log(`Extracted TVDB ID from folder: ${tvdb_id}`);
         }
       }
 
@@ -405,7 +374,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         const imdbMatch = folderName.match(/[\[{(]imdb-(tt\d+)[\]})]/i);
         if (imdbMatch) {
           imdb_id = imdbMatch[1];
-          console.log(`Extracted IMDB ID from folder: ${imdb_id}`);
         }
       }
     }
@@ -424,20 +392,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       season_number: seasonNumber,
       episode_number: episodeNumber,
     };
-
-    console.log("=== Extracted Metadata ===");
-    console.log("Title:", title);
-    console.log("Year:", year);
-    console.log("Folder Name:", folderName);
-    console.log("Library Name:", libraryName);
-    console.log("TMDB ID:", tmdb_id);
-    console.log("TVDB ID:", tvdb_id);
-    console.log("IMDB ID:", imdb_id);
-    console.log("Media Type:", mediaType);
-    console.log("Asset Type:", assetType);
-    console.log("Season Number:", seasonNumber);
-    console.log("Episode Number:", episodeNumber);
-    console.log("==========================");
 
     return metadata;
   };
@@ -461,12 +415,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         if (response.ok) {
           const data = await response.json();
           setIsPosterizarrRunning(data.running || false);
-
-          if (data.running) {
-            console.log(
-              "Posterizarr is currently running, replacement operations will be blocked"
-            );
-          }
         }
       } catch (error) {
         console.error("Error checking Posterizarr status:", error);
@@ -490,7 +438,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Handle Logo Fetching with FavProvider priority AND LogoLanguageOrder
   const handleFetchLogos = async () => {
-    console.log("=== Fetching Logos ===");
     setLogoSelectionMode(true);
     setLoading(true);
 
@@ -532,13 +479,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
             languageOrderList = rawOrder.split(",").map(lang => lang.trim().toLowerCase());
           }
 
-          if (languageOrderList.length > 0) {
-            console.log("Applying Logo Language Order:", languageOrderList);
-          }
         }
-      } catch (e) {
-        console.warn("Failed to fetch config for logo preference:", e);
-      }
+      } catch (e) {}
 
       // ----------------------------------------------------------------------
       // 2. Fetch Replacements
@@ -653,11 +595,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
           if (data.using_flat_structure) {
             // Flat structure: config keys are directly in data.config
             configSource = data.config || {};
-            console.log("Using flat config structure");
           } else {
             // Grouped structure: config keys are under ApiPart
             configSource = data.config?.ApiPart || data.ApiPart || {};
-            console.log("Using grouped config structure");
           }
 
           // Extract Season Poster Name overrides
@@ -723,15 +663,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
             background: backgroundOrder,
             season: seasonOrder,
             titlecard: tcOrder,
-          });
-
-          console.log("Loaded language preferences:", {
-            poster: posterOrder,
-            background: backgroundOrder,
-            season: seasonOrder,
-            titlecard: tcOrder,
-            rawBackground: configSource.PreferredBackgroundLanguageOrder,
-            rawTitleCard: configSource.PreferredTCLanguageOrder,
           });
         }
       } catch (error) {
@@ -846,7 +777,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       const needsEpisodeData = isTitleCard && (isWrongEpisode || !dbData?.EpisodeTitle) && !dbData?._attemptedEpisodeFetch;
 
       if (dbData !== null && !needsEpisodeData) {
-        console.log("Already have adequate database data, skipping fetch");
         return;
       }
 
@@ -862,7 +792,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         // Only check Plex Export if we don't already have dbData
         if (!dbData) {
-          console.log("Checking Plex Export DB (/api/plex-export/library)...");
           response = await fetch(`${API_URL}/plex-export/library`);
           if (response.ok) {
             const plexData = await response.json();
@@ -877,14 +806,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         }
 
         // --- Try ImageChoices (Posterizarr DB) ---
-        console.log("Checking ImageChoices DB for Asset specific info...");
         response = await fetch(`${API_URL}/imagechoices`);
         if (response.ok) {
           const allRecords = await response.json();
           const matchingRecord = findMatch(allRecords, libraryName, rootfolder);
 
           if (matchingRecord) {
-            console.log("✓ Found matching record in ImageChoices DB:", matchingRecord);
             // Merge records to overwrite the wrong episode title with the newly found correct one
             setDbData((prev) => ({
                 ...prev,
@@ -950,13 +877,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         const parts = dbTitle.split("|");
         if (parts.length >= 2) {
           episodeTitleName = parts[1].trim();
-          console.log(`Episode title parsed from DB Title: '${episodeTitleName}'`);
         }
       }
       // Fallback: Check if it's explicitly stored as EpisodeTitle
       else if (dbData?.EpisodeTitle) {
         episodeTitleName = dbData.EpisodeTitle;
-        console.log(`Episode title from DB field: '${episodeTitleName}'`);
       }
 
       setManualForm((prev) => ({
@@ -1003,15 +928,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   ]);
 
   const handleFetchClick = () => {
-    console.log("=== AssetReplacer: Fetch Button Clicked ===");
-
     // Validation
     let metadata = extractMetadata();
 
     if (manualSearch) {
-      console.log("Using manual search mode");
       if (!searchTitle.trim()) {
-        console.warn("Manual search: No title provided");
         showError(t("assetReplacer.enterTitleError"));
         return;
       }
@@ -1038,17 +959,13 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   };
 
   const fetchPreviews = async () => {
-    console.log("=== AssetReplacer: Fetching Previews ===");
     setShowFetchConfirm(false);
 
     if (!pendingFetchParams) {
-      console.error("No pending fetch params found!");
       return;
     }
 
     const { metadata, manualSearch: isManualSearch } = pendingFetchParams;
-    console.log("Fetch params:", { metadata, isManualSearch });
-
     setLoading(true);
     showError(null);
 
@@ -1088,11 +1005,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         setActiveTab("previews");
       } else {
-        console.error("API returned error:", data.error || "Unknown error");
         showError(t("assetReplacer.fetchPreviewsError"));
       }
     } catch (err) {
-      console.error("✗ Error fetching previews:", err);
       showError(
         t("assetReplacer.errorFetchingPreviews", { error: err.message })
       );

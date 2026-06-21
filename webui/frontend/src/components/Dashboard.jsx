@@ -39,27 +39,10 @@ import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import { formatDateTimeInTimezone } from "../utils/timeUtils";
+import { getLogFileForMode } from "../utils/logUtils";
 
 const API_URL = "/api";
 const isDev = import.meta.env.DEV;
-
-const getLogFileForMode = (mode) => {
-  const safeMode = (mode || "").toLowerCase();
-  const logMapping = {
-    testing: "Testinglog.log",
-    manual: "Manuallog.log",
-    normal: "Scriptlog.log",
-    backup: "Scriptlog.log",
-    syncjelly: "Scriptlog.log",
-    syncemby: "Scriptlog.log",
-    reset: "Scriptlog.log",
-    scheduled: "Scriptlog.log",
-    tautulli: "Scriptlog.log",
-    arr: "Scriptlog.log",
-    webhook: "Scriptlog.log"
-  };
-  return logMapping[safeMode] || "Scriptlog.log";
-};
 
 const getWebSocketURL = (logFile) => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

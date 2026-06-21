@@ -28,55 +28,9 @@ import { useTranslation } from "react-i18next";
 import ConfirmDialog from "./ConfirmDialog";
 import DangerZone from "./DangerZone";
 import { useToast } from "../context/ToastContext";
+import { getLogFileForMode, waitForLogFile } from "../utils/logUtils";
 
 const API_URL = "/api";
-
-// ============================================================================
-// LOG FILE MAPPING - Maps run modes to their respective log files
-// ============================================================================
-const getLogFileForMode = (mode) => {
-  const logMapping = {
-    testing: "Testinglog.log",
-    manual: "Manuallog.log",
-    normal: "Scriptlog.log",
-    backup: "Scriptlog.log",
-    syncjelly: "Scriptlog.log",
-    syncemby: "Scriptlog.log",
-    reset: "Scriptlog.log",
-    scheduled: "Scriptlog.log",
-    logoupdater: "Scriptlog.log",
-  };
-  return logMapping[mode] || "Scriptlog.log";
-};
-
-// ============================================================================
-// WAIT FOR LOG FILE - Polls backend until log file exists
-// ============================================================================
-const waitForLogFile = async (logFileName, maxAttempts = 30, delayMs = 200) => {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const response = await fetch(`${API_URL}/logs/${logFileName}/exists`);
-      const data = await response.json();
-
-      if (data.exists) {
-        console.log(`Log file ${logFileName} exists after ${i + 1} attempts`);
-        return true;
-      }
-
-      // Wait before next attempt
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    } catch (error) {
-      console.error(`Error checking log file existence: ${error}`);
-      // Continue trying even if there's an error
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-
-  console.warn(
-    `Log file ${logFileName} not found after ${maxAttempts} attempts`
-  );
-  return false;
-};
 
 // ============================================================================
 // TMDB POSTER SEARCH MODAL - Multi-Provider Support (TMDB, TVDB, Fanart.tv)
@@ -631,11 +585,6 @@ function RunModes() {
 
       if (data.success) {
         setFolderItems(data.folders || []);
-        console.log(
-          `Loaded ${data.folders?.length || 0} folders from assets/${manualForm.libraryName
-          }`
-        );
-
         if (data.folders?.length === 0) {
           showError(
             `No folders found in library "${manualForm.libraryName}". Please check the library name.`
@@ -694,10 +643,6 @@ function RunModes() {
         );
 
         setLibraryItems(filteredLibraries);
-        console.log(
-          `Loaded ${filteredLibraries.length || 0} libraries from assets`
-        );
-
         if (filteredLibraries.length === 0) {
           showError("No library folders found in assets directory (after filtering)");
         }
@@ -753,16 +698,13 @@ function RunModes() {
         fetchStatus();
 
         const logFile = getLogFileForMode(mode);
-        console.log(`Waiting for log file: ${logFile}`);
 
         // Wait for log file to be created before navigating
         const logExists = await waitForLogFile(logFile);
 
         if (logExists) {
-          console.log(`Redirecting to LogViewer with log: ${logFile}`);
           navigate("/logs", { state: { logFile: logFile } });
         } else {
-          console.warn(`Log file ${logFile} not found, redirecting anyway`);
           // Still navigate even if log doesn't exist yet
           navigate("/logs", { state: { logFile: logFile } });
         }
@@ -834,13 +776,6 @@ function RunModes() {
 
       // If a file was uploaded, use FormData for multipart upload
       if (uploadedFile) {
-        console.log("Preparing manual upload with file:", {
-          fileName: uploadedFile.name,
-          fileSize: uploadedFile.size,
-          fileType: uploadedFile.type,
-          payload: requestPayload,
-        });
-
         const formData = new FormData();
         formData.append("file", uploadedFile);
         formData.append("add_to_queue", addToQueue);
@@ -848,7 +783,6 @@ function RunModes() {
         // Append all other form fields
         Object.keys(requestPayload).forEach((key) => {
           formData.append(key, requestPayload[key]);
-          console.log(`FormData field: ${key} = ${requestPayload[key]}`);
         });
 
         const response = await fetch(`${API_URL}/run-manual-upload`, {
@@ -1088,11 +1022,9 @@ function RunModes() {
           }
 
           if (languageOrder.length > 0) {
-            console.log("Applying Logo Language Order:", languageOrder);
           }
         }
       } catch (e) {
-        console.warn("Failed to fetch config for logo preference:", e);
       }
 
       // ----------------------------------------------------------------------
@@ -1264,24 +1196,8 @@ function RunModes() {
       // Check if query contains provider prefix (tmdb-, tvdb-, imdb-, tt)
       // If prefix exists, backend will extract the ID automatically
       // If no prefix, treat as title search (even for numeric titles like "1917")
-      const queryLower = tmdbSearch.query.trim().toLowerCase();
-      const hasPrefix =
-        queryLower.startsWith("tmdb-") ||
-        queryLower.startsWith("tmdb:") ||
-        queryLower.startsWith("tvdb-") ||
-        queryLower.startsWith("tvdb:") ||
-        queryLower.startsWith("imdb-") ||
-        queryLower.startsWith("imdb:") ||
-        queryLower.startsWith("tt");
-
       // Always send as title - backend will detect prefixes and extract IDs
       requestBody.title = tmdbSearch.query.trim();
-
-      if (hasPrefix) {
-        console.log(`Searching with ID prefix: ${tmdbSearch.query}`);
-      } else {
-        console.log(`Searching by title: ${tmdbSearch.query}`);
-      }
 
       // Add year if provided
       if (tmdbSearch.year) {
@@ -1341,12 +1257,6 @@ function RunModes() {
       const data = await response.json();
 
       if (data.success) {
-        console.log("Received results from API:");
-        console.log("  TMDB:", data.results.tmdb?.length || 0, "items");
-        console.log("  TVDB:", data.results.tvdb?.length || 0, "items");
-        console.log("  Fanart:", data.results.fanart?.length || 0, "items");
-        console.log("  Detected Provider:", data.detected_provider || "none");
-
         const results = {
           tmdb: data.results.tmdb || [],
           tvdb: data.results.tvdb || [],
@@ -1358,10 +1268,6 @@ function RunModes() {
 
         if (data.detected_provider) {
           // User used a prefix (tmdb-, tvdb-, imdb-, tt) - only show that provider
-          console.log(
-            `Prefix detected: showing only ${data.detected_provider} tab`
-          );
-
           if (data.detected_provider === "tmdb") {
             visibleProviders = ["tmdb"];
           } else if (data.detected_provider === "tvdb") {
@@ -1372,8 +1278,6 @@ function RunModes() {
           }
         } else {
           // No prefix - show all providers that have results
-          console.log("No prefix detected: showing all providers with results");
-
           if (results.tmdb.length > 0) visibleProviders.push("tmdb");
           if (results.tvdb.length > 0) visibleProviders.push("tvdb");
           if (results.fanart.length > 0) visibleProviders.push("fanart");
