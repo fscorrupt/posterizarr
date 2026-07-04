@@ -37,7 +37,12 @@
     "LogoLanguageOrder": [
       "en",
       "de"
-    ]
+    ],
+    "LibraryLanguageOverrides": {
+      "Beispiel-Bibliothek": {
+        "PreferredLanguageOrder": ["xx", "de", "en"]
+      }
+    }
   },
   "PlexPart": {
     "LibstoExclude": [

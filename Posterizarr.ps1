@@ -5817,6 +5817,17 @@ function MassDownloadPlexArtwork {
                         $Titletext = $entry.title
                     }
                 }
+                if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                    # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                    # which left Titletext blank above and broke the metadata search entirely.
+                    # Fall back to whichever of title/originalTitle actually has a value.
+                    if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                        $Titletext = $entry.title
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                        $Titletext = $entry.originalTitle
+                    }
+                }
 
                 if ($LibraryFolders -eq 'true') {
                     $LibraryName = $entry.'Library Name'
@@ -6148,6 +6159,17 @@ function MassDownloadPlexArtwork {
                 }
                 else {
                     $Titletext = $entry.title
+                }
+            }
+            if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                # which left Titletext blank above and broke the metadata search entirely.
+                # Fall back to whichever of title/originalTitle actually has a value.
+                if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                    $Titletext = $entry.title
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                    $Titletext = $entry.originalTitle
                 }
             }
 
@@ -7659,6 +7681,54 @@ Initialize-LanguageSettings -SettingName "PreferredLanguageOrder"           -Lab
 Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder"     -Label "Season"
 Initialize-LanguageSettings -SettingName "PreferredTCLanguageOrder"         -Label "TC"
 Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background"
+
+# --- Library-specific language override support ---
+$global:LibraryLanguageOverrides = $config.ApiPart.LibraryLanguageOverrides
+if (-not $global:LibraryLanguageOverrides) { $global:LibraryLanguageOverrides = @{} }
+
+# Stash the validated server-wide defaults so per-library overrides can fall back to them
+$global:DefaultPreferredLanguageOrder = $global:PreferredLanguageOrder
+$global:DefaultPreferredSeasonLanguageOrder = $global:PreferredSeasonLanguageOrder
+$global:DefaultPreferredTCLanguageOrder = $global:PreferredTCLanguageOrder
+$global:DefaultPreferredBackgroundLanguageOrder = $global:PreferredBackgroundLanguageOrder
+$global:DefaultLogoLanguageOrder = $global:LogoLanguageOrder
+
+function Set-LibraryLanguageOverride {
+    param([string]$LibraryName)
+
+    $override = $null
+    if ($global:LibraryLanguageOverrides -and ($global:LibraryLanguageOverrides.PSObject.Properties.Name -contains $LibraryName)) {
+        $override = $global:LibraryLanguageOverrides.$LibraryName
+    }
+
+    $map = [ordered]@{
+        "PreferredLanguageOrder"           = @{ Label = "Poster";     Default = $global:DefaultPreferredLanguageOrder }
+        "PreferredSeasonLanguageOrder"     = @{ Label = "Season";     Default = $global:DefaultPreferredSeasonLanguageOrder }
+        "PreferredTCLanguageOrder"         = @{ Label = "TC";         Default = $global:DefaultPreferredTCLanguageOrder }
+        "PreferredBackgroundLanguageOrder" = @{ Label = "Background"; Default = $global:DefaultPreferredBackgroundLanguageOrder }
+    }
+
+    foreach ($key in $map.Keys) {
+        $value = $map[$key].Default
+        if ($override -and ($override.PSObject.Properties.Name -contains $key)) {
+            $value = $override.$key
+        }
+        Set-Variable -Name $key -Scope Global -Value $value
+        Initialize-LanguageSettings -SettingName $key -Label $map[$key].Label
+    }
+
+    $logoValue = $global:DefaultLogoLanguageOrder
+    if ($override -and ($override.PSObject.Properties.Name -contains "LogoLanguageOrder")) {
+        $logoValue = $override.LogoLanguageOrder
+    }
+    Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $logoValue
+
+    if ($override) {
+        Write-Entry -Subtext "Applied language override for library '$LibraryName'" -Path $global:configLogging -Color Cyan -log Info
+    }
+}
+# --- end library-specific language override support ---
+
 
 # default to TMDB if favprovider missing
 if (!$global:FavProvider) {
@@ -10544,6 +10614,17 @@ Elseif ($Tautulli) {
                             $Titletext = $entry.title
                         }
                     }
+                    if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                        # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                        # which left Titletext blank above and broke the metadata search entirely.
+                        # Fall back to whichever of title/originalTitle actually has a value.
+                        if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                            $Titletext = $entry.title
+                        }
+                        elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                            $Titletext = $entry.originalTitle
+                        }
+                    }
 
                     if ($LibraryFolders -eq 'true') {
                         $LibraryName = $entry.'Library Name'
@@ -11976,6 +12057,17 @@ Elseif ($Tautulli) {
                     }
                     else {
                         $Titletext = $entry.title
+                    }
+                }
+                if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                    # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                    # which left Titletext blank above and broke the metadata search entirely.
+                    # Fall back to whichever of title/originalTitle actually has a value.
+                    if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                        $Titletext = $entry.title
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                        $Titletext = $entry.originalTitle
                     }
                 }
 
@@ -16503,6 +16595,17 @@ Elseif ($ArrTrigger) {
                                 $Titletext = $entry.title
                             }
                         }
+                        if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                            # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                            # which left Titletext blank above and broke the metadata search entirely.
+                            # Fall back to whichever of title/originalTitle actually has a value.
+                            if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                                $Titletext = $entry.title
+                            }
+                            elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                                $Titletext = $entry.originalTitle
+                            }
+                        }
 
                         if ($LibraryFolders -eq 'true') {
                             $LibraryName = $entry.'Library Name'
@@ -17807,6 +17910,17 @@ Elseif ($ArrTrigger) {
                         }
                         else {
                             $Titletext = $entry.title
+                        }
+                    }
+                    if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                        # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                        # which left Titletext blank above and broke the metadata search entirely.
+                        # Fall back to whichever of title/originalTitle actually has a value.
+                        if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                            $Titletext = $entry.title
+                        }
+                        elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                            $Titletext = $entry.originalTitle
                         }
                     }
 
@@ -21370,6 +21484,17 @@ Elseif ($ArrTrigger) {
                                 $Titletext = $entry.title
                             }
                         }
+                        if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                            # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                            # which left Titletext blank above and broke the metadata search entirely.
+                            # Fall back to whichever of title/originalTitle actually has a value.
+                            if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                                $Titletext = $entry.title
+                            }
+                            elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                                $Titletext = $entry.originalTitle
+                            }
+                        }
 
                         if ($LibraryFolders -eq 'true') {
                             $LibraryName = $entry.'Library Name'
@@ -22800,6 +22925,17 @@ Elseif ($ArrTrigger) {
                         }
                         else {
                             $Titletext = $entry.title
+                        }
+                    }
+                    if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                        # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                        # which left Titletext blank above and broke the metadata search entirely.
+                        # Fall back to whichever of title/originalTitle actually has a value.
+                        if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                            $Titletext = $entry.title
+                        }
+                        elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                            $Titletext = $entry.originalTitle
                         }
                     }
 
@@ -28543,6 +28679,17 @@ Elseif ($OtherMediaServerUrl -and $OtherMediaServerApiKey -and $UseOtherMediaSer
                             $Titletext = $entry.title
                         }
                     }
+                    if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                        # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                        # which left Titletext blank above and broke the metadata search entirely.
+                        # Fall back to whichever of title/originalTitle actually has a value.
+                        if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                            $Titletext = $entry.title
+                        }
+                        elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                            $Titletext = $entry.originalTitle
+                        }
+                    }
 
                     if ($LibraryFolders -eq 'true') {
                         $LibraryName = $entry.'Library Name'
@@ -29842,6 +29989,17 @@ Elseif ($OtherMediaServerUrl -and $OtherMediaServerApiKey -and $UseOtherMediaSer
                     }
                     else {
                         $Titletext = $entry.title
+                    }
+                }
+                if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                    # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                    # which left Titletext blank above and broke the metadata search entirely.
+                    # Fall back to whichever of title/originalTitle actually has a value.
+                    if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                        $Titletext = $entry.title
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                        $Titletext = $entry.originalTitle
                     }
                 }
 
@@ -33697,6 +33855,8 @@ else {
     $Libraries = [System.Collections.Generic.List[object]]::new()
     Foreach ($Library in $Libsoverview) {
         if ($Library.Name -notin $LibstoExclude) {
+            Set-LibraryLanguageOverride -LibraryName $Library.Name
+
             $PlexHeaders = @{}
             if ($PlexToken) {
                 $PlexHeaders['X-Plex-Token'] = $PlexToken
@@ -34307,6 +34467,17 @@ else {
                         }
                         else {
                             $Titletext = $entry.title
+                        }
+                    }
+                    if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                        # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                        # which left Titletext blank above and broke the metadata search entirely.
+                        # Fall back to whichever of title/originalTitle actually has a value.
+                        if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                            $Titletext = $entry.title
+                        }
+                        elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                            $Titletext = $entry.originalTitle
                         }
                     }
 
@@ -35864,6 +36035,17 @@ else {
                     }
                     else {
                         $Titletext = $entry.title
+                    }
+                }
+                if ([string]::IsNullOrWhiteSpace($Titletext)) {
+                    # Native Cyrillic/CJK content often has no distinct originalTitle in Plex,
+                    # which left Titletext blank above and broke the metadata search entirely.
+                    # Fall back to whichever of title/originalTitle actually has a value.
+                    if (-not [string]::IsNullOrWhiteSpace($entry.title)) {
+                        $Titletext = $entry.title
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace($entry.originalTitle)) {
+                        $Titletext = $entry.originalTitle
                     }
                 }
 
