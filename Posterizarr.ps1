@@ -2415,7 +2415,7 @@ function GetTMDBSeasonPoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "No season posters found on TMDB for this season" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
             }
         }
@@ -2539,7 +2539,7 @@ function GetTMDBSeasonPoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "No season posters found on TMDB for this season" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
             }
         }
@@ -2894,7 +2894,7 @@ function GetTMDBTitleCard {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "No title card images found on TMDB for this episode" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:season_number/episode/$global:episodenumber/images/backdrops"
         }
     }
@@ -2961,7 +2961,7 @@ function GetTMDBTitleCard {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "No title card images found on TMDB for this episode" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:season_number/episode/$global:episodenumber/images/backdrops"
         }
     }
