@@ -2852,7 +2852,10 @@ function UploadOtherMediaServerArtwork {
     }
 
     # Check if current image already has exif data
-    $Imageinfo = Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/items/$itemId/images/?api_key=$OtherMediaServerApiKey"
+    $headers = @{
+        "Authorization" = "MediaBrowser Token=`"$OtherMediaServerApiKey`""
+    }
+    $Imageinfo = Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/items/$itemId/images" -Headers $headers
     $Imageinfotemp = $Imageinfo | Where-Object imagetype -eq $imageType | Select-Object Height, Width, Path
     if ($Imageinfotemp) {
         $Imageinfotemp = $imageinfotemp[0]
@@ -2865,12 +2868,12 @@ function UploadOtherMediaServerArtwork {
         # Set the API endpoint URL for magick exif check
         if (($imageinfotemp.Height) -and ($imageinfotemp.width)) {
             try {
-                $ImageUrl = "$OtherMediaServerUrl/items/$itemId/images/$imageType/?api_key=$OtherMediaServerApiKey&width=$($imageinfotemp.width)&height=$($imageinfotemp.Height)"
+                $ImageUrl = "$OtherMediaServerUrl/items/$itemId/images/$imageType/?width=$($imageinfotemp.width)&height=$($imageinfotemp.Height)"
                 $guid = [guid]::NewGuid().ToString()
                 $tempFile = Join-Path -Path $global:ScriptRoot -ChildPath "temp\hashcompare_$guid.jpg"
 
                 # Try to download the image
-                $response = Invoke-WebRequest -Uri $ImageUrl -OutFile $tempFile -ErrorAction Stop
+                $response = Invoke-WebRequest -Uri $ImageUrl -OutFile $tempFile -Headers $headers -ErrorAction Stop
 
                 $magickcommand = "& `"$magick`" identify -verbose `"$tempFile`""
                 $magickcommand | Out-File $magickLog -Append
