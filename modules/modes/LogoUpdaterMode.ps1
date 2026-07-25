@@ -272,7 +272,7 @@
                 try {
                     # Download temporarily with fallback for SSL issues
                     try {
-                        Invoke-WebRequest -Uri $global:LogoUrl -OutFile $tempLogo -ErrorAction Stop
+                        Invoke-WebRequest -Uri $global:LogoUrl -OutFile $tempLogo -Headers $PlexHeaders -ErrorAction Stop
                     }
                     catch {
                         if ($_.Exception.Message -like "*SSL*" -or $_.Exception.InnerException.Message -like "*SSL*") {
