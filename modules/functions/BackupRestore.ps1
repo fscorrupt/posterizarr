@@ -516,7 +516,7 @@ function MassDownloadPlexArtwork {
                             try {
                                 Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
                                 Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -TimeoutSec 30 -ErrorAction Stop
+                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -TimeoutSec 30 -Headers $extraPlexHeaders -ErrorAction Stop
                             }
                             catch {
                                 if ($_.Exception.Response) {
@@ -639,7 +639,7 @@ function MassDownloadPlexArtwork {
                             try {
                                 Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
                                 Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $BackgroundImage -TimeoutSec 30 -ErrorAction Stop
+                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $BackgroundImage -TimeoutSec 30 -Headers $extraPlexHeaders -ErrorAction Stop
                             }
                             catch {
                                 if ($_.Exception.Response) {
@@ -828,7 +828,7 @@ function MassDownloadPlexArtwork {
                         try {
                             Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
                             Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -TimeoutSec 30 -ErrorAction Stop
+                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $PosterImage -TimeoutSec 30 -Headers $extraPlexHeaders -ErrorAction Stop
                         }
                         catch {
                             if ($_.Exception.Response) {
@@ -954,7 +954,7 @@ function MassDownloadPlexArtwork {
                         try {
                             Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
                             Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $BackgroundImage -TimeoutSec 30 -ErrorAction Stop
+                            $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $BackgroundImage -TimeoutSec 30 -Headers $extraPlexHeaders -ErrorAction Stop
                         }
                         catch {
                             if ($_.Exception.Response) {
@@ -1099,7 +1099,7 @@ function MassDownloadPlexArtwork {
                             try {
                                 Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
                                 Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $SeasonImage -TimeoutSec 30 -ErrorAction Stop
+                                $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $SeasonImage -TimeoutSec 30 -Headers $extraPlexHeaders -ErrorAction Stop
                             }
                             catch {
                                 if ($_.Exception.Response) {
@@ -1258,7 +1258,7 @@ function MassDownloadPlexArtwork {
                                     try {
                                         Write-Entry -Subtext "Poster url: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color White -log Info
                                         Write-Entry -Subtext "Downloading Titlecard from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $EpisodeImage -TimeoutSec 30 -ErrorAction Stop
+                                        $response = Invoke-WebRequest -Uri $global:posterurl -OutFile $EpisodeImage -TimeoutSec 30 -Headers $extraPlexHeaders -ErrorAction Stop
                                     }
                                     catch {
                                         if ($_.Exception.Response) {
