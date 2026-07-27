@@ -2374,6 +2374,7 @@ class ManualModeRequest(BaseModel):
     mediaType: str = ""
     add_to_queue: bool = False
     posterWithText: bool = False
+    blueprint_overrides: Optional[Dict] = None
 
 
 class UILogEntry(BaseModel):
@@ -6920,6 +6921,37 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
 # ============================================================================
 # MANUAL RUN ENDPOINTS - Must be defined BEFORE generic /api/run/{mode}
 # ============================================================================
+
+def generate_blueprint_override_config(blueprint_overrides: dict) -> str:
+    import uuid
+    import json
+    from pathlib import Path
+    
+    if not CONFIG_DATABASE_AVAILABLE or not config_db:
+        logger.error("Cannot generate blueprint config: config_db is unavailable")
+        raise RuntimeError("config_db is unavailable")
+        
+    current_config = config_db.get_full_config()
+    
+    def deep_merge(source, destination):
+        for key, value in source.items():
+            if isinstance(value, dict):
+                destination[key] = deep_merge(value, destination.get(key, {}))
+            else:
+                destination[key] = value
+        return destination
+
+    merged_config = deep_merge(blueprint_overrides, current_config)
+    
+    logs_dir = Path(os.getcwd()) / "Logs"
+    logs_dir.mkdir(exist_ok=True)
+    temp_file = logs_dir / f"temp_override_{uuid.uuid4().hex}.json"
+    
+    with open(temp_file, 'w', encoding='utf-8') as f:
+        json.dump(merged_config, f, indent=4)
+        
+    return str(temp_file)
+
 @app.post("/api/run-manual")
 async def run_manual_mode(request: ManualModeRequest):
     """Run manual mode with custom parameters"""
@@ -6947,6 +6979,7 @@ async def run_manual_mode(request: ManualModeRequest):
             "process_with_overlays": True,
             "asset_type": request.posterType,
             "poster_with_text": request.posterWithText,
+            "blueprint_overrides": request.blueprint_overrides,
         }
 
         # Construct a reference asset path
@@ -7109,6 +7142,10 @@ async def run_manual_mode(request: ManualModeRequest):
 
         if request.posterWithText:
             command.append("-PosterWithText")
+            
+        if request.blueprint_overrides:
+            temp_override_path = generate_blueprint_override_config(request.blueprint_overrides)
+            command.extend(["-ConfigOverride", temp_override_path])
 
         try:
             logger.info(f"Running manual mode with parameters:")
@@ -7182,6 +7219,7 @@ async def run_manual_mode_upload(
     episodeNumber: str = Form(""),
     add_to_queue: bool = Form(False),
     posterWithText: bool = Form(False),
+    blueprint_overrides: Optional[str] = Form(None),
 ):
     """Run manual mode with uploaded file"""
     global current_process, current_mode, current_start_time
@@ -7406,6 +7444,7 @@ async def run_manual_mode_upload(
                     "process_with_overlays": True,
                     "asset_type": posterType,
                     "poster_with_text": posterWithText,
+                    "blueprint_overrides": json.loads(blueprint_overrides) if blueprint_overrides else None,
                 }
 
                 # Construct a reference asset path
@@ -11654,6 +11693,7 @@ async def upload_asset_replacement(
     asset_type: Optional[str] = Query(None),
     mediaType: Optional[str] = Query(None),
     posterWithText: bool = Query(False),
+    blueprint_overrides: Optional[str] = Query(None),
 ):
     """
     Replace an asset with an uploaded image
@@ -11746,7 +11786,8 @@ async def upload_asset_replacement(
                     "asset_type": asset_type,
                     "mediaType": mediaType,
                     "process_with_overlays": process_with_overlays,
-                    "poster_with_text": posterWithText
+                    "poster_with_text": posterWithText,
+                    "blueprint_overrides": json.loads(blueprint_overrides) if blueprint_overrides else None
                 }
 
                 # Remove None values
@@ -12026,6 +12067,12 @@ async def upload_asset_replacement(
 
                     if posterWithText:
                         command.append("-PosterWithText")
+                        
+                    if blueprint_overrides:
+                        import json
+                        override_dict = json.loads(blueprint_overrides)
+                        temp_override_path = generate_blueprint_override_config(override_dict)
+                        command.extend(["-ConfigOverride", temp_override_path])
 
                     logger.info(f"Running Manual Mode Overlay Process:")         # Handle Background cards (background.jpg, backdrop.jpg, etc.)
                     # Handle Background cards (background.jpg, backdrop.jpg, etc.)

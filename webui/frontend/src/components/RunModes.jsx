@@ -30,6 +30,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import DangerZone from "./DangerZone";
 import RestoreModeModal from "./modals/RestoreModeModal";
 import { useToast } from "../context/ToastContext";
+import { BLUEPRINTS } from "./Blueprints";
 
 const API_URL = "/api";
 
@@ -492,6 +493,7 @@ function RunModes() {
     epTitleName: "",
     episodeNumber: "",
     posterWithText: false,
+    blueprintId: "none",
   });
 
   // State for Add to Queue
@@ -877,6 +879,14 @@ function RunModes() {
       let requestPayload = { ...manualForm, add_to_queue: addToQueue };
       delete requestPayload.mediaTypeSelection;
 
+      if (manualForm.blueprintId && manualForm.blueprintId !== "none") {
+        const bp = BLUEPRINTS.find(b => b.id === manualForm.blueprintId);
+        if (bp && bp.settings) {
+          requestPayload.blueprint_overrides = uploadedFile ? JSON.stringify(bp.settings) : bp.settings;
+        }
+      }
+      delete requestPayload.blueprintId;
+
       // If a file was uploaded, use FormData for multipart upload
       if (uploadedFile) {
         console.log("Preparing manual upload with file:", {
@@ -980,6 +990,7 @@ function RunModes() {
             epTitleName: "",
             episodeNumber: "",
             posterWithText: false,
+            blueprintId: "none",
           });
           setUploadedFile(null);
           setAddToQueue(false); // Reset queue toggle
@@ -2706,6 +2717,27 @@ const LogoUpdaterModal = React.memo(({
                   </select>
                 </div>
               )}
+
+              {/* Blueprint Selection */}
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-theme-text/70 uppercase tracking-wider">
+                  Blueprint Selection
+                </label>
+                <select
+                  value={manualForm.blueprintId}
+                  onChange={(e) => setManualForm({ ...manualForm, blueprintId: e.target.value })}
+                  className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
+                  disabled={loading || status.running}
+                >
+                  <option value="none">Default (Global Config)</option>
+                  {BLUEPRINTS.map(bp => (
+                    <option key={bp.id} value={bp.id}>{t(bp.titleKey)}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-theme-text/50 mt-1">
+                  Optionally override global settings with a specific blueprint for this run.
+                </p>
+              </div>
 
               {/* Divider */}
               <div className="flex items-center gap-3">

@@ -50,6 +50,10 @@ function HandleScriptExit {
         Send-UptimeKumaWebhook -status $Status -msg $Message
     }
 
+    if ($global:ConfigOverride -and (Test-Path $global:ConfigOverride)) {
+        Remove-Item -Path $global:ConfigOverride -Force -ErrorAction SilentlyContinue
+    }
+
     # Exit the script entirely
     Write-Entry -Message "Exiting Posterizarr run..." -Path $global:configLogging -Color Red -log Error
     $global:ExitRequested = $true

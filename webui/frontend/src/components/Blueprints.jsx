@@ -5,7 +5,7 @@ import { useToast } from "../context/ToastContext";
 
 const API_URL = "/api";
 
-const BLUEPRINTS = [
+export const BLUEPRINTS = [
   {
     id: "clearlogo-instead-of-text",
     titleKey: "blueprints.items.clearlogo.title",

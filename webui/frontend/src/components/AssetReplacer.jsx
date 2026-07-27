@@ -15,6 +15,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
+import { BLUEPRINTS } from "./Blueprints";
 
 const API_URL = "/api";
 
@@ -38,6 +39,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [processWithOverlays, setProcessWithOverlays] = useState(true);
   const [addToQueue, setAddToQueue] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
+  const [blueprintId, setBlueprintId] = useState("none");
   const [uploadedFile, setUploadedFile] = useState(null); // Store the actual file
   const [uploadHasText, setUploadHasText] = useState(false); // Track if uploaded asset has text
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
@@ -1211,6 +1213,13 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         asset.path
       )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
+      if (processWithOverlays && blueprintId && blueprintId !== "none") {
+        const bp = BLUEPRINTS.find(b => b.id === blueprintId);
+        if (bp && bp.settings) {
+          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.settings))}`;
+        }
+      }
+
       if (processWithOverlays) {
         const titleText = manualForm?.titletext ?? metadata.title;
         const folderName = manualForm?.foldername || metadata.folder_name;
@@ -1970,6 +1979,29 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           <option value="textless">Textless Asset (Clean)</option>
                           <option value="text">Has Language / Text</option>
                         </select>
+                      </div>
+                    )}
+                    
+                    {/* Blueprint Selection */}
+                    {uploadedImage && processWithOverlays && (
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-theme-text mb-2 uppercase tracking-wider">
+                          Blueprint Selection
+                        </label>
+                        <select
+                          value={blueprintId}
+                          onChange={(e) => setBlueprintId(e.target.value)}
+                          className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
+                          disabled={uploading}
+                        >
+                          <option value="none">Default (Global Config)</option>
+                          {BLUEPRINTS.map(bp => (
+                            <option key={bp.id} value={bp.id}>{t(bp.titleKey)}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-theme-text/50 mt-1">
+                          Optionally override global settings with a specific blueprint.
+                        </p>
                       </div>
                     )}
                   </div>

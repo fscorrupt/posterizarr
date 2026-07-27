@@ -12,6 +12,12 @@
     $Mode = "manual"
 
     Write-Entry -Message "Manual Poster Creation Started" -Path $global:configLogging -Color DarkMagenta -log Info
+
+    if ($global:PosterWithText) {
+        Write-Entry -Message "Source asset language detection: Has Text" -Path $global:configLogging -Color Cyan -log Info
+    } else {
+        Write-Entry -Message "Source asset language detection: Textless" -Path $global:configLogging -Color Cyan -log Info
+    }
     # Regex to find a positive number (1 or greater) at the end of the string
     $seasonNumberPattern = '([1-9]\d*)$'
 

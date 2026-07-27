@@ -140,7 +140,12 @@ Else {
     Write-Entry -Message "You are Running Version: v$CurrentScriptVersion - Latest Version is: v$LatestScriptVersion" -Path $global:configLogging -Color Yellow -log Warning
 }
 # load config file
-$config = Get-Content -Raw -Path $(Join-Path $global:ScriptRoot 'config.json') | ConvertFrom-Json
+if ($global:ConfigOverride -and (Test-Path $global:ConfigOverride)) {
+    Write-Entry -Message "Loading blueprint config override: $($global:ConfigOverride)" -Path $global:configLogging -Color Cyan -log Info
+    $config = Get-Content -Raw -Path $global:ConfigOverride | ConvertFrom-Json
+} else {
+    $config = Get-Content -Raw -Path $(Join-Path $global:ScriptRoot 'config.json') | ConvertFrom-Json
+}
 
 # Replace Script with Latest
 if ($Platform -ne 'Docker' -and $config.PrerequisitePart.AutoUpdatePosterizarr.tolower() -eq 'true' -and $CurrentScriptVersion -ne $LatestScriptVersion) {

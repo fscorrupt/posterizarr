@@ -20,6 +20,7 @@ param (
     [switch]$ForceReplace, # Force replace existing logos
     [switch]$UISchedule, # Required for UI Schedule trigger
     [switch]$ContainerSchedule, # Required for Container Schedule trigger
+    [string]$ConfigOverride, # Override config.json path
     [switch]$PosterWithText, # Indicates if the poster has text
     [string]$PicturePath, # Required for Manual Trigger
     [string]$Titletext, # Required for Manual Trigger
@@ -47,6 +48,12 @@ if ($PosterWithText) {
     $global:PosterWithText = $true
 } else {
     $global:PosterWithText = $false
+}
+
+if ($ConfigOverride) {
+    $global:ConfigOverride = $ConfigOverride
+} else {
+    $global:ConfigOverride = $null
 }
 
 # Parse ExtraArgs into a hashtable
@@ -165,7 +172,6 @@ elseif ($PosterReset) {
 elseif ($LogoUpdater -or $LogoRevert) {
     . "$PSScriptRoot\modules\modes\LogoUpdaterMode.ps1"
 }
-else {
+} else {
     . "$PSScriptRoot\modules\modes\NormalMode.ps1"
 }
-
