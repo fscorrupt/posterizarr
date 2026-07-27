@@ -6946,8 +6946,12 @@ def generate_blueprint_override_config(blueprint_overrides: dict) -> str:
     merged_config = deep_merge(blueprint_overrides, current_config)
     
     def clean_case_duplicates(d):
-        if not isinstance(d, dict):
-            return d
+        if isinstance(d, list):
+            return [clean_case_duplicates(item) for item in d]
+        elif not isinstance(d, dict):
+            if isinstance(d, bool):
+                return "true" if d else "false"
+            return str(d) if d is not None else d
             
         new_d = {}
         seen_keys_lower = set()
