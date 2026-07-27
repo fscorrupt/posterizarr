@@ -2865,6 +2865,56 @@ async def update_config(data: ConfigUpdate):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # ============================================================================
+# CUSTOM BLUEPRINTS ENDPOINTS
+# ============================================================================
+
+@app.get("/api/custom-blueprints")
+async def get_custom_blueprints():
+    """Get custom blueprints from the configuration database"""
+    try:
+        if not CONFIG_DATABASE_AVAILABLE or not config_db:
+            return []
+        
+        blueprints_str = config_db.get_value("CustomBlueprints", "blueprints")
+        if not blueprints_str:
+            return []
+            
+        return json.loads(blueprints_str)
+    except Exception as e:
+        logger.error(f"Error reading custom blueprints: {e}")
+        return []
+
+@app.post("/api/custom-blueprints")
+async def save_custom_blueprints(request: Request):
+    """Save custom blueprints to the configuration database"""
+    try:
+        if not CONFIG_DATABASE_AVAILABLE or not config_db:
+            raise HTTPException(status_code=500, detail="Database not available")
+            
+        data = await request.json()
+        
+        # Ensure it's a list
+        if not isinstance(data, list):
+            data = [data]
+            
+        success = config_db.set_value(
+            "CustomBlueprints", 
+            "blueprints", 
+            json.dumps(data)
+        )
+        
+        if success:
+            return {"status": "success", "message": "Custom blueprints saved successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save custom blueprints")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving custom blueprints: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+# ============================================================================
 # CONFIG DATABASE ENDPOINTS
 # ============================================================================
 

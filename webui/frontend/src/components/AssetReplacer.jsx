@@ -923,14 +923,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Load custom blueprints
   useEffect(() => {
-    const stored = localStorage.getItem("posterizarr_custom_blueprints");
-    if (stored) {
-      try {
-        setCustomBlueprints(JSON.parse(stored));
-      } catch (e) {
-        console.error("Failed to parse custom blueprints", e);
-      }
-    }
+    fetch("/api/custom-blueprints")
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCustomBlueprints(data);
+        }
+      })
+      .catch(e => console.error("Failed to fetch custom blueprints", e));
   }, []);
 
   // Initialize season number from metadata
@@ -1758,7 +1758,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
                             {[...BLUEPRINTS, ...customBlueprints].map((bp) => (
                               <option key={bp.id} value={bp.id}>
-                                {bp.id.startsWith('custom_') ? bp.titleKey : t(bp.titleKey)}
+                                {bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}
                               </option>
                             ))}
                           </select>

@@ -559,14 +559,14 @@ function RunModes() {
     fetchStatus();
     
     // Load custom blueprints
-    const stored = localStorage.getItem("posterizarr_custom_blueprints");
-    if (stored) {
-      try {
-        setCustomBlueprints(JSON.parse(stored));
-      } catch (e) {
-        console.error("Failed to parse custom blueprints", e);
-      }
-    }
+    fetch("/api/custom-blueprints")
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCustomBlueprints(data);
+        }
+      })
+      .catch(e => console.error("Failed to fetch custom blueprints", e));
 
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
@@ -2743,7 +2743,7 @@ const LogoUpdaterModal = React.memo(({
                 >
                   <option value="none">Default (Global Config)</option>
                   {[...BLUEPRINTS, ...customBlueprints].map(bp => (
-                    <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? bp.titleKey : t(bp.titleKey)}</option>
+                    <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}</option>
                   ))}
                 </select>
                 <p className="text-xs text-theme-text/50 mt-1">

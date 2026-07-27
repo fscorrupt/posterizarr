@@ -342,14 +342,46 @@ export default function Blueprints() {
   useEffect(() => {
     fetchConfig();
     fetchOverlayFiles();
-    const stored = localStorage.getItem("posterizarr_custom_blueprints");
-    if (stored) {
-      try {
-        setCustomBlueprints(JSON.parse(stored));
-      } catch (e) {
-        console.error("Failed to parse custom blueprints", e);
-      }
-    }
+    
+    // Fetch and migrate custom blueprints
+    fetch("/api/custom-blueprints")
+      .then(res => res.json())
+      .then(dbBlueprints => {
+        let merged = Array.isArray(dbBlueprints) ? [...dbBlueprints] : [];
+        const stored = localStorage.getItem("posterizarr_custom_blueprints");
+        if (stored) {
+          try {
+            const localBlueprints = JSON.parse(stored);
+            if (Array.isArray(localBlueprints) && localBlueprints.length > 0) {
+              let changed = false;
+              localBlueprints.forEach(lb => {
+                if (!merged.find(mb => mb.id === lb.id)) {
+                  merged.push(lb);
+                  changed = true;
+                }
+              });
+              
+              if (changed) {
+                fetch("/api/custom-blueprints", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(merged)
+                }).then(() => {
+                  localStorage.removeItem("posterizarr_custom_blueprints");
+                }).catch(e => console.error("Migration save failed", e));
+              } else {
+                localStorage.removeItem("posterizarr_custom_blueprints");
+              }
+            } else {
+              localStorage.removeItem("posterizarr_custom_blueprints");
+            }
+          } catch (e) {
+            console.error("Failed to parse local custom blueprints", e);
+          }
+        }
+        setCustomBlueprints(merged);
+      })
+      .catch(e => console.error("Failed to fetch custom blueprints", e));
   }, []);
 
   const unflattenConfig = (flat) => {
@@ -960,17 +992,36 @@ if (usingFlatStructure) {
     };
     const updatedBlueprints = [...customBlueprints, newBlueprint];
     setCustomBlueprints(updatedBlueprints);
-    localStorage.setItem("posterizarr_custom_blueprints", JSON.stringify(updatedBlueprints));
+    
+    fetch("/api/custom-blueprints", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedBlueprints)
+    }).then(() => {
+      showSuccess("Custom Preset saved!");
+    }).catch(e => {
+      console.error("Failed to save blueprint to db", e);
+      showError("Failed to save preset to database.");
+    });
+    
     setSavePresetModalState(null);
-    showSuccess("Custom Preset saved!");
     setActiveTab("presets");
   };
 
   const deleteCustomPreset = (id) => {
     const updatedBlueprints = customBlueprints.filter(b => b.id !== id);
     setCustomBlueprints(updatedBlueprints);
-    localStorage.setItem("posterizarr_custom_blueprints", JSON.stringify(updatedBlueprints));
-    showSuccess("Custom Preset deleted!");
+    
+    fetch("/api/custom-blueprints", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedBlueprints)
+    }).then(() => {
+      showSuccess("Custom Preset deleted!");
+    }).catch(e => {
+      console.error("Failed to delete blueprint from db", e);
+      showError("Failed to delete preset from database.");
+    });
   };
 
   const applyBuilderConfig = async () => {
