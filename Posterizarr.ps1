@@ -172,6 +172,6 @@ elseif ($PosterReset) {
 elseif ($LogoUpdater -or $LogoRevert) {
     . "$PSScriptRoot\modules\modes\LogoUpdaterMode.ps1"
 }
-} else {
+else {
     . "$PSScriptRoot\modules\modes\NormalMode.ps1"
 }
