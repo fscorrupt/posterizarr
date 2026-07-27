@@ -6945,6 +6945,24 @@ def generate_blueprint_override_config(blueprint_overrides: dict) -> str:
 
     merged_config = deep_merge(blueprint_overrides, current_config)
     
+    def clean_case_duplicates(d):
+        if not isinstance(d, dict):
+            return d
+            
+        new_d = {}
+        seen_keys_lower = set()
+        
+        # Sort keys so that CamelCase comes before lowercase (e.g., 'S' before 's' in ASCII)
+        for key in sorted(d.keys()):
+            key_lower = key.lower()
+            if key_lower not in seen_keys_lower:
+                seen_keys_lower.add(key_lower)
+                new_d[key] = clean_case_duplicates(d[key])
+                
+        return new_d
+        
+    merged_config = clean_case_duplicates(merged_config)
+    
     TEMP_DIR.mkdir(exist_ok=True)
     temp_file = TEMP_DIR / f"posterizarr_override_{uuid.uuid4().hex}.json"
     
