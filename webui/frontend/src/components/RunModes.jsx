@@ -476,6 +476,7 @@ function RunModes() {
   const { showSuccess, showError, showInfo } = useToast();
   const [loading, setLoading] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [customBlueprints, setCustomBlueprints] = useState([]);
   const [status, setStatus] = useState({
     running: false,
     current_mode: null,
@@ -556,8 +557,18 @@ function RunModes() {
 
   useEffect(() => {
     fetchStatus();
-    fetchConfig();
-    const interval = setInterval(fetchStatus, 3000);
+    
+    // Load custom blueprints
+    const stored = localStorage.getItem("posterizarr_custom_blueprints");
+    if (stored) {
+      try {
+        setCustomBlueprints(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse custom blueprints", e);
+      }
+    }
+
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -879,8 +890,9 @@ function RunModes() {
       let requestPayload = { ...manualForm, add_to_queue: addToQueue };
       delete requestPayload.mediaTypeSelection;
 
+      // Check if blueprint overrides are needed
       if (manualForm.blueprintId && manualForm.blueprintId !== "none") {
-        const bp = BLUEPRINTS.find(b => b.id === manualForm.blueprintId);
+        const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === manualForm.blueprintId);
         if (bp && bp.updates?.nested) {
           requestPayload.blueprint_overrides = uploadedFile ? JSON.stringify(bp.updates.nested) : bp.updates.nested;
         }
@@ -2730,8 +2742,8 @@ const LogoUpdaterModal = React.memo(({
                   disabled={loading || status.running}
                 >
                   <option value="none">Default (Global Config)</option>
-                  {BLUEPRINTS.map(bp => (
-                    <option key={bp.id} value={bp.id}>{t(bp.titleKey)}</option>
+                  {[...BLUEPRINTS, ...customBlueprints].map(bp => (
+                    <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? bp.title : t(bp.titleKey)}</option>
                   ))}
                 </select>
                 <p className="text-xs text-theme-text/50 mt-1">

@@ -40,6 +40,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [addToQueue, setAddToQueue] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [blueprintId, setBlueprintId] = useState("none");
+  const [customBlueprints, setCustomBlueprints] = useState([]);
   const [uploadedFile, setUploadedFile] = useState(null); // Store the actual file
   const [uploadHasText, setUploadHasText] = useState(false); // Track if uploaded asset has text
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
@@ -920,6 +921,18 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     fetchDatabaseData();
   }, [asset.path, dbData]);
 
+  // Load custom blueprints
+  useEffect(() => {
+    const stored = localStorage.getItem("posterizarr_custom_blueprints");
+    if (stored) {
+      try {
+        setCustomBlueprints(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse custom blueprints", e);
+      }
+    }
+  }, []);
+
   // Initialize season number from metadata
   useEffect(() => {
     // Check if season_number exists (including 0 for specials)
@@ -1214,7 +1227,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
-        const bp = BLUEPRINTS.find(b => b.id === blueprintId);
+        const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
         if (bp && bp.updates?.nested) {
           url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.updates.nested))}`;
         }
@@ -1475,7 +1488,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       }
 
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
-        const bp = BLUEPRINTS.find(b => b.id === blueprintId);
+        const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
         if (bp && bp.updates?.nested) {
           url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.updates.nested))}`;
         }
@@ -1742,9 +1755,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary transition-colors"
                             disabled={uploading}
                           >
-                            <option value="none">Default (Global Config)</option>
-                            {BLUEPRINTS.map(bp => (
-                              <option key={bp.id} value={bp.id}>{t(bp.titleKey)}</option>
+                            <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
+                            {[...BLUEPRINTS, ...customBlueprints].map((bp) => (
+                              <option key={bp.id} value={bp.id}>
+                                {bp.id.startsWith('custom_') ? bp.title : t(bp.titleKey)}
+                              </option>
                             ))}
                           </select>
                           <p className="text-[10px] sm:text-xs text-theme-muted mt-1">

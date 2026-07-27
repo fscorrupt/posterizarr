@@ -6934,9 +6934,11 @@ def generate_blueprint_override_config(blueprint_overrides: dict) -> str:
     current_config = config_db.get_full_config()
     
     def deep_merge(source, destination):
+        if destination is None:
+            destination = {}
         for key, value in source.items():
             if isinstance(value, dict):
-                destination[key] = deep_merge(value, destination.get(key, {}))
+                destination[key] = deep_merge(value, destination.get(key) or {})
             else:
                 destination[key] = value
         return destination
