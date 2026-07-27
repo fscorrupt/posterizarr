@@ -1755,7 +1755,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary transition-colors"
                             disabled={uploading}
                           >
-                            <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
+                            <option value="none">{t("assetReplacer.defaultGlobalConfig", "Default (Global Config)")}</option>
                             {[...BLUEPRINTS, ...customBlueprints].map((bp) => (
                               <option key={bp.id} value={bp.id}>
                                 {bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}
