@@ -1215,8 +1215,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
         const bp = BLUEPRINTS.find(b => b.id === blueprintId);
-        if (bp && bp.settings) {
-          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.settings))}`;
+        if (bp && bp.updates?.nested) {
+          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.updates.nested))}`;
         }
       }
 
@@ -1474,6 +1474,13 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         if (episodeTitleName) url += `&episode_title=${encodeURIComponent(episodeTitleName)}`;
       }
 
+      if (processWithOverlays && blueprintId && blueprintId !== "none") {
+        const bp = BLUEPRINTS.find(b => b.id === blueprintId);
+        if (bp && bp.updates?.nested) {
+          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.updates.nested))}`;
+        }
+      }
+
       const response = await fetch(url, { method: "POST" });
 
       if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -1723,6 +1730,27 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             />
                           </div>
                         )}
+
+                        {/* Blueprint Selection */}
+                        <div className="pt-3 border-t border-theme/30 mt-3">
+                          <label className="block text-xs font-medium text-theme-text mb-1">
+                            Blueprint Selection
+                          </label>
+                          <select
+                            value={blueprintId}
+                            onChange={(e) => setBlueprintId(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary transition-colors"
+                            disabled={uploading}
+                          >
+                            <option value="none">Default (Global Config)</option>
+                            {BLUEPRINTS.map(bp => (
+                              <option key={bp.id} value={bp.id}>{t(bp.titleKey)}</option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] sm:text-xs text-theme-muted mt-1">
+                            Optionally override global settings with a specific blueprint.
+                          </p>
+                        </div>
 
                         {/* Library Name */}
                         <div>
@@ -1982,28 +2010,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                       </div>
                     )}
                     
-                    {/* Blueprint Selection */}
-                    {uploadedImage && processWithOverlays && (
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-theme-text mb-2 uppercase tracking-wider">
-                          Blueprint Selection
-                        </label>
-                        <select
-                          value={blueprintId}
-                          onChange={(e) => setBlueprintId(e.target.value)}
-                          className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
-                          disabled={uploading}
-                        >
-                          <option value="none">Default (Global Config)</option>
-                          {BLUEPRINTS.map(bp => (
-                            <option key={bp.id} value={bp.id}>{t(bp.titleKey)}</option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-theme-text/50 mt-1">
-                          Optionally override global settings with a specific blueprint.
-                        </p>
-                      </div>
-                    )}
+
                   </div>
 
                   {uploadedImage && (
