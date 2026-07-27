@@ -2743,7 +2743,7 @@ const LogoUpdaterModal = React.memo(({
                 >
                   <option value="none">Default (Global Config)</option>
                   {[...BLUEPRINTS, ...customBlueprints].map(bp => (
-                    <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? bp.title : t(bp.titleKey)}</option>
+                    <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? bp.customTitle : t(bp.titleKey)}</option>
                   ))}
                 </select>
                 <p className="text-xs text-theme-text/50 mt-1">

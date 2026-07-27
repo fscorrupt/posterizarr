@@ -6931,7 +6931,7 @@ def generate_blueprint_override_config(blueprint_overrides: dict) -> str:
         logger.error("Cannot generate blueprint config: config_db is unavailable")
         raise RuntimeError("config_db is unavailable")
         
-    current_config = config_db.get_full_config()
+    current_config = config_db.export_to_json()
     
     def deep_merge(source, destination):
         if destination is None:
@@ -6945,9 +6945,8 @@ def generate_blueprint_override_config(blueprint_overrides: dict) -> str:
 
     merged_config = deep_merge(blueprint_overrides, current_config)
     
-    logs_dir = Path(os.getcwd()) / "Logs"
-    logs_dir.mkdir(exist_ok=True)
-    temp_file = logs_dir / f"temp_override_{uuid.uuid4().hex}.json"
+    TEMP_DIR.mkdir(exist_ok=True)
+    temp_file = TEMP_DIR / f"posterizarr_override_{uuid.uuid4().hex}.json"
     
     with open(temp_file, 'w', encoding='utf-8') as f:
         json.dump(merged_config, f, indent=4)

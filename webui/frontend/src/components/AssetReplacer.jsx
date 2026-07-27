@@ -1758,7 +1758,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
                             {[...BLUEPRINTS, ...customBlueprints].map((bp) => (
                               <option key={bp.id} value={bp.id}>
-                                {bp.id.startsWith('custom_') ? bp.title : t(bp.titleKey)}
+                                {bp.id.startsWith('custom_') ? bp.customTitle : t(bp.titleKey)}
                               </option>
                             ))}
                           </select>
