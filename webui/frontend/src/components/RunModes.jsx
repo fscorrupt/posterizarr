@@ -113,14 +113,19 @@ const TMDBPosterSearchModal = React.memo(
       });
     };
 
-    const handleSelectPoster = (posterUrl) => {
+    const handleSelectPoster = (poster) => {
+      const posterUrl = poster.original_url || poster.poster_url || poster.url;
+      const lang = (poster.language || "").toLowerCase();
+      // If language is empty, 'xx', 'null', 'none', or 'textless', assume no text
+      const hasText = !(lang === "" || lang === "xx" || lang === "null" || lang === "none" || lang === "textless");
+
       if (tmdbSearch.isLogoSearch) {
         // If logo search, update titletext with URL
         setManualForm({ ...manualForm, titletext: posterUrl });
         showSuccess("Logo URL applied to Title Text");
       } else {
-        // Normal behavior: update picturePath
-        setManualForm({ ...manualForm, picturePath: posterUrl });
+        // Normal behavior: update picturePath and text status
+        setManualForm({ ...manualForm, picturePath: posterUrl, posterWithText: hasText });
         showSuccess(t("runModes.tmdb.posterSelected"));
       }
 
@@ -372,7 +377,7 @@ const TMDBPosterSearchModal = React.memo(
                           index
                         }
                         className="group relative bg-theme-hover rounded-lg overflow-hidden border border-theme hover:border-theme-primary transition-all cursor-pointer"
-                        onClick={() => handleSelectPoster(poster.original_url)}
+                        onClick={() => handleSelectPoster(poster)}
                       >
                         {/* Poster/Logo Image */}
                         <div className={`${tmdbSearch.isLogoSearch ? 'bg-slate-700/50 p-2' : ''} h-full`}>
@@ -486,6 +491,7 @@ function RunModes() {
     seasonPosterName: "",
     epTitleName: "",
     episodeNumber: "",
+    posterWithText: false,
   });
 
   // State for Add to Queue
@@ -494,6 +500,7 @@ function RunModes() {
   // File upload state
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState(null);
+
 
   // Folder selector state
   const [showFolderSelector, setShowFolderSelector] = useState(false);
@@ -882,6 +889,7 @@ function RunModes() {
         const formData = new FormData();
         formData.append("file", uploadedFile);
         formData.append("add_to_queue", addToQueue);
+        // Note: manualForm.posterWithText is already appended by the Object.keys loop below
 
         // Append all other form fields
         Object.keys(requestPayload).forEach((key) => {
@@ -923,6 +931,7 @@ function RunModes() {
             seasonPosterName: "",
             epTitleName: "",
             episodeNumber: "",
+            posterWithText: false,
           });
           setUploadedFile(null);
           setUploadPreview(null);
@@ -970,6 +979,7 @@ function RunModes() {
             seasonPosterName: "",
             epTitleName: "",
             episodeNumber: "",
+            posterWithText: false,
           });
           setUploadedFile(null);
           setAddToQueue(false); // Reset queue toggle
@@ -2676,6 +2686,24 @@ const LogoUpdaterModal = React.memo(({
                       </p>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Text / Textless Dropdown */}
+              {(uploadedFile || manualForm.picturePath) && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-theme-text mb-2">
+                    Asset Type
+                  </label>
+                  <select
+                    value={manualForm.posterWithText ? "text" : "textless"}
+                    onChange={(e) => setManualForm({ ...manualForm, posterWithText: e.target.value === "text" })}
+                    className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
+                    disabled={loading || status.running}
+                  >
+                    <option value="textless">Textless Asset (Clean)</option>
+                    <option value="text">Has Language / Text</option>
+                  </select>
                 </div>
               )}
 

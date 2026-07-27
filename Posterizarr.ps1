@@ -20,6 +20,7 @@ param (
     [switch]$ForceReplace, # Force replace existing logos
     [switch]$UISchedule, # Required for UI Schedule trigger
     [switch]$ContainerSchedule, # Required for Container Schedule trigger
+    [switch]$PosterWithText, # Indicates if the poster has text
     [string]$PicturePath, # Required for Manual Trigger
     [string]$Titletext, # Required for Manual Trigger
     [string]$FolderName, # Required for Manual Trigger
@@ -42,6 +43,12 @@ param (
 $global:ExitRequested = $false
 $MainPSBoundParameters = $PSBoundParameters
 
+if ($PosterWithText) {
+    $global:PosterWithText = $true
+} else {
+    $global:PosterWithText = $false
+}
+
 # Parse ExtraArgs into a hashtable
 $arrTriggers = @{}
 for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
@@ -61,7 +68,7 @@ for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
     }
 }
 
-$CurrentScriptVersion = "3.1.4"
+$CurrentScriptVersion = "3.1.5"
 $global:HeaderWritten = $false
 $ProgressPreference = 'SilentlyContinue'
 

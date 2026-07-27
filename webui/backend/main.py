@@ -2373,6 +2373,7 @@ class ManualModeRequest(BaseModel):
     episodeNumber: str = ""
     mediaType: str = ""
     add_to_queue: bool = False
+    posterWithText: bool = False
 
 
 class UILogEntry(BaseModel):
@@ -6945,6 +6946,7 @@ async def run_manual_mode(request: ManualModeRequest):
             "episode_title": request.epTitleName if request.posterType == "titlecard" else None,
             "process_with_overlays": True,
             "asset_type": request.posterType,
+            "poster_with_text": request.posterWithText,
         }
 
         # Construct a reference asset path
@@ -7105,6 +7107,9 @@ async def run_manual_mode(request: ManualModeRequest):
                 ]
             )
 
+        if request.posterWithText:
+            command.append("-PosterWithText")
+
         try:
             logger.info(f"Running manual mode with parameters:")
             logger.info(f"  Picture Path: {request.picturePath}")
@@ -7176,6 +7181,7 @@ async def run_manual_mode_upload(
     epTitleName: str = Form(""),
     episodeNumber: str = Form(""),
     add_to_queue: bool = Form(False),
+    posterWithText: bool = Form(False),
 ):
     """Run manual mode with uploaded file"""
     global current_process, current_mode, current_start_time
@@ -7399,6 +7405,7 @@ async def run_manual_mode_upload(
                     "episode_title": epTitleName if posterType == "titlecard" else None,
                     "process_with_overlays": True,
                     "asset_type": posterType,
+                    "poster_with_text": posterWithText,
                 }
 
                 # Construct a reference asset path
@@ -7519,6 +7526,9 @@ async def run_manual_mode_upload(
                         libraryName.strip(),
                     ]
                 )
+
+            if posterWithText:
+                command.append("-PosterWithText")
 
             logger.info(f"Running manual mode with uploaded file:")
             logger.info(f"  Picture Path: {upload_path}")
@@ -8412,7 +8422,7 @@ async def get_thumbnail(path: str = Query(..., description="Path to the image"),
         return FileResponse(real_path)
 @app.get("/api/gallery")
 async def get_gallery():
-    """Get poster gallery from assets directory (only poster.jpg) - uses cache"""
+    """Get poster gallery from the assets directory (only poster.jpg) - uses cache"""
     try:
         cache = get_fresh_assets()
         # Return cached posters, limit to 200 for performance
@@ -11643,6 +11653,7 @@ async def upload_asset_replacement(
     episode_title: Optional[str] = Query(None),
     asset_type: Optional[str] = Query(None),
     mediaType: Optional[str] = Query(None),
+    posterWithText: bool = Query(False),
 ):
     """
     Replace an asset with an uploaded image
@@ -11734,7 +11745,8 @@ async def upload_asset_replacement(
                     "episode_title": episode_title,
                     "asset_type": asset_type,
                     "mediaType": mediaType,
-                    "process_with_overlays": process_with_overlays
+                    "process_with_overlays": process_with_overlays,
+                    "poster_with_text": posterWithText
                 }
 
                 # Remove None values
@@ -12010,10 +12022,14 @@ async def upload_asset_replacement(
                     elif episode_number and episode_title:
                         command.extend(["-TitleCards"])
                         command.extend(["-EpisodeNumber", sanitize_command_arg(episode_number)])
-                        command.extend(["-EpisodeTitleName", sanitize_command_arg(episode_title)])
+                        command.extend(["-EPTitleName", sanitize_command_arg(episode_title)])
 
+                    if posterWithText:
+                        command.append("-PosterWithText")
+
+                    logger.info(f"Running Manual Mode Overlay Process:")         # Handle Background cards (background.jpg, backdrop.jpg, etc.)
                     # Handle Background cards (background.jpg, backdrop.jpg, etc.)
-                    elif "background" in filename or "backdrop" in filename:
+                    if "background" in filename or "backdrop" in filename:
                         command.extend(["-BackgroundCard"])
 
                     elif mediaType == "movie":
@@ -12380,6 +12396,7 @@ async def replace_asset_from_url(
     episode_title: Optional[str] = Query(None),
     asset_type: Optional[str] = Query(None),
     mediaType: Optional[str] = Query(None),
+    posterWithText: bool = Query(False),
 ):
     """
     Replace an asset by downloading from a URL
@@ -12414,7 +12431,8 @@ async def replace_asset_from_url(
                     "episode_title": episode_title,
                     "asset_type": asset_type,
                     "mediaType": mediaType,
-                    "process_with_overlays": process_with_overlays
+                    "process_with_overlays": process_with_overlays,
+                    "poster_with_text": posterWithText
                 }
 
                 # Remove None values
@@ -12776,6 +12794,9 @@ async def trigger_manual_run_internal(request: ManualModeRequest):
 
         elif request.mediaType in ["show", "tv"]:
             command.extend(["-ShowPosterCard"])
+
+    if getattr(request, "posterWithText", False):
+        command.append("-PosterWithText")
 
     logger.info(f"Starting Manual Run: {' '.join(command)}")
 

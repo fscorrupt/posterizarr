@@ -39,6 +39,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [addToQueue, setAddToQueue] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [uploadedFile, setUploadedFile] = useState(null); // Store the actual file
+  const [uploadHasText, setUploadHasText] = useState(false); // Track if uploaded asset has text
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
   const [isDimensionValid, setIsDimensionValid] = useState(false); // Track if dimensions are valid
   const [activeProviderTab, setActiveProviderTab] = useState("tmdb"); // Provider tabs: tmdb, tvdb, fanart
@@ -1267,7 +1268,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
       const formData = new FormData();
       formData.append("file", uploadedFile);
+      formData.append("asset_type", assetType);
+      
+      // Append posterWithText
+      formData.append("posterWithText", uploadHasText);
 
+      let mediaType = "movie";
       const response = await fetch(url, {
         method: "POST",
         body: formData,
@@ -1948,6 +1954,24 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         disabled={uploading}
                       />
                     </label>
+
+                    {/* Text / Textless Dropdown */}
+                    {uploadedImage && (
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-theme-text mb-2">
+                          Asset Type
+                        </label>
+                        <select
+                          value={uploadHasText ? "text" : "textless"}
+                          onChange={(e) => setUploadHasText(e.target.value === "text")}
+                          className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
+                          disabled={uploading}
+                        >
+                          <option value="textless">Textless Asset (Clean)</option>
+                          <option value="text">Has Language / Text</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {uploadedImage && (

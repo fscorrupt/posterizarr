@@ -452,15 +452,19 @@
         InvokeMagickCommand -Command $magick -Arguments $CommentArguments
         if ($global:ImageMagickError -ne 'true') {
             if ($SeasonPoster) {
-                if ($AddSeasonBorder -eq 'true' -and $AddSeasonOverlay -eq 'true') {
+                $settings = Get-OverlayAndBorderSettings -AddBorder $AddSeasonBorder -AddOverlay $AddSeasonOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                $LocalAddBorder = $settings.Border
+                $LocalAddOverlay = $settings.Overlay
+
+                if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$Seasonoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$Seasonborderwidthsecond`"  -bordercolor `"$Seasonbordercolor`" -border `"$Seasonborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddSeasonBorder -eq 'true' -and $AddSeasonOverlay -eq 'false') {
+                elseif ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'false') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" -shave `"$Seasonborderwidthsecond`"  -bordercolor `"$Seasonbordercolor`" -border `"$Seasonborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddSeasonBorder -eq 'false' -and $AddSeasonOverlay -eq 'true') {
+                elseif ($LocalAddBorder -eq 'false' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$Seasonoverlay`" -gravity south -quality $global:outputQuality -composite `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
@@ -471,15 +475,19 @@
                 $global:SeasonCount = Increment-GlobalStat 'SeasonCount'
             }
             elseif ($CollectionCard) {
-                if ($AddCollectionBorder -eq 'true' -and $AddCollectionOverlay -eq 'true') {
+                $settings = Get-OverlayAndBorderSettings -AddBorder $AddCollectionBorder -AddOverlay $AddCollectionOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                $LocalAddBorder = $settings.Border
+                $LocalAddOverlay = $settings.Overlay
+
+                if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$Collectionoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$Collectionborderwidthsecond`"  -bordercolor `"$Collectionbordercolor`" -border `"$Collectionborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddCollectionBorder -eq 'true' -and $AddCollectionOverlay -eq 'false') {
+                elseif ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'false') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" -shave `"$Collectionborderwidthsecond`"  -bordercolor `"$Collectionbordercolor`" -border `"$Collectionborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddCollectionBorder -eq 'false' -and $AddCollectionOverlay -eq 'true') {
+                elseif ($LocalAddBorder -eq 'false' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$Collectionoverlay`" -gravity south -quality $global:outputQuality -composite `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
@@ -490,15 +498,19 @@
                 $global:collectionCount = Increment-GlobalStat 'collectionCount'
             }
             elseif ($TitleCard) {
-                if ($AddTitleCardBorder -eq 'true' -and $AddTitleCardOverlay -eq 'true') {
+                $settings = Get-OverlayAndBorderSettings -AddBorder $AddTitleCardBorder -AddOverlay $AddTitleCardOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                $LocalAddBorder = $settings.Border
+                $LocalAddOverlay = $settings.Overlay
+
+                if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$Defaulttitlecardoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddTitleCardBorder -eq 'true' -and $AddTitleCardOverlay -eq 'false') {
+                elseif ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'false') {
                     $Arguments = "`"$PosterImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddTitleCardBorder -eq 'false' -and $AddTitleCardOverlay -eq 'true') {
+                elseif ($LocalAddBorder -eq 'false' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$Defaulttitlecardoverlay`" -gravity south -quality $global:outputQuality -composite `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
@@ -509,16 +521,20 @@
                 $global:EpisodeCount = Increment-GlobalStat 'EpisodeCount'
             }
             elseif ($BackgroundCard) {
+                $settings = Get-OverlayAndBorderSettings -AddBorder $AddBackgroundBorder -AddOverlay $AddBackgroundOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                $LocalAddBorder = $settings.Border
+                $LocalAddOverlay = $settings.Overlay
+
                 # Resize Image to 2000x3000 and apply Border and overlay
-                if ($AddBackgroundBorder -eq 'true' -and $AddBackgroundOverlay -eq 'true') {
+                if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$DefaultBackgroundoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$Backgroundborderwidthsecond`"  -bordercolor `"$Backgroundbordercolor`" -border `"$Backgroundborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddBackgroundBorder -eq 'true' -and $AddBackgroundOverlay -eq 'false') {
+                elseif ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'false') {
                     $Arguments = "`"$PosterImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" -shave `"$Backgroundborderwidthsecond`"  -bordercolor `"$Backgroundbordercolor`" -border `"$Backgroundborderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddBackgroundBorder -eq 'false' -and $AddBackgroundOverlay -eq 'true') {
+                elseif ($LocalAddBorder -eq 'false' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$DefaultBackgroundoverlay`" -gravity south -quality $global:outputQuality -composite `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
@@ -529,16 +545,20 @@
                 $global:BackgroundCount = Increment-GlobalStat 'BackgroundCount'
             }
             Else {
+                $settings = Get-OverlayAndBorderSettings -AddBorder $AddBorder -AddOverlay $AddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                $LocalAddBorder = $settings.Border
+                $LocalAddOverlay = $settings.Overlay
+
                 # Resize Image to 2000x3000 and apply Border and overlay
-                if ($AddBorder -eq 'true' -and $AddOverlay -eq 'true') {
+                if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$DefaultPosteroverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$borderwidthsecond`"  -bordercolor `"$bordercolor`" -border `"$borderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddBorder -eq 'true' -and $AddOverlay -eq 'false') {
+                elseif ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'false') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" -shave `"$borderwidthsecond`"  -bordercolor `"$bordercolor`" -border `"$borderwidth`" `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Borders" -Path $global:configLogging -Color White -log Info
                 }
-                elseif ($AddBorder -eq 'false' -and $AddOverlay -eq 'true') {
+                elseif ($LocalAddBorder -eq 'false' -and $LocalAddOverlay -eq 'true') {
                     $Arguments = "`"$PosterImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$DefaultPosteroverlay`" -gravity south -quality $global:outputQuality -composite `"$PosterImage`""
                     Write-Entry -Subtext "Resizing it | Adding Overlay" -Path $global:configLogging -Color White -log Info
                 }
@@ -582,7 +602,12 @@
                     $isLogo = $false
                 }
             }
-            if (($isLogo -or $AddText -eq 'true' -or $AddSeasonText -eq 'true' -or $AddTitleCardEPTitleText -eq 'true' -or $AddTitleCardEPText -eq 'true' -or $AddCollectionText -eq 'true' -or $AddBackgroundText -eq 'true') -and -not [string]::IsNullOrWhiteSpace($joinedTitle)) {
+            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+            if ($SkippingText -eq 'true') {
+                Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
+            }
+
+            if ($SkippingText -eq 'false' -and ($isLogo -or $AddText -eq 'true' -or $AddSeasonText -eq 'true' -or $AddTitleCardEPTitleText -eq 'true' -or $AddTitleCardEPText -eq 'true' -or $AddCollectionText -eq 'true' -or $AddBackgroundText -eq 'true') -and -not [string]::IsNullOrWhiteSpace($joinedTitle)) {
                 $joinedTitle = $joinedTitle -replace '„', '"' -replace '”', '"' -replace '“', '"' -replace '"', '''' -replace '“', '''' -replace '”', '''' -replace '„', '''' -replace '`', ''
                 if ($AddShowTitletoSeason -eq 'true' -and $SeasonPoster) {
                     $ShowjoinedTitle = $ShowjoinedTitle -replace '„', '"' -replace '”', '"' -replace '“', '"' -replace '"', '''' -replace '“', '''' -replace '”', '''' -replace '„', '''' -replace '`', ''

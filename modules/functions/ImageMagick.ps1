@@ -12,6 +12,48 @@ function Write-MagickLog {
         $mutex.Dispose()
     }
 }
+
+function Get-OverlayAndBorderSettings {
+    param (
+        [string]$AddBorder,
+        [string]$AddOverlay,
+        [string]$SkipAddTextAndOverlay,
+        [string]$SkipAddTextAndBorder,
+        [bool]$PosterWithText
+    )
+
+    $LocalAddBorder = $AddBorder
+    $LocalAddOverlay = $AddOverlay
+
+    if (($SkipAddTextAndOverlay -eq 'true') -and $PosterWithText) {
+        $LocalAddOverlay = 'false'
+    }
+    if (($SkipAddTextAndBorder -eq 'true') -and $PosterWithText) {
+        $LocalAddBorder = 'false'
+    }
+    if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $PosterWithText) {
+        $LocalAddBorder = 'false'
+        $LocalAddOverlay = 'false'
+    }
+
+    return @{
+        Border = $LocalAddBorder
+        Overlay = $LocalAddOverlay
+    }
+}
+
+function Get-SkipTextSetting {
+    param (
+        [string]$SkipAddText,
+        [string]$SkipAddTextAndOverlay,
+        [bool]$PosterWithText
+    )
+
+    if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $PosterWithText) {
+        return 'true'
+    }
+    return 'false'
+}
 function Test-IsPosterizarrAsset {
     param ([string]$Path)
 

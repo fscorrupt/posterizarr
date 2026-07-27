@@ -2736,21 +2736,9 @@ function Invoke-ShowPosterCreation {
                                     Else {
                                         $backgroundoverlay = $DefaultShowBackgroundoverlay
                                     }
-                                    # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                    if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                        $LocalAddOverlay = 'false'
-                                    }
-
-                                    # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                    if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                        $LocalAddBorder = 'false'
-                                    }
-
-                                    # Logic for "If both are true, only resize"
-                                    if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                        $LocalAddBorder = 'false'
-                                        $LocalAddOverlay = 'false'
-                                    }
+                                    $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                    $LocalAddBorder = $settings.Border
+                                    $LocalAddOverlay = $settings.Overlay
                                     # Calculate the height to maintain the aspect ratio with a width of 1000 pixels
                                     if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                         $Arguments = "`"$backgroundImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$Backgroundoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$Backgroundborderwidthsecond`"  -bordercolor `"$Backgroundbordercolor`" -border `"$Backgroundborderwidth`" `"$backgroundImage`""
@@ -2771,8 +2759,8 @@ function Invoke-ShowPosterCreation {
                                     $logEntry = "`"$magick`" $Arguments"
                                     $logEntry | Write-MagickLog
                                     InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                    if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                        $SkippingText = 'true'
+                                    $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                    if ($SkippingText -eq 'true') {
                                         Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                     }
                                     # ONLY proceed with Logo or Text application if SkippingText is NOT true
@@ -3627,21 +3615,9 @@ function Invoke-ShowPosterCreation {
                                         $CommentlogEntry | Write-MagickLog
                                         InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                         if ($global:ImageMagickError -ne 'true') {
-                                            # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                            if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddOverlay = 'false'
-                                            }
-
-                                            # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                            if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                            }
-
-                                            # Logic for "If both are true, only resize"
-                                            if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                                $LocalAddOverlay = 'false'
-                                            }
+                                            $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                            $LocalAddBorder = $settings.Border
+                                            $LocalAddOverlay = $settings.Overlay
                                             # Resize Image to 2000x3000 and apply Border and overlay
                                             if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                                 $Arguments = "`"$SeasonImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$Seasonoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$Seasonborderwidthsecond`"  -bordercolor `"$Seasonbordercolor`" -border `"$Seasonborderwidth`" `"$SeasonImage`""
@@ -3663,8 +3639,8 @@ function Invoke-ShowPosterCreation {
                                             $logEntry = "`"$magick`" $Arguments"
                                             $logEntry | Write-MagickLog
                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                            if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $SkippingText = 'true'
+                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            if ($SkippingText -eq 'true') {
                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                             }
                                             if ($AddSeasonText -eq 'true' -and $SkippingText -eq 'false') {
@@ -4605,21 +4581,9 @@ function Invoke-TitleCardCreation {
                                             Else {
                                                 $TitleCardoverlay = $DefaultTitleCardoverlay
                                             }
-                                            # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                            if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddOverlay = 'false'
-                                            }
-
-                                            # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                            if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                            }
-
-                                            # Logic for "If both are true, only resize"
-                                            if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                                $LocalAddOverlay = 'false'
-                                            }
+                                            $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                            $LocalAddBorder = $settings.Border
+                                            $LocalAddOverlay = $settings.Overlay
                                             # Resize Image to 2000x3000 and apply Border and overlay
                                             if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                                 $Arguments = "`"$EpisodeImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$TitleCardoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$EpisodeImage`""
@@ -4640,8 +4604,8 @@ function Invoke-TitleCardCreation {
                                             $logEntry = "`"$magick`" $Arguments"
                                             $logEntry | Write-MagickLog
                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                            if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $SkippingText = 'true'
+                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            if ($SkippingText -eq 'true') {
                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                             }
                                             if ($AddTitleCardEPTitleText -eq 'true' -and $SkippingText -eq 'false') {
@@ -5355,21 +5319,9 @@ function Invoke-TitleCardCreation {
                                         Else {
                                             $TitleCardoverlay = $DefaultTitleCardoverlay
                                         }
-                                        # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                        if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                            $LocalAddOverlay = 'false'
-                                        }
-
-                                        # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                        if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                            $LocalAddBorder = 'false'
-                                        }
-
-                                        # Logic for "If both are true, only resize"
-                                        if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                            $LocalAddBorder = 'false'
-                                            $LocalAddOverlay = 'false'
-                                        }
+                                        $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                        $LocalAddBorder = $settings.Border
+                                        $LocalAddOverlay = $settings.Overlay
                                         # Resize Image to 2000x3000 and apply Border and overlay
                                         if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                             $Arguments = "`"$EpisodeImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$TitleCardoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$EpisodeImage`""
@@ -5390,8 +5342,8 @@ function Invoke-TitleCardCreation {
                                         $logEntry = "`"$magick`" $Arguments"
                                         $logEntry | Write-MagickLog
                                         InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                        if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                            $SkippingText = 'true'
+                                        $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                        if ($SkippingText -eq 'true') {
                                             Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                         }
                                         if ($AddTitleCardEPTitleText -eq 'true' -and $SkippingText -eq 'false') {
@@ -6101,21 +6053,9 @@ function Invoke-TitleCardCreation {
                                                             Else {
                                                                 $TitleCardoverlay = $DefaultTitleCardoverlay
                                                             }
-                                                            # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                                            if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                                $LocalAddOverlay = 'false'
-                                                            }
-
-                                                            # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                                            if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                                                $LocalAddBorder = 'false'
-                                                            }
-
-                                                            # Logic for "If both are true, only resize"
-                                                            if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                                                $LocalAddBorder = 'false'
-                                                                $LocalAddOverlay = 'false'
-                                                            }
+                                                            $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                                            $LocalAddBorder = $settings.Border
+                                                            $LocalAddOverlay = $settings.Overlay
                                                             # Resize Image to 2000x3000 and apply Border and overlay
                                                             if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                                                 $Arguments = "`"$EpisodeImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$TitleCardoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$EpisodeImage`""
@@ -6136,8 +6076,8 @@ function Invoke-TitleCardCreation {
                                                             $logEntry = "`"$magick`" $Arguments"
                                                             $logEntry | Write-MagickLog
                                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                                            if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                                $SkippingText = 'true'
+                                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                                            if ($SkippingText -eq 'true') {
                                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                                             }
                                                             if ($AddTitleCardEPTitleText -eq 'true' -and $SkippingText -eq 'false') {
