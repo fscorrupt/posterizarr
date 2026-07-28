@@ -11,31 +11,12 @@
     $retryCount = 0
     $maxRetries = 3
     $Libsoverview = [System.Collections.Generic.List[object]]::new()
-    $normalizeLibName = {
-        param([string]$Name)
-        if ($null -eq $Name) { return '' }
-        return (($Name -replace '\s+', ' ').Trim())
-    }
-    $excludedLibLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($rawExclude in @($LibstoExclude)) {
-        if ($null -eq $rawExclude) { continue }
-        foreach ($excludeCandidate in ([string]$rawExclude -split '[,;\r\n]')) {
-            $excludeName = & $normalizeLibName $excludeCandidate
-            if (-not [string]::IsNullOrWhiteSpace($excludeName)) {
-                [void]$excludedLibLookup.Add($excludeName)
-            }
-        }
-    }
-    $allLibraryNamesLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     while ($retryCount -le $maxRetries) {
         $Libsoverview.Clear()
-        $allLibraryNamesLookup.Clear()
         if ($Libs -and $Libs.MediaContainer.Directory) {
             foreach ($lib in @($Libs.MediaContainer.Directory)) {
-                $libTitle = & $normalizeLibName ([string]$lib.title)
-                [void]$allLibraryNamesLookup.Add($libTitle)
-                if (-not $excludedLibLookup.Contains($libTitle)) {
+                if ($lib.title -notin $LibstoExclude) {
                     $libtemp = New-Object psobject
                     $libtemp | Add-Member -MemberType NoteProperty -Name "ID" -Value $lib.key
                     $libtemp | Add-Member -MemberType NoteProperty -Name "Name" -Value $lib.title
@@ -84,26 +65,13 @@
         # Clear Running File
         HandleScriptExit -Message "No libs found"
     }
-    $matchedExcludedCount = 0
-    foreach ($excludeName in $excludedLibLookup) {
-        if ($allLibraryNamesLookup.Contains($excludeName)) { $matchedExcludedCount++ }
-    }
-    Write-Entry -Subtext "Found '$($Libsoverview.count)' libs and '$matchedExcludedCount' are excluded..." -Path $global:configLogging -Color Cyan -log Info
-    $unmatchedExcluded = [System.Collections.Generic.List[string]]::new()
-    foreach ($excludeName in $excludedLibLookup) {
-        if (-not $allLibraryNamesLookup.Contains($excludeName)) {
-            [void]$unmatchedExcluded.Add($excludeName)
-        }
-    }
-    if ($unmatchedExcluded.Count -gt 0) {
-        Write-Entry -Subtext "Configured excluded library names not found on server: $($unmatchedExcluded -join ', ')" -Path $global:configLogging -Color Yellow -log Warning
-    }
+    Write-Entry -Subtext "Found '$($Libsoverview.count)' libs and '$($LibstoExclude.count)' are excluded..." -Path $global:configLogging -Color Cyan -log Info
     $IncludedLibraryNames = $Libsoverview.Name -join ', '
     Write-Entry -Subtext "Included Libraries: $IncludedLibraryNames" -Path $global:configLogging -Color Cyan -log Info
     Write-Entry -Message "Query all items from all Libs, this can take a while..." -Path $global:configLogging -Color White -log Info
     $Libraries = [System.Collections.Generic.List[object]]::new()
     Foreach ($Library in $Libsoverview) {
-        if (-not $excludedLibLookup.Contains([string]$Library.Name)) {
+        if ($Library.Name -notin $LibstoExclude) {
             $PlexHeaders = @{}
             if ($PlexToken) {
                 $PlexHeaders['X-Plex-Token'] = $PlexToken
@@ -450,7 +418,7 @@
     if ($global:runspaceStats) { $global:runspaceStats['SkipTBACount'] = 0 }
     $global:SkipJapTitleCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['SkipJapTitleCount'] = 0 }
-
+    
     # Initialize Summary Counts to prevent leakage between scheduled runs
     $FallbackCount = $null
     $TextlessCount = $null
@@ -694,10 +662,6 @@
         } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
     }
 
-    # Save JSON DB before cleanup so all promoted ratingKey entries are committed.
-    # Cleanup will then use the fully up-to-date JSON as its source of truth.
-    Save-AssetHashtable -directoryHashtable $directoryHashtable
-
     # Asset Cleanup
     if ($AssetCleanup -eq 'true') {
         $ImagesCleared = 0
@@ -711,68 +675,30 @@
             [void]$checkedItemsLookup.Add([string]$checkedItem)
         }
 
-        # Build regex patterns for excluded library names to enforce cleanup by path.
-        # This guarantees excluded-library assets are purged in the same DB-driven pass.
-        $excludedLibraryPathPatterns = [System.Collections.Generic.List[object]]::new()
-        foreach ($excludeName in $excludedLibLookup) {
-            if ([string]::IsNullOrWhiteSpace($excludeName)) { continue }
-            $escapedName = [regex]::Escape([string]$excludeName)
-            $excludedLibraryPathPatterns.Add([regex]::new("(?:^|[\\/])$escapedName(?:[\\/]|$)", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase))
-        }
-
         # Perform deletion of unchecked items
-        $keysToRemove = [System.Collections.Generic.List[string]]::new()
         foreach ($uncheckedItem in $directoryHashtable.Keys) {
-            $removeDbEntry = $false
-            $uncheckedItemPath = $directoryHashtable[$uncheckedItem]
-            $forceCleanupByExcludedPath = $false
-            if (-not [string]::IsNullOrEmpty($uncheckedItemPath)) {
-                foreach ($pattern in $excludedLibraryPathPatterns) {
-                    if ($pattern.IsMatch([string]$uncheckedItemPath)) {
-                        $forceCleanupByExcludedPath = $true
-                        break
-                    }
-                }
-            }
+            if ($checkedItemsLookup.Contains([string]$uncheckedItem)) { continue }
 
-            if ($checkedItemsLookup.Contains([string]$uncheckedItem) -and -not $forceCleanupByExcludedPath) { continue }
+            if ($uncheckedItem -notlike '*.jpg') {
+                # Full path to the item
+                $uncheckedItemPath = $uncheckedItem + ".jpg"
 
-            if (-not [string]::IsNullOrEmpty($uncheckedItemPath)) {
-                if (Test-Path -LiteralPath $uncheckedItemPath -PathType Leaf) {
-                    # ratingKey-based keys (e.g. "12345_poster") are guaranteed Posterizarr assets - no EXIF check needed.
-                    # Path-based keys (migration entries, e.g. "P:\...\poster") still get the EXIF safety check.
-                    $isRatingKeyEntry = $uncheckedItem -match '^\d+_'
-                    if ($isRatingKeyEntry -or (Test-IsPosterizarrAsset -Path $uncheckedItemPath)) {
-                        Remove-Item -LiteralPath $uncheckedItemPath -Force
-                        $ImagesCleared++
-                        $removeDbEntry = $true
-                        if ($forceCleanupByExcludedPath) {
-                            Write-Entry -Subtext "Artwork Removed (Excluded Library Match): $uncheckedItemPath" -Path $global:configLogging -Color Yellow -log Info
-                        } else {
-                            Write-Entry -Subtext "Artwork Removed: $uncheckedItemPath" -Path $global:configLogging -Color Yellow -log Info
+                if (Test-IsPosterizarrAsset -Path $uncheckedItemPath) {
+                    Remove-Item -LiteralPath $uncheckedItemPath -Force
+                    $ImagesCleared++
+                    Write-Entry -Subtext "Artwork Removed: $uncheckedItemPath" -Path $global:configLogging -Color Yellow -log Info
+
+                    if ($LibraryFolders -eq 'true') {
+                        # Determine the parent directory of the item
+                        $parentDir = Split-Path -Path $uncheckedItemPath -Parent
+
+                        # Add the directory to the list if it's not already included
+                        if ($parentDir -notin $processedDirectories) {
+                            $processedDirectories.Add($parentDir)
                         }
                     }
-                } else {
-                    # If file is already gone on disk, remove stale DB entry.
-                    $removeDbEntry = $true
                 }
-
-                $dir = Split-Path -Path $uncheckedItemPath -Parent
-                if (-not $processedDirectories.Contains($dir)) {
-                    $processedDirectories.Add($dir)
-                }
-            } else {
-                # Empty/invalid DB value should be removed.
-                $removeDbEntry = $true
             }
-            if ($removeDbEntry) {
-                $keysToRemove.Add($uncheckedItem)
-            }
-        }
-
-        # Remove deleted items from DB
-        foreach ($k in $keysToRemove) {
-            Remove-AssetProcessed -AssetId $k -DbHashtable $directoryHashtable
         }
 
         # Cleanup empty Asset dirs
@@ -848,12 +774,8 @@
         }
     }
 
-    # Save JSON DB after cleanup to persist any removed entries (e.g. excluded library files deleted by cleanup)
-    Save-AssetHashtable -directoryHashtable $directoryHashtable
-
     $endTime = Get-Date
     $executionTime = New-TimeSpan -Start $startTime -End $endTime
-
     # Format the execution time
     $hours = [math]::Floor($executionTime.TotalHours)
     $minutes = $executionTime.Minutes
@@ -923,7 +845,6 @@
         $ImageChoicesDummycsv | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\ImageChoices.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
         Write-Entry -Message "No ImageChoices.csv found, creating dummy file for you..." -Path $global:configLogging -Color White -log Info
     }
-
     Write-TextSizeCacheSummary
     Write-Entry -Message "Script execution time: $FormattedTimespawn" -Path $global:configLogging -Color White -log Info
 

@@ -35,26 +35,12 @@
     $retryCount = 0
     $maxRetries = 3
     $Libsoverview = [System.Collections.Generic.List[object]]::new()
-    $excludedLibLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($rawExclude in @($LibstoExclude)) {
-        if ($null -eq $rawExclude) { continue }
-        foreach ($excludeCandidate in ([string]$rawExclude -split '[,;\r\n]')) {
-            $excludeName = $excludeCandidate.Trim()
-            if (-not [string]::IsNullOrWhiteSpace($excludeName)) {
-                [void]$excludedLibLookup.Add($excludeName)
-            }
-        }
-    }
-    $allPlexLibraryNamesLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     while ($retryCount -le $maxRetries) {
         $Libsoverview.Clear()
-        $allPlexLibraryNamesLookup.Clear()
         if ($Libs -and $Libs.MediaContainer.Directory) {
             foreach ($lib in @($Libs.MediaContainer.Directory)) {
-                $libTitle = [string]$lib.title
-                [void]$allPlexLibraryNamesLookup.Add($libTitle)
-                if (-not $excludedLibLookup.Contains($libTitle)) {
+                if ($lib.title -notin $LibstoExclude) {
                     $libtemp = New-Object psobject
                     $libtemp | Add-Member -MemberType NoteProperty -Name "ID" -Value $lib.key
                     $libtemp | Add-Member -MemberType NoteProperty -Name "Name" -Value $lib.title
@@ -103,26 +89,13 @@
         # Clear Running File
         HandleScriptExit -Message "No libs found"
     }
-    $matchedExcludedCount = 0
-    foreach ($excludeName in $excludedLibLookup) {
-        if ($allPlexLibraryNamesLookup.Contains($excludeName)) { $matchedExcludedCount++ }
-    }
-    Write-Entry -Subtext "Found '$($Libsoverview.count)' libs and '$matchedExcludedCount' are excluded..." -Path $global:configLogging -Color Cyan -log Info
-    $unmatchedExcluded = [System.Collections.Generic.List[string]]::new()
-    foreach ($excludeName in $excludedLibLookup) {
-        if (-not $allPlexLibraryNamesLookup.Contains($excludeName)) {
-            [void]$unmatchedExcluded.Add($excludeName)
-        }
-    }
-    if ($unmatchedExcluded.Count -gt 0) {
-        Write-Entry -Subtext "Configured excluded library names not found on server: $($unmatchedExcluded -join ', ')" -Path $global:configLogging -Color Yellow -log Warning
-    }
+    Write-Entry -Subtext "Found '$($Libsoverview.count)' libs and '$($LibstoExclude.count)' are excluded..." -Path $global:configLogging -Color Cyan -log Info
     $IncludedLibraryNames = $Libsoverview.Name -join ', '
     Write-Entry -Subtext "Included Libraries: $IncludedLibraryNames" -Path $global:configLogging -Color Cyan -log Info
     Write-Entry -Message "Query all items from all Libs, this can take a while..." -Path $global:configLogging -Color White -log Info
     $Libraries = [System.Collections.Generic.List[object]]::new()
     Foreach ($Library in $Libsoverview) {
-        if (-not $excludedLibLookup.Contains([string]$Library.Name)) {
+        if ($Library.Name -notin $LibstoExclude) {
             $PlexHeaders = @{}
             if ($PlexToken) {
                 $PlexHeaders['X-Plex-Token'] = $PlexToken
@@ -458,34 +431,15 @@
     $allLibsquery = "$($OtherMediaServerUrl.TrimEnd('/'))/Library/VirtualFolders"
     $OtherAllLibs = Invoke-RestMethod -Method Get -Uri $allLibsquery -Headers $global:OtherMediaServerHeaders
 
-    $otherLibraryNamesLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($otherLib in @($OtherAllLibs)) {
-        if ($otherLib.Name) {
-            [void]$otherLibraryNamesLookup.Add([string]$otherLib.Name)
-        }
-    }
-    $matchedOtherExcludedCount = 0
-    foreach ($excludeName in $excludedLibLookup) {
-        if ($otherLibraryNamesLookup.Contains($excludeName)) { $matchedOtherExcludedCount++ }
-    }
-    write-Entry -Subtext "Found '$($OtherAllLibs.name.count)' libs and '$matchedOtherExcludedCount' are excluded..." -Path $global:configLogging -Color Cyan -log Info
-    $unmatchedOtherExcluded = [System.Collections.Generic.List[string]]::new()
-    foreach ($excludeName in $excludedLibLookup) {
-        if (-not $otherLibraryNamesLookup.Contains($excludeName)) {
-            [void]$unmatchedOtherExcluded.Add($excludeName)
-        }
-    }
-    if ($unmatchedOtherExcluded.Count -gt 0) {
-        Write-Entry -Subtext "Configured excluded library names not found on server: $($unmatchedOtherExcluded -join ', ')" -Path $global:configLogging -Color Yellow -log Warning
-    }
-    $IncludedLibraryNames = ($OtherAllLibs | Where-Object { -not $excludedLibLookup.Contains([string]$_.Name) }).Name -join ', '
+    write-Entry -Subtext "Found '$($OtherAllLibs.name.count)' libs and '$(@($LibstoExclude).count)' are excluded..." -Path $global:configLogging -Color Cyan -log Info
+    $IncludedLibraryNames = ($OtherAllLibs | Where-Object { $_.Name -notin $LibstoExclude }).Name -join ', '
     Write-Entry -Subtext "Included Libraries: $IncludedLibraryNames" -Path $global:configLogging -Color Cyan -log Info
 
     # Build path-based lookup tables once to avoid expensive per-item Ancestors API calls.
     $OtherMovieLibraryLookup = [System.Collections.Generic.List[object]]::new()
     $OtherShowLibraryLookup = [System.Collections.Generic.List[object]]::new()
     foreach ($library in $OtherAllLibs) {
-        if ($excludedLibLookup.Contains([string]$library.Name)) { continue }
+        if ($library.Name -in $LibstoExclude) { continue }
 
         $resolvedLocations = [System.Collections.Generic.List[string]]::new()
         foreach ($location in @($library.Locations)) {
@@ -531,7 +485,7 @@
     $OtherAllEpisodes = [System.Collections.Generic.List[object]]::new()
 
     foreach ($otherlib in $OtherAllLibs) {
-        if (-not $excludedLibLookup.Contains([string]$otherlib.Name)) {
+        if ($otherlib.Name -notin $LibstoExclude) {
             if ($otherlib.CollectionType -eq 'movies') {
                 Write-Entry -Subtext "Getting all Itmes from [$($otherlib.Name)] with item id [$($otherlib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
                 $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags&IncludeItemTypes=Movie"
@@ -624,7 +578,7 @@
         }
         Else {
             Write-Entry -Subtext "Processing - '$($Movie.Name)'" -Path $global:configLogging -Color Cyan -log Debug
-            if (-not $excludedLibLookup.Contains([string]$SingleLibName)) {
+            if ($SingleLibName -notin $LibstoExclude) {
                 Write-Entry -Subtext "Location: $($Movie.Path)" -Path $global:configLogging -Color Cyan -log Debug
                 Write-Entry -Subtext "Libpath: $Matchedpath" -Path $global:configLogging -Color Cyan -log Debug
                 $libpath = $Matchedpath
