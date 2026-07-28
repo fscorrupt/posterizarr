@@ -19,7 +19,7 @@ function Get-OverlayAndBorderSettings {
         [string]$AddOverlay,
         [string]$SkipAddTextAndOverlay,
         [string]$SkipAddTextAndBorder,
-        [bool]$PosterWithText
+        $PosterWithText
     )
 
     $LocalAddBorder = $AddBorder
@@ -46,7 +46,7 @@ function Get-SkipTextSetting {
     param (
         [string]$SkipAddText,
         [string]$SkipAddTextAndOverlay,
-        [bool]$PosterWithText
+        $PosterWithText
     )
 
     if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $PosterWithText) {
