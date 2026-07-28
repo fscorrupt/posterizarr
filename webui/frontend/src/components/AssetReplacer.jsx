@@ -1290,12 +1290,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
       const formData = new FormData();
       formData.append("file", uploadedFile);
-      formData.append("asset_type", assetType);
-      
+      formData.append("asset_type", metadata.asset_type);
+
       // Append posterWithText
       formData.append("posterWithText", uploadHasText);
 
-      let mediaType = "movie";
       const response = await fetch(url, {
         method: "POST",
         body: formData,
