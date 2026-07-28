@@ -143,8 +143,11 @@ Else {
 if ($global:ConfigOverride -and (Test-Path $global:ConfigOverride)) {
     Write-Entry -Message "Loading blueprint config override: $($global:ConfigOverride)" -Path $global:configLogging -Color Cyan -log Info
     $config = Get-Content -Raw -Path $global:ConfigOverride | ConvertFrom-Json
+    Write-Entry -Message "Active config file: $($global:ConfigOverride)" -Path $global:configLogging -Color Cyan -log Info
 } else {
-    $config = Get-Content -Raw -Path $(Join-Path $global:ScriptRoot 'config.json') | ConvertFrom-Json
+    $activeConfigPath = Join-Path $global:ScriptRoot 'config.json'
+    $config = Get-Content -Raw -Path $activeConfigPath | ConvertFrom-Json
+    Write-Entry -Message "Active config file: $activeConfigPath" -Path $global:configLogging -Color Cyan -log Info
 }
 
 # Replace Script with Latest

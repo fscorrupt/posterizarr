@@ -113,8 +113,9 @@ function Invoke-MoviePosterCreation {
 
                     # Now we can start the Poster Part
                     if ($global:Posters -eq 'true') {
-                        $checkedItems.Add($hashtestpath)
-                        if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                        $assetId = "$($entry.ratingKey)_poster"
+                        $checkedItems.Add($assetId)
+                        if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable))) {
                             # Define Global Variables
                             $SkippingText = 'false'
                             $global:tmdbid = $entry.tmdbid
@@ -691,6 +692,7 @@ function Invoke-MoviePosterCreation {
 
                                             }
                                             Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                            Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                             $global:posterCount = Increment-GlobalStat 'posterCount'
                                         }
                                         Else {
@@ -869,8 +871,9 @@ function Invoke-MoviePosterCreation {
 
                         $backgroundImage = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($entry.ratingKey)_$($entry.RootFoldername)_background.jpg"
                         $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
-                        $checkedItems.Add($hashtestpath)
-                        if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                        $assetId = "$($entry.ratingKey)_background"
+                        $checkedItems.Add($assetId)
+                        if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable))) {
                             # Define Global Variables
                             $SkippingText = 'false'
                             $global:tmdbid = $entry.tmdbid
@@ -1428,6 +1431,7 @@ function Invoke-MoviePosterCreation {
 
                                             }
                                             Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                            Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                             $global:posterCount = Increment-GlobalStat 'posterCount'
                                             $global:BackgroundCount = Increment-GlobalStat 'BackgroundCount'
                                         }
@@ -1741,8 +1745,9 @@ function Invoke-ShowPosterCreation {
 
                 # Now we can start the Poster Part
                 if ($global:Posters -eq 'true') {
-                    $checkedItems.Add($hashtestpath)
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    $assetId = "$($entry.ratingKey)_poster"
+                    $checkedItems.Add($assetId)
+                    if (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable)) {
                         $Arturl = $null
                         if ($entry.PlexPosterUrl -like "/library/*") {
                             $Arturl = $plexurl + $entry.PlexPosterUrl
@@ -2280,6 +2285,7 @@ function Invoke-ShowPosterCreation {
 
                                         }
                                         Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                        Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                         $global:posterCount = Increment-GlobalStat 'posterCount'
                                     }
                                     Else {
@@ -2465,9 +2471,10 @@ function Invoke-ShowPosterCreation {
 
                     $backgroundImage = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($entry.ratingKey)_$($entry.RootFoldername)_background.jpg"
                     $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
-                    $checkedItems.Add($hashtestpath)
+                    $assetId = "$($entry.ratingKey)_background"
+                    $checkedItems.Add($assetId)
 
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    if (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable)) {
                         # Define Global Variables
                         $SkippingText = 'false'
                         $global:tmdbid = $entry.tmdbid
@@ -3020,6 +3027,7 @@ function Invoke-ShowPosterCreation {
                                         }
                                         $global:BackgroundCount = Increment-GlobalStat 'BackgroundCount'
                                         Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                        Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                         $global:posterCount = Increment-GlobalStat 'posterCount'
                                     }
                                     Else {
@@ -3276,9 +3284,10 @@ function Invoke-ShowPosterCreation {
 
                         $SeasonImage = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($entry.ratingKey)_$($entry.RootFoldername)_$global:seasontmp.jpg"
                         $SeasonImage = $SeasonImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
-                        $checkedItems.Add($hashtestpath)
+                        $assetId = "$($entry.ratingKey)_$($global:seasontmp)_poster"
+                        $checkedItems.Add($assetId)
 
-                        if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                        if (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable)) {
                             $Arturl = $null
                             if ($global:PlexSeasonUrl -like "/library/*") {
                                 $Arturl = $plexurl + $global:PlexSeasonUrl
@@ -4005,6 +4014,7 @@ function Invoke-ShowPosterCreation {
 
                                             }
                                             Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                            Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                             $global:SeasonCount = Increment-GlobalStat 'SeasonCount'
                                             $global:posterCount = Increment-GlobalStat 'posterCount'
                                         }
@@ -4332,9 +4342,10 @@ function Invoke-TitleCardCreation {
                     $SkipJapTitleCount++
                 }
                 Else {
-                    $checkedItems.Add($hashtestpath)
+                    $assetId = "$($global:episode_ratingkey)_titlecard"
+                    $checkedItems.Add($assetId)
 
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    if (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable)) {
                         $Arturl = $null
                         if ($global:PlexTitleCardUrl -like "/library/*") {
                             $Arturl = $plexurl + $global:PlexTitleCardUrl
@@ -4554,14 +4565,15 @@ function Invoke-TitleCardCreation {
                                         Copy-Item -LiteralPath $EpisodeTempImage -destination $EpisodeImage | Out-Null
                                     }
                                 }
-                                $global:TempImagecopied = $true
                                 # Check temp image
                                 if ((Get-ChildItem -LiteralPath $EpisodeTempImage -ErrorAction SilentlyContinue).length -eq '0') {
+                                    $global:TempImagecopied = $false
                                     Write-Entry -Subtext "Temp image is corrupt, cannot proceed" -Path $global:configLogging -Color Red -log Error
                                     $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
 
                                 }
                                 Else {
+                                    $global:TempImagecopied = $true
                                     if (Get-ChildItem -LiteralPath $EpisodeImage -ErrorAction SilentlyContinue) {
                                         $CommentArguments = "`"$EpisodeImage`" -set `"comment`" `"created with posterizarr`" `"$EpisodeImage`""
                                         $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -4822,6 +4834,7 @@ function Invoke-TitleCardCreation {
 
                                         }
                                         Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                        Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                         $global:EpisodeCount = Increment-GlobalStat 'EpisodeCount'
                                         $global:posterCount = Increment-GlobalStat 'posterCount'
                                     }
@@ -5059,8 +5072,9 @@ function Invoke-TitleCardCreation {
                     $SkipJapTitleCount++
                 }
                 Else {
-                    $checkedItems.Add($hashtestpath)
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    $assetId = "$($global:episode_ratingkey)_titlecard"
+                    $checkedItems.Add($assetId)
+                    if (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable)) {
                         $Arturl = $null
                         if ($global:PlexTitleCardUrl -like "/library/*") {
                             $Arturl = $plexurl + $global:PlexTitleCardUrl
@@ -5559,6 +5573,7 @@ function Invoke-TitleCardCreation {
 
                                         }
                                         Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                        Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                         $global:EpisodeCount = Increment-GlobalStat 'EpisodeCount'
                                         $global:posterCount = Increment-GlobalStat 'posterCount'
                                     }
@@ -5798,9 +5813,10 @@ function Invoke-TitleCardCreation {
                                         $SkipJapTitleCount++
                                     }
                                     Else {
-                                        $checkedItems.Add($hashtestpath)
+                                        $assetId = "$($global:episode_ratingkey)_titlecard"
+                                        $checkedItems.Add($assetId)
 
-                                        if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                                        if (-not (Test-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable)) {
                                             $Arturl = $null
                                             if ($global:PlexTitleCardUrl -like "/library/*") {
                                                 $Arturl = $plexurl + $global:PlexTitleCardUrl
@@ -6293,6 +6309,7 @@ function Invoke-TitleCardCreation {
 
                                                             }
                                                             Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging  -Color White -log Info
+                                                            Set-AssetProcessed -AssetId $assetId -ExpectedPath $hashtestpath -DbHashtable $directoryHashtable
                                                             $global:EpisodeCount = Increment-GlobalStat 'EpisodeCount'
                                                             $global:posterCount = Increment-GlobalStat 'posterCount'
                                                         }

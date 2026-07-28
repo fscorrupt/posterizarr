@@ -909,6 +909,9 @@
             $ImageChoicesDummycsv | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\ImageChoices.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
             Write-Entry -Message "No ImageChoices.csv found, creating dummy file for you..." -Path $global:configLogging -Color White -log Info
         }
+        
+        Save-AssetHashtable -directoryHashtable $directoryHashtable
+        
         Write-TextSizeCacheSummary
         Write-Entry -Message "Script execution time: $FormattedTimespawn" -Path $global:configLogging -Color White -log Info
 
@@ -1327,6 +1330,9 @@
             $ImageChoicesDummycsv | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\ImageChoices.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force -Append
             Write-Entry -Message "No ImageChoices.csv found, creating dummy file for you..." -Path $global:configLogging -Color White -log Info
         }
+        
+        Save-AssetHashtable -directoryHashtable $directoryHashtable
+        
         Write-TextSizeCacheSummary
         Write-Entry -Message "Script execution time: $FormattedTimespawn" -Path $global:configLogging -Color White -log Info
 
