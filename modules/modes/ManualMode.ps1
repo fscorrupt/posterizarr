@@ -1017,8 +1017,19 @@
 
             Write-Entry -Subtext "Target Image Type: $FinalImageType | PosterType: $PosterType" -Path $global:configLogging -Color Cyan -log Debug
 
+            $SearchTerm = $Titletext
+            if ($SeasonPoster -or $TitleCard) {
+                # Titletext is the poster text, not the show name. Derive show name from FolderName.
+                if ($FolderName -match "^([^\(]+?)\s*(?:\(\d{4}\)|$)") {
+                    $SearchTerm = $Matches[1].Trim()
+                } else {
+                    $SearchTerm = $FolderName
+                }
+                Write-Entry -Subtext "Derived Media Server Search Term from FolderName: '$SearchTerm' (Titletext was '$Titletext')" -Path $global:configLogging -Color Cyan -log Debug
+            }
+
             if ($UsePlex -eq 'true') {
-                $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($Titletext))"
+                $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($SearchTerm))"
 
                 Write-Entry -Subtext "Plex Search URI: $(RedactMediaServerUrl -url $searchUrl)" -Path $global:configLogging -Color Cyan -log Debug
 
@@ -1032,7 +1043,7 @@
                 }
 
                 if (-not $baseItem -and -not ($MoviePosterCard)) {
-                    Write-Entry -Subtext "Plex match failed for Show '$Titletext'. Retrying search as 'movie' type..." -Path $global:configLogging -Color Yellow -log Info
+                    Write-Entry -Subtext "Plex match failed for Show '$SearchTerm'. Retrying search as 'movie' type..." -Path $global:configLogging -Color Yellow -log Info
                     $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
                 }
 
@@ -1041,13 +1052,13 @@
                     Write-Entry -Subtext "Base Item Found: $($baseItem.title) (RatingKey: $FinalTargetID)" -Path $global:configLogging -Color Cyan -log Debug
                 }
                 else {
-                    Write-Entry -Message "No Plex match found for '$Titletext' in library '$LibraryName'." -Path $global:configLogging -Color Red -log Error
+                    Write-Entry -Message "No Plex match found for '$SearchTerm' in library '$LibraryName'." -Path $global:configLogging -Color Red -log Error
                     $FinalTargetID = $null
                 }
             }
             elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
                 $SearchType = if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) { "Movie" } else { "Series" }
-                $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=$SearchType&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($Titletext))"
+                $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=$SearchType&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))"
 
                 Write-Entry -Subtext "JF/Emby Search URI: $(RedactMediaServerUrl -url $searchUri)" -Path $global:configLogging -Color Cyan -log Debug
                 $results = Invoke-RestMethod -Uri $searchUri -Headers $global:OtherMediaServerHeaders
@@ -1057,7 +1068,7 @@
                 if (-not $baseItem -and $SearchType -eq "Series") {
                     Write-Entry -Subtext "Precision match failed for Series '$FolderName'. Retrying search as 'Movie' type..." -Path $global:configLogging -Color Yellow -log Info
 
-                    $retrySearchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Fields=Path&Recursive=true&SearchTerm=$([uri]::EscapeDataString($Titletext))"
+                    $retrySearchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Fields=Path&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))"
                     $retryResults = Invoke-RestMethod -Uri $retrySearchUri -Headers $global:OtherMediaServerHeaders
                     $baseItem = $retryResults.Items | Where-Object { $_.Path -match [regex]::Escape($FolderName) }
 
