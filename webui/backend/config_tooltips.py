@@ -108,7 +108,7 @@ CONFIG_TOOLTIPS = {
     "BackgroundPosters": "Set to true to also create background posters.",
     "TitleCards": "Set to true to also create title cards.",
     "SkipTBA": "If set to true, TitleCard creation will be skipped when TitleText contains any word from SkipWords.",
-    "SkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'. Any already created TitleCards that match these words will be deleted.",
+    "SkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'. Wrap in /slashes/ to use Regex. Any already created TitleCards that match these words will be deleted.",
     "SkipJapTitle": "Set to true to skip TitleCard creation if the Titletext is Jap or Chinese.",
     "AssetCleanup": "Set to true to cleanup Assets that are no longer in Plex. Warning: Risk of Data Loss from excluded Libraries. Ensure that all active asset libraries are included when using that setting on true to prevent unintended deletions.",
     "AutoUpdateIM": "Set to true to AutoUpdate Imagemagick Portable Version (Does not work with Docker/Unraid). Doing this could break things, cause you then use IM Versions that are not tested with Posterizarr.",

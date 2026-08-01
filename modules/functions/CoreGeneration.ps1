@@ -4317,9 +4317,16 @@ function Invoke-TitleCardCreation {
                 # Pre-check the title against skipwords
                 $matchedWord = $null
                 foreach ($word in $SkipWords) {
-                    if ($global:EPTitle -match "^$([regex]::Escape($word))") {
-                        $matchedWord = $word
-                        break # Stop checking once we find a match
+                    if ($word -match '^/(.+)/$') {
+                        if ($global:EPTitle -match $matches[1]) {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
+                    } else {
+                        if ($global:EPTitle -match "^$([regex]::Escape($word))") {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
                     }
                 }
 
@@ -5044,9 +5051,16 @@ function Invoke-TitleCardCreation {
                 # Pre-check the title against skipwords
                 $matchedWord = $null
                 foreach ($word in $SkipWords) {
-                    if ($global:EPTitle -match "^$([regex]::Escape($word))") {
-                        $matchedWord = $word
-                        break # Stop checking once we find a match
+                    if ($word -match '^/(.+)/$') {
+                        if ($global:EPTitle -match $matches[1]) {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
+                    } else {
+                        if ($global:EPTitle -match "^$([regex]::Escape($word))") {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
                     }
                 }
 
@@ -5783,9 +5797,16 @@ function Invoke-TitleCardCreation {
                                     # Pre-check the title against skipwords
                                     $matchedWord = $null
                                     foreach ($word in $SkipWords) {
-                                        if ($global:EPTitle -match "^$([regex]::Escape($word))") {
-                                            $matchedWord = $word
-                                            break # Stop checking once we find a match
+                                        if ($word -match '^/(.+)/$') {
+                                            if ($global:EPTitle -match $matches[1]) {
+                                                $matchedWord = $word
+                                                break # Stop checking once we find a match
+                                            }
+                                        } else {
+                                            if ($global:EPTitle -match "^$([regex]::Escape($word))") {
+                                                $matchedWord = $word
+                                                break # Stop checking once we find a match
+                                            }
                                         }
                                     }
 

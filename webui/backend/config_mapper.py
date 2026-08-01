@@ -1076,7 +1076,7 @@ DISPLAY_NAMES = {
     "BackgroundPosters": "Generate Backgrounds",
     "TitleCards": "Generate Title Cards",
     "SkipTBA": "Enable skipping TitleCard creation when the title starts with words from 'SkipWords'",
-    "TitleCardSkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'",
+    "TitleCardSkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'. Wrap in /slashes/ to use Regex.",
     "SkipJapTitle": "Skip Japanese Titles",
     "AssetCleanup": "Asset Cleanup",
     "AutoUpdateIM": "Auto-Update ImageMagick",

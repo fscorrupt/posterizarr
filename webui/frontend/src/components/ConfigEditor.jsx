@@ -955,7 +955,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                         </button>
                     )}
                     <p className="text-[10px] text-theme-muted italic">
-                        {isSkipWord ? "Words are preserved exactly as typed inside the boxes." : "Spaces are preserved exactly as typed inside the boxes."}
+                        {isSkipWord ? "Words are preserved exactly as typed. Wrap in slashes to use Regex (e.g. /pattern/)" : "Spaces are preserved exactly as typed inside the boxes."}
                     </p>
                 </div>
             );
