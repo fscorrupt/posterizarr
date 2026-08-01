@@ -12517,6 +12517,7 @@ async def replace_asset_from_url(
     asset_type: Optional[str] = Query(None),
     mediaType: Optional[str] = Query(None),
     posterWithText: bool = Query(False),
+    blueprint_overrides: Optional[str] = Query(None),
 ):
     """
     Replace an asset by downloading from a URL
@@ -12552,7 +12553,8 @@ async def replace_asset_from_url(
                     "asset_type": asset_type,
                     "mediaType": mediaType,
                     "process_with_overlays": process_with_overlays,
-                    "poster_with_text": posterWithText
+                    "poster_with_text": posterWithText,
+                    "blueprint_overrides": json.loads(blueprint_overrides) if blueprint_overrides else None
                 }
 
                 # Remove None values
@@ -12775,6 +12777,8 @@ async def replace_asset_from_url(
                         seasonPosterName=season_poster_name or "",
                         epTitleName=ep_title_name or "",
                         episodeNumber=ep_number or "",
+                        posterWithText=posterWithText,
+                        blueprint_overrides=json.loads(blueprint_overrides) if blueprint_overrides else None,
                     )
 
                     # Call run_manual_mode (we need to make it callable)
@@ -12917,6 +12921,10 @@ async def trigger_manual_run_internal(request: ManualModeRequest):
 
     if getattr(request, "posterWithText", False):
         command.append("-PosterWithText")
+
+    if getattr(request, "blueprint_overrides", None):
+        temp_override_path = generate_blueprint_override_config(request.blueprint_overrides)
+        command.extend(["-ConfigOverride", temp_override_path])
 
     logger.info(f"Starting Manual Run: {' '.join(command)}")
 
@@ -14363,7 +14371,9 @@ async def finalize_asset_replacement(
                 mediaType=overlay_params.get("mediaType") or "",
                 seasonPosterName=season_poster_name or "",
                 epTitleName=ep_title_name or "",
-                episodeNumber=ep_number or ""
+                episodeNumber=ep_number or "",
+                posterWithText=overlay_params.get("poster_with_text", False),
+                blueprint_overrides=overlay_params.get("blueprint_overrides"),
             )
 
             await trigger_manual_run_internal(manual_request)
