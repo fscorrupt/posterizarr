@@ -522,6 +522,15 @@ function Output-ConfigJson {
                 }
                 Write-Entry -Subtext "$indent$($prop.Name): $redacted" -Path $global:configLogging -Color Cyan -log Info
             }
+            elseif ($keyLower -eq "blueprints") {
+                $bpCount = 0
+                if ($val -is [string]) {
+                    try { $bpCount = @($val | ConvertFrom-Json).Count } catch {}
+                } elseif ($val) {
+                    $bpCount = @($val).Count
+                }
+                Write-Entry -Subtext "$indent$($prop.Name): <$bpCount custom blueprint(s) loaded>" -Path $global:configLogging -Color Cyan -log Info
+            }
             elseif ($val -is [System.Management.Automation.PSCustomObject] -or $val -is [Hashtable]) {
                 # For nested objects, print key with colon and then recurse with increased indent
                 Write-Entry -Subtext "$indent$($prop.Name):" -Path $global:configLogging -Color Cyan -log Info
