@@ -523,13 +523,27 @@ function Output-ConfigJson {
                 Write-Entry -Subtext "$indent$($prop.Name): $redacted" -Path $global:configLogging -Color Cyan -log Info
             }
             elseif ($keyLower -eq "blueprints") {
-                $bpCount = 0
+                $parsedBlueprints = $null
                 if ($val -is [string]) {
-                    try { $bpCount = @($val | ConvertFrom-Json).Count } catch {}
-                } elseif ($val) {
-                    $bpCount = @($val).Count
+                    try { $parsedBlueprints = $val | ConvertFrom-Json } catch {}
+                } else {
+                    $parsedBlueprints = $val
                 }
-                Write-Entry -Subtext "$indent$($prop.Name): <$bpCount custom blueprint(s) loaded>" -Path $global:configLogging -Color Cyan -log Info
+
+                if ($parsedBlueprints) {
+                    $bpCount = @($parsedBlueprints).Count
+                    Write-Entry -Subtext "$indent$($prop.Name): <$bpCount custom blueprint(s) loaded>" -Path $global:configLogging -Color Cyan -log Info
+                    
+                    foreach ($bp in $parsedBlueprints) {
+                        $bpName = if ($bp.customTitle) { $bp.customTitle } else { $bp.id }
+                        Write-Entry -Subtext "$indent  - Blueprint: $bpName" -Path $global:configLogging -Color Yellow -log Info
+                        if ($bp.updates -and $bp.updates.nested) {
+                            Output-ConfigJson -obj $bp.updates.nested -indentLevel ($indentLevel + 2)
+                        }
+                    }
+                } else {
+                    Write-Entry -Subtext "$indent$($prop.Name): <0 custom blueprint(s) loaded>" -Path $global:configLogging -Color Cyan -log Info
+                }
             }
             elseif ($val -is [System.Management.Automation.PSCustomObject] -or $val -is [Hashtable]) {
                 # For nested objects, print key with colon and then recurse with increased indent
