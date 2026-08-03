@@ -144,7 +144,7 @@ if ($global:ConfigOverride -and (Test-Path $global:ConfigOverride)) {
     Write-Entry -Message "Loading blueprint config override: $($global:ConfigOverride)" -Path $global:configLogging -Color Cyan -log Info
     $config = Get-Content -Raw -Path $global:ConfigOverride | ConvertFrom-Json
     if ($config.ActiveBlueprintName) {
-        Write-Entry -Message "Applied Blueprint: $($config.ActiveBlueprintName)" -Path $global:configLogging -Color Magenta -log Info
+        Write-Entry -Message "Applied Blueprint: $($config.ActiveBlueprintName)" -Path $global:configLogging -Color DarkMagenta -log Info
     }
 } else {
     $config = Get-Content -Raw -Path $(Join-Path $global:ScriptRoot 'config.json') | ConvertFrom-Json

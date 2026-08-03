@@ -502,6 +502,7 @@ function Output-ConfigJson {
 
     if ($indentLevel -eq 0) {
         foreach ($section in $obj.PSObject.Properties) {
+            if ($section.Name -eq "ActiveBlueprintName") { continue }
             Write-Entry "===== $($section.Name) =====" -Path $global:configLogging -Color Yellow -log Info
             Output-ConfigJson -obj $section.Value -indentLevel 1
         }
