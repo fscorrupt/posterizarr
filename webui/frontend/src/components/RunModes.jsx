@@ -921,7 +921,9 @@ function RunModes() {
       if (manualForm.blueprintId && manualForm.blueprintId !== "none") {
         const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === manualForm.blueprintId);
         if (bp && bp.updates?.nested) {
-          requestPayload.blueprint_overrides = uploadedFile ? JSON.stringify(bp.updates.nested) : bp.updates.nested;
+          const bpName = bp.customTitle || bp.titleKey || bp.id;
+          const overridesWithContext = { ...bp.updates.nested, ActiveBlueprintName: bpName };
+          requestPayload.blueprint_overrides = uploadedFile ? JSON.stringify(overridesWithContext) : overridesWithContext;
         }
       }
       delete requestPayload.blueprintId;

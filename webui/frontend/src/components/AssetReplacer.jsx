@@ -1230,7 +1230,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
         const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
         if (bp && bp.updates?.nested) {
-          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.updates.nested))}`;
+          const bpName = bp.customTitle || bp.titleKey || bp.id;
+          const overridesWithContext = { ...bp.updates.nested, ActiveBlueprintName: bpName };
+          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(overridesWithContext))}`;
         }
       }
 
@@ -1490,7 +1492,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
         const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
         if (bp && bp.updates?.nested) {
-          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(bp.updates.nested))}`;
+          const bpName = bp.customTitle || bp.titleKey || bp.id;
+          const overridesWithContext = { ...bp.updates.nested, ActiveBlueprintName: bpName };
+          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(overridesWithContext))}`;
         }
       }
 
