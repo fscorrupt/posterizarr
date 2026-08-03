@@ -181,6 +181,7 @@
     "UseClearlogo": "false",
     "UseClearart": "false",
     "LogoTextFallback": "false",
+    "TextlessPosterBypass": "false",
     "ConvertLogoColor": "false",
     "LogoFlatColor": "white",
     "UseOriginalTitle": "false"

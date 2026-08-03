@@ -185,6 +185,7 @@
         - `Example:` https://artworks.thetvdb.com/banners/v4/movie/165/clearart/61249caa0924f.png
         - `What the setting does:` When set to `true`, the system will use the Clearart image instead of the standard title text.
     - `LogoTextFallback` : Set to `true` to fallback to `Text` if no logos are found.
+    - `TextlessPosterBypass` : Set to `true` to bypass 'Prefer Textless' and download a standard Text Poster if no logos are found.
     - `AutoUpdateIM` : Set to `true` to AutoUpdate Imagemagick Portable Version (Does not work with Docker/Unraid).
         - Doing this could break things, cause you then uses IM Versions that are not tested with Posterizarr.
     - `DisableHashValidation` : Set to `true` to skip hash validation (Default value is: false).

@@ -163,6 +163,30 @@ function Invoke-MoviePosterCreation {
                                 $LocalAssetMissing = 'true'
                             }
                             Else {
+                                # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                                $tempLogoAvailable = $false
+                                if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                    $tempLogoUrl = $null
+                                    $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                    foreach ($provider in $searchOrder) {
+                                        if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                        switch ($provider) {
+                                            'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type movie } }
+                                            'FANART' { $t = if('movie' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                            'TVDB' { if ($entry.tvdbid) { $t = if('movie' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                        }
+                                    }
+                                    if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                    
+                                    if (-not $tempLogoAvailable) {
+                                        Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                        $global:OriginalPreferTextless = $global:PosterPreferTextless
+                                        $global:OriginalOnlyTextless = $global:PosterOnlyTextless
+                                        $global:PosterPreferTextless = $false
+                                        $global:PosterOnlyTextless = $false
+                                        $global:ForceTextAssetRestoration = '$global:PosterPreferTextless'
+                                    }
+                                }
                                 Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -377,6 +401,19 @@ function Invoke-MoviePosterCreation {
                                 }
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
+                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    }
+                                    $global:ForceTextAssetRestoration = $null
+                                }
                                     Write-Entry -Subtext "Processing Poster for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                     $CommentArguments = "`"$PosterImage`" -set `"comment`" `"created with posterizarr`" `"$PosterImage`""
                                     $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -921,6 +958,30 @@ function Invoke-MoviePosterCreation {
                                 $LocalAssetMissing = 'true'
                             }
                             Else {
+                                # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                                $tempLogoAvailable = $false
+                                if ($TextlessPosterBypass -eq 'true' -and $UseBGLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                    $tempLogoUrl = $null
+                                    $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                    foreach ($provider in $searchOrder) {
+                                        if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                        switch ($provider) {
+                                            'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type movie } }
+                                            'FANART' { $t = if('movie' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                            'TVDB' { if ($entry.tvdbid) { $t = if('movie' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                        }
+                                    }
+                                    if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                    
+                                    if (-not $tempLogoAvailable) {
+                                        Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                        $global:OriginalPreferTextless = $global:BackgroundPreferTextless
+                                        $global:OriginalOnlyTextless = $global:BackgroundOnlyTextless
+                                        $global:BackgroundPreferTextless = $false
+                                        $global:BackgroundOnlyTextless = $false
+                                        $global:ForceTextAssetRestoration = '$global:BackgroundPreferTextless'
+                                    }
+                                }
                                 Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -1114,6 +1175,19 @@ function Invoke-MoviePosterCreation {
                                 }
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
+                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    }
+                                    $global:ForceTextAssetRestoration = $null
+                                }
                                     Write-Entry -Subtext "Processing background for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                     $CommentArguments = "`"$backgroundImage`" -set `"comment`" `"created with posterizarr`" `"$backgroundImage`""
                                     $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -1766,6 +1840,30 @@ function Invoke-ShowPosterCreation {
                             $LocalAssetMissing = 'true'
                         }
                         Else {
+                            # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                            $tempLogoAvailable = $false
+                            if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                $tempLogoUrl = $null
+                                $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                foreach ($provider in $searchOrder) {
+                                    if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                    switch ($provider) {
+                                        'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type tv } }
+                                        'FANART' { $t = if('tv' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                        'TVDB' { if ($entry.tvdbid) { $t = if('tv' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                    }
+                                }
+                                if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                
+                                if (-not $tempLogoAvailable) {
+                                    Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                    $global:OriginalPreferTextless = $global:PosterPreferTextless
+                                    $global:OriginalOnlyTextless = $global:PosterOnlyTextless
+                                    $global:PosterPreferTextless = $false
+                                    $global:PosterOnlyTextless = $false
+                                    $global:ForceTextAssetRestoration = '$global:PosterPreferTextless'
+                                }
+                            }
                             Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -1966,6 +2064,19 @@ function Invoke-ShowPosterCreation {
                             }
                             $global:IsTruncated = $null
                             if ($global:ImageProcessing -eq 'true') {
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                                 Write-Entry -Subtext "Processing Poster for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                 $CommentArguments = "`"$PosterImage`" -set `"comment`" `"created with posterizarr`" `"$PosterImage`""
                                 $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -2518,6 +2629,30 @@ function Invoke-ShowPosterCreation {
                             $LocalAssetMissing = 'true'
                         }
                         Else {
+                            # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                            $tempLogoAvailable = $false
+                            if ($TextlessPosterBypass -eq 'true' -and $UseBGLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                $tempLogoUrl = $null
+                                $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                foreach ($provider in $searchOrder) {
+                                    if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                    switch ($provider) {
+                                        'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type tv } }
+                                        'FANART' { $t = if('tv' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                        'TVDB' { if ($entry.tvdbid) { $t = if('tv' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                    }
+                                }
+                                if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                
+                                if (-not $tempLogoAvailable) {
+                                    Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                    $global:OriginalPreferTextless = $global:BackgroundPreferTextless
+                                    $global:OriginalOnlyTextless = $global:BackgroundOnlyTextless
+                                    $global:BackgroundPreferTextless = $false
+                                    $global:BackgroundOnlyTextless = $false
+                                    $global:ForceTextAssetRestoration = '$global:BackgroundPreferTextless'
+                                }
+                            }
                             Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -2717,6 +2852,19 @@ function Invoke-ShowPosterCreation {
                             }
                             $global:IsTruncated = $null
                             if ($global:ImageProcessing -eq 'true') {
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                                 Write-Entry -Subtext "Processing background for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                 $CommentArguments = "`"$backgroundImage`" -set `"comment`" `"created with posterizarr`" `"$backgroundImage`""
                                 $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -3318,6 +3466,30 @@ function Invoke-ShowPosterCreation {
                             }
                             Else {
                                 if (!$Seasonpostersearchtext) {
+                                    # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                                    $tempLogoAvailable = $false
+                                    if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                        $tempLogoUrl = $null
+                                        $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                        foreach ($provider in $searchOrder) {
+                                            if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                            switch ($provider) {
+                                                'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type tv } }
+                                                'FANART' { $t = if('tv' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                                'TVDB' { if ($entry.tvdbid) { $t = if('tv' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                            }
+                                        }
+                                        if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                        
+                                        if (-not $tempLogoAvailable) {
+                                            Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                            $global:OriginalPreferTextless = $global:SeasonPosterPreferTextless
+                                            $global:OriginalOnlyTextless = $global:SeasonPosterOnlyTextless
+                                            $global:SeasonPosterPreferTextless = $false
+                                            $global:SeasonPosterOnlyTextless = $false
+                                            $global:ForceTextAssetRestoration = '$global:SeasonPosterPreferTextless'
+                                        }
+                                    }
                                     Write-Entry -Message "Start Season Poster Search for: $Titletext | $global:seasonTitle" -Path $global:configLogging -Color White -log Info
                                 if ($global:OverrideProviderOrder) {
                                     $global:LoopFallbackPosterUrl = $null
@@ -3549,6 +3721,19 @@ function Invoke-ShowPosterCreation {
                             if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                                 $global:IsTruncated = $null
                                 if ($global:ImageProcessing -eq 'true') {
+                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    }
+                                    $global:ForceTextAssetRestoration = $null
+                                }
                                     if ($TakeLocal) {
                                         Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                             Copy-Item -LiteralPath $_.FullName -Destination $SeasonImage
@@ -4503,6 +4688,19 @@ function Invoke-TitleCardCreation {
                         if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal -or $global:TempImagecopied -eq 'true') {
                             $global:IsTruncated = $null
                             if ($global:ImageProcessing -eq 'true') {
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                                 if ($TakeLocal) {
                                     Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                         Copy-Item -LiteralPath $_.FullName -Destination $EpisodeImage | Out-Null
@@ -5266,6 +5464,19 @@ function Invoke-TitleCardCreation {
                         if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                             $global:IsTruncated = $null
                             if ($global:ImageProcessing -eq 'true') {
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                                 if ($TakeLocal) {
                                     Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                         Copy-Item -LiteralPath $_.FullName -Destination $EpisodeImage | Out-Null
@@ -6007,6 +6218,19 @@ function Invoke-TitleCardCreation {
                                             if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                                                 $global:IsTruncated = $null
                                                 if ($global:ImageProcessing -eq 'true') {
+                                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                                    }
+                                                    $global:ForceTextAssetRestoration = $null
+                                                }
                                                     if ($TakeLocal) {
                                                         Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                                             Copy-Item -LiteralPath $_.FullName -Destination $EpisodeImage | Out-Null

@@ -421,6 +421,7 @@ $UseBGLogo = $config.PrerequisitePart.UseBGLogo.tolower()
 $TextFallback = $config.PrerequisitePart.LogoTextFallback.tolower()
 $global:UseClearlogo = $config.PrerequisitePart.UseClearlogo.tolower()
 $global:UseClearart = $config.PrerequisitePart.UseClearart.tolower()
+$TextlessPosterBypass = $config.PrerequisitePart.TextlessPosterBypass.tolower()
 
 # Check if its a Network Share
 if ($AssetPath.StartsWith("\")) {

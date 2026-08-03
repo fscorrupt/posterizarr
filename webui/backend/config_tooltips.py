@@ -128,6 +128,7 @@ CONFIG_TOOLTIPS = {
     "UseClearlogo": "Set to true to use Clearlogo. A Clearlogo is a transparent PNG image that contains only the title text (logo) of a movie or show - no characters, no background, no extra artwork.",
     "UseClearart": "Set to true to use Clearart. Clearart is a transparent PNG image that contains the logo plus additional artwork (e.g., characters or promotional art) - still fully transparent with no background.",
     "LogoTextFallback": "Set to true to fallback to Text if no logos are found.",
+    "TextlessPosterBypass": "Set to true to bypass 'Prefer Textless' and download a standard Text Poster if no logos are found.",
     "ConvertLogoColor": "Set to true to convert the logo image to a solid color (monochrome).",
     "LogoFlatColor": "The specific color to use when Convert Logo Color is enabled (e.g., 'white', '#FFFFFF').",
     "UseOriginalTitle": "Set to true to use the original title instead of the localized version.",
