@@ -1018,8 +1018,8 @@
             Write-Entry -Subtext "Target Image Type: $FinalImageType | PosterType: $PosterType" -Path $global:configLogging -Color Cyan -log Debug
 
             $SearchTerm = $Titletext
-            if ($SeasonPoster -or $TitleCard) {
-                # Titletext is the poster text, not the show name. Derive show name from FolderName.
+            if ([string]::IsNullOrWhiteSpace($SearchTerm) -or $SeasonPoster -or $TitleCard) {
+                # Titletext is the poster text, not the show name (or it's empty). Derive show name from FolderName.
                 if ($FolderName -match "^([^\(]+?)\s*(?:\(\d{4}\)|$)") {
                     $SearchTerm = $Matches[1].Trim()
                 } else {
@@ -1124,13 +1124,14 @@
                 if ($null -ne $FinalTargetID) {
                     if ($UsePlex -eq 'true') {
                         try {
-                            $fileContent = [System.IO.File]::ReadAllBytes($PosterImage)
                             $plexTargetType = if ($BackgroundCard) { "arts" } else { "posters" }
                             $uri = "$PlexUrl/library/metadata/$FinalTargetID/$($plexTargetType)"
 
                             Write-Entry -Subtext "Attempting Plex Post to: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
-                            $Upload = Invoke-WebRequest -Uri $uri -Method Post -Headers $extraPlexHeaders -Body $fileContent -ContentType 'application/octet-stream' -ErrorAction Stop
-
+                            
+                            # Using -InFile instead of -Body with ReadAllBytes to prevent "Error while copying content to a stream"
+                            $Upload = Invoke-WebRequest -Uri $uri -Method Post -Headers $extraPlexHeaders -InFile $PosterImage -ContentType 'image/jpeg' -ErrorAction Stop
+                            
                             Write-Entry -Subtext "Manual Plex Upload Success: $PosterImage" -Path $global:configLogging -Color Green -log Info
                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
                         }

@@ -46,6 +46,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
   const [isDimensionValid, setIsDimensionValid] = useState(false); // Track if dimensions are valid
   const [activeProviderTab, setActiveProviderTab] = useState("tmdb"); // Provider tabs: tmdb, tvdb, fanart
+  const [languageFilter, setLanguageFilter] = useState("all");
 
   // Logo selection mode
   const [logoSelectionMode, setLogoSelectionMode] = useState(false);
@@ -1529,6 +1530,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   const totalPreviews = Object.values(previews).flat().length;
 
+  const currentProviderPreviews = previews[activeProviderTab] || [];
+  const availableLanguages = ["all", ...new Set(currentProviderPreviews.map(p => (p.language || "xx").toLowerCase()))];
+  const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
+
+  const filteredPreviews = effectiveLanguageFilter === "all" 
+    ? currentProviderPreviews 
+    : currentProviderPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
       <div className="bg-theme-card rounded-none sm:rounded-xl border-0 sm:border border-theme max-w-6xl w-full h-full sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col">
@@ -2174,54 +2183,39 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   </div>
 
                   <div>
-                    {activeProviderTab === "tmdb" && (
-                      <div className={useHorizontalLayout
-                        ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
-                        : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
-                      }>
-                        {previews.tmdb.map((preview, index) => (
-                          <PreviewCard
-                            key={`tmdb-${index}`}
-                            preview={preview}
-                            onSelect={() => handlePreviewClick(preview)}
-                            disabled={uploading || (isPosterizarrRunning && !addToQueue)}
-                            isHorizontal={useHorizontalLayout}
-                          />
+                    {/* Language Filter */}
+                    {availableLanguages.length > 2 && (
+                      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                        {availableLanguages.map((lang) => (
+                          <button
+                            key={lang}
+                            onClick={() => setLanguageFilter(lang)}
+                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
+                              effectiveLanguageFilter === lang
+                                ? "bg-theme-primary text-white"
+                                : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                            }`}
+                          >
+                            {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
+                          </button>
                         ))}
                       </div>
                     )}
-                    {activeProviderTab === "tvdb" && (
-                      <div className={useHorizontalLayout
-                        ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
-                        : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
-                      }>
-                        {previews.tvdb.map((preview, index) => (
-                          <PreviewCard
-                            key={`tvdb-${index}`}
-                            preview={preview}
-                            onSelect={() => handlePreviewClick(preview)}
-                            disabled={uploading || (isPosterizarrRunning && !addToQueue)}
-                            isHorizontal={useHorizontalLayout}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {activeProviderTab === "fanart" && (
-                      <div className={useHorizontalLayout
-                        ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
-                        : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
-                      }>
-                        {previews.fanart.map((preview, index) => (
-                          <PreviewCard
-                            key={`fanart-${index}`}
-                            preview={preview}
-                            onSelect={() => handlePreviewClick(preview)}
-                            disabled={uploading || (isPosterizarrRunning && !addToQueue)}
-                            isHorizontal={useHorizontalLayout}
-                          />
-                        ))}
-                      </div>
-                    )}
+
+                    <div className={useHorizontalLayout
+                      ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
+                      : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
+                    }>
+                      {filteredPreviews.map((preview, index) => (
+                        <PreviewCard
+                          key={`${activeProviderTab}-${index}`}
+                          preview={preview}
+                          onSelect={() => handlePreviewClick(preview)}
+                          disabled={uploading || (isPosterizarrRunning && !addToQueue)}
+                          isHorizontal={useHorizontalLayout}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

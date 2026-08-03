@@ -160,8 +160,8 @@
     - `BackgroundPosters`: Set to `true` to also create background posters.
     - `TitleCards` : Set to `true` to also create title cards.
     - `SkipTBA` : If set to `true`, TitleCard creation will be skipped when TitleText contains any word from `SkipWords`. (You can use Regex by wrapping the word in slashes like `/^TBA$/`)
-        - > [!NOTE]
-        - > If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
+        !!! note "Regex in config.json"
+            If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
     - `SkipJapTitle` : Set to `true` to skip TitleCard creation if the Titletext is `Jap or Chinese`.
     - `AssetCleanup` : Set to `true` to cleanup Assets that are no longer in Plex.
 

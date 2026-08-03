@@ -639,7 +639,7 @@ function Invoke-MoviePosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    $fileContent = [System.IO.File]::ReadAllBytes($PosterImage)
+                                                    
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "PosterImage: $PosterImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -651,8 +651,8 @@ function Invoke-MoviePosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -Body $fileContent `
-                                                        -ContentType 'application/octet-stream' `
+                                                        -InFile $PosterImage `
+-ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
 
@@ -767,7 +767,7 @@ function Invoke-MoviePosterCreation {
                                         GetPlexArtwork -Type "$Titletext Artwork." -ArtUrl $Arturl -TempImage $PosterImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            $fileContent = [System.IO.File]::ReadAllBytes($PosterImageoriginal)
+                                            
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "PosterImage: $PosterImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -779,8 +779,8 @@ function Invoke-MoviePosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -Body $fileContent `
-                                                -ContentType 'application/octet-stream' `
+                                                -InFile $PosterImageoriginal `
+-ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
     
@@ -1376,7 +1376,7 @@ function Invoke-MoviePosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    $fileContent = [System.IO.File]::ReadAllBytes($backgroundImage)
+                                                    
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "BackgroundImage: $backgroundImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -1388,8 +1388,8 @@ function Invoke-MoviePosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -Body $fileContent `
-                                                        -ContentType 'application/octet-stream' `
+                                                        -InFile $backgroundImage `
+-ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
 
@@ -1504,7 +1504,7 @@ function Invoke-MoviePosterCreation {
                                         GetPlexArtwork -Type " $Titletext | Backgound Artwork." -ArtUrl $Arturl -TempImage $backgroundImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            $fileContent = [System.IO.File]::ReadAllBytes($backgroundImageoriginal)
+                                            
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "BackgroundImage: $backgroundImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -1516,8 +1516,8 @@ function Invoke-MoviePosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -Body $fileContent `
-                                                -ContentType 'application/octet-stream' `
+                                                -InFile $backgroundImageoriginal `
+-ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
     
@@ -2228,7 +2228,7 @@ function Invoke-ShowPosterCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($PosterImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "PosterImage: $PosterImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -2240,8 +2240,8 @@ function Invoke-ShowPosterCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $PosterImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -2355,7 +2355,7 @@ function Invoke-ShowPosterCreation {
                                     GetPlexArtwork -Type "$Titletext Artwork." -ArtUrl $Arturl -TempImage $PosterImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($PosterImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "PosterImage: $PosterImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -2367,8 +2367,8 @@ function Invoke-ShowPosterCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $PosterImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -2967,7 +2967,7 @@ function Invoke-ShowPosterCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($backgroundImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "BackgroundImage: $backgroundImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -2979,8 +2979,8 @@ function Invoke-ShowPosterCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $backgroundImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -3095,7 +3095,7 @@ function Invoke-ShowPosterCreation {
                                     GetPlexArtwork -Type " $Titletext | Backgound Artwork." -ArtUrl $Arturl -TempImage $backgroundImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($backgroundImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "BackgroundImage: $backgroundImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -3107,8 +3107,8 @@ function Invoke-ShowPosterCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $backgroundImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -3953,7 +3953,7 @@ function Invoke-ShowPosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    $fileContent = [System.IO.File]::ReadAllBytes($SeasonImage)
+                                                    
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "SeasonImage: $SeasonImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($global:SeasonRatingKey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -3965,8 +3965,8 @@ function Invoke-ShowPosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -Body $fileContent `
-                                                        -ContentType 'application/octet-stream' `
+                                                        -InFile $SeasonImage `
+-ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
 
@@ -4081,7 +4081,7 @@ function Invoke-ShowPosterCreation {
                                         GetPlexArtwork -Type " $Titletext | $global:seasontmp Artwork."  -ArtUrl $Arturl -TempImage $SeasonImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            $fileContent = [System.IO.File]::ReadAllBytes($SeasonImageoriginal)
+                                            
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "SeasonImage: $SeasonImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($global:SeasonRatingKey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -4093,8 +4093,8 @@ function Invoke-ShowPosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -Body $fileContent `
-                                                -ContentType 'application/octet-stream' `
+                                                -InFile $SeasonImageoriginal `
+-ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
     
@@ -4777,7 +4777,7 @@ function Invoke-TitleCardCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -4789,8 +4789,8 @@ function Invoke-TitleCardCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $EpisodeImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -4907,7 +4907,7 @@ function Invoke-TitleCardCreation {
                                     GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -4919,8 +4919,8 @@ function Invoke-TitleCardCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $EpisodeImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -5521,7 +5521,7 @@ function Invoke-TitleCardCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -5533,8 +5533,8 @@ function Invoke-TitleCardCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $EpisodeImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -5650,7 +5650,7 @@ function Invoke-TitleCardCreation {
                                     GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -5662,8 +5662,8 @@ function Invoke-TitleCardCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $EpisodeImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -6262,7 +6262,7 @@ function Invoke-TitleCardCreation {
                                                             if ($Upload2Plex -eq 'true') {
                                                                 try {
                                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                                    $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImage)
+                                                                    
                                                                     # Verify variables before uploading
                                                                     Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                                     Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -6274,8 +6274,8 @@ function Invoke-TitleCardCreation {
                                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                                         -Method Post `
                                                                         -Headers $extraPlexHeaders `
-                                                                        -Body $fileContent `
-                                                                        -ContentType 'application/octet-stream' `
+                                                                        -InFile $EpisodeImage `
+-ContentType 'image/jpeg' `
                                                                         -SkipHttpErrorCheck `
                                                                         -ErrorAction Stop
 
@@ -6391,7 +6391,7 @@ function Invoke-TitleCardCreation {
                                                         GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                                            $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImageoriginal)
+                                                            
                                                             # Verify variables before uploading
                                                             Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                                             Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -6403,8 +6403,8 @@ function Invoke-TitleCardCreation {
                                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                                 -Method Post `
                                                                 -Headers $extraPlexHeaders `
-                                                                -Body $fileContent `
-                                                                -ContentType 'application/octet-stream' `
+                                                                -InFile $EpisodeImageoriginal `
+-ContentType 'image/jpeg' `
                                                                 -SkipHttpErrorCheck `
                                                                 -ErrorAction Stop
     

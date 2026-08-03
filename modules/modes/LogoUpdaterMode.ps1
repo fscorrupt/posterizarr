@@ -314,7 +314,7 @@
                     }
 
                     # Upload to Plex ClearLogo endpoint
-                    $fileContent = [System.IO.File]::ReadAllBytes($tempLogo)
+                    
                     $uploadUri = "$PlexUrl/library/metadata/$ratingKey/clearLogos"
 
                     Write-Entry -Subtext "[$title] Uploading Logo to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
@@ -324,8 +324,8 @@
                         $Upload = Invoke-WebRequest -Uri $uploadUri `
                             -Method Post `
                             -Headers $extraPlexHeaders `
-                            -Body $fileContent `
-                            -ContentType 'application/octet-stream' `
+                            -InFile $tempLogo `
+-ContentType 'image/jpeg' `
                             -SkipHttpErrorCheck `
                             -ErrorAction Stop
 

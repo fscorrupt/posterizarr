@@ -90,12 +90,14 @@ const TMDBPosterSearchModal = React.memo(
     const scrollRef = React.useRef(null);
     const [localDisplayedCount, setLocalDisplayedCount] = React.useState(10);
     const [sourceFilter, setSourceFilter] = React.useState(null); // null, "provided_id", or "title_search"
+    const [languageFilter, setLanguageFilter] = React.useState("all");
 
     // Reset displayed count and filter only when modal opens (not on every render)
     React.useEffect(() => {
       if (tmdbSearch.showModal) {
         setLocalDisplayedCount(10);
         setSourceFilter(null);
+        setLanguageFilter("all");
       }
     }, [tmdbSearch.showModal]);
 
@@ -165,10 +167,16 @@ const TMDBPosterSearchModal = React.memo(
     // Get active provider results
     const activeResults = tmdbSearch.results[tmdbSearch.activeProvider] || [];
 
-    // Apply source filter if active
-    const filteredResults = sourceFilter
-      ? activeResults.filter((p) => p.source_type === sourceFilter)
-      : activeResults;
+    // Calculate available languages for the active provider
+    const availableLanguages = ["all", ...new Set(activeResults.map(p => (p.language || "xx").toLowerCase()))];
+    const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
+
+    // Apply source and language filters
+    const filteredResults = activeResults.filter(p => {
+      const matchSource = sourceFilter ? p.source_type === sourceFilter : true;
+      const matchLang = effectiveLanguageFilter === "all" ? true : (p.language || "xx").toLowerCase() === effectiveLanguageFilter;
+      return matchSource && matchLang;
+    });
 
     // Count total results across all providers
     const totalResults =
@@ -365,6 +373,25 @@ const TMDBPosterSearchModal = React.memo(
                     )
                   );
                 })()}
+
+                {/* Language Filter */}
+                {availableLanguages.length > 2 && (
+                  <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                    {availableLanguages.map((lang) => (
+                      <button
+                        key={lang}
+                        onClick={() => setLanguageFilter(lang)}
+                        className={`px-3 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
+                          effectiveLanguageFilter === lang
+                            ? "bg-theme-primary text-white"
+                            : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                        }`}
+                      >
+                        {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {filteredResults

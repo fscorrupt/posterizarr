@@ -188,10 +188,9 @@ function Push-PlexAsset {
     )
     if (Test-Path -LiteralPath $AssetPath) {
         Write-Entry -Subtext "Restoring $Type for $RatingKey from $AssetPath" -Path $global:configLogging -Color Cyan -log Info
-        $bytes = [System.IO.File]::ReadAllBytes($AssetPath)
         $uri = "$PlexUrl/library/metadata/$RatingKey/$Type"
         try {
-            Invoke-RestMethod -Uri $uri -Method Post -Body $bytes -ContentType "image/jpeg" -Headers $PlexHeaders
+            Invoke-RestMethod -Uri $uri -Method Post -InFile $AssetPath -ContentType "image/jpeg" -Headers $PlexHeaders
             Write-Entry -Subtext "$Type successfully restored for $RatingKey..." -Path $global:configLogging -Color Green -log Info
             return $true
         } catch {
