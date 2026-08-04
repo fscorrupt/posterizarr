@@ -20,7 +20,7 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             if (chkUpdateSeason) chkUpdateSeason.checked = config.UpdateSeason !== false;
             if (chkUpdateTitlecard) chkUpdateTitlecard.checked = config.UpdateTitlecard !== false;
             if (chkUpdateBackdrop) chkUpdateBackdrop.checked = config.UpdateBackdrop !== false;
-            if (chkUpdateThumbnail) chkUpdateThumbnail.checked = config.UpdateThumbnail !== false;
+            if (chkUpdateThumbnail) chkUpdateThumbnail.checked = config.UpdateThumbnail || false;
 
             loading.hide();
         }).catch(function (err) {

@@ -22,7 +22,7 @@ namespace Posterizarr.Plugin.Configuration
             UpdateSeason = true;
             UpdateTitlecard = true;
             UpdateBackdrop = true;
-            UpdateThumbnail = true;
+            UpdateThumbnail = false;
         }
     }
 }

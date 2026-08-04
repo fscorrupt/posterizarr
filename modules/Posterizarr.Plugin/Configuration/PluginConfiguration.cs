@@ -22,6 +22,6 @@ public class PluginConfiguration : BasePluginConfiguration
             UpdateSeason = true;
             UpdateTitlecard = true;
             UpdateBackdrop = true;
-            UpdateThumbnail = true;
+            UpdateThumbnail = false;
         }
 }
