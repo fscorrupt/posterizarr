@@ -182,6 +182,11 @@ function Invoke-MoviePosterCreation {
                                         Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                         $global:OriginalPreferTextless = $global:PosterPreferTextless
                                         $global:OriginalOnlyTextless = $global:PosterOnlyTextless
+                                        $global:OriginalPreferredLanguageOrder = $global:PreferredLanguageOrder
+                                        $tempOrder = @($global:PreferredLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                        if (-not $tempOrder) { $tempOrder = @('en') }
+                                        $global:PreferredLanguageOrder = $tempOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $tempOrder
                                         $global:PosterPreferTextless = $false
                                         $global:PosterOnlyTextless = $false
                                         $global:ForceTextAssetRestoration = '$global:PosterPreferTextless'
@@ -400,20 +405,35 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 $global:IsTruncated = $null
-                                if ($global:ImageProcessing -eq 'true') {
                                 if ($global:ForceTextAssetRestoration -ne $null) {
                                     if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                         $global:PosterPreferTextless = $global:OriginalPreferTextless
                                         $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                            $global:OriginalPreferredLanguageOrder = $null
+                                        }
                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                         $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                         $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                        }
                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                         $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                         $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                        }
                                     }
                                     $global:ForceTextAssetRestoration = $null
                                 }
+                                if ($global:ImageProcessing -eq 'true') {
                                     Write-Entry -Subtext "Processing Poster for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                     $CommentArguments = "`"$PosterImage`" -set `"comment`" `"created with posterizarr`" `"$PosterImage`""
                                     $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -977,6 +997,11 @@ function Invoke-MoviePosterCreation {
                                         Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                         $global:OriginalPreferTextless = $global:BackgroundPreferTextless
                                         $global:OriginalOnlyTextless = $global:BackgroundOnlyTextless
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $global:PreferredBackgroundLanguageOrder
+                                        $tempOrder = @($global:PreferredBackgroundLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                        if (-not $tempOrder) { $tempOrder = @('en') }
+                                        $global:PreferredBackgroundLanguageOrder = $tempOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $tempOrder
                                         $global:BackgroundPreferTextless = $false
                                         $global:BackgroundOnlyTextless = $false
                                         $global:ForceTextAssetRestoration = '$global:BackgroundPreferTextless'
@@ -1174,20 +1199,35 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 $global:IsTruncated = $null
-                                if ($global:ImageProcessing -eq 'true') {
                                 if ($global:ForceTextAssetRestoration -ne $null) {
                                     if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                         $global:PosterPreferTextless = $global:OriginalPreferTextless
                                         $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                            $global:OriginalPreferredLanguageOrder = $null
+                                        }
                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                         $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                         $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                        }
                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                         $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                         $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                        }
                                     }
                                     $global:ForceTextAssetRestoration = $null
                                 }
+                                if ($global:ImageProcessing -eq 'true') {
                                     Write-Entry -Subtext "Processing background for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                     $CommentArguments = "`"$backgroundImage`" -set `"comment`" `"created with posterizarr`" `"$backgroundImage`""
                                     $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -1859,6 +1899,11 @@ function Invoke-ShowPosterCreation {
                                     Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                     $global:OriginalPreferTextless = $global:PosterPreferTextless
                                     $global:OriginalOnlyTextless = $global:PosterOnlyTextless
+                                    $global:OriginalPreferredLanguageOrder = $global:PreferredLanguageOrder
+                                    $tempOrder = @($global:PreferredLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                    if (-not $tempOrder) { $tempOrder = @('en') }
+                                    $global:PreferredLanguageOrder = $tempOrder
+                                    Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $tempOrder
                                     $global:PosterPreferTextless = $false
                                     $global:PosterOnlyTextless = $false
                                     $global:ForceTextAssetRestoration = '$global:PosterPreferTextless'
@@ -2063,20 +2108,35 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             $global:IsTruncated = $null
-                            if ($global:ImageProcessing -eq 'true') {
                             if ($global:ForceTextAssetRestoration -ne $null) {
                                 if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                     $global:PosterPreferTextless = $global:OriginalPreferTextless
                                     $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                     $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                     $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                     $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                     $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
                                 }
                                 $global:ForceTextAssetRestoration = $null
                             }
+                            if ($global:ImageProcessing -eq 'true') {
                                 Write-Entry -Subtext "Processing Poster for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                 $CommentArguments = "`"$PosterImage`" -set `"comment`" `"created with posterizarr`" `"$PosterImage`""
                                 $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -2648,6 +2708,11 @@ function Invoke-ShowPosterCreation {
                                     Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                     $global:OriginalPreferTextless = $global:BackgroundPreferTextless
                                     $global:OriginalOnlyTextless = $global:BackgroundOnlyTextless
+                                    $global:OriginalPreferredBackgroundLanguageOrder = $global:PreferredBackgroundLanguageOrder
+                                    $tempOrder = @($global:PreferredBackgroundLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                    if (-not $tempOrder) { $tempOrder = @('en') }
+                                    $global:PreferredBackgroundLanguageOrder = $tempOrder
+                                    Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $tempOrder
                                     $global:BackgroundPreferTextless = $false
                                     $global:BackgroundOnlyTextless = $false
                                     $global:ForceTextAssetRestoration = '$global:BackgroundPreferTextless'
@@ -2851,20 +2916,35 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             $global:IsTruncated = $null
-                            if ($global:ImageProcessing -eq 'true') {
                             if ($global:ForceTextAssetRestoration -ne $null) {
                                 if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                     $global:PosterPreferTextless = $global:OriginalPreferTextless
                                     $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                     $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                     $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                     $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                     $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
                                 }
                                 $global:ForceTextAssetRestoration = $null
                             }
+                            if ($global:ImageProcessing -eq 'true') {
                                 Write-Entry -Subtext "Processing background for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                 $CommentArguments = "`"$backgroundImage`" -set `"comment`" `"created with posterizarr`" `"$backgroundImage`""
                                 $CommentlogEntry = "`"$magick`" $CommentArguments"
@@ -3485,6 +3565,11 @@ function Invoke-ShowPosterCreation {
                                             Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                             $global:OriginalPreferTextless = $global:SeasonPosterPreferTextless
                                             $global:OriginalOnlyTextless = $global:SeasonPosterOnlyTextless
+                                            $global:OriginalPreferredSeasonLanguageOrder = $global:PreferredSeasonLanguageOrder
+                                            $tempOrder = @($global:PreferredSeasonLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                            if (-not $tempOrder) { $tempOrder = @('en') }
+                                            $global:PreferredSeasonLanguageOrder = $tempOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $tempOrder
                                             $global:SeasonPosterPreferTextless = $false
                                             $global:SeasonPosterOnlyTextless = $false
                                             $global:ForceTextAssetRestoration = '$global:SeasonPosterPreferTextless'
@@ -3720,20 +3805,35 @@ function Invoke-ShowPosterCreation {
                                 }
                             if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                                 $global:IsTruncated = $null
-                                if ($global:ImageProcessing -eq 'true') {
                                 if ($global:ForceTextAssetRestoration -ne $null) {
                                     if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                         $global:PosterPreferTextless = $global:OriginalPreferTextless
                                         $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                            $global:OriginalPreferredLanguageOrder = $null
+                                        }
                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                         $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                         $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                        }
                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                         $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                         $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                        }
                                     }
                                     $global:ForceTextAssetRestoration = $null
                                 }
+                                if ($global:ImageProcessing -eq 'true') {
                                     if ($TakeLocal) {
                                         Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                             Copy-Item -LiteralPath $_.FullName -Destination $SeasonImage
@@ -4687,20 +4787,35 @@ function Invoke-TitleCardCreation {
                         }
                         if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal -or $global:TempImagecopied -eq 'true') {
                             $global:IsTruncated = $null
-                            if ($global:ImageProcessing -eq 'true') {
                             if ($global:ForceTextAssetRestoration -ne $null) {
                                 if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                     $global:PosterPreferTextless = $global:OriginalPreferTextless
                                     $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                     $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                     $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                     $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                     $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
                                 }
                                 $global:ForceTextAssetRestoration = $null
                             }
+                            if ($global:ImageProcessing -eq 'true') {
                                 if ($TakeLocal) {
                                     Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                         Copy-Item -LiteralPath $_.FullName -Destination $EpisodeImage | Out-Null
@@ -5463,20 +5578,35 @@ function Invoke-TitleCardCreation {
                         }
                         if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                             $global:IsTruncated = $null
-                            if ($global:ImageProcessing -eq 'true') {
                             if ($global:ForceTextAssetRestoration -ne $null) {
                                 if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                     $global:PosterPreferTextless = $global:OriginalPreferTextless
                                     $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                     $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                     $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
                                 } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                     $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                     $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
                                 }
                                 $global:ForceTextAssetRestoration = $null
                             }
+                            if ($global:ImageProcessing -eq 'true') {
                                 if ($TakeLocal) {
                                     Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                         Copy-Item -LiteralPath $_.FullName -Destination $EpisodeImage | Out-Null
@@ -6217,20 +6347,35 @@ function Invoke-TitleCardCreation {
                                             }
                                             if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                                                 $global:IsTruncated = $null
-                                                if ($global:ImageProcessing -eq 'true') {
                                                 if ($global:ForceTextAssetRestoration -ne $null) {
                                                     if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
                                                         $global:PosterPreferTextless = $global:OriginalPreferTextless
                                                         $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                                            $global:OriginalPreferredLanguageOrder = $null
+                                                        }
                                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
                                                         $global:BackgroundPreferTextless = $global:OriginalPreferTextless
                                                         $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                                        }
                                                     } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
                                                         $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
                                                         $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                                        }
                                                     }
                                                     $global:ForceTextAssetRestoration = $null
                                                 }
+                                                if ($global:ImageProcessing -eq 'true') {
                                                     if ($TakeLocal) {
                                                         Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
                                                             Copy-Item -LiteralPath $_.FullName -Destination $EpisodeImage | Out-Null
