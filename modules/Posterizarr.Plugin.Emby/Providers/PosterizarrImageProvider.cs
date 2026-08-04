@@ -41,10 +41,23 @@ namespace Posterizarr.Plugin.Providers
         }
 
         public bool Supports(BaseItem item) => item is Movie || item is Series || item is Season || item is Episode;
-        public IEnumerable<ImageType> GetSupportedImages(BaseItem item) =>
-            item is Movie || item is Series
-                ? new[] { ImageType.Primary, ImageType.Backdrop }
-                : new[] { ImageType.Primary };
+        public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
+        {
+            var config = Plugin.Instance?.Configuration;
+            var types = new List<ImageType> { ImageType.Primary };
+            if (item is Movie || item is Series)
+            {
+                if (config?.ReplaceThumbwithBackdropExclusively != true)
+                {
+                    types.Add(ImageType.Backdrop);
+                }
+                if (config?.ReplaceThumbwithBackdrop == true)
+                {
+                    types.Add(ImageType.Thumb);
+                }
+            }
+            return types;
+        }
 
         public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, LibraryOptions libraryOptions, CancellationToken cancellationToken)
         {
@@ -57,12 +70,8 @@ namespace Posterizarr.Plugin.Providers
 
             LogDebug("Searching images for '{0}' ({1})", item.Name, item.GetType().Name);
 
-            var typesToSearch = (item is Movie || item is Series)
-                ? new[] { ImageType.Primary, ImageType.Backdrop }
-                : new[] { ImageType.Primary };
-
             var results = new List<RemoteImageInfo>();
-            foreach (var type in typesToSearch)
+            foreach (var type in GetSupportedImages(item))
             {
                 var path = FindFile(item, config, type);
                 if (string.IsNullOrEmpty(path)) continue;
@@ -132,6 +141,7 @@ namespace Posterizarr.Plugin.Providers
                 (ImageType.Primary, Season sn) => $"season{sn.IndexNumber ?? 0:D2}",
                 (ImageType.Primary, Episode ep) => $"S{ep.ParentIndexNumber ?? 0:D2}E{ep.IndexNumber ?? 0:D2}",
                 (ImageType.Primary, _) => "poster",
+                (ImageType.Thumb, _) => "background",
                 _ => "background"
             };
 
@@ -150,7 +160,7 @@ namespace Posterizarr.Plugin.Providers
                     Path.GetFileName(f).Equals(fileNameBase + ext, StringComparison.OrdinalIgnoreCase));
                 if (match != null) return match;
 
-                if (type == ImageType.Backdrop)
+                if (type == ImageType.Backdrop || type == ImageType.Thumb)
                 {
                     var fanart = files.FirstOrDefault(f =>
                         Path.GetFileName(f).Equals("fanart" + ext, StringComparison.OrdinalIgnoreCase));

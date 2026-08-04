@@ -9,6 +9,24 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             view.querySelector('#txtAssetPath').value = config.AssetFolderPath || '';
             view.querySelector('#chkDebugMode').checked = config.EnableDebugMode || false;
+            
+            var chkReplaceThumb = view.querySelector('#chkReplaceThumb');
+            var chkReplaceThumbExclusively = view.querySelector('#chkReplaceThumbExclusively');
+            var containerExclusive = view.querySelector('#containerExclusive');
+            
+            if (chkReplaceThumb && chkReplaceThumbExclusively) {
+                chkReplaceThumb.checked = config.ReplaceThumbwithBackdrop || false;
+                chkReplaceThumbExclusively.checked = config.ReplaceThumbwithBackdropExclusively || false;
+                
+                var toggleExclusive = function () {
+                    if (containerExclusive) {
+                        containerExclusive.style.display = chkReplaceThumb.checked ? "block" : "none";
+                    }
+                };
+                chkReplaceThumb.addEventListener('change', toggleExclusive);
+                toggleExclusive();
+            }
+
             loading.hide();
         }).catch(function (err) {
             console.error('[Posterizarr] Error loading configuration:', err);
@@ -22,6 +40,11 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             config.AssetFolderPath = view.querySelector('#txtAssetPath').value;
             config.EnableDebugMode = view.querySelector('#chkDebugMode').checked;
+            
+            var chkReplaceThumb = view.querySelector('#chkReplaceThumb');
+            var chkReplaceThumbExclusively = view.querySelector('#chkReplaceThumbExclusively');
+            if (chkReplaceThumb) config.ReplaceThumbwithBackdrop = chkReplaceThumb.checked;
+            if (chkReplaceThumbExclusively) config.ReplaceThumbwithBackdropExclusively = chkReplaceThumbExclusively.checked;
 
             ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                 Dashboard.processPluginConfigurationUpdateResult(result);

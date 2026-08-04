@@ -17,6 +17,21 @@
 
                 <div class="inputContainer">
                     <label class="checkboxContainerLabel">
+                        <input type="checkbox" id="chkReplaceThumb" name="chkReplaceThumb" is="emby-checkbox" />
+                        <span>Replace Thumbnail with Backdrop</span>
+                    </label>
+                </div>
+                
+                <div class="inputContainer" id="containerExclusive" style="display:none; margin-left: 20px; border-left: 2px solid var(--theme-primary-color); padding-left: 10px;">
+                    <label class="checkboxContainerLabel">
+                        <input type="checkbox" id="chkReplaceThumbExclusively" name="chkReplaceThumbExclusively" is="emby-checkbox" />
+                        <span>Upload Backdrop to Thumb Only (Exclusive)</span>
+                    </label>
+                    <div class="fieldDescription">Skip pushing the backdrop image to the server, retaining the default background while keeping the custom posterizarr backdrop on the thumbnail.</div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="checkboxContainerLabel">
                         <input type="checkbox" id="chkDebugMode" name="chkDebugMode" is="emby-checkbox" />
                         <span>Enable Debug Mode</span>
                     </label>
@@ -39,6 +54,21 @@
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     page.querySelector('#txtAssetPath').value = config.AssetFolderPath || "";
                     page.querySelector('#chkDebugMode').checked = config.EnableDebugMode || false;
+                    
+                    const chkReplaceThumb = page.querySelector('#chkReplaceThumb');
+                    const chkReplaceThumbExclusively = page.querySelector('#chkReplaceThumbExclusively');
+                    const containerExclusive = page.querySelector('#containerExclusive');
+                    
+                    chkReplaceThumb.checked = config.ReplaceThumbwithBackdrop || false;
+                    chkReplaceThumbExclusively.checked = config.ReplaceThumbwithBackdropExclusively || false;
+                    
+                    // Show/hide logic
+                    const toggleExclusive = () => {
+                        containerExclusive.style.display = chkReplaceThumb.checked ? "block" : "none";
+                    };
+                    chkReplaceThumb.addEventListener('change', toggleExclusive);
+                    toggleExclusive();
+
                     configLoaded = true;
                     Dashboard.hideLoadingMsg();
                 });
@@ -59,6 +89,8 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         config.AssetFolderPath = view.querySelector('#txtAssetPath').value;
                         config.EnableDebugMode = view.querySelector('#chkDebugMode').checked;
+                        config.ReplaceThumbwithBackdrop = view.querySelector('#chkReplaceThumb').checked;
+                        config.ReplaceThumbwithBackdropExclusively = view.querySelector('#chkReplaceThumbExclusively').checked;
 
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function(result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);

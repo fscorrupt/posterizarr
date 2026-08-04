@@ -46,6 +46,7 @@ CONFIG_TOOLTIPS = {
     "UseJellyfin": "If set to true, you tell the script to use a Jellyfin Server (Default value is: false). Do not enable more than one media server.",
     "JellyfinUploadExistingAssets": "If set to true, the script will check local assets and upload them to Jellyfin, but only if Jellyfin does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.",
     "JellyfinReplaceThumbwithBackdrop": "If set to true (Default value is: false), the script will replace the Thumb picture with the backdrop image. This will only occur if BackgroundPosters is also set to true.",
+    "JellyfinReplaceThumbwithBackdropExclusively": "If set to true, the script will ONLY upload the generated image as a Thumbnail and skip uploading it as a Background. This requires Replace Thumbnail with Backdrop to be enabled.",
 
     # EmbyPart
     "EmbyLibstoExclude": "Libraries, by local folder name, to exclude from processing on your Emby server.",
@@ -53,6 +54,7 @@ CONFIG_TOOLTIPS = {
     "UseEmby": "If set to true, you tell the script to use a Emby Server (Default value is: false). Do not enable more than one media server.",
     "EmbyUploadExistingAssets": "If set to true, the script will check local assets and upload them to Emby, but only if Emby does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.",
     "EmbyReplaceThumbwithBackdrop": "If set to true (Default value is: false), the script will replace the Thumb picture with the backdrop image. This will only occur if BackgroundPosters is also set to true.",
+    "EmbyReplaceThumbwithBackdropExclusively": "If set to true, the script will ONLY upload the generated image as a Thumbnail and skip uploading it as a Background. This requires Replace Thumbnail with Backdrop to be enabled.",
 
     # Notification
     "SendNotification": "Set to true if you want to send notifications via discord or apprise, else false.",

@@ -1,4 +1,4 @@
-﻿function SyncPlexArtwork {
+function SyncPlexArtwork {
     param(
         [string]$ArtUrl,
         [string]$DestUrl,
@@ -163,26 +163,49 @@
     Write-Entry -Subtext "Uploading new artwork to Jelly/Emby for: $title" -Path $global:configLogging -Color White -log Info
 
     if ($imageType -eq 'Backdrop') {
-        try {
-            Write-Entry -Subtext "Deleting old artwork before upload..." -Path $global:configLogging -Color Yellow -log Info
-            Invoke-RestMethod -Uri $DestUrl -Method Delete -Headers $destHeaders -ErrorAction Stop
-            Write-Entry -Subtext "Successfully deleted old artwork." -Path $global:configLogging -Color Green -log Info
-        }
-        catch {
-            $errorResponse = TryParse-JsonErrorResponse -ErrorRecord $_
-
-            if ($errorResponse) {
-                $errorTitle = $errorResponse.title
-                $errorStatus = $errorResponse.status
-
-                Write-Entry -Subtext "Error deleting image: Status: $errorStatus, Title: $errorTitle" -Path $global:configLogging -Color Red -log Error
+        $isExclusive = ($global:ReplaceThumbwithBackdrop -eq 'true' -and $global:ReplaceThumbwithBackdropExclusively -eq 'true')
+        
+        if (-not $isExclusive) {
+            try {
+                Write-Entry -Subtext "Deleting old artwork before upload..." -Path $global:configLogging -Color Yellow -log Info
+                Invoke-RestMethod -Uri $DestUrl -Method Delete -Headers $destHeaders -ErrorAction Stop
+                Write-Entry -Subtext "Successfully deleted old artwork." -Path $global:configLogging -Color Green -log Info
             }
-            else {
+            catch {
+                $errorResponse = TryParse-JsonErrorResponse -ErrorRecord $_
+
+                if ($errorResponse) {
+                    $errorTitle = $errorResponse.title
+                    $errorStatus = $errorResponse.status
+
+                    Write-Entry -Subtext "Error deleting image: Status: $errorStatus, Title: $errorTitle" -Path $global:configLogging -Color Red -log Error
+                }
+                else {
+                    $rawErrorText = if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
+                    Write-Entry -Subtext "Error deleting image: $rawErrorText" -Path $global:configLogging -Color Red -log Error
+                }
+            }
+        }
+
+        if ($global:ReplaceThumbwithBackdrop -eq 'true') {
+            $thumbapiUrl = $DestUrl -replace '/Backdrop/?$', '/Thumb/'
+            try {
+                $imageBase64 = [Convert]::ToBase64String($remoteImageBytes)
+                $response = Invoke-RestMethod -Uri $thumbapiUrl -Method Post -Headers $destHeaders -Body $imageBase64 -ContentType $remoteImageContentType -ErrorAction Stop
+                Write-Entry -Subtext "Thumb uploaded successfully." -Path $global:configLogging -Color Green -log Info
+                $global:UploadCount = Increment-GlobalStat 'UploadCount'
+            }
+            catch {
                 $rawErrorText = if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
-                Write-Entry -Subtext "Error deleting image: $rawErrorText" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "Error uploading Thumb image: $rawErrorText" -Path $global:configLogging -Color Red -log Error
+            }
+            
+            if ($isExclusive) {
+                Write-Entry -Subtext "Replace Thumb Exclusively is enabled. Skipping Backdrop upload." -Path $global:configLogging -Color Cyan -log Info
+                $global:BackgroundCount = Increment-GlobalStat 'BackgroundCount'
+                return
             }
         }
-
     }
 
     try {

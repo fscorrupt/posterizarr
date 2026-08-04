@@ -76,6 +76,7 @@
         - Also have a look at the hint: [Jellyfin CSS](platformandtools.md#jellyfin)
     - `UploadExistingAssets`: If set to `true`, the script will check local assets and upload them to Jellyfin, but only if Jellyfin does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.
     - `ReplaceThumbwithBackdrop`: If set to `true` (Default value is: false), the script will replace the `Thumb` picture with the `backdrop` image. This will only occur if `BackgroundPosters` is also set to `true`.
+    - `ReplaceThumbwithBackdropExclusively`: If set to `true` (Default value is: false), the script will upload the `backdrop` image to `Thumb` ONLY, skipping the actual `backdrop` upload. This prevents overwriting your media server's default background art. Requires `ReplaceThumbwithBackdrop` to be `true`.
 
     #### EmbyPart
 
@@ -84,6 +85,7 @@
     - `UseEmby`: If set to `true`, you tell the script to use a Emby Server (Default value is: `false`)
     - `UploadExistingAssets`: If set to `true`, the script will check local assets and upload them to Emby, but only if Emby does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.
     - `ReplaceThumbwithBackdrop`: If set to `true` (Default value is: false), the script will replace the `Thumb` picture with the `backdrop` image. This will only occur if `BackgroundPosters` is also set to `true`.
+    - `ReplaceThumbwithBackdropExclusively`: If set to `true` (Default value is: false), the script will upload the `backdrop` image to `Thumb` ONLY, skipping the actual `backdrop` upload. This prevents overwriting your media server's default background art. Requires `ReplaceThumbwithBackdrop` to be `true`.
 
     #### Notification
 

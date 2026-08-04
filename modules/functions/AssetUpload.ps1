@@ -96,28 +96,33 @@ function UploadOtherMediaServerArtwork {
         $apiUrl = "$OtherMediaServerUrl/items/$itemId/images/$imageType/"
 
         if ($imageType -eq "Backdrop") {
-            $deleteUrl = "$OtherMediaServerUrl/items/$itemId/images/$imageType/0"
-            # Make the API request to delete the backdrop image
-            try {
-                # Delete the existing image first
-                $response = Invoke-RestMethod -Uri $deleteUrl -Method Delete -ErrorAction Stop -Headers $global:OtherMediaServerHeaders
-                Write-Entry -Subtext "Image successfully deleted..." -Path $global:configLogging -Color Green -log Info
-                $global:UploadCount = Increment-GlobalStat 'UploadCount'
-            }
-            catch {
-                if ($_.Exception.Response -is [System.Net.Http.HttpResponseMessage] -and $_.Exception.Response.Content) {
-                    try {
-                        $response = $_.Exception.Response.Content.ReadAsStringAsync().Result
-                    }
-                    catch {
-                        $response = "Unable to read server response (content may be disposed)."
-                    }
-                    Write-Entry -Subtext "Failed to delete image. Server response: $response" -Path $global:configLogging -Color Red -log Error
+            $isExclusive = ($global:ReplaceThumbwithBackdrop -eq 'true' -and $global:ReplaceThumbwithBackdropExclusively -eq 'true')
+            
+            if (-not $isExclusive) {
+                $deleteUrl = "$OtherMediaServerUrl/items/$itemId/images/$imageType/0"
+                # Make the API request to delete the backdrop image
+                try {
+                    # Delete the existing image first
+                    $response = Invoke-RestMethod -Uri $deleteUrl -Method Delete -ErrorAction Stop -Headers $global:OtherMediaServerHeaders
+                    Write-Entry -Subtext "Image successfully deleted..." -Path $global:configLogging -Color Green -log Info
+                    $global:UploadCount = Increment-GlobalStat 'UploadCount'
                 }
-                else {
-                    Write-Entry -Subtext "Failed to delete image. Error: $_" -Path $global:configLogging -Color Red -log Error
+                catch {
+                    if ($_.Exception.Response -is [System.Net.Http.HttpResponseMessage] -and $_.Exception.Response.Content) {
+                        try {
+                            $response = $_.Exception.Response.Content.ReadAsStringAsync().Result
+                        }
+                        catch {
+                            $response = "Unable to read server response (content may be disposed)."
+                        }
+                        Write-Entry -Subtext "Failed to delete image. Server response: $response" -Path $global:configLogging -Color Red -log Error
+                    }
+                    else {
+                        Write-Entry -Subtext "Failed to delete image. Error: $_" -Path $global:configLogging -Color Red -log Error
+                    }
                 }
             }
+
             if ($global:ReplaceThumbwithBackdrop -eq 'true') {
                 # Make the API request to upload the Thumb image
                 $thumbapiUrl = "$OtherMediaServerUrl/items/$itemId/images/Thumb/"
@@ -141,6 +146,11 @@ function UploadOtherMediaServerArtwork {
                     else {
                         Write-Entry -Subtext "Failed to upload Thumb image. Error: $_" -Path $global:configLogging -Color Red -log Error
                     }
+                }
+                
+                if ($isExclusive) {
+                    Write-Entry -Subtext "Replace Thumb Exclusively is enabled. Skipping Backdrop upload." -Path $global:configLogging -Color Cyan -log Info
+                    return
                 }
             }
         }

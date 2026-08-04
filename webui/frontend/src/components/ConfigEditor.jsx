@@ -596,8 +596,10 @@ function ConfigEditor() {
     if (["PlexUrl", "PlexToken", "PlexLibstoExclude", "PlexUploadExistingAssets", "PlexUpload"].includes(key) && !plexEnabled) return true;
     if (["JellyfinUrl", "JellyfinAPIKey", "JellyfinLibstoExclude"].includes(key) && !jellyfinEnabled && !useJellySync) return true;
     if (["JellyfinUploadExistingAssets", "JellyfinReplaceThumbwithBackdrop"].includes(key) && !jellyfinEnabled) return true;
+    if (key === "JellyfinReplaceThumbwithBackdropExclusively" && (!jellyfinEnabled || !getValue("JellyfinReplaceThumbwithBackdrop"))) return true;
     if (["EmbyUrl", "EmbyAPIKey", "EmbyLibstoExclude"].includes(key) && !embyEnabled && !useEmbySync) return true;
     if (["EmbyUploadExistingAssets", "EmbyReplaceThumbwithBackdrop"].includes(key) && !embyEnabled) return true;
+    if (key === "EmbyReplaceThumbwithBackdropExclusively" && (!embyEnabled || !getValue("EmbyReplaceThumbwithBackdrop"))) return true;
 
     // Text Formatting & Skip Logic
     if (key === "SymbolsToKeepOnNewLine" && !getValue("NewLineOnSpecificSymbols")) return true;

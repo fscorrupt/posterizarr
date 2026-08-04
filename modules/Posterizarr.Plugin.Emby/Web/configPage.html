@@ -21,6 +21,22 @@
 
             <div class="checkboxContainer checkboxContainer-withDescription">
                 <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkReplaceThumb" />
+                    <span>Replace Thumbnail with Backdrop</span>
+                </label>
+                <div class="fieldDescription checkboxFieldDescription">Replaces the thumbnail image with your custom backdrop instead of poster.</div>
+            </div>
+
+            <div class="checkboxContainer checkboxContainer-withDescription" id="containerExclusive" style="display:none; margin-left: 20px; border-left: 2px solid #52B54B; padding-left: 10px;">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkReplaceThumbExclusively" />
+                    <span>Upload Backdrop to Thumb Only (Exclusive)</span>
+                </label>
+                <div class="fieldDescription checkboxFieldDescription">Skip pushing the backdrop image to the server, retaining the default background while keeping the custom posterizarr backdrop on the thumbnail.</div>
+            </div>
+
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label>
                     <input is="emby-checkbox" type="checkbox" id="chkDebugMode" />
                     <span>Enable Debug Mode</span>
                 </label>

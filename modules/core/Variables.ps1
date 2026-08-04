@@ -348,6 +348,7 @@ if ($UseJellyfin -eq 'true') {
     $OtherMediaServerApiKey = $JellyfinAPIKey
     $global:UploadExistingAssets = $config.JellyfinPart.UploadExistingAssets.tolower()
     $global:ReplaceThumbwithBackdrop = $config.JellyfinPart.ReplaceThumbwithBackdrop.tolower()
+    $global:ReplaceThumbwithBackdropExclusively = if ($config.JellyfinPart.ReplaceThumbwithBackdropExclusively) { $config.JellyfinPart.ReplaceThumbwithBackdropExclusively.tolower() } else { 'false' }
 }
 
 # Emby Part
@@ -369,6 +370,7 @@ if ($UseEmby -eq 'true') {
     $OtherMediaServerApiKey = $EmbyAPIKey
     $global:UploadExistingAssets = $config.EmbyPart.UploadExistingAssets.tolower()
     $global:ReplaceThumbwithBackdrop = $config.EmbyPart.ReplaceThumbwithBackdrop.tolower()
+    $global:ReplaceThumbwithBackdropExclusively = if ($config.EmbyPart.ReplaceThumbwithBackdropExclusively) { $config.EmbyPart.ReplaceThumbwithBackdropExclusively.tolower() } else { 'false' }
 }
 
 $global:OtherMediaServerHeaders = @{}
