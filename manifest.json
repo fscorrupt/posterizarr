@@ -8,6 +8,13 @@
     "category": "Metadata",
     "versions": [
       {
+        "version": "3.2.0",
+        "changelog": "Official Release 3.2.0\n\n- Added granular image type toggles: Poster, Season, Titlecard, Backdrop, Thumbnail (configurable per-type from plugin settings)\n- Scheduled sync task now uses the same image type configuration as the image provider\n- Added `ReplaceThumbwithBackdropExclusively` - upload backdrop to Thumbnail slot only, skip actual Backdrop upload\n- Fixed `ILoggerFactory` injection in `PosterizarrSyncTask` (was incorrectly using `new LoggerFactory()`)\n- Thumbnail toggle defaults to OFF to avoid accidental overwrites",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.2.0/Posterizarr.Plugin_v3.2.0.zip",
+        "checksum": "721DBD2DAC6064CD6AC0E86B4A994C71"
+      },
+      {
         "version": "3.1.4",
         "changelog": "Official Release 3.1.4",
         "targetAbi": "10.11.0.0",
