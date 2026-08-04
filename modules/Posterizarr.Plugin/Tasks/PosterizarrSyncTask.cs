@@ -21,17 +21,20 @@ public class PosterizarrSyncTask : IScheduledTask
     private readonly IProviderManager _providerManager;
     private readonly IFileSystem _fileSystem;
     private readonly ILogger<PosterizarrSyncTask> _logger;
+    private readonly ILoggerFactory _loggerFactory;
 
     public PosterizarrSyncTask(
         ILibraryManager libraryManager,
         IProviderManager providerManager,
         IFileSystem fileSystem,
-        ILogger<PosterizarrSyncTask> logger)
+        ILogger<PosterizarrSyncTask> logger,
+        ILoggerFactory loggerFactory)
     {
         _libraryManager = libraryManager;
         _providerManager = providerManager;
         _fileSystem = fileSystem;
         _logger = logger;
+        _loggerFactory = loggerFactory;
     }
 
     public string Name => "Sync Posterizarr Assets";
@@ -49,7 +52,7 @@ public class PosterizarrSyncTask : IScheduledTask
         var config = Plugin.Instance?.Configuration;
         if (config == null || string.IsNullOrEmpty(config.AssetFolderPath)) return;
 
-        var provider = new PosterizarrImageProvider(_libraryManager, new LoggerFactory().CreateLogger<PosterizarrImageProvider>());
+        var provider = new PosterizarrImageProvider(_libraryManager, _loggerFactory.CreateLogger<PosterizarrImageProvider>());
 
         var query = new InternalItemsQuery
         {
@@ -77,14 +80,8 @@ public class PosterizarrSyncTask : IScheduledTask
                 var item = items[i];
                 bool itemUpdated = false;
 
-                // Define which images to check based on item type
-                var typesToCheck = new List<ImageType> { ImageType.Primary };
-
-                // Checking type via pattern matching (Safe and fast)
-                if (item is Movie || item is Series)
-                {
-                    typesToCheck.Add(ImageType.Backdrop);
-                }
+                // Call provider.GetSupportedImages to get exact types configured by user
+                var typesToCheck = provider.GetSupportedImages(item);
 
                 foreach (var type in typesToCheck)
                 {
