@@ -1070,8 +1070,14 @@ if (usingFlatStructure) {
   };
 
   const handleExportBlueprint = () => {
+    const updates = generateBlueprintUpdates();
+    const blueprintData = {
+      name: "Custom Blueprint Export",
+      updates: { nested: updates }
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(blueprintData, null, 2));
     const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", `${API_URL}/config/export`);
+    downloadAnchorNode.setAttribute("href", dataStr);
     downloadAnchorNode.setAttribute("download", "custom_blueprint.json");
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
