@@ -10,21 +10,15 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             view.querySelector('#txtAssetPath').value = config.AssetFolderPath || '';
             view.querySelector('#chkDebugMode').checked = config.EnableDebugMode || false;
             
-            var chkReplaceThumb = view.querySelector('#chkReplaceThumb');
-            var chkReplaceThumbExclusively = view.querySelector('#chkReplaceThumbExclusively');
-            var containerExclusive = view.querySelector('#containerExclusive');
+            var chkUpdateBackdrop = view.querySelector('#chkUpdateBackdrop');
+            var chkUpdateThumbnail = view.querySelector('#chkUpdateThumbnail');
             
-            if (chkReplaceThumb && chkReplaceThumbExclusively) {
-                chkReplaceThumb.checked = config.ReplaceThumbwithBackdrop || false;
-                chkReplaceThumbExclusively.checked = config.ReplaceThumbwithBackdropExclusively || false;
-                
-                var toggleExclusive = function () {
-                    if (containerExclusive) {
-                        containerExclusive.style.display = chkReplaceThumb.checked ? "block" : "none";
-                    }
-                };
-                chkReplaceThumb.addEventListener('change', toggleExclusive);
-                toggleExclusive();
+            if (chkUpdateBackdrop) {
+                // If the property exists in config, use it. Otherwise, default to true.
+                chkUpdateBackdrop.checked = config.UpdateBackdrop !== false;
+            }
+            if (chkUpdateThumbnail) {
+                chkUpdateThumbnail.checked = config.UpdateThumbnail || false;
             }
 
             loading.hide();
@@ -41,10 +35,10 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             config.AssetFolderPath = view.querySelector('#txtAssetPath').value;
             config.EnableDebugMode = view.querySelector('#chkDebugMode').checked;
             
-            var chkReplaceThumb = view.querySelector('#chkReplaceThumb');
-            var chkReplaceThumbExclusively = view.querySelector('#chkReplaceThumbExclusively');
-            if (chkReplaceThumb) config.ReplaceThumbwithBackdrop = chkReplaceThumb.checked;
-            if (chkReplaceThumbExclusively) config.ReplaceThumbwithBackdropExclusively = chkReplaceThumbExclusively.checked;
+            var chkUpdateBackdrop = view.querySelector('#chkUpdateBackdrop');
+            var chkUpdateThumbnail = view.querySelector('#chkUpdateThumbnail');
+            if (chkUpdateBackdrop) config.UpdateBackdrop = chkUpdateBackdrop.checked;
+            if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
 
             ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                 Dashboard.processPluginConfigurationUpdateResult(result);

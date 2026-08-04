@@ -44,11 +44,11 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasOrder
     {
         var config = Plugin.Instance?.Configuration;
         var types = new List<ImageType> { ImageType.Primary };
-        if (config?.ReplaceThumbwithBackdropExclusively != true)
+        if (config?.UpdateBackdrop == true)
         {
             types.Add(ImageType.Backdrop);
         }
-        if (config?.ReplaceThumbwithBackdrop == true)
+        if (config?.UpdateThumbnail == true)
         {
             types.Add(ImageType.Thumb);
         }

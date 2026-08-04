@@ -17,17 +17,18 @@
 
                 <div class="inputContainer">
                     <label class="checkboxContainerLabel">
-                        <input type="checkbox" id="chkReplaceThumb" name="chkReplaceThumb" is="emby-checkbox" />
-                        <span>Replace Thumbnail with Backdrop</span>
+                        <input type="checkbox" id="chkUpdateBackdrop" name="chkUpdateBackdrop" is="emby-checkbox" />
+                        <span>Update Backdrop Image</span>
                     </label>
+                    <div class="fieldDescription">Apply the Posterizarr background image as the media's Backdrop.</div>
                 </div>
-                
-                <div class="inputContainer" id="containerExclusive" style="display:none; margin-left: 20px; border-left: 2px solid var(--theme-primary-color); padding-left: 10px;">
+
+                <div class="inputContainer">
                     <label class="checkboxContainerLabel">
-                        <input type="checkbox" id="chkReplaceThumbExclusively" name="chkReplaceThumbExclusively" is="emby-checkbox" />
-                        <span>Upload Backdrop to Thumb Only (Exclusive)</span>
+                        <input type="checkbox" id="chkUpdateThumbnail" name="chkUpdateThumbnail" is="emby-checkbox" />
+                        <span>Update Thumbnail Image</span>
                     </label>
-                    <div class="fieldDescription">Skip pushing the backdrop image to the server, retaining the default background while keeping the custom posterizarr backdrop on the thumbnail.</div>
+                    <div class="fieldDescription">Apply the Posterizarr background image as the media's Thumbnail instead of using the primary poster.</div>
                 </div>
 
                 <div class="inputContainer">
@@ -55,19 +56,15 @@
                     page.querySelector('#txtAssetPath').value = config.AssetFolderPath || "";
                     page.querySelector('#chkDebugMode').checked = config.EnableDebugMode || false;
                     
-                    const chkReplaceThumb = page.querySelector('#chkReplaceThumb');
-                    const chkReplaceThumbExclusively = page.querySelector('#chkReplaceThumbExclusively');
-                    const containerExclusive = page.querySelector('#containerExclusive');
+                    const chkUpdateBackdrop = page.querySelector('#chkUpdateBackdrop');
+                    const chkUpdateThumbnail = page.querySelector('#chkUpdateThumbnail');
                     
-                    chkReplaceThumb.checked = config.ReplaceThumbwithBackdrop || false;
-                    chkReplaceThumbExclusively.checked = config.ReplaceThumbwithBackdropExclusively || false;
-                    
-                    // Show/hide logic
-                    const toggleExclusive = () => {
-                        containerExclusive.style.display = chkReplaceThumb.checked ? "block" : "none";
-                    };
-                    chkReplaceThumb.addEventListener('change', toggleExclusive);
-                    toggleExclusive();
+                    if (chkUpdateBackdrop) {
+                        chkUpdateBackdrop.checked = config.UpdateBackdrop !== false;
+                    }
+                    if (chkUpdateThumbnail) {
+                        chkUpdateThumbnail.checked = config.UpdateThumbnail || false;
+                    }
 
                     configLoaded = true;
                     Dashboard.hideLoadingMsg();
@@ -89,8 +86,8 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         config.AssetFolderPath = view.querySelector('#txtAssetPath').value;
                         config.EnableDebugMode = view.querySelector('#chkDebugMode').checked;
-                        config.ReplaceThumbwithBackdrop = view.querySelector('#chkReplaceThumb').checked;
-                        config.ReplaceThumbwithBackdropExclusively = view.querySelector('#chkReplaceThumbExclusively').checked;
+                        config.UpdateBackdrop = view.querySelector('#chkUpdateBackdrop').checked;
+                        config.UpdateThumbnail = view.querySelector('#chkUpdateThumbnail').checked;
 
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function(result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);

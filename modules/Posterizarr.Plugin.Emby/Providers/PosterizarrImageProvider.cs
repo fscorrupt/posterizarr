@@ -47,11 +47,11 @@ namespace Posterizarr.Plugin.Providers
             var types = new List<ImageType> { ImageType.Primary };
             if (item is Movie || item is Series)
             {
-                if (config?.ReplaceThumbwithBackdropExclusively != true)
+                if (config?.UpdateBackdrop == true)
                 {
                     types.Add(ImageType.Backdrop);
                 }
-                if (config?.ReplaceThumbwithBackdrop == true)
+                if (config?.UpdateThumbnail == true)
                 {
                     types.Add(ImageType.Thumb);
                 }
