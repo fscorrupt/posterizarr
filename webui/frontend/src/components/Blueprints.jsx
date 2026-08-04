@@ -368,21 +368,29 @@ export default function Blueprints() {
                   body: JSON.stringify(merged)
                 }).then(() => {
                   localStorage.removeItem("posterizarr_custom_blueprints");
-                }).catch(e => console.error("Migration save failed", e));
-              } else {
-                localStorage.removeItem("posterizarr_custom_blueprints");
+                });
               }
-            } else {
-              localStorage.removeItem("posterizarr_custom_blueprints");
             }
           } catch (e) {
-            console.error("Failed to parse local custom blueprints", e);
+            console.error("Failed to migrate custom blueprints from local storage", e);
           }
         }
         setCustomBlueprints(merged);
       })
       .catch(e => console.error("Failed to fetch custom blueprints", e));
+  };
+
+  useEffect(() => {
+    fetchConfig();
+    fetchOverlayFiles();
+    fetchCustomBlueprints();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "presets") {
+      fetchCustomBlueprints();
+    }
+  }, [activeTab]);
 
   const unflattenConfig = (flat) => {
     return {
@@ -989,11 +997,27 @@ export default function Blueprints() {
     }
   };
 
-  const handleLoadBlueprintInBuilder = (blueprint) => {
-    if (!config) return;
+  const handleLoadBlueprintInBuilder = async (blueprint) => {
+    let currentConfig = config;
+    let isFlat = usingFlatStructure;
+
+    try {
+      const response = await fetch(`${API_URL}/config`);
+      const data = await response.json();
+      if (data.success) {
+        currentConfig = data.config;
+        isFlat = data.using_flat_structure || false;
+        setConfig(currentConfig);
+        setUsingFlatStructure(isFlat);
+      }
+    } catch (e) {
+      console.error("Failed to refresh config cache before loading builder", e);
+    }
+
+    if (!currentConfig) return;
     
-    let fauxConfig = { ...config };
-    if (usingFlatStructure) {
+    let fauxConfig = { ...currentConfig };
+    if (isFlat) {
       fauxConfig = unflattenConfig(fauxConfig);
     }
     
