@@ -378,12 +378,6 @@ export default function Blueprints() {
         setCustomBlueprints(merged);
       })
       .catch(e => console.error("Failed to fetch custom blueprints", e));
-  };
-
-  useEffect(() => {
-    fetchConfig();
-    fetchOverlayFiles();
-    fetchCustomBlueprints();
   }, []);
 
   useEffect(() => {

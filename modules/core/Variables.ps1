@@ -151,7 +151,7 @@ if ($global:ConfigOverride -and (Test-Path $global:ConfigOverride)) {
 }
 
 # Replace Script with Latest
-if ($Platform -ne 'Docker' -and $config.PrerequisitePart.AutoUpdatePosterizarr.tolower() -eq 'true' -and $CurrentScriptVersion -ne $LatestScriptVersion) {
+if ($Platform -ne 'Docker' -and "$($config.PrerequisitePart.AutoUpdatePosterizarr)".ToLower() -eq 'true' -and $CurrentScriptVersion -ne $LatestScriptVersion) {
     Write-Entry -Subtext "Posterizarr version upgrade started..." -Path $global:configLogging -Color White -log Info
     $CurrentScriptPath = $MyInvocation.MyCommand.Path
 
@@ -213,8 +213,8 @@ Send-PosterizarrTelemetry
 
 # Access variables from the config file
 # Notification Part
-$global:SendNotification = $config.Notification.SendNotification.tolower()
-$global:UseUptimeKuma = $config.Notification.UseUptimeKuma.tolower()
+$global:SendNotification = "$($config.Notification.SendNotification)".ToLower()
+$global:UseUptimeKuma = "$($config.Notification.UseUptimeKuma)".ToLower()
 $global:DiscordUserName = $config.Notification.DiscordUserName
 if ($global:UseUptimeKuma -eq 'true') {
     $global:UptimeKumaUrl = $config.Notification.UptimeKumaUrl
@@ -255,7 +255,7 @@ $FanartTvAPIKey = if ($config.ApiPart.FanartTvAPIKey) { $config.ApiPart.FanartTv
 $PlexToken = if ($config.ApiPart.PlexToken) { $config.ApiPart.PlexToken.Trim() } else { $null }
 $JellyfinAPIKey = if ($config.ApiPart.JellyfinAPIKey) { $config.ApiPart.JellyfinAPIKey.Trim() } else { $null }
 $EmbyAPIKey = if ($config.ApiPart.EmbyAPIKey) { $config.ApiPart.EmbyAPIKey.Trim() } else { $null }
-$global:WidthHeightFilter = $config.ApiPart.WidthHeightFilter.tolower()
+$global:WidthHeightFilter = "$($config.ApiPart.WidthHeightFilter)".ToLower()
 $global:PosterMinWidth = $config.ApiPart.PosterMinWidth
 $global:PosterMinHeight = $config.ApiPart.PosterMinHeight
 $global:BgTcMinWidth = $config.ApiPart.BgTcMinWidth
@@ -266,7 +266,7 @@ $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.A
 if ($global:ProviderOrder) {
     $global:ProviderOrder = $global:ProviderOrder | ForEach-Object { $_.ToUpper() }
 }
-$global:TMDBVoteSorting = $config.ApiPart.tmdb_vote_sorting.tolower()
+$global:TMDBVoteSorting = "$($config.ApiPart.tmdb_vote_sorting)".ToLower()
 if (!$global:TMDBVoteSorting) {
     Write-Entry -Message "TMDB Sorting option not set in config, setting it to 'vote_average' for you" -Path $global:configLogging -Color Yellow -log Warning
     $global:TMDBVoteSorting = "vote_average"
@@ -332,28 +332,28 @@ $global:languageDirections = @{
 
 # Plex Part
 $PlexUrl = $config.PlexPart.PlexUrl
-$UsePlex = $config.PlexPart.UsePlex.tolower()
+$UsePlex = "$($config.PlexPart.UsePlex)".ToLower()
 if ($UsePlex -eq 'true') {
     $LibstoExclude = $config.PlexPart.LibstoExclude
-    $global:UploadExistingAssets = $config.PlexPart.UploadExistingAssets.tolower()
+    $global:UploadExistingAssets = "$($config.PlexPart.UploadExistingAssets)".ToLower()
 }
 
 # Jellyfin Part
 $JellyfinUrl = $config.JellyfinPart.JellyfinUrl
-$UseJellyfin = $config.JellyfinPart.UseJellyfin.tolower()
+$UseJellyfin = "$($config.JellyfinPart.UseJellyfin)".ToLower()
 if ($UseJellyfin -eq 'true') {
     $LibstoExclude = $config.JellyfinPart.LibstoExclude
     $OtherMediaServerUrl = $JellyfinUrl
     $UseOtherMediaServer = $UseJellyfin
     $OtherMediaServerApiKey = $JellyfinAPIKey
-    $global:UploadExistingAssets = $config.JellyfinPart.UploadExistingAssets.tolower()
-    $global:ReplaceThumbwithBackdrop = $config.JellyfinPart.ReplaceThumbwithBackdrop.tolower()
-    $global:ReplaceThumbwithBackdropExclusively = if ($config.JellyfinPart.ReplaceThumbwithBackdropExclusively) { $config.JellyfinPart.ReplaceThumbwithBackdropExclusively.tolower() } else { 'false' }
+    $global:UploadExistingAssets = "$($config.JellyfinPart.UploadExistingAssets)".ToLower()
+    $global:ReplaceThumbwithBackdrop = "$($config.JellyfinPart.ReplaceThumbwithBackdrop)".tolower()
+    $global:ReplaceThumbwithBackdropExclusively = if ($config.JellyfinPart.ReplaceThumbwithBackdropExclusively) { "$($config.JellyfinPart.ReplaceThumbwithBackdropExclusively)".tolower() } else { 'false' }
 }
 
 # Emby Part
 $EmbyUrl = $config.EmbyPart.EmbyUrl
-$UseEmby = $config.EmbyPart.UseEmby.tolower()
+$UseEmby = "$($config.EmbyPart.UseEmby)".ToLower()
 if ($UseEmby -eq 'true') {
 
     # Check and normalize Emby URL
@@ -368,9 +368,9 @@ if ($UseEmby -eq 'true') {
     $OtherMediaServerUrl = $EmbyUrl
     $UseOtherMediaServer = $UseEmby
     $OtherMediaServerApiKey = $EmbyAPIKey
-    $global:UploadExistingAssets = $config.EmbyPart.UploadExistingAssets.tolower()
-    $global:ReplaceThumbwithBackdrop = $config.EmbyPart.ReplaceThumbwithBackdrop.tolower()
-    $global:ReplaceThumbwithBackdropExclusively = if ($config.EmbyPart.ReplaceThumbwithBackdropExclusively) { $config.EmbyPart.ReplaceThumbwithBackdropExclusively.tolower() } else { 'false' }
+    $global:UploadExistingAssets = "$($config.EmbyPart.UploadExistingAssets)".ToLower()
+    $global:ReplaceThumbwithBackdrop = "$($config.EmbyPart.ReplaceThumbwithBackdrop)".tolower()
+    $global:ReplaceThumbwithBackdropExclusively = if ($config.EmbyPart.ReplaceThumbwithBackdropExclusively) { "$($config.EmbyPart.ReplaceThumbwithBackdropExclusively)".tolower() } else { 'false' }
 }
 
 $global:OtherMediaServerHeaders = @{}
@@ -393,37 +393,37 @@ if ($enabledServers -gt 1) {
 }
 
 # Prerequisites Part
-$AutoUpdateIM = $config.PrerequisitePart.AutoUpdateIM.tolower()
-$show_skipped = $config.PrerequisitePart.show_skipped.tolower()
-$FileTestOnTrigger = $config.PrerequisitePart.FileTestOnTrigger.tolower()
-$FollowSymlink = $config.PrerequisitePart.FollowSymlink.tolower()
-$ForceRunningDeletion = $config.PrerequisitePart.ForceRunningDeletion.tolower()
+$AutoUpdateIM = "$($config.PrerequisitePart.AutoUpdateIM)".ToLower()
+$show_skipped = "$($config.PrerequisitePart.show_skipped)".ToLower()
+$FileTestOnTrigger = "$($config.PrerequisitePart.FileTestOnTrigger)".ToLower()
+$FollowSymlink = "$($config.PrerequisitePart.FollowSymlink)".ToLower()
+$ForceRunningDeletion = "$($config.PrerequisitePart.ForceRunningDeletion)".ToLower()
 $AssetPath = RemoveTrailingSlash $config.PrerequisitePart.AssetPath
 $BackupPath = RemoveTrailingSlash $config.PrerequisitePart.BackupPath
 $ManualAssetPath = RemoveTrailingSlash $config.PrerequisitePart.ManualAssetPath
-$Upload2Plex = $config.PrerequisitePart.PlexUpload.tolower()
-$SkipAddText = $config.PrerequisitePart.SkipAddText.tolower()
-$SkipLocalPosterTextAdd = $config.PrerequisitePart.SkipLocalPosterTextAdd.tolower()
-$SkipLocalBackgroundTextAdd = $config.PrerequisitePart.SkipLocalBackgroundTextAdd.tolower()
-$SkipLocalSeasonTextAdd = $config.PrerequisitePart.SkipLocalSeasonTextAdd.tolower()
-$SkipLocalTCTextAdd = $config.PrerequisitePart.SkipLocalTCTextAdd.tolower()
-$SkipAddTextAndOverlay = $config.PrerequisitePart.SkipAddTextAndOverlay.tolower()
-$SkipAddTextAndBorder = $config.PrerequisitePart.SkipAddTextAndBorder.tolower()
-$DisableHashValidation = $config.PrerequisitePart.DisableHashValidation.tolower()
-$global:DisableOnlineAssetFetch = $config.PrerequisitePart.DisableOnlineAssetFetch.tolower()
-$global:DisableOnlineTitleCardFetch = $config.PrerequisitePart.DisableOnlineTitleCardFetch.tolower()
-$global:DisableOnlinePosterFetch = $config.PrerequisitePart.DisableOnlinePosterFetch.tolower()
-$global:DisableOnlineBackgroundFetch = $config.PrerequisitePart.DisableOnlineBackgroundFetch.tolower()
-$global:DisableOnlineSeasonFetch = $config.PrerequisitePart.DisableOnlineSeasonFetch.tolower()
-$UseLogo = $config.PrerequisitePart.UseLogo.tolower()
-$ConvertLogoColor = $config.PrerequisitePart.ConvertLogoColor.tolower()
-$LogoFlatColor = $config.PrerequisitePart.LogoFlatColor.tolower()
-$UseOriginalTitle = $config.PrerequisitePart.UseOriginalTitle.tolower()
-$UseBGLogo = $config.PrerequisitePart.UseBGLogo.tolower()
-$TextFallback = $config.PrerequisitePart.LogoTextFallback.tolower()
-$global:UseClearlogo = $config.PrerequisitePart.UseClearlogo.tolower()
-$global:UseClearart = $config.PrerequisitePart.UseClearart.tolower()
-$TextlessPosterBypass = $config.PrerequisitePart.TextlessPosterBypass.tolower()
+$Upload2Plex = "$($config.PrerequisitePart.PlexUpload)".ToLower()
+$SkipAddText = "$($config.PrerequisitePart.SkipAddText)".ToLower()
+$SkipLocalPosterTextAdd = "$($config.PrerequisitePart.SkipLocalPosterTextAdd)".ToLower()
+$SkipLocalBackgroundTextAdd = "$($config.PrerequisitePart.SkipLocalBackgroundTextAdd)".ToLower()
+$SkipLocalSeasonTextAdd = "$($config.PrerequisitePart.SkipLocalSeasonTextAdd)".ToLower()
+$SkipLocalTCTextAdd = "$($config.PrerequisitePart.SkipLocalTCTextAdd)".ToLower()
+$SkipAddTextAndOverlay = "$($config.PrerequisitePart.SkipAddTextAndOverlay)".ToLower()
+$SkipAddTextAndBorder = "$($config.PrerequisitePart.SkipAddTextAndBorder)".ToLower()
+$DisableHashValidation = "$($config.PrerequisitePart.DisableHashValidation)".ToLower()
+$global:DisableOnlineAssetFetch = "$($config.PrerequisitePart.DisableOnlineAssetFetch)".ToLower()
+$global:DisableOnlineTitleCardFetch = "$($config.PrerequisitePart.DisableOnlineTitleCardFetch)".ToLower()
+$global:DisableOnlinePosterFetch = "$($config.PrerequisitePart.DisableOnlinePosterFetch)".ToLower()
+$global:DisableOnlineBackgroundFetch = "$($config.PrerequisitePart.DisableOnlineBackgroundFetch)".ToLower()
+$global:DisableOnlineSeasonFetch = "$($config.PrerequisitePart.DisableOnlineSeasonFetch)".ToLower()
+$UseLogo = "$($config.PrerequisitePart.UseLogo)".ToLower()
+$ConvertLogoColor = "$($config.PrerequisitePart.ConvertLogoColor)".ToLower()
+$LogoFlatColor = "$($config.PrerequisitePart.LogoFlatColor)".ToLower()
+$UseOriginalTitle = "$($config.PrerequisitePart.UseOriginalTitle)".ToLower()
+$UseBGLogo = "$($config.PrerequisitePart.UseBGLogo)".ToLower()
+$TextFallback = "$($config.PrerequisitePart.LogoTextFallback)".ToLower()
+$global:UseClearlogo = "$($config.PrerequisitePart.UseClearlogo)".ToLower()
+$global:UseClearart = "$($config.PrerequisitePart.UseClearart)".ToLower()
+$TextlessPosterBypass = "$($config.PrerequisitePart.TextlessPosterBypass)".ToLower()
 
 # Check if its a Network Share
 if ($AssetPath.StartsWith("\")) {
@@ -480,24 +480,24 @@ Else {
 $Defaulttitlecardoverlay = Join-Path -Path $global:ScriptRoot -ChildPath ('temp', $config.PrerequisitePart.titlecardoverlayfile -join $($joinsymbol))
 $testimage = Join-Path -Path $global:ScriptRoot -ChildPath ('test', 'testimage.png' -join $($joinsymbol))
 $backgroundtestimage = Join-Path -Path $global:ScriptRoot -ChildPath ('test', 'backgroundtestimage.png' -join $($joinsymbol))
-$LibraryFolders = $config.PrerequisitePart.LibraryFolders.tolower()
-$global:SeasonPosters = $config.PrerequisitePart.SeasonPosters.tolower()
-$global:Posters = $config.PrerequisitePart.Posters.tolower()
-$global:BackgroundPosters = $config.PrerequisitePart.BackgroundPosters.tolower()
-$global:TitleCards = $config.PrerequisitePart.TitleCards.tolower()
-$SkipTBA = $config.PrerequisitePart.SkipTBA.tolower()
-$SkipJapTitle = $config.PrerequisitePart.SkipJapTitle.tolower()
-$AssetCleanup = $config.PrerequisitePart.AssetCleanup.tolower()
-$NewLineOnSpecificSymbols = $config.PrerequisitePart.NewLineOnSpecificSymbols.tolower()
+$LibraryFolders = "$($config.PrerequisitePart.LibraryFolders)".ToLower()
+$global:SeasonPosters = "$($config.PrerequisitePart.SeasonPosters)".ToLower()
+$global:Posters = "$($config.PrerequisitePart.Posters)".ToLower()
+$global:BackgroundPosters = "$($config.PrerequisitePart.BackgroundPosters)".ToLower()
+$global:TitleCards = "$($config.PrerequisitePart.TitleCards)".ToLower()
+$SkipTBA = "$($config.PrerequisitePart.SkipTBA)".ToLower()
+$SkipJapTitle = "$($config.PrerequisitePart.SkipJapTitle)".ToLower()
+$AssetCleanup = "$($config.PrerequisitePart.AssetCleanup)".ToLower()
+$NewLineOnSpecificSymbols = "$($config.PrerequisitePart.NewLineOnSpecificSymbols)".ToLower()
 $SymbolsToKeepOnNewLine = $config.PrerequisitePart.SymbolsToKeepOnNewLine
 $NewLineSymbols = $config.PrerequisitePart.NewLineSymbols
-$NewLineOnSpecificWords = $config.PrerequisitePart.NewLineOnSpecificWords.toLower()
+$NewLineOnSpecificWords = "$($config.PrerequisitePart.NewLineOnSpecificWords)".ToLower()
 $NewLineWords = $config.PrerequisitePart.NewLineWords
 
 # Resolution Part
-$UsePosterResolutionOverlays = $config.PrerequisitePart.UsePosterResolutionOverlays.tolower()
-$UseBackgroundResolutionOverlays = $config.PrerequisitePart.UseBackgroundResolutionOverlays.tolower()
-$UseTCResolutionOverlays = $config.PrerequisitePart.UseTCResolutionOverlays.tolower()
+$UsePosterResolutionOverlays = "$($config.PrerequisitePart.UsePosterResolutionOverlays)".ToLower()
+$UseBackgroundResolutionOverlays = "$($config.PrerequisitePart.UseBackgroundResolutionOverlays)".ToLower()
+$UseTCResolutionOverlays = "$($config.PrerequisitePart.UseTCResolutionOverlays)".ToLower()
 
 $4kposter = Join-Path -Path $global:ScriptRoot -ChildPath ('temp', $config.PrerequisitePart.poster4k -join $($joinsymbol))
 $1080pPoster = Join-Path -Path $global:ScriptRoot -ChildPath ('temp', $config.PrerequisitePart.Poster1080p -join $($joinsymbol))
@@ -520,17 +520,17 @@ $4KHDR10TC = Join-Path -Path $global:ScriptRoot -ChildPath ('temp', $config.Prer
 $4KDoViHDR10TC = Join-Path -Path $global:ScriptRoot -ChildPath ('temp', $config.PrerequisitePart.'4KDoViHDR10TC' -join $($joinsymbol))
 
 # Poster Overlay Part
-$global:ImageProcessing = $config.OverlayPart.ImageProcessing.tolower()
+$global:ImageProcessing = "$($config.OverlayPart.ImageProcessing)".ToLower()
 $global:outputQuality = $config.OverlayPart.outputQuality
 
 # Poster Overlay Part
-$fontAllCaps = $config.PosterOverlayPart.fontAllCaps.tolower()
-$AddBorder = $config.PosterOverlayPart.AddBorder.tolower()
-$AddText = $config.PosterOverlayPart.AddText.tolower()
-$AddTextStroke = $config.PosterOverlayPart.AddTextStroke.tolower()
+$fontAllCaps = "$($config.PosterOverlayPart.fontAllCaps)".ToLower()
+$AddBorder = "$($config.PosterOverlayPart.AddBorder)".ToLower()
+$AddText = "$($config.PosterOverlayPart.AddText)".ToLower()
+$AddTextStroke = "$($config.PosterOverlayPart.AddTextStroke)".ToLower()
 $strokecolor = $config.PosterOverlayPart.strokecolor
 $strokewidth = $config.PosterOverlayPart.strokewidth
-$AddOverlay = $config.PosterOverlayPart.AddOverlay.tolower()
+$AddOverlay = "$($config.PosterOverlayPart.AddOverlay)".ToLower()
 $fontcolor = $config.PosterOverlayPart.fontcolor
 $bordercolor = $config.PosterOverlayPart.bordercolor
 $minPointSize = $config.PosterOverlayPart.minPointSize
@@ -540,19 +540,19 @@ $MaxWidth = $config.PosterOverlayPart.MaxWidth
 $MaxHeight = $config.PosterOverlayPart.MaxHeight
 $text_offset = $config.PosterOverlayPart.text_offset
 $lineSpacing = $config.PosterOverlayPart.lineSpacing
-$textgravity = $config.PosterOverlayPart.TextGravity.tolower()
+$textgravity = "$($config.PosterOverlayPart.TextGravity)".ToLower()
 $borderwidthsecond = $borderwidth + 'x' + $borderwidth
 $boxsize = $MaxWidth + 'x' + $MaxHeight
 
 # Season Poster Overlay Part
-$ShowFallback = $config.SeasonPosterOverlayPart.ShowFallback.tolower()
-$SeasonfontAllCaps = $config.SeasonPosterOverlayPart.fontAllCaps.tolower()
-$AddSeasonBorder = $config.SeasonPosterOverlayPart.AddBorder.tolower()
-$AddSeasonText = $config.SeasonPosterOverlayPart.AddText.tolower()
-$AddSeasonTextStroke = $config.SeasonPosterOverlayPart.AddTextStroke.tolower()
+$ShowFallback = "$($config.SeasonPosterOverlayPart.ShowFallback)".ToLower()
+$SeasonfontAllCaps = "$($config.SeasonPosterOverlayPart.fontAllCaps)".ToLower()
+$AddSeasonBorder = "$($config.SeasonPosterOverlayPart.AddBorder)".ToLower()
+$AddSeasonText = "$($config.SeasonPosterOverlayPart.AddText)".ToLower()
+$AddSeasonTextStroke = "$($config.SeasonPosterOverlayPart.AddTextStroke)".ToLower()
 $Seasonstrokecolor = $config.SeasonPosterOverlayPart.strokecolor
 $Seasonstrokewidth = $config.SeasonPosterOverlayPart.strokewidth
-$AddSeasonOverlay = $config.SeasonPosterOverlayPart.AddOverlay.tolower()
+$AddSeasonOverlay = "$($config.SeasonPosterOverlayPart.AddOverlay)".ToLower()
 $Seasonfontcolor = $config.SeasonPosterOverlayPart.fontcolor
 $Seasonbordercolor = $config.SeasonPosterOverlayPart.bordercolor
 $SeasonminPointSize = $config.SeasonPosterOverlayPart.minPointSize
@@ -562,17 +562,17 @@ $SeasonMaxWidth = $config.SeasonPosterOverlayPart.MaxWidth
 $SeasonMaxHeight = $config.SeasonPosterOverlayPart.MaxHeight
 $Seasontext_offset = $config.SeasonPosterOverlayPart.text_offset
 $SeasonlineSpacing = $config.SeasonPosterOverlayPart.lineSpacing
-$Seasontextgravity = $config.SeasonPosterOverlayPart.TextGravity.tolower()
+$Seasontextgravity = "$($config.SeasonPosterOverlayPart.TextGravity)".ToLower()
 $Seasonborderwidthsecond = $borderwidth + 'x' + $borderwidth
 $Seasonboxsize = $SeasonMaxWidth + 'x' + $SeasonMaxHeight
 $OverrideSeasonName = $config.SeasonPosterOverlayPart.OverrideSeasonName
-$SeasonOverrideText = $config.SeasonPosterOverlayPart.SeasonOverrideText.tolower()
-$SpecialSeasonOverrideText = $config.SeasonPosterOverlayPart.SpecialSeasonOverrideText.tolower()
+$SeasonOverrideText = "$($config.SeasonPosterOverlayPart.SeasonOverrideText)".ToLower()
+$SpecialSeasonOverrideText = "$($config.SeasonPosterOverlayPart.SpecialSeasonOverrideText)".ToLower()
 
 # Show Title on Season Poster Overlay Part
-$ShowOnSeasonfontAllCaps = $config.ShowTitleOnSeasonPosterPart.fontAllCaps.tolower()
-$AddShowTitletoSeason = $config.ShowTitleOnSeasonPosterPart.AddShowTitletoSeason.tolower()
-$AddShowOnSeasonTextStroke = $config.ShowTitleOnSeasonPosterPart.AddTextStroke.tolower()
+$ShowOnSeasonfontAllCaps = "$($config.ShowTitleOnSeasonPosterPart.fontAllCaps)".ToLower()
+$AddShowTitletoSeason = "$($config.ShowTitleOnSeasonPosterPart.AddShowTitletoSeason)".ToLower()
+$AddShowOnSeasonTextStroke = "$($config.ShowTitleOnSeasonPosterPart.AddTextStroke)".ToLower()
 $ShowOnSeasonstrokecolor = $config.ShowTitleOnSeasonPosterPart.strokecolor
 $ShowOnSeasonstrokewidth = $config.ShowTitleOnSeasonPosterPart.strokewidth
 $ShowOnSeasonfontcolor = $config.ShowTitleOnSeasonPosterPart.fontcolor
@@ -581,15 +581,15 @@ $ShowOnSeasonmaxPointSize = $config.ShowTitleOnSeasonPosterPart.maxPointSize
 $ShowOnSeasonMaxWidth = $config.ShowTitleOnSeasonPosterPart.MaxWidth
 $ShowOnSeasonMaxHeight = $config.ShowTitleOnSeasonPosterPart.MaxHeight
 $ShowOnSeasontext_offset = $config.ShowTitleOnSeasonPosterPart.text_offset
-$ShowOnSeasontextgravity = $config.ShowTitleOnSeasonPosterPart.TextGravity.tolower()
+$ShowOnSeasontextgravity = "$($config.ShowTitleOnSeasonPosterPart.TextGravity)".ToLower()
 $ShowOnSeasonboxsize = $ShowOnSeasonMaxWidth + 'x' + $ShowOnSeasonMaxHeight
 $ShowOnSeasonlineSpacing = $config.ShowTitleOnSeasonPosterPart.lineSpacing
 
 # Collection Title on Collection Poster Overlay Part
-$CollectionTitleAllCaps = $config.CollectionTitlePosterPart.fontAllCaps.tolower()
-$AddCollectionTitle = $config.CollectionTitlePosterPart.AddCollectionTitle.tolower()
-$CollectionTitle = $config.CollectionTitlePosterPart.CollectionTitle.tolower()
-$AddCollectionTitleTextStroke = $config.CollectionTitlePosterPart.AddTextStroke.tolower()
+$CollectionTitleAllCaps = "$($config.CollectionTitlePosterPart.fontAllCaps)".ToLower()
+$AddCollectionTitle = "$($config.CollectionTitlePosterPart.AddCollectionTitle)".ToLower()
+$CollectionTitle = "$($config.CollectionTitlePosterPart.CollectionTitle)".ToLower()
+$AddCollectionTitleTextStroke = "$($config.CollectionTitlePosterPart.AddTextStroke)".ToLower()
 $CollectionTitlestrokecolor = $config.CollectionTitlePosterPart.strokecolor
 $CollectionTitlestrokewidth = $config.CollectionTitlePosterPart.strokewidth
 $CollectionTitlefontcolor = $config.CollectionTitlePosterPart.fontcolor
@@ -598,18 +598,18 @@ $CollectionTitlemaxPointSize = $config.CollectionTitlePosterPart.maxPointSize
 $CollectionTitleMaxWidth = $config.CollectionTitlePosterPart.MaxWidth
 $CollectionTitleMaxHeight = $config.CollectionTitlePosterPart.MaxHeight
 $CollectionTitletext_offset = $config.CollectionTitlePosterPart.text_offset
-$CollectionTitletextgravity = $config.CollectionTitlePosterPart.TextGravity.tolower()
+$CollectionTitletextgravity = "$($config.CollectionTitlePosterPart.TextGravity)".ToLower()
 $CollectionTitleboxsize = $CollectionTitleMaxWidth + 'x' + $CollectionTitleMaxHeight
 $CollectionTitlelineSpacing = $config.CollectionTitlePosterPart.lineSpacing
 
 # Collection Poster Overlay Part
-$CollectionAllCaps = $config.CollectionPosterOverlayPart.fontAllCaps.tolower()
-$AddCollectionBorder = $config.CollectionPosterOverlayPart.AddBorder.tolower()
-$AddCollectionText = $config.CollectionPosterOverlayPart.AddText.tolower()
-$AddCollectionTextStroke = $config.CollectionPosterOverlayPart.AddTextStroke.tolower()
+$CollectionAllCaps = "$($config.CollectionPosterOverlayPart.fontAllCaps)".ToLower()
+$AddCollectionBorder = "$($config.CollectionPosterOverlayPart.AddBorder)".ToLower()
+$AddCollectionText = "$($config.CollectionPosterOverlayPart.AddText)".ToLower()
+$AddCollectionTextStroke = "$($config.CollectionPosterOverlayPart.AddTextStroke)".ToLower()
 $Collectionstrokecolor = $config.CollectionPosterOverlayPart.strokecolor
 $Collectionstrokewidth = $config.CollectionPosterOverlayPart.strokewidth
-$AddCollectionOverlay = $config.CollectionPosterOverlayPart.AddOverlay.tolower()
+$AddCollectionOverlay = "$($config.CollectionPosterOverlayPart.AddOverlay)".ToLower()
 $Collectionfontcolor = $config.CollectionPosterOverlayPart.fontcolor
 $Collectionbordercolor = $config.CollectionPosterOverlayPart.bordercolor
 $CollectionminPointSize = $config.CollectionPosterOverlayPart.minPointSize
@@ -619,16 +619,16 @@ $CollectionMaxWidth = $config.CollectionPosterOverlayPart.MaxWidth
 $CollectionMaxHeight = $config.CollectionPosterOverlayPart.MaxHeight
 $Collectiontext_offset = $config.CollectionPosterOverlayPart.text_offset
 $CollectionlineSpacing = $config.CollectionPosterOverlayPart.lineSpacing
-$Collectiontextgravity = $config.CollectionPosterOverlayPart.TextGravity.tolower()
+$Collectiontextgravity = "$($config.CollectionPosterOverlayPart.TextGravity)".ToLower()
 $Collectionborderwidthsecond = $borderwidth + 'x' + $borderwidth
 $Collectionboxsize = $CollectionMaxWidth + 'x' + $CollectionMaxHeight
 
 # Background Overlay Part
-$BackgroundfontAllCaps = $config.BackgroundOverlayPart.fontAllCaps.tolower()
-$AddBackgroundOverlay = $config.BackgroundOverlayPart.AddOverlay.tolower()
-$AddBackgroundBorder = $config.BackgroundOverlayPart.AddBorder.tolower()
-$AddBackgroundText = $config.BackgroundOverlayPart.AddText.tolower()
-$AddBackgroundTextStroke = $config.BackgroundOverlayPart.AddTextStroke.tolower()
+$BackgroundfontAllCaps = "$($config.BackgroundOverlayPart.fontAllCaps)".ToLower()
+$AddBackgroundOverlay = "$($config.BackgroundOverlayPart.AddOverlay)".ToLower()
+$AddBackgroundBorder = "$($config.BackgroundOverlayPart.AddBorder)".ToLower()
+$AddBackgroundText = "$($config.BackgroundOverlayPart.AddText)".ToLower()
+$AddBackgroundTextStroke = "$($config.BackgroundOverlayPart.AddTextStroke)".ToLower()
 $Backgroundstrokecolor = $config.BackgroundOverlayPart.strokecolor
 $Backgroundstrokewidth = $config.BackgroundOverlayPart.strokewidth
 $Backgroundfontcolor = $config.BackgroundOverlayPart.fontcolor
@@ -640,23 +640,23 @@ $BackgroundMaxWidth = $config.BackgroundOverlayPart.MaxWidth
 $BackgroundMaxHeight = $config.BackgroundOverlayPart.MaxHeight
 $Backgroundtext_offset = $config.BackgroundOverlayPart.text_offset
 $BackgroundlineSpacing = $config.BackgroundOverlayPart.lineSpacing
-$Backgroundtextgravity = $config.BackgroundOverlayPart.TextGravity.tolower()
+$Backgroundtextgravity = "$($config.BackgroundOverlayPart.TextGravity)".ToLower()
 $Backgroundborderwidthsecond = $Backgroundborderwidth + 'x' + $Backgroundborderwidth
 $Backgroundboxsize = $BackgroundMaxWidth + 'x' + $BackgroundMaxHeight
 
 # Title Card Overlay Part
-$AddTitleCardOverlay = $config.TitleCardOverlayPart.AddOverlay.tolower()
-$UseBackgroundAsTitleCard = $config.TitleCardOverlayPart.UseBackgroundAsTitleCard.tolower()
-$AddTitleCardBorder = $config.TitleCardOverlayPart.AddBorder.tolower()
+$AddTitleCardOverlay = "$($config.TitleCardOverlayPart.AddOverlay)".ToLower()
+$UseBackgroundAsTitleCard = "$($config.TitleCardOverlayPart.UseBackgroundAsTitleCard)".ToLower()
+$AddTitleCardBorder = "$($config.TitleCardOverlayPart.AddBorder)".ToLower()
 $TitleCardborderwidth = $config.TitleCardOverlayPart.borderwidth
 $TitleCardbordercolor = $config.TitleCardOverlayPart.bordercolor
-$BackgroundFallback = $config.TitleCardOverlayPart.BackgroundFallback.tolower()
+$BackgroundFallback = "$($config.TitleCardOverlayPart.BackgroundFallback)".ToLower()
 $SkipWords = $config.TitleCardOverlayPart.SkipWords
 
 # Title Card Title Text Part
-$TitleCardEPTitlefontAllCaps = $config.TitleCardTitleTextPart.fontAllCaps.tolower()
-$AddTitleCardEPTitleText = $config.TitleCardTitleTextPart.AddEPTitleText.tolower()
-$AddTitleCardEPTitleTextStroke = $config.TitleCardTitleTextPart.AddTextStroke.tolower()
+$TitleCardEPTitlefontAllCaps = "$($config.TitleCardTitleTextPart.fontAllCaps)".ToLower()
+$AddTitleCardEPTitleText = "$($config.TitleCardTitleTextPart.AddEPTitleText)".ToLower()
+$AddTitleCardEPTitleTextStroke = "$($config.TitleCardTitleTextPart.AddTextStroke)".ToLower()
 $TitleCardEPTitlestrokecolor = $config.TitleCardTitleTextPart.strokecolor
 $TitleCardEPTitlestrokewidth = $config.TitleCardTitleTextPart.strokewidth
 $TitleCardEPTitlefontcolor = $config.TitleCardTitleTextPart.fontcolor
@@ -666,14 +666,14 @@ $TitleCardEPTitleMaxWidth = $config.TitleCardTitleTextPart.MaxWidth
 $TitleCardEPTitleMaxHeight = $config.TitleCardTitleTextPart.MaxHeight
 $TitleCardEPTitletext_offset = $config.TitleCardTitleTextPart.text_offset
 $TitleCardEPTitlelineSpacing = $config.TitleCardTitleTextPart.lineSpacing
-$TitleCardEPTitletextgravity = $config.TitleCardTitleTextPart.TextGravity.tolower()
+$TitleCardEPTitletextgravity = "$($config.TitleCardTitleTextPart.TextGravity)".ToLower()
 
 # Title Card EP Text Part
 $SeasonTCText = $config.TitleCardEPTextPart.SeasonTCText
 $EpisodeTCText = $config.TitleCardEPTextPart.EpisodeTCText
-$TitleCardEPfontAllCaps = $config.TitleCardEPTextPart.fontAllCaps.tolower()
-$AddTitleCardEPText = $config.TitleCardEPTextPart.AddEPText.tolower()
-$AddTitleCardTextStroke = $config.TitleCardEPTextPart.AddTextStroke.tolower()
+$TitleCardEPfontAllCaps = "$($config.TitleCardEPTextPart.fontAllCaps)".ToLower()
+$AddTitleCardEPText = "$($config.TitleCardEPTextPart.AddEPText)".ToLower()
+$AddTitleCardTextStroke = "$($config.TitleCardEPTextPart.AddTextStroke)".ToLower()
 $TitleCardstrokecolor = $config.TitleCardEPTextPart.strokecolor
 $TitleCardstrokewidth = $config.TitleCardEPTextPart.strokewidth
 $TitleCardEPfontcolor = $config.TitleCardEPTextPart.fontcolor
@@ -683,7 +683,7 @@ $TitleCardEPMaxWidth = $config.TitleCardEPTextPart.MaxWidth
 $TitleCardEPMaxHeight = $config.TitleCardEPTextPart.MaxHeight
 $TitleCardEPtext_offset = $config.TitleCardEPTextPart.text_offset
 $TitleCardEPlineSpacing = $config.TitleCardEPTextPart.lineSpacing
-$TitleCardEPtextgravity = $config.TitleCardEPTextPart.TextGravity.tolower()
+$TitleCardEPtextgravity = "$($config.TitleCardEPTextPart.TextGravity)".ToLower()
 
 $TitleCardborderwidthsecond = $TitleCardborderwidth + 'x' + $TitleCardborderwidth
 $TitleCardEPTitleboxsize = $TitleCardEPTitleMaxWidth + 'x' + $TitleCardEPTitleMaxHeight
