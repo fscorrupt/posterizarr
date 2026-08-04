@@ -560,6 +560,171 @@ export default function Blueprints() {
     };
   };
 
+  const flattenConfig = (nested) => {
+    if (!nested) return {};
+    return {
+      ImageProcessing: nested.OverlayPart?.ImageProcessing,
+      outputQuality: nested.OverlayPart?.outputQuality,
+      
+      UseClearlogo: nested.PrerequisitePart?.UseClearlogo,
+      UseClearart: nested.PrerequisitePart?.UseClearart,
+      UseOriginalTitle: nested.PrerequisitePart?.UseOriginalTitle,
+      ConvertLogoColor: nested.PrerequisitePart?.ConvertLogoColor,
+      LogoFlatColor: nested.PrerequisitePart?.LogoFlatColor,
+      SkipAddText: nested.PrerequisitePart?.SkipAddText,
+      UsePosterResolutionOverlays: nested.PrerequisitePart?.UsePosterResolutionOverlays,
+      UseBackgroundResolutionOverlays: nested.PrerequisitePart?.UseBackgroundResolutionOverlays,
+      UseTCResolutionOverlays: nested.PrerequisitePart?.UseTCResolutionOverlays,
+      overlayfile: nested.PrerequisitePart?.overlayfile,
+      seasonoverlayfile: nested.PrerequisitePart?.seasonoverlayfile,
+      backgroundoverlayfile: nested.PrerequisitePart?.backgroundoverlayfile,
+      titlecardoverlayfile: nested.PrerequisitePart?.titlecardoverlayfile,
+      collectionoverlayfile: nested.PrerequisitePart?.collectionoverlayfile,
+      font: nested.PrerequisitePart?.font,
+      backgroundfont: nested.PrerequisitePart?.backgroundfont,
+      titlecardfont: nested.PrerequisitePart?.titlecardfont,
+
+      PosterAddBorder: nested.PosterOverlayPart?.AddBorder,
+      PosterAddOverlay: nested.PosterOverlayPart?.AddOverlay,
+      PosterAddText: nested.PosterOverlayPart?.AddText,
+      PosterAddTextStroke: nested.PosterOverlayPart?.AddTextStroke,
+      PosterBordercolor: nested.PosterOverlayPart?.bordercolor,
+      PosterBorderwidth: nested.PosterOverlayPart?.borderwidth,
+      PosterFontcolor: nested.PosterOverlayPart?.fontcolor,
+      PosterStrokecolor: nested.PosterOverlayPart?.strokecolor,
+      PosterStrokewidth: nested.PosterOverlayPart?.strokewidth,
+      PosterTextOffset: nested.PosterOverlayPart?.text_offset,
+      PosterFontAllCaps: nested.PosterOverlayPart?.fontAllCaps,
+      PosterMinPointSize: nested.PosterOverlayPart?.minPointSize,
+      PosterMaxPointSize: nested.PosterOverlayPart?.maxPointSize,
+      PosterLineSpacing: nested.PosterOverlayPart?.lineSpacing,
+      PosterMaxWidth: nested.PosterOverlayPart?.MaxWidth,
+      PosterMaxHeight: nested.PosterOverlayPart?.MaxHeight,
+      PosterTextGravity: nested.PosterOverlayPart?.TextGravity,
+
+      SeasonPosterAddBorder: nested.SeasonPosterOverlayPart?.AddBorder,
+      SeasonPosterAddOverlay: nested.SeasonPosterOverlayPart?.AddOverlay,
+      SeasonPosterAddText: nested.SeasonPosterOverlayPart?.AddText,
+      SeasonPosterAddTextStroke: nested.SeasonPosterOverlayPart?.AddTextStroke,
+      SeasonPosterBordercolor: nested.SeasonPosterOverlayPart?.bordercolor,
+      SeasonPosterBorderwidth: nested.SeasonPosterOverlayPart?.borderwidth,
+      SeasonPosterFontcolor: nested.SeasonPosterOverlayPart?.fontcolor,
+      SeasonPosterStrokecolor: nested.SeasonPosterOverlayPart?.strokecolor,
+      SeasonPosterStrokewidth: nested.SeasonPosterOverlayPart?.strokewidth,
+      SeasonPosterTextOffset: nested.SeasonPosterOverlayPart?.text_offset,
+      SeasonPosterFontAllCaps: nested.SeasonPosterOverlayPart?.fontAllCaps,
+      SeasonPosterMinPointSize: nested.SeasonPosterOverlayPart?.minPointSize,
+      SeasonPosterMaxPointSize: nested.SeasonPosterOverlayPart?.maxPointSize,
+      SeasonPosterLineSpacing: nested.SeasonPosterOverlayPart?.lineSpacing,
+      SeasonPosterMaxWidth: nested.SeasonPosterOverlayPart?.MaxWidth,
+      SeasonPosterMaxHeight: nested.SeasonPosterOverlayPart?.MaxHeight,
+      SeasonPosterTextGravity: nested.SeasonPosterOverlayPart?.TextGravity,
+      SeasonPosterShowFallback: nested.SeasonPosterOverlayPart?.ShowFallback,
+      SeasonPosterOverrideSeasonName: nested.SeasonPosterOverlayPart?.OverrideSeasonName,
+      SeasonPosterSeasonOverrideText: nested.SeasonPosterOverlayPart?.SeasonOverrideText,
+      SeasonPosterSpecialSeasonOverrideText: nested.SeasonPosterOverlayPart?.SpecialSeasonOverrideText,
+
+      ShowTitleAddShowTitletoSeason: nested.ShowTitleOnSeasonPosterPart?.AddShowTitletoSeason,
+      ShowTitleFontAllCaps: nested.ShowTitleOnSeasonPosterPart?.fontAllCaps,
+      ShowTitleAddTextStroke: nested.ShowTitleOnSeasonPosterPart?.AddTextStroke,
+      ShowTitleStrokecolor: nested.ShowTitleOnSeasonPosterPart?.strokecolor,
+      ShowTitleStrokewidth: nested.ShowTitleOnSeasonPosterPart?.strokewidth,
+      ShowTitleFontcolor: nested.ShowTitleOnSeasonPosterPart?.fontcolor,
+      ShowTitleMinPointSize: nested.ShowTitleOnSeasonPosterPart?.minPointSize,
+      ShowTitleMaxPointSize: nested.ShowTitleOnSeasonPosterPart?.maxPointSize,
+      ShowTitleMaxWidth: nested.ShowTitleOnSeasonPosterPart?.MaxWidth,
+      ShowTitleMaxHeight: nested.ShowTitleOnSeasonPosterPart?.MaxHeight,
+      ShowTitleTextOffset: nested.ShowTitleOnSeasonPosterPart?.text_offset,
+      ShowTitleLineSpacing: nested.ShowTitleOnSeasonPosterPart?.lineSpacing,
+      ShowTitleTextGravity: nested.ShowTitleOnSeasonPosterPart?.TextGravity,
+
+      BackgroundAddBorder: nested.BackgroundOverlayPart?.AddBorder,
+      BackgroundAddOverlay: nested.BackgroundOverlayPart?.AddOverlay,
+      BackgroundAddText: nested.BackgroundOverlayPart?.AddText,
+      BackgroundAddTextStroke: nested.BackgroundOverlayPart?.AddTextStroke,
+      BackgroundBordercolor: nested.BackgroundOverlayPart?.bordercolor,
+      BackgroundBorderwidth: nested.BackgroundOverlayPart?.borderwidth,
+      BackgroundFontcolor: nested.BackgroundOverlayPart?.fontcolor,
+      BackgroundStrokecolor: nested.BackgroundOverlayPart?.strokecolor,
+      BackgroundStrokewidth: nested.BackgroundOverlayPart?.strokewidth,
+      BackgroundTextOffset: nested.BackgroundOverlayPart?.text_offset,
+      BackgroundFontAllCaps: nested.BackgroundOverlayPart?.fontAllCaps,
+      BackgroundMinPointSize: nested.BackgroundOverlayPart?.minPointSize,
+      BackgroundMaxPointSize: nested.BackgroundOverlayPart?.maxPointSize,
+      BackgroundLineSpacing: nested.BackgroundOverlayPart?.lineSpacing,
+      BackgroundMaxWidth: nested.BackgroundOverlayPart?.MaxWidth,
+      BackgroundMaxHeight: nested.BackgroundOverlayPart?.MaxHeight,
+      BackgroundTextGravity: nested.BackgroundOverlayPart?.TextGravity,
+
+      TitleCardAddBorder: nested.TitleCardOverlayPart?.AddBorder,
+      TitleCardAddOverlay: nested.TitleCardOverlayPart?.AddOverlay,
+      TitleCardBordercolor: nested.TitleCardOverlayPart?.bordercolor,
+      TitleCardBorderwidth: nested.TitleCardOverlayPart?.borderwidth,
+      TitleCardUseBackgroundAsTitleCard: nested.TitleCardOverlayPart?.UseBackgroundAsTitleCard,
+      TitleCardBackgroundFallback: nested.TitleCardOverlayPart?.BackgroundFallback,
+
+      TitleCardTitleAddEPTitleText: nested.TitleCardTitleTextPart?.AddEPTitleText,
+      TitleCardTitleAddTextStroke: nested.TitleCardTitleTextPart?.AddTextStroke,
+      TitleCardTitleFontcolor: nested.TitleCardTitleTextPart?.fontcolor,
+      TitleCardTitleStrokecolor: nested.TitleCardTitleTextPart?.strokecolor,
+      TitleCardTitleStrokewidth: nested.TitleCardTitleTextPart?.strokewidth,
+      TitleCardTitleTextOffset: nested.TitleCardTitleTextPart?.text_offset,
+      TitleCardTitleFontAllCaps: nested.TitleCardTitleTextPart?.fontAllCaps,
+      TitleCardTitleMinPointSize: nested.TitleCardTitleTextPart?.minPointSize,
+      TitleCardTitleMaxPointSize: nested.TitleCardTitleTextPart?.maxPointSize,
+      TitleCardTitleLineSpacing: nested.TitleCardTitleTextPart?.lineSpacing,
+      TitleCardTitleMaxWidth: nested.TitleCardTitleTextPart?.MaxWidth,
+      TitleCardTitleMaxHeight: nested.TitleCardTitleTextPart?.MaxHeight,
+      TitleCardTitleTextGravity: nested.TitleCardTitleTextPart?.TextGravity,
+
+      TitleCardEPAddEPText: nested.TitleCardEPTextPart?.AddEPText,
+      TitleCardEPAddTextStroke: nested.TitleCardEPTextPart?.AddTextStroke,
+      TitleCardEPFontcolor: nested.TitleCardEPTextPart?.fontcolor,
+      TitleCardEPStrokecolor: nested.TitleCardEPTextPart?.strokecolor,
+      TitleCardEPStrokewidth: nested.TitleCardEPTextPart?.strokewidth,
+      TitleCardEPTextOffset: nested.TitleCardEPTextPart?.text_offset,
+      TitleCardEPFontAllCaps: nested.TitleCardEPTextPart?.fontAllCaps,
+      TitleCardEPMinPointSize: nested.TitleCardEPTextPart?.minPointSize,
+      TitleCardEPMaxPointSize: nested.TitleCardEPTextPart?.maxPointSize,
+      TitleCardEPLineSpacing: nested.TitleCardEPTextPart?.lineSpacing,
+      TitleCardEPMaxWidth: nested.TitleCardEPTextPart?.MaxWidth,
+      TitleCardEPMaxHeight: nested.TitleCardEPTextPart?.MaxHeight,
+      TitleCardEPTextGravity: nested.TitleCardEPTextPart?.TextGravity,
+      TitleCardEPSeasonTCText: nested.TitleCardEPTextPart?.SeasonTCText,
+      TitleCardEPEpisodeTCText: nested.TitleCardEPTextPart?.EpisodeTCText,
+
+      CollectionPosterAddBorder: nested.CollectionPosterOverlayPart?.AddBorder,
+      CollectionPosterAddOverlay: nested.CollectionPosterOverlayPart?.AddOverlay,
+      CollectionPosterAddText: nested.CollectionPosterOverlayPart?.AddText,
+      CollectionPosterAddTextStroke: nested.CollectionPosterOverlayPart?.AddTextStroke,
+      CollectionPosterBordercolor: nested.CollectionPosterOverlayPart?.bordercolor,
+      CollectionPosterBorderwidth: nested.CollectionPosterOverlayPart?.borderwidth,
+      CollectionPosterFontcolor: nested.CollectionPosterOverlayPart?.fontcolor,
+      CollectionPosterStrokecolor: nested.CollectionPosterOverlayPart?.strokecolor,
+      CollectionPosterStrokewidth: nested.CollectionPosterOverlayPart?.strokewidth,
+      CollectionPosterTextOffset: nested.CollectionPosterOverlayPart?.text_offset,
+      CollectionPosterFontAllCaps: nested.CollectionPosterOverlayPart?.fontAllCaps,
+      CollectionPosterMinPointSize: nested.CollectionPosterOverlayPart?.minPointSize,
+      CollectionPosterMaxPointSize: nested.CollectionPosterOverlayPart?.maxPointSize,
+      CollectionPosterLineSpacing: nested.CollectionPosterOverlayPart?.lineSpacing,
+      CollectionPosterMaxWidth: nested.CollectionPosterOverlayPart?.MaxWidth,
+      CollectionPosterMaxHeight: nested.CollectionPosterOverlayPart?.MaxHeight,
+      CollectionPosterTextGravity: nested.CollectionPosterOverlayPart?.TextGravity,
+
+      CollectionTitleAddCollectionTitle: nested.CollectionTitlePosterPart?.AddCollectionTitle,
+      CollectionTitleFontAllCaps: nested.CollectionTitlePosterPart?.fontAllCaps,
+      CollectionTitleAddTextStroke: nested.CollectionTitlePosterPart?.AddTextStroke,
+      CollectionTitleStrokecolor: nested.CollectionTitlePosterPart?.strokecolor,
+      CollectionTitleStrokewidth: nested.CollectionTitlePosterPart?.strokewidth,
+      CollectionTitleFontcolor: nested.CollectionTitlePosterPart?.fontcolor,
+      CollectionTitleMinPointSize: nested.CollectionTitlePosterPart?.minPointSize,
+      CollectionTitleMaxPointSize: nested.CollectionTitlePosterPart?.maxPointSize,
+      CollectionTitleMaxWidth: nested.CollectionTitlePosterPart?.MaxWidth,
+      CollectionTitleMaxHeight: nested.CollectionTitlePosterPart?.MaxHeight,
+      CollectionTitleCollectionTitle: nested.CollectionTitlePosterPart?.CollectionTitle
+    };
+  };
+
   const populateBuilderStateFromConfig = (configData, isFlat = false) => {
     if (isFlat) configData = unflattenConfig(configData);
 
@@ -789,11 +954,13 @@ export default function Blueprints() {
     setApplyingId(blueprint.id);
     try {
       let updatedConfig = { ...config };
-      const updates = usingFlatStructure ? blueprint.updates.flat : blueprint.updates.nested;
-
+      let updates = blueprint.updates.nested;
+      
       if (usingFlatStructure) {
+        updates = blueprint.updates.flat || flattenConfig(blueprint.updates.nested);
         updatedConfig = { ...updatedConfig, ...updates };
       } else {
+        updates = blueprint.updates.nested || unflattenConfig(blueprint.updates.flat);
         for (const [section, fields] of Object.entries(updates)) {
           updatedConfig[section] = {
             ...(updatedConfig[section] || {}),
@@ -826,16 +993,17 @@ export default function Blueprints() {
     if (!config) return;
     
     let fauxConfig = { ...config };
-    const updates = usingFlatStructure ? blueprint.updates.flat : blueprint.updates.nested;
-if (usingFlatStructure) {
-      fauxConfig = { ...fauxConfig, ...updates };
-    } else {
-      for (const [section, fields] of Object.entries(updates)) {
-        fauxConfig[section] = {
-          ...(fauxConfig[section] || {}),
-          ...fields
-        };
-      }
+    if (usingFlatStructure) {
+      fauxConfig = unflattenConfig(fauxConfig);
+    }
+    
+    const updates = blueprint.updates.nested || unflattenConfig(blueprint.updates.flat);
+    
+    for (const [section, fields] of Object.entries(updates)) {
+      fauxConfig[section] = {
+        ...(fauxConfig[section] || {}),
+        ...fields
+      };
     }
 
     // Auto-enable Text/Logo if a preset enforces Clearlogo, Clearart or OriginalTitle
@@ -846,7 +1014,7 @@ if (usingFlatStructure) {
        fauxConfig.BackgroundOverlayPart = { ...(fauxConfig.BackgroundOverlayPart || {}), AddText: "true" };
     }
 
-    populateBuilderStateFromConfig(fauxConfig, usingFlatStructure);
+    populateBuilderStateFromConfig(fauxConfig, false);
     setActiveTab("builder");
     showSuccess(`Loaded ${blueprint.customTitle || blueprint.name || 'preset'} into Builder!`);
   };
