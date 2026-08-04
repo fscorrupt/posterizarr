@@ -87,11 +87,11 @@
                     const chkUpdateBackdrop = page.querySelector('#chkUpdateBackdrop');
                     const chkUpdateThumbnail = page.querySelector('#chkUpdateThumbnail');
                     
-                    if (chkUpdatePoster) chkUpdatePoster.checked = config.UpdatePoster || false;
-                    if (chkUpdateSeason) chkUpdateSeason.checked = config.UpdateSeason || false;
-                    if (chkUpdateTitlecard) chkUpdateTitlecard.checked = config.UpdateTitlecard || false;
-                    if (chkUpdateBackdrop) chkUpdateBackdrop.checked = config.UpdateBackdrop || false;
-                    if (chkUpdateThumbnail) chkUpdateThumbnail.checked = config.UpdateThumbnail || false;
+                    if (chkUpdatePoster) chkUpdatePoster.checked = config.UpdatePoster !== false;
+                    if (chkUpdateSeason) chkUpdateSeason.checked = config.UpdateSeason !== false;
+                    if (chkUpdateTitlecard) chkUpdateTitlecard.checked = config.UpdateTitlecard !== false;
+                    if (chkUpdateBackdrop) chkUpdateBackdrop.checked = config.UpdateBackdrop !== false;
+                    if (chkUpdateThumbnail) chkUpdateThumbnail.checked = config.UpdateThumbnail !== false;
 
                     configLoaded = true;
                     Dashboard.hideLoadingMsg();

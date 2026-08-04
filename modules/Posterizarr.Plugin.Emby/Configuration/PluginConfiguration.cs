@@ -18,11 +18,11 @@ namespace Posterizarr.Plugin.Configuration
             AssetFolderPath = string.Empty;
             SupportedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp", ".bmp" };
             EnableDebugMode = false;
-            UpdatePoster = false;
-            UpdateSeason = false;
-            UpdateTitlecard = false;
-            UpdateBackdrop = false;
-            UpdateThumbnail = false;
+            UpdatePoster = true;
+            UpdateSeason = true;
+            UpdateTitlecard = true;
+            UpdateBackdrop = true;
+            UpdateThumbnail = true;
         }
     }
 }
