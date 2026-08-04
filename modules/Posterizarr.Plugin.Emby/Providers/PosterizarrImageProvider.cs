@@ -44,18 +44,23 @@ namespace Posterizarr.Plugin.Providers
         public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
         {
             var config = Plugin.Instance?.Configuration;
-            var types = new List<ImageType> { ImageType.Primary };
+            var types = new List<ImageType>();
+            
             if (item is Movie || item is Series)
             {
-                if (config?.UpdateBackdrop == true)
-                {
-                    types.Add(ImageType.Backdrop);
-                }
-                if (config?.UpdateThumbnail == true)
-                {
-                    types.Add(ImageType.Thumb);
-                }
+                if (config?.UpdatePoster == true) types.Add(ImageType.Primary);
+                if (config?.UpdateBackdrop == true) types.Add(ImageType.Backdrop);
+                if (config?.UpdateThumbnail == true) types.Add(ImageType.Thumb);
             }
+            else if (item is Season)
+            {
+                if (config?.UpdateSeason == true) types.Add(ImageType.Primary);
+            }
+            else if (item is Episode)
+            {
+                if (config?.UpdateTitlecard == true) types.Add(ImageType.Primary);
+            }
+
             return types;
         }
 

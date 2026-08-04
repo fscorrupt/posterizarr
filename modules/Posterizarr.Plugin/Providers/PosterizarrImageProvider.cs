@@ -43,15 +43,23 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasOrder
     public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
     {
         var config = Plugin.Instance?.Configuration;
-        var types = new List<ImageType> { ImageType.Primary };
-        if (config?.UpdateBackdrop == true)
+        var types = new List<ImageType>();
+        
+        if (item is Movie || item is Series)
         {
-            types.Add(ImageType.Backdrop);
+            if (config?.UpdatePoster == true) types.Add(ImageType.Primary);
+            if (config?.UpdateBackdrop == true) types.Add(ImageType.Backdrop);
+            if (config?.UpdateThumbnail == true) types.Add(ImageType.Thumb);
         }
-        if (config?.UpdateThumbnail == true)
+        else if (item is Season)
         {
-            types.Add(ImageType.Thumb);
+            if (config?.UpdateSeason == true) types.Add(ImageType.Primary);
         }
+        else if (item is Episode)
+        {
+            if (config?.UpdateTitlecard == true) types.Add(ImageType.Primary);
+        }
+
         return types;
     }
 
