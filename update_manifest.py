@@ -12,6 +12,33 @@ def get_md5(file_path):
             hash_md5.update(chunk)
     return hash_md5.hexdigest().upper()
 
+def extract_plugin_changelog(release_body):
+    """Extracts only the changelog section under 'Jelly/Emby Plugin Changes:'."""
+    if not release_body:
+        return None
+    
+    lines = release_body.splitlines()
+    capturing = False
+    captured_lines = []
+    
+    for line in lines:
+        stripped = line.strip()
+        # Start capturing when we hit the heading
+        if "jelly/emby plugin changes:" in stripped.lower():
+            capturing = True
+            continue
+            
+        if capturing:
+            # Stop capturing if we hit another heading (starts with # or ends with : and isn't a list item)
+            if stripped.startswith('#') or (stripped.endswith(':') and not stripped.startswith('-')):
+                if captured_lines:
+                    break
+            
+            captured_lines.append(line)
+            
+    res = '\n'.join(captured_lines).strip()
+    return res if res else None
+
 def update_manifest():
     plugins_config = [
         {
@@ -66,7 +93,14 @@ def update_manifest():
         if event_name == "release":
             # PRODUCTION
             source_url = f"https://github.com/{repo}/releases/download/{version_str}/{zip_name}"
-            changelog = f"Official Release {version_str}"
+            
+            release_body = os.getenv("RELEASE_BODY")
+            extracted_changelog = extract_plugin_changelog(release_body)
+            
+            if extracted_changelog:
+                changelog = f"Official Release {version_str}\n\n{extracted_changelog}"
+            else:
+                changelog = f"Official Release {version_str}"
 
             # Safety: Ensure NO dev versions exist in the production manifest
             plugin["versions"] = [v for v in plugin["versions"] if not v["version"].startswith("99.0.")]
