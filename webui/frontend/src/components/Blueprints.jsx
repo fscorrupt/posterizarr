@@ -339,45 +339,46 @@ export default function Blueprints() {
     } catch (err) { console.error("Failed to load overlay files:", err); }
   };
 
+  const fetchCustomBlueprints = async () => {
+    try {
+      const dbBlueprints = await fetch("/api/custom-blueprints").then(res => res.json());
+      let merged = Array.isArray(dbBlueprints) ? [...dbBlueprints] : [];
+      const stored = localStorage.getItem("posterizarr_custom_blueprints");
+      if (stored) {
+        try {
+          const localBlueprints = JSON.parse(stored);
+          if (Array.isArray(localBlueprints) && localBlueprints.length > 0) {
+            let changed = false;
+            localBlueprints.forEach(lb => {
+              if (!merged.find(mb => mb.id === lb.id)) {
+                merged.push(lb);
+                changed = true;
+              }
+            });
+            if (changed) {
+              fetch("/api/custom-blueprints", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(merged)
+              }).then(() => {
+                localStorage.removeItem("posterizarr_custom_blueprints");
+              });
+            }
+          }
+        } catch (e) {
+          console.error("Failed to migrate custom blueprints from local storage", e);
+        }
+      }
+      setCustomBlueprints(merged);
+    } catch (e) {
+      console.error("Failed to fetch custom blueprints", e);
+    }
+  };
+
   useEffect(() => {
     fetchConfig();
     fetchOverlayFiles();
-    
-    // Fetch and migrate custom blueprints
-    fetch("/api/custom-blueprints")
-      .then(res => res.json())
-      .then(dbBlueprints => {
-        let merged = Array.isArray(dbBlueprints) ? [...dbBlueprints] : [];
-        const stored = localStorage.getItem("posterizarr_custom_blueprints");
-        if (stored) {
-          try {
-            const localBlueprints = JSON.parse(stored);
-            if (Array.isArray(localBlueprints) && localBlueprints.length > 0) {
-              let changed = false;
-              localBlueprints.forEach(lb => {
-                if (!merged.find(mb => mb.id === lb.id)) {
-                  merged.push(lb);
-                  changed = true;
-                }
-              });
-              
-              if (changed) {
-                fetch("/api/custom-blueprints", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(merged)
-                }).then(() => {
-                  localStorage.removeItem("posterizarr_custom_blueprints");
-                });
-              }
-            }
-          } catch (e) {
-            console.error("Failed to migrate custom blueprints from local storage", e);
-          }
-        }
-        setCustomBlueprints(merged);
-      })
-      .catch(e => console.error("Failed to fetch custom blueprints", e));
+    fetchCustomBlueprints();
   }, []);
 
   useEffect(() => {
