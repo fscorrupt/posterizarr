@@ -2373,6 +2373,8 @@ class ManualModeRequest(BaseModel):
     episodeNumber: str = ""
     mediaType: str = ""
     add_to_queue: bool = False
+    posterWithText: bool = False
+    blueprint_overrides: Optional[Dict] = None
 
 
 class UILogEntry(BaseModel):
@@ -2861,6 +2863,56 @@ async def update_config(data: ConfigUpdate):
         logger.exception("Full traceback:")
         logger.info("=" * 60)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+# ============================================================================
+# CUSTOM BLUEPRINTS ENDPOINTS
+# ============================================================================
+
+@app.get("/api/custom-blueprints")
+async def get_custom_blueprints():
+    """Get custom blueprints from the configuration database"""
+    try:
+        if not CONFIG_DATABASE_AVAILABLE or not config_db:
+            return []
+        
+        blueprints_str = config_db.get_value("CustomBlueprints", "blueprints")
+        if not blueprints_str:
+            return []
+            
+        return json.loads(blueprints_str)
+    except Exception as e:
+        logger.error(f"Error reading custom blueprints: {e}")
+        return []
+
+@app.post("/api/custom-blueprints")
+async def save_custom_blueprints(request: Request):
+    """Save custom blueprints to the configuration database"""
+    try:
+        if not CONFIG_DATABASE_AVAILABLE or not config_db:
+            raise HTTPException(status_code=500, detail="Database not available")
+            
+        data = await request.json()
+        
+        # Ensure it's a list
+        if not isinstance(data, list):
+            data = [data]
+            
+        success = config_db.set_value(
+            "CustomBlueprints", 
+            "blueprints", 
+            json.dumps(data)
+        )
+        
+        if success:
+            return {"status": "success", "message": "Custom blueprints saved successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save custom blueprints")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving custom blueprints: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
 # ============================================================================
 # CONFIG DATABASE ENDPOINTS
@@ -6919,6 +6971,60 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
 # ============================================================================
 # MANUAL RUN ENDPOINTS - Must be defined BEFORE generic /api/run/{mode}
 # ============================================================================
+
+def generate_blueprint_override_config(blueprint_overrides: dict) -> str:
+    import uuid
+    import json
+    from pathlib import Path
+    
+    if not CONFIG_DATABASE_AVAILABLE or not config_db:
+        logger.error("Cannot generate blueprint config: config_db is unavailable")
+        raise RuntimeError("config_db is unavailable")
+        
+    current_config = config_db.export_to_json()
+    
+    def deep_merge(source, destination):
+        if destination is None:
+            destination = {}
+        for key, value in source.items():
+            if isinstance(value, dict):
+                destination[key] = deep_merge(value, destination.get(key) or {})
+            else:
+                destination[key] = value
+        return destination
+
+    merged_config = deep_merge(blueprint_overrides, current_config)
+    
+    def clean_case_duplicates(d):
+        if isinstance(d, list):
+            return [clean_case_duplicates(item) for item in d]
+        elif not isinstance(d, dict):
+            if isinstance(d, bool):
+                return "true" if d else "false"
+            return str(d) if d is not None else d
+            
+        new_d = {}
+        seen_keys_lower = set()
+        
+        # Sort keys so that CamelCase comes before lowercase (e.g., 'S' before 's' in ASCII)
+        for key in sorted(d.keys()):
+            key_lower = key.lower()
+            if key_lower not in seen_keys_lower:
+                seen_keys_lower.add(key_lower)
+                new_d[key] = clean_case_duplicates(d[key])
+                
+        return new_d
+        
+    merged_config = clean_case_duplicates(merged_config)
+    
+    TEMP_DIR.mkdir(exist_ok=True)
+    temp_file = TEMP_DIR / f"posterizarr_override_{uuid.uuid4().hex}.json"
+    
+    with open(temp_file, 'w', encoding='utf-8') as f:
+        json.dump(merged_config, f, indent=4)
+        
+    return str(temp_file)
+
 @app.post("/api/run-manual")
 async def run_manual_mode(request: ManualModeRequest):
     """Run manual mode with custom parameters"""
@@ -6945,6 +7051,8 @@ async def run_manual_mode(request: ManualModeRequest):
             "episode_title": request.epTitleName if request.posterType == "titlecard" else None,
             "process_with_overlays": True,
             "asset_type": request.posterType,
+            "poster_with_text": request.posterWithText,
+            "blueprint_overrides": request.blueprint_overrides,
         }
 
         # Construct a reference asset path
@@ -7105,6 +7213,13 @@ async def run_manual_mode(request: ManualModeRequest):
                 ]
             )
 
+        if request.posterWithText:
+            command.append("-PosterWithText")
+            
+        if request.blueprint_overrides:
+            temp_override_path = generate_blueprint_override_config(request.blueprint_overrides)
+            command.extend(["-ConfigOverride", temp_override_path])
+
         try:
             logger.info(f"Running manual mode with parameters:")
             logger.info(f"  Picture Path: {request.picturePath}")
@@ -7176,6 +7291,8 @@ async def run_manual_mode_upload(
     epTitleName: str = Form(""),
     episodeNumber: str = Form(""),
     add_to_queue: bool = Form(False),
+    posterWithText: bool = Form(False),
+    blueprint_overrides: Optional[str] = Form(None),
 ):
     """Run manual mode with uploaded file"""
     global current_process, current_mode, current_start_time
@@ -7399,6 +7516,8 @@ async def run_manual_mode_upload(
                     "episode_title": epTitleName if posterType == "titlecard" else None,
                     "process_with_overlays": True,
                     "asset_type": posterType,
+                    "poster_with_text": posterWithText,
+                    "blueprint_overrides": json.loads(blueprint_overrides) if blueprint_overrides else None,
                 }
 
                 # Construct a reference asset path
@@ -7519,6 +7638,9 @@ async def run_manual_mode_upload(
                         libraryName.strip(),
                     ]
                 )
+
+            if posterWithText:
+                command.append("-PosterWithText")
 
             logger.info(f"Running manual mode with uploaded file:")
             logger.info(f"  Picture Path: {upload_path}")
@@ -8412,7 +8534,7 @@ async def get_thumbnail(path: str = Query(..., description="Path to the image"),
         return FileResponse(real_path)
 @app.get("/api/gallery")
 async def get_gallery():
-    """Get poster gallery from assets directory (only poster.jpg) - uses cache"""
+    """Get poster gallery from the assets directory (only poster.jpg) - uses cache"""
     try:
         cache = get_fresh_assets()
         # Return cached posters, limit to 200 for performance
@@ -11643,6 +11765,8 @@ async def upload_asset_replacement(
     episode_title: Optional[str] = Query(None),
     asset_type: Optional[str] = Query(None),
     mediaType: Optional[str] = Query(None),
+    posterWithText: bool = Query(False),
+    blueprint_overrides: Optional[str] = Query(None),
 ):
     """
     Replace an asset with an uploaded image
@@ -11734,7 +11858,9 @@ async def upload_asset_replacement(
                     "episode_title": episode_title,
                     "asset_type": asset_type,
                     "mediaType": mediaType,
-                    "process_with_overlays": process_with_overlays
+                    "process_with_overlays": process_with_overlays,
+                    "poster_with_text": posterWithText,
+                    "blueprint_overrides": json.loads(blueprint_overrides) if blueprint_overrides else None
                 }
 
                 # Remove None values
@@ -12010,10 +12136,20 @@ async def upload_asset_replacement(
                     elif episode_number and episode_title:
                         command.extend(["-TitleCards"])
                         command.extend(["-EpisodeNumber", sanitize_command_arg(episode_number)])
-                        command.extend(["-EpisodeTitleName", sanitize_command_arg(episode_title)])
+                        command.extend(["-EPTitleName", sanitize_command_arg(episode_title)])
 
+                    if posterWithText:
+                        command.append("-PosterWithText")
+                        
+                    if blueprint_overrides:
+                        import json
+                        override_dict = json.loads(blueprint_overrides)
+                        temp_override_path = generate_blueprint_override_config(override_dict)
+                        command.extend(["-ConfigOverride", temp_override_path])
+
+                    logger.info(f"Running Manual Mode Overlay Process:")         # Handle Background cards (background.jpg, backdrop.jpg, etc.)
                     # Handle Background cards (background.jpg, backdrop.jpg, etc.)
-                    elif "background" in filename or "backdrop" in filename:
+                    if "background" in filename or "backdrop" in filename:
                         command.extend(["-BackgroundCard"])
 
                     elif mediaType == "movie":
@@ -12380,6 +12516,8 @@ async def replace_asset_from_url(
     episode_title: Optional[str] = Query(None),
     asset_type: Optional[str] = Query(None),
     mediaType: Optional[str] = Query(None),
+    posterWithText: bool = Query(False),
+    blueprint_overrides: Optional[str] = Query(None),
 ):
     """
     Replace an asset by downloading from a URL
@@ -12414,7 +12552,9 @@ async def replace_asset_from_url(
                     "episode_title": episode_title,
                     "asset_type": asset_type,
                     "mediaType": mediaType,
-                    "process_with_overlays": process_with_overlays
+                    "process_with_overlays": process_with_overlays,
+                    "poster_with_text": posterWithText,
+                    "blueprint_overrides": json.loads(blueprint_overrides) if blueprint_overrides else None
                 }
 
                 # Remove None values
@@ -12637,6 +12777,8 @@ async def replace_asset_from_url(
                         seasonPosterName=season_poster_name or "",
                         epTitleName=ep_title_name or "",
                         episodeNumber=ep_number or "",
+                        posterWithText=posterWithText,
+                        blueprint_overrides=json.loads(blueprint_overrides) if blueprint_overrides else None,
                     )
 
                     # Call run_manual_mode (we need to make it callable)
@@ -12776,6 +12918,13 @@ async def trigger_manual_run_internal(request: ManualModeRequest):
 
         elif request.mediaType in ["show", "tv"]:
             command.extend(["-ShowPosterCard"])
+
+    if getattr(request, "posterWithText", False):
+        command.append("-PosterWithText")
+
+    if getattr(request, "blueprint_overrides", None):
+        temp_override_path = generate_blueprint_override_config(request.blueprint_overrides)
+        command.extend(["-ConfigOverride", temp_override_path])
 
     logger.info(f"Starting Manual Run: {' '.join(command)}")
 
@@ -14222,7 +14371,9 @@ async def finalize_asset_replacement(
                 mediaType=overlay_params.get("mediaType") or "",
                 seasonPosterName=season_poster_name or "",
                 epTitleName=ep_title_name or "",
-                episodeNumber=ep_number or ""
+                episodeNumber=ep_number or "",
+                posterWithText=overlay_params.get("poster_with_text", False),
+                blueprint_overrides=overlay_params.get("blueprint_overrides"),
             )
 
             await trigger_manual_run_internal(manual_request)

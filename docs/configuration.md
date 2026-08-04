@@ -76,6 +76,7 @@
         - Also have a look at the hint: [Jellyfin CSS](platformandtools.md#jellyfin)
     - `UploadExistingAssets`: If set to `true`, the script will check local assets and upload them to Jellyfin, but only if Jellyfin does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.
     - `ReplaceThumbwithBackdrop`: If set to `true` (Default value is: false), the script will replace the `Thumb` picture with the `backdrop` image. This will only occur if `BackgroundPosters` is also set to `true`.
+    - `ReplaceThumbwithBackdropExclusively`: If set to `true` (Default value is: false), the script will upload the `backdrop` image to `Thumb` ONLY, skipping the actual `backdrop` upload. This prevents overwriting your media server's default background art. Requires `ReplaceThumbwithBackdrop` to be `true`.
 
     #### EmbyPart
 
@@ -84,6 +85,7 @@
     - `UseEmby`: If set to `true`, you tell the script to use a Emby Server (Default value is: `false`)
     - `UploadExistingAssets`: If set to `true`, the script will check local assets and upload them to Emby, but only if Emby does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.
     - `ReplaceThumbwithBackdrop`: If set to `true` (Default value is: false), the script will replace the `Thumb` picture with the `backdrop` image. This will only occur if `BackgroundPosters` is also set to `true`.
+    - `ReplaceThumbwithBackdropExclusively`: If set to `true` (Default value is: false), the script will upload the `backdrop` image to `Thumb` ONLY, skipping the actual `backdrop` upload. This prevents overwriting your media server's default background art. Requires `ReplaceThumbwithBackdrop` to be `true`.
 
     #### Notification
 
@@ -159,7 +161,9 @@
     - `SeasonPosters`: Set to `true` to also create season posters.
     - `BackgroundPosters`: Set to `true` to also create background posters.
     - `TitleCards` : Set to `true` to also create title cards.
-    - `SkipTBA` : If set to `true`, TitleCard creation will be skipped when TitleText contains any word from `SkipWords`.
+    - `SkipTBA` : If set to `true`, TitleCard creation will be skipped when TitleText contains any word from `SkipWords`. (You can use Regex by wrapping the word in slashes like `/^TBA$/`)
+        !!! note "Regex in config.json"
+            If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
     - `SkipJapTitle` : Set to `true` to skip TitleCard creation if the Titletext is `Jap or Chinese`.
     - `AssetCleanup` : Set to `true` to cleanup Assets that are no longer in Plex.
 
@@ -183,6 +187,7 @@
         - `Example:` https://artworks.thetvdb.com/banners/v4/movie/165/clearart/61249caa0924f.png
         - `What the setting does:` When set to `true`, the system will use the Clearart image instead of the standard title text.
     - `LogoTextFallback` : Set to `true` to fallback to `Text` if no logos are found.
+    - `TextlessPosterBypass` : Set to `true` to bypass 'Prefer Textless' and download a standard Text Poster if no logos are found.
     - `AutoUpdateIM` : Set to `true` to AutoUpdate Imagemagick Portable Version (Does not work with Docker/Unraid).
         - Doing this could break things, cause you then uses IM Versions that are not tested with Posterizarr.
     - `DisableHashValidation` : Set to `true` to skip hash validation (Default value is: false).
@@ -287,7 +292,9 @@
     - `AddBorder`: Set to `true` to add a border to the TitleCard image.
     - `borderwidth`: Border width.
     - `bordercolor`: Color of border.
-    - `SkipWords`: List of words to be skipped for TC, e.g 'TBA, Episode...'. (SkipTBA has to be true)
+    - `SkipWords`: List of words to be skipped for TC, e.g 'TBA, Episode...'. (SkipTBA has to be true). You can also use Regex by wrapping your expression in slashes (e.g. `/^TBA$/`).
+        - > [!NOTE]
+        - > If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
          - **Any already created TitleCards that match these words will be deleted.**
 
     #### TitleCardTitleTextPart

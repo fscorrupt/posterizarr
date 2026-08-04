@@ -7,13 +7,6 @@
     "JellyfinAPIKey": "xxxxxxxxxxxxx",
     "EmbyAPIKey": "xxxxxxxxxxxxx",
     "FavProvider": "tmdb",
-    "OverrideProviderOrder": false,
-    "ProviderOrder": [
-      "TMDB",
-      "TVDB",
-      "Fanart",
-      "Plex"
-    ],
     "PreferredLanguageOrder": [
       "xx",
       "en",
@@ -43,12 +36,25 @@
     "LogoLanguageOrder": [
       "en",
       "de"
-    ]
+    ],
+    "OverrideProviderOrder": "false",
+    "ProviderOrder": [
+      "TMDB",
+      "TVDB",
+      "Fanart",
+      "Plex"
+    ],
+    "LibraryLanguageOverrides": {
+      "Beispiel-Bibliothek": {
+        "PreferredLanguageOrder": [
+          "de",
+          "en"
+        ]
+      }
+    }
   },
   "PlexPart": {
     "LibstoExclude": [
-      "PosterizarrTestMovies",
-      "PosterizarrTestShows",
       "Tech Trainings",
       "Youtube",
       "Audiobooks",
@@ -83,7 +89,7 @@
       "Kids Music",
       "Photos"
     ],
-    "EmbyUrl": "http://192.168.1.93:8096/emby",
+    "EmbyUrl": "http://192.168.1.20:8096/emby",
     "UseEmby": "false",
     "UploadExistingAssets": "false",
     "ReplaceThumbwithBackdrop": "false"
@@ -97,10 +103,9 @@
     "DiscordUserName": "Posterizarr"
   },
   "PrerequisitePart": {
-    "ParallelJobs": "5",
     "AssetPath": "/assets",
     "magickinstalllocation": "C:\\PosterTemp\\ImageMagickPortable",
-    "maxLogs": "5",
+    "maxLogs": "10",
     "font": "Colus-Regular.ttf",
     "backgroundfont": "Colus-Regular.ttf",
     "titlecardfont": "Colus-Regular.ttf",
@@ -124,13 +129,6 @@
       ": ",
       " – "
     ],
-    "NewLineOnSpecificWords": "false",
-    "NewLineWords": {
-        "WEIHNACHTSGESCHICHTE": "WEIHNACHTS-\nGESCHICHTE",
-        "SCHOKOLADENFABRIK": "SCHOKOLADEN-\nFABRIK",
-        "FEUERZANGENBOWLE": "FEUERZANGEN-\nBOWLE",
-        "AHNUNGSLOSIGKEIT": "AHNUNGS-\nLOSIGKEIT"
-    },
     "seasonoverlayfile": "overlay-innerglow.png",
     "RTLFont": "VarelaRound-Regular.ttf",
     "PlexUpload": "false",
@@ -164,7 +162,6 @@
     "4KDoViHDR10TC": "backgroundoverlay-innerglow.png",
     "SymbolsToKeepOnNewLine": [],
     "SkipAddTextAndOverlay": "false",
-    "SkipAddTextAndBorder": "false",
     "FileTestOnTrigger": "true",
     "SkipLocalPosterTextAdd": "false",
     "SkipLocalBackgroundTextAdd": "false",
@@ -174,10 +171,27 @@
     "UseClearlogo": "false",
     "UseClearart": "false",
     "LogoTextFallback": "false",
+    "TextlessPosterBypass": "false",
     "UseBGLogo": "false",
     "ConvertLogoColor": "false",
     "LogoFlatColor": "white",
-    "UseOriginalTitle": "false"
+    "SkipAddTextAndBorder": "false",
+    "NewLineOnSpecificWords": "false",
+    "NewLineWords": {
+      "WEIHNACHTSGESCHICHTE": "WEIHNACHTS-\nGESCHICHTE",
+      "SCHOKOLADENFABRIK": "SCHOKOLADEN-\nFABRIK",
+      "FEUERZANGENBOWLE": "FEUERZANGEN-\nBOWLE",
+      "AHNUNGSLOSIGKEIT": "AHNUNGS-\nLOSIGKEIT"
+    },
+    "UseOriginalTitle": "false",
+    "showoverlayfile": "",
+    "showbackgroundoverlayfile": "",
+    "telemetry": "true",
+    "ParallelJobs": "5",
+    "DisableOnlineTitleCardFetch": "false",
+    "DisableOnlinePosterFetch": "false",
+    "DisableOnlineBackgroundFetch": "false",
+    "DisableOnlineSeasonFetch": "false"
   },
   "OverlayPart": {
     "ImageProcessing": "true",
@@ -228,7 +242,10 @@
     "bordercolor": "black",
     "borderwidth": "30",
     "BackgroundFallback": "true",
-    "SkipWords": ["TBA","Episode ","Folge "]
+    "SkipWords": [
+      "TBA",
+      "TBD"
+    ]
   },
   "TitleCardTitleTextPart": {
     "fontAllCaps": "true",
@@ -338,6 +355,6 @@
   "WebUI": {
     "basicAuthEnabled": "false",
     "basicAuthUsername": "admin",
-    "basicAuthPassword": "posterizarr"
+    "basicAuthPassword": "$2b$12$C8IqFxPfXeUfpgygmNYkoe.JBXWTDDpakBLmOxs6gtyslIrV7/gwO"
   }
 }

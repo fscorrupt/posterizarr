@@ -40,7 +40,28 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasOrder
     }
 
     public bool Supports(BaseItem item) => item is Movie || item is Series || item is Season || item is Episode;
-    public IEnumerable<ImageType> GetSupportedImages(BaseItem item) => new[] { ImageType.Primary, ImageType.Backdrop };
+    public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
+    {
+        var config = Plugin.Instance?.Configuration;
+        var types = new List<ImageType>();
+        
+        if (item is Movie || item is Series)
+        {
+            if (config?.UpdatePoster == true) types.Add(ImageType.Primary);
+            if (config?.UpdateBackdrop == true) types.Add(ImageType.Backdrop);
+            if (config?.UpdateThumbnail == true) types.Add(ImageType.Thumb);
+        }
+        else if (item is Season)
+        {
+            if (config?.UpdateSeason == true) types.Add(ImageType.Primary);
+        }
+        else if (item is Episode)
+        {
+            if (config?.UpdateTitlecard == true) types.Add(ImageType.Primary);
+        }
+
+        return types;
+    }
 
     public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
     {
@@ -54,7 +75,7 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasOrder
         }
 
         var results = new List<RemoteImageInfo>();
-        foreach (var type in new[] { ImageType.Primary, ImageType.Backdrop })
+        foreach (var type in GetSupportedImages(item))
         {
             LogDebug("Checking for image type: {0}", type);
             var path = FindFile(item, config, type);
@@ -140,6 +161,7 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasOrder
             ImageType.Primary when item is Season sn => $"season{sn.IndexNumber ?? 0:D2}",
             ImageType.Primary when item is Episode ep => $"S{ep.ParentIndexNumber ?? 0:D2}E{ep.IndexNumber ?? 0:D2}",
             ImageType.Primary => "poster",
+            ImageType.Thumb => "background",
             _ => "background"
         };
 
@@ -162,7 +184,7 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasOrder
             var match = filesInFolder.FirstOrDefault(f => Path.GetFileName(f).Equals(targetFile, StringComparison.OrdinalIgnoreCase));
             if (match != null) return match;
 
-            if (type == ImageType.Backdrop)
+            if (type == ImageType.Backdrop || type == ImageType.Thumb)
             {
                 var fanartTarget = "fanart" + ext;
                 var fanartMatch = filesInFolder.FirstOrDefault(f => Path.GetFileName(f).Equals(fanartTarget, StringComparison.OrdinalIgnoreCase));

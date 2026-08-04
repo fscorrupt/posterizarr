@@ -46,6 +46,7 @@ CONFIG_TOOLTIPS = {
     "UseJellyfin": "If set to true, you tell the script to use a Jellyfin Server (Default value is: false). Do not enable more than one media server.",
     "JellyfinUploadExistingAssets": "If set to true, the script will check local assets and upload them to Jellyfin, but only if Jellyfin does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.",
     "JellyfinReplaceThumbwithBackdrop": "If set to true (Default value is: false), the script will replace the Thumb picture with the backdrop image. This will only occur if BackgroundPosters is also set to true.",
+    "JellyfinReplaceThumbwithBackdropExclusively": "If set to true, the script will ONLY upload the generated image as a Thumbnail and skip uploading it as a Background. This requires Replace Thumbnail with Backdrop to be enabled.",
 
     # EmbyPart
     "EmbyLibstoExclude": "Libraries, by local folder name, to exclude from processing on your Emby server.",
@@ -53,6 +54,7 @@ CONFIG_TOOLTIPS = {
     "UseEmby": "If set to true, you tell the script to use a Emby Server (Default value is: false). Do not enable more than one media server.",
     "EmbyUploadExistingAssets": "If set to true, the script will check local assets and upload them to Emby, but only if Emby does not already have EXIF data from Posterizarr, Kometa, or TCM for the artwork being uploaded.",
     "EmbyReplaceThumbwithBackdrop": "If set to true (Default value is: false), the script will replace the Thumb picture with the backdrop image. This will only occur if BackgroundPosters is also set to true.",
+    "EmbyReplaceThumbwithBackdropExclusively": "If set to true, the script will ONLY upload the generated image as a Thumbnail and skip uploading it as a Background. This requires Replace Thumbnail with Backdrop to be enabled.",
 
     # Notification
     "SendNotification": "Set to true if you want to send notifications via discord or apprise, else false.",
@@ -108,7 +110,7 @@ CONFIG_TOOLTIPS = {
     "BackgroundPosters": "Set to true to also create background posters.",
     "TitleCards": "Set to true to also create title cards.",
     "SkipTBA": "If set to true, TitleCard creation will be skipped when TitleText contains any word from SkipWords.",
-    "SkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'. Any already created TitleCards that match these words will be deleted.",
+    "SkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'. Wrap in /slashes/ to use Regex. Any already created TitleCards that match these words will be deleted.",
     "SkipJapTitle": "Set to true to skip TitleCard creation if the Titletext is Jap or Chinese.",
     "AssetCleanup": "Set to true to cleanup Assets that are no longer in Plex. Warning: Risk of Data Loss from excluded Libraries. Ensure that all active asset libraries are included when using that setting on true to prevent unintended deletions.",
     "AutoUpdateIM": "Set to true to AutoUpdate Imagemagick Portable Version (Does not work with Docker/Unraid). Doing this could break things, cause you then use IM Versions that are not tested with Posterizarr.",
@@ -128,6 +130,7 @@ CONFIG_TOOLTIPS = {
     "UseClearlogo": "Set to true to use Clearlogo. A Clearlogo is a transparent PNG image that contains only the title text (logo) of a movie or show - no characters, no background, no extra artwork.",
     "UseClearart": "Set to true to use Clearart. Clearart is a transparent PNG image that contains the logo plus additional artwork (e.g., characters or promotional art) - still fully transparent with no background.",
     "LogoTextFallback": "Set to true to fallback to Text if no logos are found.",
+    "TextlessPosterBypass": "Set to true to bypass 'Prefer Textless' and download a standard Text Poster if no logos are found.",
     "ConvertLogoColor": "Set to true to convert the logo image to a solid color (monochrome).",
     "LogoFlatColor": "The specific color to use when Convert Logo Color is enabled (e.g., 'white', '#FFFFFF').",
     "UseOriginalTitle": "Set to true to use the original title instead of the localized version.",

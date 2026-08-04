@@ -30,6 +30,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import DangerZone from "./DangerZone";
 import RestoreModeModal from "./modals/RestoreModeModal";
 import { useToast } from "../context/ToastContext";
+import { BLUEPRINTS } from "./Blueprints";
 
 const API_URL = "/api";
 
@@ -89,12 +90,14 @@ const TMDBPosterSearchModal = React.memo(
     const scrollRef = React.useRef(null);
     const [localDisplayedCount, setLocalDisplayedCount] = React.useState(10);
     const [sourceFilter, setSourceFilter] = React.useState(null); // null, "provided_id", or "title_search"
+    const [languageFilter, setLanguageFilter] = React.useState("all");
 
     // Reset displayed count and filter only when modal opens (not on every render)
     React.useEffect(() => {
       if (tmdbSearch.showModal) {
         setLocalDisplayedCount(10);
         setSourceFilter(null);
+        setLanguageFilter("all");
       }
     }, [tmdbSearch.showModal]);
 
@@ -113,14 +116,19 @@ const TMDBPosterSearchModal = React.memo(
       });
     };
 
-    const handleSelectPoster = (posterUrl) => {
+    const handleSelectPoster = (poster) => {
+      const posterUrl = poster.original_url || poster.poster_url || poster.url;
+      const lang = (poster.language || "").toLowerCase();
+      // If language is empty, 'xx', 'null', 'none', or 'textless', assume no text
+      const hasText = !(lang === "" || lang === "xx" || lang === "null" || lang === "none" || lang === "textless");
+
       if (tmdbSearch.isLogoSearch) {
         // If logo search, update titletext with URL
         setManualForm({ ...manualForm, titletext: posterUrl });
         showSuccess("Logo URL applied to Title Text");
       } else {
-        // Normal behavior: update picturePath
-        setManualForm({ ...manualForm, picturePath: posterUrl });
+        // Normal behavior: update picturePath and text status
+        setManualForm({ ...manualForm, picturePath: posterUrl, posterWithText: hasText });
         showSuccess(t("runModes.tmdb.posterSelected"));
       }
 
@@ -159,10 +167,16 @@ const TMDBPosterSearchModal = React.memo(
     // Get active provider results
     const activeResults = tmdbSearch.results[tmdbSearch.activeProvider] || [];
 
-    // Apply source filter if active
-    const filteredResults = sourceFilter
-      ? activeResults.filter((p) => p.source_type === sourceFilter)
-      : activeResults;
+    // Calculate available languages for the active provider
+    const availableLanguages = ["all", ...new Set(activeResults.map(p => (p.language || "xx").toLowerCase()))];
+    const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
+
+    // Apply source and language filters
+    const filteredResults = activeResults.filter(p => {
+      const matchSource = sourceFilter ? p.source_type === sourceFilter : true;
+      const matchLang = effectiveLanguageFilter === "all" ? true : (p.language || "xx").toLowerCase() === effectiveLanguageFilter;
+      return matchSource && matchLang;
+    });
 
     // Count total results across all providers
     const totalResults =
@@ -360,6 +374,25 @@ const TMDBPosterSearchModal = React.memo(
                   );
                 })()}
 
+                {/* Language Filter */}
+                {availableLanguages.length > 2 && (
+                  <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                    {availableLanguages.map((lang) => (
+                      <button
+                        key={lang}
+                        onClick={() => setLanguageFilter(lang)}
+                        className={`px-3 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
+                          effectiveLanguageFilter === lang
+                            ? "bg-theme-primary text-white"
+                            : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                        }`}
+                      >
+                        {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {filteredResults
                     .slice(0, localDisplayedCount)
@@ -372,7 +405,7 @@ const TMDBPosterSearchModal = React.memo(
                           index
                         }
                         className="group relative bg-theme-hover rounded-lg overflow-hidden border border-theme hover:border-theme-primary transition-all cursor-pointer"
-                        onClick={() => handleSelectPoster(poster.original_url)}
+                        onClick={() => handleSelectPoster(poster)}
                       >
                         {/* Poster/Logo Image */}
                         <div className={`${tmdbSearch.isLogoSearch ? 'bg-slate-700/50 p-2' : ''} h-full`}>
@@ -470,6 +503,7 @@ function RunModes() {
   const { showSuccess, showError, showInfo } = useToast();
   const [loading, setLoading] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [customBlueprints, setCustomBlueprints] = useState([]);
   const [status, setStatus] = useState({
     running: false,
     current_mode: null,
@@ -486,6 +520,8 @@ function RunModes() {
     seasonPosterName: "",
     epTitleName: "",
     episodeNumber: "",
+    posterWithText: false,
+    blueprintId: "none",
   });
 
   // State for Add to Queue
@@ -494,6 +530,7 @@ function RunModes() {
   // File upload state
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState(null);
+
 
   // Folder selector state
   const [showFolderSelector, setShowFolderSelector] = useState(false);
@@ -547,8 +584,18 @@ function RunModes() {
 
   useEffect(() => {
     fetchStatus();
-    fetchConfig();
-    const interval = setInterval(fetchStatus, 3000);
+    
+    // Load custom blueprints
+    fetch("/api/custom-blueprints")
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCustomBlueprints(data);
+        }
+      })
+      .catch(e => console.error("Failed to fetch custom blueprints", e));
+
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -870,6 +917,17 @@ function RunModes() {
       let requestPayload = { ...manualForm, add_to_queue: addToQueue };
       delete requestPayload.mediaTypeSelection;
 
+      // Check if blueprint overrides are needed
+      if (manualForm.blueprintId && manualForm.blueprintId !== "none") {
+        const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === manualForm.blueprintId);
+        if (bp && bp.updates?.nested) {
+          const bpName = bp.customTitle || (bp.titleKey ? t(bp.titleKey) : bp.id);
+          const overridesWithContext = { ...bp.updates.nested, ActiveBlueprintName: bpName };
+          requestPayload.blueprint_overrides = uploadedFile ? JSON.stringify(overridesWithContext) : overridesWithContext;
+        }
+      }
+      delete requestPayload.blueprintId;
+
       // If a file was uploaded, use FormData for multipart upload
       if (uploadedFile) {
         console.log("Preparing manual upload with file:", {
@@ -882,6 +940,7 @@ function RunModes() {
         const formData = new FormData();
         formData.append("file", uploadedFile);
         formData.append("add_to_queue", addToQueue);
+        // Note: manualForm.posterWithText is already appended by the Object.keys loop below
 
         // Append all other form fields
         Object.keys(requestPayload).forEach((key) => {
@@ -923,6 +982,7 @@ function RunModes() {
             seasonPosterName: "",
             epTitleName: "",
             episodeNumber: "",
+            posterWithText: false,
           });
           setUploadedFile(null);
           setUploadPreview(null);
@@ -970,6 +1030,8 @@ function RunModes() {
             seasonPosterName: "",
             epTitleName: "",
             episodeNumber: "",
+            posterWithText: false,
+            blueprintId: "none",
           });
           setUploadedFile(null);
           setAddToQueue(false); // Reset queue toggle
@@ -2678,6 +2740,45 @@ const LogoUpdaterModal = React.memo(({
                   </div>
                 </div>
               )}
+
+              {/* Text / Textless Dropdown */}
+              {(uploadedFile || manualForm.picturePath) && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-theme-text mb-2">
+                    Asset Type
+                  </label>
+                  <select
+                    value={manualForm.posterWithText ? "text" : "textless"}
+                    onChange={(e) => setManualForm({ ...manualForm, posterWithText: e.target.value === "text" })}
+                    className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
+                    disabled={loading || status.running}
+                  >
+                    <option value="textless">Textless Asset (Clean)</option>
+                    <option value="text">Has Language / Text</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Blueprint Selection */}
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-theme-text/70 uppercase tracking-wider">
+                  Blueprint Selection
+                </label>
+                <select
+                  value={manualForm.blueprintId}
+                  onChange={(e) => setManualForm({ ...manualForm, blueprintId: e.target.value })}
+                  className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
+                  disabled={loading || status.running}
+                >
+                  <option value="none">Default (Global Config)</option>
+                  {[...BLUEPRINTS, ...customBlueprints].map(bp => (
+                    <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-theme-text/50 mt-1">
+                  Optionally override global settings with a specific blueprint for this run.
+                </p>
+              </div>
 
               {/* Divider */}
               <div className="flex items-center gap-3">

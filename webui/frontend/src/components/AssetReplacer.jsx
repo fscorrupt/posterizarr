@@ -15,6 +15,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
+import { BLUEPRINTS } from "./Blueprints";
 
 const API_URL = "/api";
 
@@ -38,10 +39,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [processWithOverlays, setProcessWithOverlays] = useState(true);
   const [addToQueue, setAddToQueue] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
+  const [blueprintId, setBlueprintId] = useState("none");
+  const [customBlueprints, setCustomBlueprints] = useState([]);
   const [uploadedFile, setUploadedFile] = useState(null); // Store the actual file
+  const [uploadHasText, setUploadHasText] = useState(false); // Track if uploaded asset has text
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
   const [isDimensionValid, setIsDimensionValid] = useState(false); // Track if dimensions are valid
   const [activeProviderTab, setActiveProviderTab] = useState("tmdb"); // Provider tabs: tmdb, tvdb, fanart
+  const [languageFilter, setLanguageFilter] = useState("all");
 
   // Logo selection mode
   const [logoSelectionMode, setLogoSelectionMode] = useState(false);
@@ -917,6 +922,18 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     fetchDatabaseData();
   }, [asset.path, dbData]);
 
+  // Load custom blueprints
+  useEffect(() => {
+    fetch("/api/custom-blueprints")
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCustomBlueprints(data);
+        }
+      })
+      .catch(e => console.error("Failed to fetch custom blueprints", e));
+  }, []);
+
   // Initialize season number from metadata
   useEffect(() => {
     // Check if season_number exists (including 0 for specials)
@@ -1210,6 +1227,15 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         asset.path
       )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
+      if (processWithOverlays && blueprintId && blueprintId !== "none") {
+        const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
+        if (bp && bp.updates?.nested) {
+          const bpName = bp.customTitle || (bp.titleKey ? t(bp.titleKey) : bp.id);
+          const overridesWithContext = { ...bp.updates.nested, ActiveBlueprintName: bpName };
+          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(overridesWithContext))}`;
+        }
+      }
+
       if (processWithOverlays) {
         const titleText = manualForm?.titletext ?? metadata.title;
         const folderName = manualForm?.foldername || metadata.folder_name;
@@ -1267,6 +1293,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
       const formData = new FormData();
       formData.append("file", uploadedFile);
+      formData.append("asset_type", metadata.asset_type);
+
+      // Append posterWithText
+      formData.append("posterWithText", uploadHasText);
 
       const response = await fetch(url, {
         method: "POST",
@@ -1459,6 +1489,15 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         if (episodeTitleName) url += `&episode_title=${encodeURIComponent(episodeTitleName)}`;
       }
 
+      if (processWithOverlays && blueprintId && blueprintId !== "none") {
+        const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
+        if (bp && bp.updates?.nested) {
+          const bpName = bp.customTitle || (bp.titleKey ? t(bp.titleKey) : bp.id);
+          const overridesWithContext = { ...bp.updates.nested, ActiveBlueprintName: bpName };
+          url += `&blueprint_overrides=${encodeURIComponent(JSON.stringify(overridesWithContext))}`;
+        }
+      }
+
       const response = await fetch(url, { method: "POST" });
 
       if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -1494,6 +1533,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   };
 
   const totalPreviews = Object.values(previews).flat().length;
+
+  const currentProviderPreviews = previews[activeProviderTab] || [];
+  const availableLanguages = ["all", ...new Set(currentProviderPreviews.map(p => (p.language || "xx").toLowerCase()))];
+  const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
+
+  const filteredPreviews = effectiveLanguageFilter === "all" 
+    ? currentProviderPreviews 
+    : currentProviderPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
@@ -1708,6 +1755,29 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             />
                           </div>
                         )}
+
+                        {/* Blueprint Selection */}
+                        <div className="pt-3 border-t border-theme/30 mt-3">
+                          <label className="block text-xs font-medium text-theme-text mb-1">
+                            Blueprint Selection
+                          </label>
+                          <select
+                            value={blueprintId}
+                            onChange={(e) => setBlueprintId(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary transition-colors"
+                            disabled={uploading}
+                          >
+                            <option value="none">{t("assetReplacer.defaultGlobalConfig", "Default (Global Config)")}</option>
+                            {[...BLUEPRINTS, ...customBlueprints].map((bp) => (
+                              <option key={bp.id} value={bp.id}>
+                                {bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] sm:text-xs text-theme-muted mt-1">
+                            Optionally override global settings with a specific blueprint.
+                          </p>
+                        </div>
 
                         {/* Library Name */}
                         <div>
@@ -1948,6 +2018,26 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         disabled={uploading}
                       />
                     </label>
+
+                    {/* Text / Textless Dropdown */}
+                    {uploadedImage && (
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-theme-text mb-2">
+                          Asset Type
+                        </label>
+                        <select
+                          value={uploadHasText ? "text" : "textless"}
+                          onChange={(e) => setUploadHasText(e.target.value === "text")}
+                          className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
+                          disabled={uploading}
+                        >
+                          <option value="textless">Textless Asset (Clean)</option>
+                          <option value="text">Has Language / Text</option>
+                        </select>
+                      </div>
+                    )}
+                    
+
                   </div>
 
                   {uploadedImage && (
@@ -2097,54 +2187,39 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   </div>
 
                   <div>
-                    {activeProviderTab === "tmdb" && (
-                      <div className={useHorizontalLayout
-                        ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
-                        : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
-                      }>
-                        {previews.tmdb.map((preview, index) => (
-                          <PreviewCard
-                            key={`tmdb-${index}`}
-                            preview={preview}
-                            onSelect={() => handlePreviewClick(preview)}
-                            disabled={uploading || (isPosterizarrRunning && !addToQueue)}
-                            isHorizontal={useHorizontalLayout}
-                          />
+                    {/* Language Filter */}
+                    {availableLanguages.length > 2 && (
+                      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                        {availableLanguages.map((lang) => (
+                          <button
+                            key={lang}
+                            onClick={() => setLanguageFilter(lang)}
+                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
+                              effectiveLanguageFilter === lang
+                                ? "bg-theme-primary text-white"
+                                : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                            }`}
+                          >
+                            {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
+                          </button>
                         ))}
                       </div>
                     )}
-                    {activeProviderTab === "tvdb" && (
-                      <div className={useHorizontalLayout
-                        ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
-                        : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
-                      }>
-                        {previews.tvdb.map((preview, index) => (
-                          <PreviewCard
-                            key={`tvdb-${index}`}
-                            preview={preview}
-                            onSelect={() => handlePreviewClick(preview)}
-                            disabled={uploading || (isPosterizarrRunning && !addToQueue)}
-                            isHorizontal={useHorizontalLayout}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {activeProviderTab === "fanart" && (
-                      <div className={useHorizontalLayout
-                        ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
-                        : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
-                      }>
-                        {previews.fanart.map((preview, index) => (
-                          <PreviewCard
-                            key={`fanart-${index}`}
-                            preview={preview}
-                            onSelect={() => handlePreviewClick(preview)}
-                            disabled={uploading || (isPosterizarrRunning && !addToQueue)}
-                            isHorizontal={useHorizontalLayout}
-                          />
-                        ))}
-                      </div>
-                    )}
+
+                    <div className={useHorizontalLayout
+                      ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
+                      : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
+                    }>
+                      {filteredPreviews.map((preview, index) => (
+                        <PreviewCard
+                          key={`${activeProviderTab}-${index}`}
+                          preview={preview}
+                          onSelect={() => handlePreviewClick(preview)}
+                          disabled={uploading || (isPosterizarrRunning && !addToQueue)}
+                          isHorizontal={useHorizontalLayout}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

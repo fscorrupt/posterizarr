@@ -293,12 +293,14 @@ CONFIG_GROUPS = {
     "UseJellyfin": "JellyfinPart",
     "JellyfinUploadExistingAssets": "JellyfinPart",
     "JellyfinReplaceThumbwithBackdrop": "JellyfinPart",
+    "JellyfinReplaceThumbwithBackdropExclusively": "JellyfinPart",
     # EmbyPart
     "EmbyLibstoExclude": "EmbyPart",
     "EmbyUrl": "EmbyPart",
     "UseEmby": "EmbyPart",
     "EmbyUploadExistingAssets": "EmbyPart",
     "EmbyReplaceThumbwithBackdrop": "EmbyPart",
+    "EmbyReplaceThumbwithBackdropExclusively": "EmbyPart",
     # Notification
     "SendNotification": "Notification",
     "AppriseUrl": "Notification",
@@ -381,6 +383,7 @@ CONFIG_GROUPS = {
     "UseClearlogo": "PrerequisitePart",
     "UseClearart": "PrerequisitePart",
     "LogoTextFallback": "PrerequisitePart",
+    "TextlessPosterBypass": "PrerequisitePart",
     "ConvertLogoColor": "PrerequisitePart",
     "LogoFlatColor": "PrerequisitePart",
     "UseOriginalTitle": "PrerequisitePart",
@@ -584,12 +587,14 @@ UI_GROUPS = {
         "JellyfinAPIKey",
         "JellyfinUploadExistingAssets",
         "JellyfinReplaceThumbwithBackdrop",
+        "JellyfinReplaceThumbwithBackdropExclusively",
         "JellyfinLibstoExclude",
         "UseEmby",
         "EmbyUrl",
         "EmbyAPIKey",
         "EmbyUploadExistingAssets",
         "EmbyReplaceThumbwithBackdrop",
+        "EmbyReplaceThumbwithBackdropExclusively",
         "EmbyLibstoExclude",
     ],
     "Language & Notifications": [
@@ -615,6 +620,7 @@ UI_GROUPS = {
         "UseClearlogo",
         "UseClearart",
         "LogoTextFallback",
+        "TextlessPosterBypass",
         "ConvertLogoColor",
         "LogoFlatColor",
         "UseOriginalTitle",
@@ -882,6 +888,13 @@ def flatten_config(grouped_config):
                     flat_key = "EmbyReplaceThumbwithBackdrop"
                 else:
                     flat_key = key
+            elif key == "ReplaceThumbwithBackdropExclusively":
+                if group_name == "JellyfinPart":
+                    flat_key = "JellyfinReplaceThumbwithBackdropExclusively"
+                elif group_name == "EmbyPart":
+                    flat_key = "EmbyReplaceThumbwithBackdropExclusively"
+                else:
+                    flat_key = key
             else:
                 # Use the new helper function for prefix application with proper case conversion
                 if group_name == "PosterOverlayPart":
@@ -950,6 +963,8 @@ def unflatten_config(flat_config):
                 storage_key = "UploadExistingAssets"
             elif key == "JellyfinReplaceThumbwithBackdrop":
                 storage_key = "ReplaceThumbwithBackdrop"
+            elif key == "JellyfinReplaceThumbwithBackdropExclusively":
+                storage_key = "ReplaceThumbwithBackdropExclusively"
         elif key.startswith("Emby") and group_name == "EmbyPart":
             if key == "EmbyLibstoExclude":
                 storage_key = "LibstoExclude"
@@ -957,6 +972,8 @@ def unflatten_config(flat_config):
                 storage_key = "UploadExistingAssets"
             elif key == "EmbyReplaceThumbwithBackdrop":
                 storage_key = "ReplaceThumbwithBackdrop"
+            elif key == "EmbyReplaceThumbwithBackdropExclusively":
+                storage_key = "ReplaceThumbwithBackdropExclusively"
         # Use the new helper function to restore original case
         elif key.startswith("Poster") and group_name == "PosterOverlayPart":
             storage_key = remove_prefix_with_original_case(key)
@@ -1036,14 +1053,16 @@ DISPLAY_NAMES = {
     "JellyfinLibstoExclude": "Jellyfin Libraries to Exclude",
     "JellyfinUrl": "Jellyfin URL",
     "UseJellyfin": "Use Jellyfin",
-    "JellyfinUploadExistingAssets": "Upload Existing Assets to Jellyfin",
+    "JellyfinUploadExistingAssets": "Upload Existing Assets",
     "JellyfinReplaceThumbwithBackdrop": "Replace Thumbnail with Backdrop",
+    "JellyfinReplaceThumbwithBackdropExclusively": "Upload Backdrop to Thumb Only",
     # Emby Settings
     "EmbyLibstoExclude": "Emby Libraries to Exclude",
     "EmbyUrl": "Emby URL",
     "UseEmby": "Use Emby",
-    "EmbyUploadExistingAssets": "Upload Existing Assets to Emby",
+    "EmbyUploadExistingAssets": "Upload Existing Assets",
     "EmbyReplaceThumbwithBackdrop": "Replace Thumbnail with Backdrop",
+    "EmbyReplaceThumbwithBackdropExclusively": "Upload Backdrop to Thumb Only",
     # Notifications
     "SendNotification": "Send Notifications",
     "AppriseUrl": "Apprise URL",
@@ -1076,7 +1095,7 @@ DISPLAY_NAMES = {
     "BackgroundPosters": "Generate Backgrounds",
     "TitleCards": "Generate Title Cards",
     "SkipTBA": "Enable skipping TitleCard creation when the title starts with words from 'SkipWords'",
-    "TitleCardSkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'",
+    "TitleCardSkipWords": "List of words to be skipped for TC, e.g 'TBA, Episode...'. Wrap in /slashes/ to use Regex.",
     "SkipJapTitle": "Skip Japanese Titles",
     "AssetCleanup": "Asset Cleanup",
     "AutoUpdateIM": "Auto-Update ImageMagick",
@@ -1126,6 +1145,7 @@ DISPLAY_NAMES = {
     "UseClearlogo": "Use Clearlogo",
     "UseClearart": "Use Clearart",
     "LogoTextFallback": "Fallback to Text",
+    "TextlessPosterBypass": "Textless Poster Bypass",
     "ConvertLogoColor": "Convert Logo Color",
     "LogoFlatColor": "Flat Logo Color",
     "UseOriginalTitle": "Use the original title instead of the localized version",

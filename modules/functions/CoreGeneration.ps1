@@ -163,6 +163,35 @@ function Invoke-MoviePosterCreation {
                                 $LocalAssetMissing = 'true'
                             }
                             Else {
+                                # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                                $tempLogoAvailable = $false
+                                if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                    $tempLogoUrl = $null
+                                    $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                    foreach ($provider in $searchOrder) {
+                                        if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                        switch ($provider) {
+                                            'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type movie } }
+                                            'FANART' { $t = if('movie' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                            'TVDB' { if ($entry.tvdbid) { $t = if('movie' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                        }
+                                    }
+                                    if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                    
+                                    if (-not $tempLogoAvailable) {
+                                        Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                        $global:OriginalPreferTextless = $global:PosterPreferTextless
+                                        $global:OriginalOnlyTextless = $global:PosterOnlyTextless
+                                        $global:OriginalPreferredLanguageOrder = $global:PreferredLanguageOrder
+                                        $tempOrder = @($global:PreferredLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                        if (-not $tempOrder) { $tempOrder = @('en') }
+                                        $global:PreferredLanguageOrder = $tempOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $tempOrder
+                                        $global:PosterPreferTextless = $false
+                                        $global:PosterOnlyTextless = $false
+                                        $global:ForceTextAssetRestoration = '$global:PosterPreferTextless'
+                                    }
+                                }
                                 Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -376,6 +405,34 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 $global:IsTruncated = $null
+                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                            $global:OriginalPreferredLanguageOrder = $null
+                                        }
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                        }
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                        }
+                                    }
+                                    $global:ForceTextAssetRestoration = $null
+                                }
                                 if ($global:ImageProcessing -eq 'true') {
                                     Write-Entry -Subtext "Processing Poster for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                     $CommentArguments = "`"$PosterImage`" -set `"comment`" `"created with posterizarr`" `"$PosterImage`""
@@ -639,7 +696,7 @@ function Invoke-MoviePosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    $fileContent = [System.IO.File]::ReadAllBytes($PosterImage)
+                                                    
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "PosterImage: $PosterImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -651,8 +708,8 @@ function Invoke-MoviePosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -Body $fileContent `
-                                                        -ContentType 'application/octet-stream' `
+                                                        -InFile $PosterImage `
+-ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
 
@@ -767,7 +824,7 @@ function Invoke-MoviePosterCreation {
                                         GetPlexArtwork -Type "$Titletext Artwork." -ArtUrl $Arturl -TempImage $PosterImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            $fileContent = [System.IO.File]::ReadAllBytes($PosterImageoriginal)
+                                            
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "PosterImage: $PosterImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -779,8 +836,8 @@ function Invoke-MoviePosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -Body $fileContent `
-                                                -ContentType 'application/octet-stream' `
+                                                -InFile $PosterImageoriginal `
+-ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
     
@@ -921,6 +978,35 @@ function Invoke-MoviePosterCreation {
                                 $LocalAssetMissing = 'true'
                             }
                             Else {
+                                # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                                $tempLogoAvailable = $false
+                                if ($TextlessPosterBypass -eq 'true' -and $UseBGLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                    $tempLogoUrl = $null
+                                    $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                    foreach ($provider in $searchOrder) {
+                                        if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                        switch ($provider) {
+                                            'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type movie } }
+                                            'FANART' { $t = if('movie' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                            'TVDB' { if ($entry.tvdbid) { $t = if('movie' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                        }
+                                    }
+                                    if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                    
+                                    if (-not $tempLogoAvailable) {
+                                        Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                        $global:OriginalPreferTextless = $global:BackgroundPreferTextless
+                                        $global:OriginalOnlyTextless = $global:BackgroundOnlyTextless
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $global:PreferredBackgroundLanguageOrder
+                                        $tempOrder = @($global:PreferredBackgroundLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                        if (-not $tempOrder) { $tempOrder = @('en') }
+                                        $global:PreferredBackgroundLanguageOrder = $tempOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $tempOrder
+                                        $global:BackgroundPreferTextless = $false
+                                        $global:BackgroundOnlyTextless = $false
+                                        $global:ForceTextAssetRestoration = '$global:BackgroundPreferTextless'
+                                    }
+                                }
                                 Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -1113,6 +1199,34 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 $global:IsTruncated = $null
+                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                            $global:OriginalPreferredLanguageOrder = $null
+                                        }
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                        }
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                        }
+                                    }
+                                    $global:ForceTextAssetRestoration = $null
+                                }
                                 if ($global:ImageProcessing -eq 'true') {
                                     Write-Entry -Subtext "Processing background for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                     $CommentArguments = "`"$backgroundImage`" -set `"comment`" `"created with posterizarr`" `"$backgroundImage`""
@@ -1376,7 +1490,7 @@ function Invoke-MoviePosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    $fileContent = [System.IO.File]::ReadAllBytes($backgroundImage)
+                                                    
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "BackgroundImage: $backgroundImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -1388,8 +1502,8 @@ function Invoke-MoviePosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -Body $fileContent `
-                                                        -ContentType 'application/octet-stream' `
+                                                        -InFile $backgroundImage `
+-ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
 
@@ -1504,7 +1618,7 @@ function Invoke-MoviePosterCreation {
                                         GetPlexArtwork -Type " $Titletext | Backgound Artwork." -ArtUrl $Arturl -TempImage $backgroundImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            $fileContent = [System.IO.File]::ReadAllBytes($backgroundImageoriginal)
+                                            
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "BackgroundImage: $backgroundImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -1516,8 +1630,8 @@ function Invoke-MoviePosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -Body $fileContent `
-                                                -ContentType 'application/octet-stream' `
+                                                -InFile $backgroundImageoriginal `
+-ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
     
@@ -1766,6 +1880,35 @@ function Invoke-ShowPosterCreation {
                             $LocalAssetMissing = 'true'
                         }
                         Else {
+                            # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                            $tempLogoAvailable = $false
+                            if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                $tempLogoUrl = $null
+                                $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                foreach ($provider in $searchOrder) {
+                                    if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                    switch ($provider) {
+                                        'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type tv } }
+                                        'FANART' { $t = if('tv' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                        'TVDB' { if ($entry.tvdbid) { $t = if('tv' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                    }
+                                }
+                                if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                
+                                if (-not $tempLogoAvailable) {
+                                    Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                    $global:OriginalPreferTextless = $global:PosterPreferTextless
+                                    $global:OriginalOnlyTextless = $global:PosterOnlyTextless
+                                    $global:OriginalPreferredLanguageOrder = $global:PreferredLanguageOrder
+                                    $tempOrder = @($global:PreferredLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                    if (-not $tempOrder) { $tempOrder = @('en') }
+                                    $global:PreferredLanguageOrder = $tempOrder
+                                    Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $tempOrder
+                                    $global:PosterPreferTextless = $false
+                                    $global:PosterOnlyTextless = $false
+                                    $global:ForceTextAssetRestoration = '$global:PosterPreferTextless'
+                                }
+                            }
                             Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -1965,6 +2108,34 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             $global:IsTruncated = $null
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                             if ($global:ImageProcessing -eq 'true') {
                                 Write-Entry -Subtext "Processing Poster for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                 $CommentArguments = "`"$PosterImage`" -set `"comment`" `"created with posterizarr`" `"$PosterImage`""
@@ -2228,7 +2399,7 @@ function Invoke-ShowPosterCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($PosterImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "PosterImage: $PosterImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -2240,8 +2411,8 @@ function Invoke-ShowPosterCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $PosterImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -2355,7 +2526,7 @@ function Invoke-ShowPosterCreation {
                                     GetPlexArtwork -Type "$Titletext Artwork." -ArtUrl $Arturl -TempImage $PosterImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($PosterImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "PosterImage: $PosterImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -2367,8 +2538,8 @@ function Invoke-ShowPosterCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $PosterImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -2518,6 +2689,35 @@ function Invoke-ShowPosterCreation {
                             $LocalAssetMissing = 'true'
                         }
                         Else {
+                            # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                            $tempLogoAvailable = $false
+                            if ($TextlessPosterBypass -eq 'true' -and $UseBGLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                $tempLogoUrl = $null
+                                $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                foreach ($provider in $searchOrder) {
+                                    if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                    switch ($provider) {
+                                        'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type tv } }
+                                        'FANART' { $t = if('tv' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                        'TVDB' { if ($entry.tvdbid) { $t = if('tv' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                    }
+                                }
+                                if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                
+                                if (-not $tempLogoAvailable) {
+                                    Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                    $global:OriginalPreferTextless = $global:BackgroundPreferTextless
+                                    $global:OriginalOnlyTextless = $global:BackgroundOnlyTextless
+                                    $global:OriginalPreferredBackgroundLanguageOrder = $global:PreferredBackgroundLanguageOrder
+                                    $tempOrder = @($global:PreferredBackgroundLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                    if (-not $tempOrder) { $tempOrder = @('en') }
+                                    $global:PreferredBackgroundLanguageOrder = $tempOrder
+                                    Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $tempOrder
+                                    $global:BackgroundPreferTextless = $false
+                                    $global:BackgroundOnlyTextless = $false
+                                    $global:ForceTextAssetRestoration = '$global:BackgroundPreferTextless'
+                                }
+                            }
                             Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
                             if ($global:OverrideProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
@@ -2716,6 +2916,34 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             $global:IsTruncated = $null
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                             if ($global:ImageProcessing -eq 'true') {
                                 Write-Entry -Subtext "Processing background for: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
                                 $CommentArguments = "`"$backgroundImage`" -set `"comment`" `"created with posterizarr`" `"$backgroundImage`""
@@ -2736,21 +2964,9 @@ function Invoke-ShowPosterCreation {
                                     Else {
                                         $backgroundoverlay = $DefaultShowBackgroundoverlay
                                     }
-                                    # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                    if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                        $LocalAddOverlay = 'false'
-                                    }
-
-                                    # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                    if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                        $LocalAddBorder = 'false'
-                                    }
-
-                                    # Logic for "If both are true, only resize"
-                                    if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                        $LocalAddBorder = 'false'
-                                        $LocalAddOverlay = 'false'
-                                    }
+                                    $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                    $LocalAddBorder = $settings.Border
+                                    $LocalAddOverlay = $settings.Overlay
                                     # Calculate the height to maintain the aspect ratio with a width of 1000 pixels
                                     if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                         $Arguments = "`"$backgroundImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$Backgroundoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$Backgroundborderwidthsecond`"  -bordercolor `"$Backgroundbordercolor`" -border `"$Backgroundborderwidth`" `"$backgroundImage`""
@@ -2771,8 +2987,8 @@ function Invoke-ShowPosterCreation {
                                     $logEntry = "`"$magick`" $Arguments"
                                     $logEntry | Write-MagickLog
                                     InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                    if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                        $SkippingText = 'true'
+                                    $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                    if ($SkippingText -eq 'true') {
                                         Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                     }
                                     # ONLY proceed with Logo or Text application if SkippingText is NOT true
@@ -2979,7 +3195,7 @@ function Invoke-ShowPosterCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($backgroundImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "BackgroundImage: $backgroundImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -2991,8 +3207,8 @@ function Invoke-ShowPosterCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $backgroundImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -3107,7 +3323,7 @@ function Invoke-ShowPosterCreation {
                                     GetPlexArtwork -Type " $Titletext | Backgound Artwork." -ArtUrl $Arturl -TempImage $backgroundImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($backgroundImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "BackgroundImage: $backgroundImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -3119,8 +3335,8 @@ function Invoke-ShowPosterCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $backgroundImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -3330,6 +3546,35 @@ function Invoke-ShowPosterCreation {
                             }
                             Else {
                                 if (!$Seasonpostersearchtext) {
+                                    # [Posterizarr TextlessFallback] Pre-check logo availability to revert to text poster if needed.
+                                    $tempLogoAvailable = $false
+                                    if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
+                                        $tempLogoUrl = $null
+                                        $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                        foreach ($provider in $searchOrder) {
+                                            if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
+                                            switch ($provider) {
+                                                'TMDB' { if ($entry.tmdbid) { $tempLogoUrl = GetTMDBLogo -Type tv } }
+                                                'FANART' { $t = if('tv' -eq 'movie') {'movies'} else {'tv'}; $tempLogoUrl = GetFanartLogo -Type $t }
+                                                'TVDB' { if ($entry.tvdbid) { $t = if('tv' -eq 'movie') {'movies'} else {'series'}; $tempLogoUrl = GetTVDBLogo -Type $t } }
+                                            }
+                                        }
+                                        if ($tempLogoUrl) { $tempLogoAvailable = $true }
+                                        
+                                        if (-not $tempLogoAvailable) {
+                                            Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
+                                            $global:OriginalPreferTextless = $global:SeasonPosterPreferTextless
+                                            $global:OriginalOnlyTextless = $global:SeasonPosterOnlyTextless
+                                            $global:OriginalPreferredSeasonLanguageOrder = $global:PreferredSeasonLanguageOrder
+                                            $tempOrder = @($global:PreferredSeasonLanguageOrder | Where-Object { $_ -ne 'xx' })
+                                            if (-not $tempOrder) { $tempOrder = @('en') }
+                                            $global:PreferredSeasonLanguageOrder = $tempOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $tempOrder
+                                            $global:SeasonPosterPreferTextless = $false
+                                            $global:SeasonPosterOnlyTextless = $false
+                                            $global:ForceTextAssetRestoration = '$global:SeasonPosterPreferTextless'
+                                        }
+                                    }
                                     Write-Entry -Message "Start Season Poster Search for: $Titletext | $global:seasonTitle" -Path $global:configLogging -Color White -log Info
                                 if ($global:OverrideProviderOrder) {
                                     $global:LoopFallbackPosterUrl = $null
@@ -3560,6 +3805,34 @@ function Invoke-ShowPosterCreation {
                                 }
                             if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                                 $global:IsTruncated = $null
+                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                            $global:OriginalPreferredLanguageOrder = $null
+                                        }
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                        }
+                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                        }
+                                    }
+                                    $global:ForceTextAssetRestoration = $null
+                                }
                                 if ($global:ImageProcessing -eq 'true') {
                                     if ($TakeLocal) {
                                         Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
@@ -3627,21 +3900,9 @@ function Invoke-ShowPosterCreation {
                                         $CommentlogEntry | Write-MagickLog
                                         InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                         if ($global:ImageMagickError -ne 'true') {
-                                            # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                            if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddOverlay = 'false'
-                                            }
-
-                                            # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                            if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                            }
-
-                                            # Logic for "If both are true, only resize"
-                                            if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                                $LocalAddOverlay = 'false'
-                                            }
+                                            $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                            $LocalAddBorder = $settings.Border
+                                            $LocalAddOverlay = $settings.Overlay
                                             # Resize Image to 2000x3000 and apply Border and overlay
                                             if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                                 $Arguments = "`"$SeasonImage`" -resize `"$PosterSize^`" -gravity center -extent `"$PosterSize`" `"$Seasonoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$Seasonborderwidthsecond`"  -bordercolor `"$Seasonbordercolor`" -border `"$Seasonborderwidth`" `"$SeasonImage`""
@@ -3663,8 +3924,8 @@ function Invoke-ShowPosterCreation {
                                             $logEntry = "`"$magick`" $Arguments"
                                             $logEntry | Write-MagickLog
                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                            if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $SkippingText = 'true'
+                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            if ($SkippingText -eq 'true') {
                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                             }
                                             if ($AddSeasonText -eq 'true' -and $SkippingText -eq 'false') {
@@ -3977,7 +4238,7 @@ function Invoke-ShowPosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    $fileContent = [System.IO.File]::ReadAllBytes($SeasonImage)
+                                                    
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "SeasonImage: $SeasonImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($global:SeasonRatingKey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -3989,8 +4250,8 @@ function Invoke-ShowPosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -Body $fileContent `
-                                                        -ContentType 'application/octet-stream' `
+                                                        -InFile $SeasonImage `
+-ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
 
@@ -4105,7 +4366,7 @@ function Invoke-ShowPosterCreation {
                                         GetPlexArtwork -Type " $Titletext | $global:seasontmp Artwork."  -ArtUrl $Arturl -TempImage $SeasonImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            $fileContent = [System.IO.File]::ReadAllBytes($SeasonImageoriginal)
+                                            
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "SeasonImage: $SeasonImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($global:SeasonRatingKey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -4117,8 +4378,8 @@ function Invoke-ShowPosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -Body $fileContent `
-                                                -ContentType 'application/octet-stream' `
+                                                -InFile $SeasonImageoriginal `
+-ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
     
@@ -4341,9 +4602,16 @@ function Invoke-TitleCardCreation {
                 # Pre-check the title against skipwords
                 $matchedWord = $null
                 foreach ($word in $SkipWords) {
-                    if ($global:EPTitle -match "^$([regex]::Escape($word))") {
-                        $matchedWord = $word
-                        break # Stop checking once we find a match
+                    if ($word -match '^/(.+)/$') {
+                        if ($global:EPTitle -match $matches[1]) {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
+                    } else {
+                        if ($global:EPTitle -match "^$([regex]::Escape($word))") {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
                     }
                 }
 
@@ -4519,6 +4787,34 @@ function Invoke-TitleCardCreation {
                         }
                         if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal -or $global:TempImagecopied -eq 'true') {
                             $global:IsTruncated = $null
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                             if ($global:ImageProcessing -eq 'true') {
                                 if ($TakeLocal) {
                                     Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
@@ -4605,21 +4901,9 @@ function Invoke-TitleCardCreation {
                                             Else {
                                                 $TitleCardoverlay = $DefaultTitleCardoverlay
                                             }
-                                            # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                            if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddOverlay = 'false'
-                                            }
-
-                                            # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                            if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                            }
-
-                                            # Logic for "If both are true, only resize"
-                                            if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                                $LocalAddBorder = 'false'
-                                                $LocalAddOverlay = 'false'
-                                            }
+                                            $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                            $LocalAddBorder = $settings.Border
+                                            $LocalAddOverlay = $settings.Overlay
                                             # Resize Image to 2000x3000 and apply Border and overlay
                                             if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                                 $Arguments = "`"$EpisodeImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$TitleCardoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$EpisodeImage`""
@@ -4640,8 +4924,8 @@ function Invoke-TitleCardCreation {
                                             $logEntry = "`"$magick`" $Arguments"
                                             $logEntry | Write-MagickLog
                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                            if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                $SkippingText = 'true'
+                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            if ($SkippingText -eq 'true') {
                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                             }
                                             if ($AddTitleCardEPTitleText -eq 'true' -and $SkippingText -eq 'false') {
@@ -4806,7 +5090,7 @@ function Invoke-TitleCardCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -4818,8 +5102,8 @@ function Invoke-TitleCardCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $EpisodeImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -4936,7 +5220,7 @@ function Invoke-TitleCardCreation {
                                     GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -4948,8 +5232,8 @@ function Invoke-TitleCardCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $EpisodeImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -5080,9 +5364,16 @@ function Invoke-TitleCardCreation {
                 # Pre-check the title against skipwords
                 $matchedWord = $null
                 foreach ($word in $SkipWords) {
-                    if ($global:EPTitle -match "^$([regex]::Escape($word))") {
-                        $matchedWord = $word
-                        break # Stop checking once we find a match
+                    if ($word -match '^/(.+)/$') {
+                        if ($global:EPTitle -match $matches[1]) {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
+                    } else {
+                        if ($global:EPTitle -match "^$([regex]::Escape($word))") {
+                            $matchedWord = $word
+                            break # Stop checking once we find a match
+                        }
                     }
                 }
 
@@ -5287,6 +5578,34 @@ function Invoke-TitleCardCreation {
                         }
                         if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                             $global:IsTruncated = $null
+                            if ($global:ForceTextAssetRestoration -ne $null) {
+                                if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                    $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                        $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                        $global:OriginalPreferredLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                    $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                    $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                        $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                        $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                    }
+                                } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                    $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                    $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                    if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                        $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                        Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                        $global:OriginalPreferredSeasonLanguageOrder = $null
+                                    }
+                                }
+                                $global:ForceTextAssetRestoration = $null
+                            }
                             if ($global:ImageProcessing -eq 'true') {
                                 if ($TakeLocal) {
                                     Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
@@ -5355,21 +5674,9 @@ function Invoke-TitleCardCreation {
                                         Else {
                                             $TitleCardoverlay = $DefaultTitleCardoverlay
                                         }
-                                        # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                        if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                            $LocalAddOverlay = 'false'
-                                        }
-
-                                        # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                        if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                            $LocalAddBorder = 'false'
-                                        }
-
-                                        # Logic for "If both are true, only resize"
-                                        if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                            $LocalAddBorder = 'false'
-                                            $LocalAddOverlay = 'false'
-                                        }
+                                        $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                        $LocalAddBorder = $settings.Border
+                                        $LocalAddOverlay = $settings.Overlay
                                         # Resize Image to 2000x3000 and apply Border and overlay
                                         if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                             $Arguments = "`"$EpisodeImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$TitleCardoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$EpisodeImage`""
@@ -5390,8 +5697,8 @@ function Invoke-TitleCardCreation {
                                         $logEntry = "`"$magick`" $Arguments"
                                         $logEntry | Write-MagickLog
                                         InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                        if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                            $SkippingText = 'true'
+                                        $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                        if ($SkippingText -eq 'true') {
                                             Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                         }
                                         if ($AddTitleCardEPTitleText -eq 'true' -and $SkippingText -eq 'false') {
@@ -5555,7 +5862,7 @@ function Invoke-TitleCardCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImage)
+                                                
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -5567,8 +5874,8 @@ function Invoke-TitleCardCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -Body $fileContent `
-                                                    -ContentType 'application/octet-stream' `
+                                                    -InFile $EpisodeImage `
+-ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
 
@@ -5684,7 +5991,7 @@ function Invoke-TitleCardCreation {
                                     GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImageoriginal)
+                                        
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -5696,8 +6003,8 @@ function Invoke-TitleCardCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -Body $fileContent `
-                                            -ContentType 'application/octet-stream' `
+                                            -InFile $EpisodeImageoriginal `
+-ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
     
@@ -5831,9 +6138,16 @@ function Invoke-TitleCardCreation {
                                     # Pre-check the title against skipwords
                                     $matchedWord = $null
                                     foreach ($word in $SkipWords) {
-                                        if ($global:EPTitle -match "^$([regex]::Escape($word))") {
-                                            $matchedWord = $word
-                                            break # Stop checking once we find a match
+                                        if ($word -match '^/(.+)/$') {
+                                            if ($global:EPTitle -match $matches[1]) {
+                                                $matchedWord = $word
+                                                break # Stop checking once we find a match
+                                            }
+                                        } else {
+                                            if ($global:EPTitle -match "^$([regex]::Escape($word))") {
+                                                $matchedWord = $word
+                                                break # Stop checking once we find a match
+                                            }
                                         }
                                     }
 
@@ -6033,6 +6347,34 @@ function Invoke-TitleCardCreation {
                                             }
                                             if ($global:posterurl -or $global:PlexartworkDownloaded -or $TakeLocal) {
                                                 $global:IsTruncated = $null
+                                                if ($global:ForceTextAssetRestoration -ne $null) {
+                                                    if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
+                                                        $global:PosterPreferTextless = $global:OriginalPreferTextless
+                                                        $global:PosterOnlyTextless = $global:OriginalOnlyTextless
+                                                        if ($null -ne $global:OriginalPreferredLanguageOrder) {
+                                                            $global:PreferredLanguageOrder = $global:OriginalPreferredLanguageOrder
+                                                            Initialize-LanguageSettings -SettingName "PreferredLanguageOrder" -Label "Poster" -Default $global:OriginalPreferredLanguageOrder
+                                                            $global:OriginalPreferredLanguageOrder = $null
+                                                        }
+                                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:BackgroundPreferTextless') {
+                                                        $global:BackgroundPreferTextless = $global:OriginalPreferTextless
+                                                        $global:BackgroundOnlyTextless = $global:OriginalOnlyTextless
+                                                        if ($null -ne $global:OriginalPreferredBackgroundLanguageOrder) {
+                                                            $global:PreferredBackgroundLanguageOrder = $global:OriginalPreferredBackgroundLanguageOrder
+                                                            Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background" -Default $global:OriginalPreferredBackgroundLanguageOrder
+                                                            $global:OriginalPreferredBackgroundLanguageOrder = $null
+                                                        }
+                                                    } elseif ($global:ForceTextAssetRestoration -eq '$global:SeasonPosterPreferTextless') {
+                                                        $global:SeasonPosterPreferTextless = $global:OriginalPreferTextless
+                                                        $global:SeasonPosterOnlyTextless = $global:OriginalOnlyTextless
+                                                        if ($null -ne $global:OriginalPreferredSeasonLanguageOrder) {
+                                                            $global:PreferredSeasonLanguageOrder = $global:OriginalPreferredSeasonLanguageOrder
+                                                            Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder" -Label "SeasonPoster" -Default $global:OriginalPreferredSeasonLanguageOrder
+                                                            $global:OriginalPreferredSeasonLanguageOrder = $null
+                                                        }
+                                                    }
+                                                    $global:ForceTextAssetRestoration = $null
+                                                }
                                                 if ($global:ImageProcessing -eq 'true') {
                                                     if ($TakeLocal) {
                                                         Get-ChildItem -LiteralPath "$($ManualTestPath)$posterext" | ForEach-Object {
@@ -6101,21 +6443,9 @@ function Invoke-TitleCardCreation {
                                                             Else {
                                                                 $TitleCardoverlay = $DefaultTitleCardoverlay
                                                             }
-                                                            # Logic for SkipAddTextAndOverlay (Skip Overlay, keep Border)
-                                                            if (($SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                                $LocalAddOverlay = 'false'
-                                                            }
-
-                                                            # Logic for SkipAddTextAndBorder (Skip Border, keep Overlay)
-                                                            if (($SkipAddTextAndBorder -eq 'true') -and $global:PosterWithText) {
-                                                                $LocalAddBorder = 'false'
-                                                            }
-
-                                                            # Logic for "If both are true, only resize"
-                                                            if ($SkipAddTextAndOverlay -eq 'true' -and $SkipAddTextAndBorder -eq 'true' -and $global:PosterWithText) {
-                                                                $LocalAddBorder = 'false'
-                                                                $LocalAddOverlay = 'false'
-                                                            }
+                                                            $settings = Get-OverlayAndBorderSettings -AddBorder $LocalAddBorder -AddOverlay $LocalAddOverlay -SkipAddTextAndOverlay $SkipAddTextAndOverlay -SkipAddTextAndBorder $SkipAddTextAndBorder -PosterWithText $global:PosterWithText
+                                                            $LocalAddBorder = $settings.Border
+                                                            $LocalAddOverlay = $settings.Overlay
                                                             # Resize Image to 2000x3000 and apply Border and overlay
                                                             if ($LocalAddBorder -eq 'true' -and $LocalAddOverlay -eq 'true') {
                                                                 $Arguments = "`"$EpisodeImage`" -resize `"$BackgroundSize^`" -gravity center -extent `"$BackgroundSize`" `"$TitleCardoverlay`" -gravity south -quality $global:outputQuality -composite -shave `"$TitleCardborderwidthsecond`"  -bordercolor `"$TitleCardbordercolor`" -border `"$TitleCardborderwidth`" `"$EpisodeImage`""
@@ -6136,8 +6466,8 @@ function Invoke-TitleCardCreation {
                                                             $logEntry = "`"$magick`" $Arguments"
                                                             $logEntry | Write-MagickLog
                                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                                            if (($SkipAddText -eq 'true' -or $SkipAddTextAndOverlay -eq 'true') -and $global:PosterWithText) {
-                                                                $SkippingText = 'true'
+                                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                                            if ($SkippingText -eq 'true') {
                                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                                             }
                                                             if ($AddTitleCardEPTitleText -eq 'true' -and $SkippingText -eq 'false') {
@@ -6301,7 +6631,7 @@ function Invoke-TitleCardCreation {
                                                             if ($Upload2Plex -eq 'true') {
                                                                 try {
                                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                                    $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImage)
+                                                                    
                                                                     # Verify variables before uploading
                                                                     Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                                     Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -6313,8 +6643,8 @@ function Invoke-TitleCardCreation {
                                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                                         -Method Post `
                                                                         -Headers $extraPlexHeaders `
-                                                                        -Body $fileContent `
-                                                                        -ContentType 'application/octet-stream' `
+                                                                        -InFile $EpisodeImage `
+-ContentType 'image/jpeg' `
                                                                         -SkipHttpErrorCheck `
                                                                         -ErrorAction Stop
 
@@ -6430,7 +6760,7 @@ function Invoke-TitleCardCreation {
                                                         GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                                            $fileContent = [System.IO.File]::ReadAllBytes($EpisodeImageoriginal)
+                                                            
                                                             # Verify variables before uploading
                                                             Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                                             Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -6442,8 +6772,8 @@ function Invoke-TitleCardCreation {
                                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                                 -Method Post `
                                                                 -Headers $extraPlexHeaders `
-                                                                -Body $fileContent `
-                                                                -ContentType 'application/octet-stream' `
+                                                                -InFile $EpisodeImageoriginal `
+-ContentType 'image/jpeg' `
                                                                 -SkipHttpErrorCheck `
                                                                 -ErrorAction Stop
     

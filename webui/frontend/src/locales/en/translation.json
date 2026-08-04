@@ -1570,6 +1570,7 @@
   },
   "assetReplacer": {
     "title": "Replace Asset",
+    "defaultGlobalConfig": "Default (Global Config)",
     "selectLogoTitle": "Select a Logo/ClearArt",
     "logoApplied": "Logo URL applied to Title Text",
     "browseLogos": "Browse Logos",

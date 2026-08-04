@@ -17,6 +17,23 @@
             } else {
                 console.warn("[Posterizarr] Configuration object is empty or AssetFolderPath is missing.");
             }
+            
+            const chkReplaceThumb = page.querySelector('#chkReplaceThumb');
+            const chkReplaceThumbExclusively = page.querySelector('#chkReplaceThumbExclusively');
+            const containerExclusive = page.querySelector('#containerExclusive');
+            
+            if (chkReplaceThumb && chkReplaceThumbExclusively) {
+                chkReplaceThumb.checked = config.ReplaceThumbwithBackdrop || false;
+                chkReplaceThumbExclusively.checked = config.ReplaceThumbwithBackdropExclusively || false;
+                
+                const toggleExclusive = () => {
+                    if (containerExclusive) {
+                        containerExclusive.style.display = chkReplaceThumb.checked ? "block" : "none";
+                    }
+                };
+                chkReplaceThumb.addEventListener('change', toggleExclusive);
+                toggleExclusive();
+            }
 
             Dashboard.hideLoadingMsg();
         }).catch(function (err) {
@@ -43,6 +60,11 @@
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             // Update the existing config object
             config.AssetFolderPath = newPath;
+            
+            const chkReplaceThumb = form.querySelector('#chkReplaceThumb');
+            const chkReplaceThumbExclusively = form.querySelector('#chkReplaceThumbExclusively');
+            if (chkReplaceThumb) config.ReplaceThumbwithBackdrop = chkReplaceThumb.checked;
+            if (chkReplaceThumbExclusively) config.ReplaceThumbwithBackdropExclusively = chkReplaceThumbExclusively.checked;
 
             console.log("[Posterizarr] Saving new configuration:", config);
 

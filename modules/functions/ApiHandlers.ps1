@@ -362,12 +362,10 @@ function GetTMDBMoviePoster {
                         }
                         Else {
                             Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
                         }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
                         return $global:posterurl
                         continue
                     }
@@ -559,15 +557,15 @@ function GetTMDBMovieBackground {
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                         if ($lang -eq 'null' -or $lang -eq 'xx') {
                             Write-Entry -Subtext "Found background without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
                         }
                         Else {
                             Write-Entry -Subtext "Found background with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
                         }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
                         return $global:posterurl
                         continue
                     }
@@ -779,18 +777,16 @@ function GetTMDBShowPoster {
                             }
                             $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                             if ($lang -eq 'null' -or $lang -eq 'xx') {
-                                Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
+                            Write-Entry -Subtext "Found Poster without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
                                 $global:TextlessPoster = $true
                                 $global:PosterWithText = $null
                             }
                             Else {
                                 Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                            }
-                            if ($lang -ne 'null' -or $lang -eq 'xx') {
-                                $global:PosterWithText = $true
-                                $global:TMDBAssetTextLang = $lang
-                                $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
-                            }
+                            $global:PosterWithText = $true
+                            $global:TMDBAssetTextLang = $lang
+                        }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
                             return $global:posterurl
                             continue
                         }
@@ -996,12 +992,10 @@ function GetTMDBSeasonPoster {
                         }
                         Else {
                             Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
                         }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
                         Write-Entry -Subtext "Posterpath: $posterpath" -Path $global:configLogging -Color Cyan -log Debug
                         Write-Entry -Subtext "PosterUrl: $(RedactMediaServerUrl -url $global:posterurl)" -Path $global:configLogging -Color Cyan -log Debug
                         Write-Entry -Subtext "PosterWithText: $global:PosterWithText" -Path $global:configLogging -Color Cyan -log Debug
@@ -1048,12 +1042,10 @@ function GetTMDBSeasonPoster {
                         }
                         Else {
                             Write-Entry -Subtext "Found Poster with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
                         }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
                         return $global:posterurl
                         continue
                     }
@@ -1254,15 +1246,15 @@ function GetTMDBShowBackground {
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                         if ($lang -eq 'null' -or $lang -eq 'xx') {
                             Write-Entry -Subtext "Found background without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
                         }
                         Else {
                             Write-Entry -Subtext "Found background with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
                         }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
                         return $global:posterurl
                         continue
                     }
@@ -1458,15 +1450,15 @@ function GetTMDBTitleCard {
                         $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
                         if ($lang -eq 'null' -or $lang -eq 'xx') {
                             Write-Entry -Subtext "Found TC without Language on TMDB" -Path $global:configLogging -Color Blue -log Info
+                            $global:TextlessPoster = $true
+                            $global:PosterWithText = $null
                         }
                         Else {
                             Write-Entry -Subtext "Found TC with Language '$lang' on TMDB" -Path $global:configLogging -Color Blue -log Info
-                        }
-                        if ($lang -ne 'null' -or $lang -eq 'xx') {
                             $global:PosterWithText = $true
                             $global:TMDBAssetTextLang = $lang
-                            $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:season_number/episode/$global:episodenumber/images/backdrops"
                         }
+                        $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:season_number/episode/$global:episodenumber/images/backdrops"
                         return $global:posterurl
                         continue
                     }

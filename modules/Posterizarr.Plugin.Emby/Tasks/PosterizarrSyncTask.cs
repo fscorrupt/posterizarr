@@ -78,9 +78,7 @@ namespace Posterizarr.Plugin.Tasks
                 }
 
                 var item = items[i];
-                var typesToCheck = new List<ImageType> { ImageType.Primary };
-                if (item is Movie || item is Series)
-                    typesToCheck.Add(ImageType.Backdrop);
+                var typesToCheck = provider.GetSupportedImages(item);
 
                 var itemUpdated = false;
                 foreach (var type in typesToCheck)
