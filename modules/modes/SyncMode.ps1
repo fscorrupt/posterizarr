@@ -1263,15 +1263,28 @@
                                     }
 
                                     if ($matchingEpisode) {
-                                        # Select the matching episode ID based on the current index
-                                        $global:episodeid = $matchingEpisode.EpisodeIds.Split(",")[$i]
+                                        # Select the matching episode ID by EPISODE NUMBER, not by the source
+                                        # loop index. Source and destination hold their own episode arrays and
+                                        # are not guaranteed to contain the same episodes in the same order,
+                                        # so reusing the source index pairs the artwork with a different
+                                        # destination episode whenever the two disagree.
+                                        $destEpisode = @($matchingEpisode)[0]
+                                        $destEpisodeNumbers = @($destEpisode.Episodes.Split(",") | ForEach-Object { $_.Trim() })
+                                        $destEpisodeIds = @($destEpisode.EpisodeIds.Split(",") | ForEach-Object { $_.Trim() })
+                                        $destEpisodeIndex = [Array]::IndexOf($destEpisodeNumbers, $global:episodenumber)
+                                        if ($destEpisodeIndex -ge 0 -and $destEpisodeIndex -lt $destEpisodeIds.Count) {
+                                            $global:episodeid = $destEpisodeIds[$destEpisodeIndex]
+                                        }
+                                        Else {
+                                            $global:episodeid = $null
+                                        }
                                         # Construct the show title with the current episode number
                                         $ShowTitle = "$($entry.Title) | Season $($global:season_number) - Episode $global:episodenumber"
                                         # Define the image type and destination URL
                                         $imageType = "Primary"
                                         $DestUrl = "$OtherMediaServerUrl/items/$($global:episodeid)/images/$imageType/"
                                         # Call the SyncPlexArtwork function to sync the artwork
-                                        if ($matchingShow.id) {
+                                        if ($matchingShow.id -and $global:episodeid) {
                                             SyncPlexArtwork -ArtUrl $Arturl -DestUrl $DestUrl -imagetype $imageType -title $ShowTitle -artworktype 'tc'
                                         }
                                         Else {
