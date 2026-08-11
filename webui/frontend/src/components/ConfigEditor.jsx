@@ -992,7 +992,13 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
 
             const handleAddPair = () => {
-                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"] } };
+                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"], ApplyToPoster: true, ApplyToSeason: true, ApplyToBackground: true } };
+                updateValue(fieldKey, newDict);
+            };
+
+            const handleToggleApplyTo = (key, type, value) => {
+                const newDict = { ...dictValue };
+                newDict[key] = { ...(dictValue[key] || {}), [`ApplyTo${type}`]: value };
                 updateValue(fieldKey, newDict);
             };
 
@@ -1025,8 +1031,25 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                                 <LanguageOrderSelector
                                     value={v?.PreferredLanguageOrder || []}
                                     onChange={(newOrder) => handleUpdateOrder(k, newOrder)}
-                                    helpText="Applies to posters, seasons and backgrounds for this library; title cards keep their textless-first preference automatically."
+                                    helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
                                 />
+                                <div className="flex gap-4 mt-3 pl-1">
+                                    {["Poster", "Season", "Background"].map((type) => {
+                                        const isChecked = v?.[`ApplyTo${type}`] ?? true;
+                                        return (
+                                            <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={(e) => handleToggleApplyTo(k, type, e.target.checked)}
+                                                    disabled={disabled}
+                                                    className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                                />
+                                                {type}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     ))}

@@ -657,12 +657,21 @@ function Set-LibraryLanguageOverride {
     }
     else {
         $order = if ($override.PreferredLanguageOrder) { $override.PreferredLanguageOrder } else { $global:DefaultPreferredLanguageOrder }
+        
+        $applyToPoster = if ($null -ne $override.ApplyToPoster) { [bool]$override.ApplyToPoster } else { $true }
+        $applyToSeason = if ($null -ne $override.ApplyToSeason) { [bool]$override.ApplyToSeason } else { $true }
+        $applyToBackground = if ($null -ne $override.ApplyToBackground) { [bool]$override.ApplyToBackground } else { $true }
+
+        $posterOrder = if ($applyToPoster) { $order } else { $global:DefaultPreferredLanguageOrder }
+        $seasonOrder = if ($applyToSeason) { $order } else { $global:DefaultPreferredSeasonLanguageOrder }
+        $backgroundOrder = if ($applyToBackground) { $order } else { $global:DefaultPreferredBackgroundLanguageOrder }
+
         $tcOrder = if ($order -and $order[0] -eq 'xx') { $order } else { @('xx') + $order }
 
-        Set-Variable -Name "PreferredLanguageOrder" -Scope Global -Value $order
-        Set-Variable -Name "PreferredSeasonLanguageOrder" -Scope Global -Value $order
+        Set-Variable -Name "PreferredLanguageOrder" -Scope Global -Value $posterOrder
+        Set-Variable -Name "PreferredSeasonLanguageOrder" -Scope Global -Value $seasonOrder
         Set-Variable -Name "PreferredTCLanguageOrder" -Scope Global -Value $tcOrder
-        Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $order
+        Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $backgroundOrder
         Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $order
     }
 

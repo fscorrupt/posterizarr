@@ -50,7 +50,10 @@
         "PreferredLanguageOrder": [
           "de",
           "en"
-        ]
+        ],
+        "ApplyToPoster": true,
+        "ApplyToSeason": true,
+        "ApplyToBackground": true
       }
     }
   },
