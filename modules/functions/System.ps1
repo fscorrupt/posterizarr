@@ -1141,6 +1141,35 @@ function CheckJson {
             }
         }
 
+        # Check and add missing granular asset overrides to existing LibraryLanguageOverrides
+        if ($config.PSObject.Properties.Name.Contains("ApiPart") -and $config.ApiPart.PSObject.Properties.Name.Contains("LibraryLanguageOverrides")) {
+            $overrides = $config.ApiPart.LibraryLanguageOverrides
+            if ($overrides -is [System.Management.Automation.PSCustomObject]) {
+                foreach ($libName in $overrides.PSObject.Properties.Name) {
+                    $libConfig = $overrides.$libName
+                    if ($libConfig -is [System.Management.Automation.PSCustomObject]) {
+                        $modifiedLib = $false
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToPoster")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToPoster" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToSeason")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToSeason" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToBackground")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToBackground" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if ($modifiedLib) {
+                            Write-Entry -Message "Adding missing Granular Asset overrides to Library '$libName'" -Path $global:configLogging -Color Yellow -log Warning
+                            $AttributeChanged = $True
+                        }
+                    }
+                }
+            }
+        }
+
         if ($AttributeChanged -eq 'true') {
             # Convert the updated configuration object back to JSON and save it
             $configJson = $config | ConvertTo-Json -Depth 10
