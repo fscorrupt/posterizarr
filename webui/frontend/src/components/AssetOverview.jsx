@@ -1391,7 +1391,7 @@ const AssetOverview = () => {
 
   // Category cards configuration
   const categoryCards = useMemo(() => {
-    if (!data) return [];
+    if (!data || activeTab === "skipped") return [];
     return [
       {
         key: "assets_with_issues",
