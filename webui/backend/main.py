@@ -13408,7 +13408,19 @@ async def get_skipped_assets():
         
     try:
         rows = db.get_skipped_items()
-        skipped_list = [dict(row) for row in rows]
+        
+        skipped_list = []
+        for row in rows:
+            item = dict(row)
+            skipped_list.append({
+                "id": item["id"],
+                "item_id": item["item_id"],
+                "server_type": item["server_type"],
+                "Title": item.get("title", "Unknown"),
+                "Type": item.get("type", "Unknown"),
+                "LibraryName": item.get("library", "Unknown"),
+                "Rootfolder": item.get("rootfolder", ""),
+            })
         
         # Track existing items to deduplicate
         existing_keys = set()
@@ -13435,12 +13447,10 @@ async def get_skipped_assets():
                             "id": f"manual_{key}", 
                             "item_id": str(item["item_id"]),
                             "server_type": "plex",
-                            "asset_id": None,
-                            "title": item["title"],
-                            "type": item["type"],
-                            "library": item["library_name"],
-                            "rootfolder": item["rootfolder"],
-                            "skipped_at": None,
+                            "Title": item.get("title", "Unknown"),
+                            "Type": item.get("type", "movie"),
+                            "LibraryName": item.get("library_name", "Unknown"),
+                            "Rootfolder": item.get("rootfolder", ""),
                         })
                         existing_keys.add(key)
                         
@@ -13454,12 +13464,10 @@ async def get_skipped_assets():
                             "id": f"manual_{key}",
                             "item_id": str(item["item_id"]),
                             "server_type": "jellyfin/emby",
-                            "asset_id": None,
-                            "title": item["title"],
-                            "type": item["type"],
-                            "library": item["library_name"],
-                            "rootfolder": item["rootfolder"],
-                            "skipped_at": None,
+                            "Title": item.get("title", "Unknown"),
+                            "Type": item.get("type", "movie"),
+                            "LibraryName": item.get("library_name", "Unknown"),
+                            "Rootfolder": item.get("rootfolder", ""),
                         })
                         existing_keys.add(key)
             except Exception as e:
