@@ -716,7 +716,12 @@
         if ($OtherEpisodesBySeriesId.ContainsKey($showIdKey)) {
             $seriesEpisodes = $OtherEpisodesBySeriesId[$showIdKey]
         }
-        $seasons = $seriesEpisodes | Group-Object -Property SeasonName | Sort-Object -Property Name
+        # Group by ParentIndexNumber, not SeasonName. The season and title card lookups
+        # further down match rows on "Season Number", which comes from ParentIndexNumber,
+        # and folder-derived season names do not always agree with it. Grouping by name
+        # then emits several rows carrying the same season number while other season
+        # numbers get no row at all, so those seasons cannot match.
+        $seasons = $seriesEpisodes | Group-Object -Property ParentIndexNumber | Sort-Object -Property { $_.Name -as [int] }
         foreach ($Season in $Seasons) {
             # Sort episodes within the season by IndexNumber
             $SeasonEpisodes = $Season.Group | Sort-Object -Property indexnumber
@@ -767,7 +772,7 @@
                 "tmdbid"                       = $show.tmdbid
                 "type"                         = "Episode"
                 "Season Number"                = $SeasonEpisodes[0].ParentIndexNumber
-                "SeasonName"                   = $Season.Name
+                "SeasonName"                   = $SeasonEpisodes[0].SeasonName
                 "Episodes"                     = $Episodes
                 "Title"                        = $EpisodeTitles
                 "OtherMediaServerTitleCardTag" = $Thumbs
