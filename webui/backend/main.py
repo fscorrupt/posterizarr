@@ -13112,6 +13112,209 @@ async def bulk_delete_assets_and_records(request: BulkDeleteAssetsRequest):
         "message": f"Deleted {deleted_count} assets. {len(failed_items)} failed."
     }
 
+class SkipAssetRequest(BaseModel):
+    asset_id: int
+
+@app.post("/api/assets/skip")
+async def skip_media_server_asset(request: SkipAssetRequest):
+    """
+    Add skip_posterizarr tag/label to the item in the active media server and remove from Action Center.
+    """
+    if not DATABASE_AVAILABLE or db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    if not MEDIA_EXPORT_DB_AVAILABLE or media_export_db is None:
+        raise HTTPException(status_code=503, detail="Media export database not available")
+
+    # 1. Get the asset from imagechoices
+    with db.lock:
+        conn = db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM imagechoices WHERE id = ?", (request.asset_id,))
+        asset = cursor.fetchone()
+        conn.close()
+
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    asset_dict = dict(asset)
+    rootfolder = asset_dict.get("Rootfolder")
+    library_name = asset_dict.get("LibraryName")
+
+    if not rootfolder or not library_name:
+        raise HTTPException(status_code=400, detail="Asset missing Rootfolder or LibraryName")
+
+    # 2. Load Media Server Config
+    try:
+        if not CONFIG_PATH.exists():
+            raise HTTPException(status_code=404, detail="Config file not found")
+        
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            
+        plex_part = config.get("PlexPart", {})
+        use_plex = str(plex_part.get("UsePlex", "true")).lower() == "true"
+        
+        jellyfin_part = config.get("JellyfinPart", {})
+        use_jellyfin = str(jellyfin_part.get("UseJellyfin", "false")).lower() == "true"
+        
+        emby_part = config.get("EmbyPart", {})
+        use_emby = str(emby_part.get("UseEmby", "false")).lower() == "true"
+        
+        active_server = None
+        server_url = None
+        server_token = None
+        
+        if use_plex: 
+            active_server = "plex"
+            server_url = plex_part.get("PlexUrl") or config.get("PlexUrl")
+            server_token = plex_part.get("PlexToken") or config.get("PlexToken")
+            if not server_token and config.get("ApiPart"):
+                server_token = config.get("ApiPart").get("PlexToken")
+        elif use_jellyfin:
+            active_server = "jellyfin"
+            server_url = jellyfin_part.get("JellyfinUrl")
+            server_token = jellyfin_part.get("JellyfinToken")
+        elif use_emby:
+            active_server = "emby"
+            server_url = emby_part.get("EmbyUrl")
+            server_token = emby_part.get("EmbyToken")
+            
+        if not active_server:
+            raise HTTPException(status_code=400, detail="No active media server configured")
+            
+        if not server_url or not server_token:
+            raise HTTPException(status_code=400, detail=f"{active_server.capitalize()} URL or Token not configured")
+            
+        server_url = server_url.rstrip("/")
+    except Exception as e:
+        import logging
+        logging.error(f"Error loading config: {e}")
+        raise HTTPException(status_code=500, detail="Error loading media server configuration")
+
+    # 3. Find Item ID in export database
+    item_id = None
+    with media_export_db.lock:
+        try:
+            m_conn = media_export_db._get_connection()
+            m_cursor = m_conn.cursor()
+            
+            if active_server == "plex":
+                m_cursor.execute(
+                    "SELECT rating_key FROM plex_library_export WHERE library_name = ? AND root_foldername = ? ORDER BY id DESC LIMIT 1",
+                    (library_name, rootfolder)
+                )
+                row = m_cursor.fetchone()
+                if row:
+                    item_id = row["rating_key"]
+            else:
+                m_cursor.execute(
+                    "SELECT media_id FROM other_media_library_export WHERE library_name = ? AND root_foldername = ? ORDER BY id DESC LIMIT 1",
+                    (library_name, rootfolder)
+                )
+                row = m_cursor.fetchone()
+                if row:
+                    item_id = row["media_id"]
+                    
+            m_conn.close()
+        except Exception as e:
+            import logging
+            logging.error(f"Error querying media export db: {e}")
+
+    if not item_id:
+        raise HTTPException(status_code=404, detail="Could not find corresponding media item")
+
+    # 4. Connect to API and update tags
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        if active_server == "plex":
+            headers = {"X-Plex-Token": server_token, "Accept": "application/json"}
+            
+            # Get section_id
+            sections_url = f"{server_url}/library/sections"
+            sections_resp = await client.get(sections_url, headers=headers)
+            if sections_resp.status_code != 200:
+                raise HTTPException(status_code=500, detail="Failed to fetch Plex libraries")
+            
+            section_id = None
+            directories = sections_resp.json().get("MediaContainer", {}).get("Directory", [])
+            for directory in directories:
+                if directory.get("title") == library_name:
+                    section_id = directory.get("key")
+                    break
+            if not section_id:
+                raise HTTPException(status_code=404, detail=f"Library '{library_name}' not found on Plex")
+
+            # Get existing labels and type
+            metadata_url = f"{server_url}/library/metadata/{item_id}"
+            metadata_resp = await client.get(metadata_url, headers=headers)
+            if metadata_resp.status_code != 200:
+                raise HTTPException(status_code=500, detail="Failed to fetch Plex metadata")
+            
+            item_metadata = metadata_resp.json().get("MediaContainer", {}).get("Metadata", [])
+            if not item_metadata:
+                raise HTTPException(status_code=404, detail="Plex item metadata not found")
+            
+            item = item_metadata[0]
+            item_type_str = item.get("type", "movie")
+            
+            # Map type string to id
+            type_map = {"movie": 1, "show": 2, "season": 3, "episode": 4}
+            type_id = type_map.get(item_type_str, 1)
+
+            existing_labels = item.get("Label", [])
+            label_names = [label.get("tag") for label in existing_labels]
+            
+            if "skip_posterizarr" not in label_names:
+                label_names.append("skip_posterizarr")
+            
+            # Construct PUT URL
+            put_url = f"{server_url}/library/sections/{section_id}/all"
+            params = {
+                "type": type_id,
+                "id": item_id,
+                "label.locked": 1,
+            }
+            for i, tag in enumerate(label_names):
+                params[f"label[{i}].tag.tag"] = tag
+                
+            put_resp = await client.put(put_url, headers=headers, params=params)
+            if put_resp.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"Failed to update Plex labels: {put_resp.status_code}")
+                
+        else:
+            # Jellyfin / Emby Logic
+            auth_header = f'MediaBrowser Token="{server_token}"'
+            headers = {"Authorization": auth_header, "Accept": "application/json", "Content-Type": "application/json"}
+            
+            item_url = f"{server_url}/Items/{item_id}"
+            item_resp = await client.get(item_url, headers=headers)
+            if item_resp.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"Failed to fetch {active_server.capitalize()} item metadata")
+            
+            item_metadata = item_resp.json()
+            
+            tags = item_metadata.get("Tags", [])
+            if "skip_posterizarr" not in tags:
+                tags.append("skip_posterizarr")
+                item_metadata["Tags"] = tags
+                
+                post_resp = await client.post(item_url, headers=headers, json=item_metadata)
+                if post_resp.status_code not in (200, 204):
+                    raise HTTPException(status_code=500, detail=f"Failed to update {active_server.capitalize()} tags: {post_resp.status_code}")
+
+    # 5. Delete from imagechoices
+    with db.lock:
+        conn = db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM imagechoices WHERE id = ?", (request.asset_id,))
+        conn.commit()
+        conn.close()
+        
+    import threading
+    threading.Thread(target=scan_and_cache_assets, daemon=True).start()
+
+    return {"success": True, "message": f"Successfully skipped item in {active_server.capitalize()}"}
+
 # ============================================
 # API ENDPOINTS: IMAGE CHOICES DATABASE
 # ============================================
@@ -13167,6 +13370,9 @@ async def get_assets_overview():
         primary_season_language = None
         primary_titlecard_language = None
         primary_provider = None
+        use_plex = True
+        use_jellyfin = False
+        use_emby = False
 
         try:
             if CONFIG_PATH.exists():
@@ -13206,6 +13412,21 @@ async def get_assets_overview():
                     fav_provider = api_part.get("FavProvider", "")
                     if fav_provider:
                         primary_provider = fav_provider.lower()
+                        
+                    # Get UsePlex from PlexPart
+                    plex_part = config.get("PlexPart", {})
+                    use_plex_val = plex_part.get("UsePlex", "true")
+                    use_plex = str(use_plex_val).lower() == "true"
+                    
+                    # Get UseJellyfin from JellyfinPart
+                    jellyfin_part = config.get("JellyfinPart", {})
+                    use_jellyfin_val = jellyfin_part.get("UseJellyfin", "false")
+                    use_jellyfin = str(use_jellyfin_val).lower() == "true"
+
+                    # Get UseEmby from EmbyPart
+                    emby_part = config.get("EmbyPart", {})
+                    use_emby_val = emby_part.get("UseEmby", "false")
+                    use_emby = str(use_emby_val).lower() == "true"
 
         except Exception as e:
             logger.warning(f"Could not read config: {e}")
@@ -13367,6 +13588,9 @@ async def get_assets_overview():
                 "primary_language_season": primary_season_language,
                 "primary_language_titlecard": primary_titlecard_language,
                 "primary_provider": primary_provider,
+                "use_plex": use_plex,
+                "use_jellyfin": use_jellyfin,
+                "use_emby": use_emby,
             },
         }
     except Exception as e:

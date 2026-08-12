@@ -1705,7 +1705,12 @@
     "noAssetsToDelete": "Nessun asset filtrato da eliminare.",
     "bulkDeleteAllFilteredTitle": "Eliminare tutti gli asset filtrati?",
     "bulkDeleteAllFilteredConfirm": "Sei sicuro di voler eliminare definitivamente tutti gli {{count}} asset filtrati?\n\nQuesto eliminerà sia i file che i loro record nel database. Questa azione non può essere annullata.",
-    "confirmDeleteAll": "Conferma ed Elimina ({{count}})"
+    "confirmDeleteAll": "Conferma ed Elimina ({{count}})",
+    "skipMediaServer": "Salta nel Media Server",
+    "skipMediaServerTooltip": "Aggiunge l'etichetta 'skip_posterizarr' all'elemento Plex in modo che venga ignorato nelle esecuzioni future",
+    "skipMediaServerSuccess": "Etichetta per saltare aggiunta con successo in Plex per '{{title}}'",
+    "skipMediaServerFailed": "Impossibile aggiungere l'etichetta per saltare in Plex: {{error}}",
+    "skipMediaServerError": "Errore durante il salto in Plex: {{error}}"
   },
   "common": {
     "view": "Visualizza",

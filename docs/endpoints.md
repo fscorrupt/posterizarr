@@ -921,6 +921,24 @@ Submits data or triggers an action at `/api/force-kill`.
 
 ## ??? Asset Galleries & Image Choices
 
+### `/api/assets/skip`
+Adds the `skip_posterizarr` tag/label to the specified asset in the active media server and removes it from the Action Center.
+
+**Payload**:
+```json
+{
+  "asset_id": 123
+}
+```
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "message": "Successfully skipped item in Plex"
+    }
+    ```
+
 ### `/api/gallery`
 Retrieves data from `/api/gallery`.
 

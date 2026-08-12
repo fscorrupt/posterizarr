@@ -1714,7 +1714,12 @@
     "noAssetsToDelete": "No filtered assets to delete.",
     "bulkDeleteAllFilteredTitle": "Delete All Filtered Assets?",
     "bulkDeleteAllFilteredConfirm": "Are you sure you want to permanently delete all {{count}} filtered assets?\n\nThis will delete both the files and their database records. This action cannot be undone.",
-    "confirmDeleteAll": "Confirm & Delete ({{count}})"
+    "confirmDeleteAll": "Confirm & Delete ({{count}})",
+    "skipMediaServer": "Skip in Media Server",
+    "skipMediaServerTooltip": "Add 'skip_posterizarr' label to the Plex item so it is ignored in future runs",
+    "skipMediaServerSuccess": "Successfully added skip label in Plex for '{{title}}'",
+    "skipMediaServerFailed": "Failed to add skip label in Plex: {{error}}",
+    "skipMediaServerError": "Error skipping in Plex: {{error}}"
   },
   "common": {
     "view": "View",

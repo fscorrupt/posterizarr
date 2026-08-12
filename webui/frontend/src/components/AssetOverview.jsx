@@ -21,6 +21,7 @@ import {
   CheckCheck,
   X,
   Trash2,
+  Tag,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
@@ -202,10 +203,14 @@ const AssetRow = React.memo(
     onNoEditsNeeded,
     onUnresolve,
     onReplace,
-    onDelete, // <-- Delete prop
+    onDelete,
+    onSkipMediaServer,
     isSelected,
     onToggleSelection,
     showCheckbox,
+    usePlex,
+    useJellyfin,
+    useEmby,
   }) => {
     const { t } = useTranslation();
     const [logoError, setLogoError] = useState(false);
@@ -401,6 +406,15 @@ const AssetRow = React.memo(
                   <Edit className="w-4 h-4 text-theme-primary" />
                   {t("assetOverview.unresolve")}
                 </button>
+                {(usePlex || useJellyfin || useEmby) && (
+                  <button
+                    onClick={() => onSkipMediaServer(asset)}
+                    className="flex items-center justify-center p-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                    title={t("assetOverview.skipMediaServerTooltip")}
+                  >
+                    <Tag className="w-4 h-4 text-theme-primary" />
+                  </button>
+                )}
                 {/* <-- UPDATED: Delete button for resolved assets --> */}
                 <button
                   onClick={() => onDelete(asset)}
@@ -429,6 +443,15 @@ const AssetRow = React.memo(
                   <Replace className="w-4 h-4 text-theme-primary" />
                   {t("assetOverview.replace")}
                 </button>
+                {(usePlex || useJellyfin || useEmby) && (
+                  <button
+                    onClick={() => onSkipMediaServer(asset)}
+                    className="flex items-center justify-center p-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                    title={t("assetOverview.skipMediaServerTooltip")}
+                  >
+                    <Tag className="w-4 h-4 text-theme-primary" />
+                  </button>
+                )}
                 {/* <-- UPDATED: Delete button for unresolved assets --> */}
                 <button
                   onClick={() => onDelete(asset)}
@@ -822,6 +845,30 @@ const AssetOverview = () => {
       confirmColor: "danger",
       onConfirm: () => runDeleteAsset(asset.id),
     });
+  };
+
+  const handleSkipPlex = async (asset) => {
+    setIsBulkProcessing(true);
+    try {
+      const response = await fetch(`/api/assets/skip-plex`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asset_id: asset.id }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        showSuccess(t("assetOverview.skipPlexSuccess", { title: asset.Title }));
+        await fetchData();
+      } else {
+        showError(t("assetOverview.skipPlexFailed", { error: data.detail || data.message || "Unknown error" }));
+      }
+    } catch (error) {
+      console.error("Error skipping in Plex:", error);
+      showError(t("assetOverview.skipPlexError", { error: error.message }));
+    } finally {
+      setIsBulkProcessing(false);
+    }
   };
 
   const runDeleteAsset = async (assetId) => {
@@ -2008,6 +2055,9 @@ const AssetOverview = () => {
               const showName = isEpisodeType
                 ? parseShowName(asset.Rootfolder)
                 : null;
+              const usePlex = data?.config?.use_plex ?? false;
+              const useJellyfin = data?.config?.use_jellyfin ?? false;
+              const useEmby = data?.config?.use_emby ?? false;
 
               return (
                 <AssetRow
@@ -2019,9 +2069,13 @@ const AssetOverview = () => {
                   onReplace={handleReplace}
                   onUnresolve={handleUnresolve}
                   onDelete={handleDeleteAsset}
+                  onSkipMediaServer={handleSkipMediaServer}
                   isSelected={selectedAssetIds.has(asset.id)}
                   onToggleSelection={handleToggleSelection}
                   showCheckbox={selectedAssetIds.size > 0 || isBulkProcessing}
+                  usePlex={usePlex}
+                  useJellyfin={useJellyfin}
+                  useEmby={useEmby}
                 />
               );
             })}

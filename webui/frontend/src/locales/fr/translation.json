@@ -1706,7 +1706,12 @@
     "noAssetsToDelete": "Aucun actif filtré à supprimer.",
     "bulkDeleteAllFilteredTitle": "Supprimer tous les actifs filtrés ?",
     "bulkDeleteAllFilteredConfirm": "Êtes-vous sûr de vouloir supprimer définitivement les {{count}} actifs filtrés ?\n\nCela supprimera à la fois les fichiers et leurs enregistrements dans la base de données. Cette action ne peut pas être annulée.",
-    "confirmDeleteAll": "Confirmer & Supprimer ({{count}})"
+    "confirmDeleteAll": "Confirmer et Supprimer ({{count}})",
+    "skipMediaServer": "Ignorer dans le serveur multimédia",
+    "skipMediaServerTooltip": "Ajoute l'étiquette 'skip_posterizarr' à l'élément Plex afin qu'il soit ignoré lors des prochaines exécutions",
+    "skipMediaServerSuccess": "L'étiquette pour ignorer a été ajoutée avec succès dans Plex pour '{{title}}'",
+    "skipMediaServerFailed": "Échec de l'ajout de l'étiquette pour ignorer dans Plex : {{error}}",
+    "skipMediaServerError": "Erreur lors de la tentative d'ignorer dans Plex : {{error}}"
   },
   "common": {
     "view": "Voir",
