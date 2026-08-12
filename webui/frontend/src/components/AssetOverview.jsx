@@ -847,10 +847,10 @@ const AssetOverview = () => {
     });
   };
 
-  const handleSkipPlex = async (asset) => {
+  const handleSkipMediaServer = async (asset) => {
     setIsBulkProcessing(true);
     try {
-      const response = await fetch(`/api/assets/skip-plex`, {
+      const response = await fetch(`/api/assets/skip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ asset_id: asset.id }),
@@ -864,7 +864,7 @@ const AssetOverview = () => {
         showError(t("assetOverview.skipPlexFailed", { error: data.detail || data.message || "Unknown error" }));
       }
     } catch (error) {
-      console.error("Error skipping in Plex:", error);
+      console.error("Error skipping in media server:", error);
       showError(t("assetOverview.skipPlexError", { error: error.message }));
     } finally {
       setIsBulkProcessing(false);
