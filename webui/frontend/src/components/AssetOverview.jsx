@@ -271,44 +271,56 @@ const AssetRow = React.memo(
                 <span className="bg-theme-card px-2 py-0.5 rounded">
                   {asset.Type || "Unknown"}
                 </span>
-                <span className="hidden sm:inline">•</span>
-                {/* Language */}
-                {!(!asset.DownloadSource || asset.DownloadSource === "false" || asset.DownloadSource === false) && (
+                {/* Language, Source, Fav Provider */}
+                {!isSkippedView && (
                   <>
-                    <span className="font-medium">
-                      {t("assetOverview.language")}:
-                    </span>
-                    <span className="bg-theme-card px-2 py-0.5 rounded">
-                      {asset.Language &&
-                      asset.Language !== "false" &&
-                      asset.Language !== false
-                        ? asset.Language
-                        : "Unknown"}
-                    </span>
                     <span className="hidden sm:inline">•</span>
-                  </>
-                )}
-                {/* Source */}
-                <span className="font-medium">
-                  {t("assetOverview.source")}:
-                </span>
-                {asset.DownloadSource &&
-                asset.DownloadSource !== "false" &&
-                asset.DownloadSource !== false ? (
-                  <a
-                    href={asset.DownloadSource}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
-                    title={asset.DownloadSource}
-                  >
-                    {downloadBadge.logo && !logoError ? (
-                      <img
-                        src={downloadBadge.logo}
-                        alt={downloadBadge.name}
-                        className="h-[35px] object-contain"
-                        onError={() => setLogoError(true)}
-                      />
+                    {/* Language */}
+                    {!(!asset.DownloadSource || asset.DownloadSource === "false" || asset.DownloadSource === false) && (
+                      <>
+                        <span className="font-medium">
+                          {t("assetOverview.language")}:
+                        </span>
+                        <span className="bg-theme-card px-2 py-0.5 rounded">
+                          {asset.Language &&
+                          asset.Language !== "false" &&
+                          asset.Language !== false
+                            ? asset.Language
+                            : "Unknown"}
+                        </span>
+                        <span className="hidden sm:inline">•</span>
+                      </>
+                    )}
+                    {/* Source */}
+                    <span className="font-medium">
+                      {t("assetOverview.source")}:
+                    </span>
+                    {asset.DownloadSource &&
+                    asset.DownloadSource !== "false" &&
+                    asset.DownloadSource !== false ? (
+                      <a
+                        href={asset.DownloadSource}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                        title={asset.DownloadSource}
+                      >
+                        {downloadBadge.logo && !logoError ? (
+                          <img
+                            src={downloadBadge.logo}
+                            alt={downloadBadge.name}
+                            className="h-[35px] object-contain"
+                            onError={() => setLogoError(true)}
+                          />
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${downloadBadge.color}`}
+                          >
+                            {downloadBadge.name}
+                          </span>
+                        )}
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </a>
                     ) : (
                       <span
                         className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${downloadBadge.color}`}
@@ -316,53 +328,44 @@ const AssetRow = React.memo(
                         {downloadBadge.name}
                       </span>
                     )}
-                    <ExternalLink className="w-3 h-3 opacity-60" />
-                  </a>
-                ) : (
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${downloadBadge.color}`}
-                  >
-                    {downloadBadge.name}
-                  </span>
-                )}
-                {/* Fav Provider */}
-                <>
-                  <span className="hidden sm:inline">•</span>
-                  <span className="font-medium">
-                    {t("assetOverview.favProvider")}:
-                  </span>
-                  {favProviderBadge.name === "Missing" ? (
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
-                    >
-                      {favProviderBadge.name}
+                    {/* Fav Provider */}
+                    <span className="hidden sm:inline">•</span>
+                    <span className="font-medium">
+                      {t("assetOverview.favProvider")}:
                     </span>
-                  ) : (
-                    <a
-                      href={asset.FavProviderLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
-                      title={asset.FavProviderLink}
-                    >
-                      {favProviderBadge.logo && !favLogoError ? (
-                        <img
-                          src={favProviderBadge.logo}
-                          alt={favProviderBadge.name}
-                          className="h-[35px] object-contain"
-                          onError={() => setFavLogoError(true)}
-                        />
-                      ) : (
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
-                        >
-                          {favProviderBadge.name}
-                        </span>
-                      )}
-                      <ExternalLink className="w-3 h-3 opacity-60" />
-                    </a>
-                  )}
-                </>
+                    {favProviderBadge.name === "Missing" ? (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
+                      >
+                        {favProviderBadge.name}
+                      </span>
+                    ) : (
+                      <a
+                        href={asset.FavProviderLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                        title={asset.FavProviderLink}
+                      >
+                        {favProviderBadge.logo && !favLogoError ? (
+                          <img
+                            src={favProviderBadge.logo}
+                            alt={favProviderBadge.name}
+                            className="h-[35px] object-contain"
+                            onError={() => setFavLogoError(true)}
+                          />
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
+                          >
+                            {favProviderBadge.name}
+                          </span>
+                        )}
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </a>
+                    )}
+                  </>
+                )}
                 {/* Timestamp */}
                 {asset.created_at && (
                   <>
@@ -382,16 +385,18 @@ const AssetRow = React.memo(
                 )}
               </div>
               {/* Tags */}
-              <div className="flex flex-wrap gap-2 mt-3">
-                {tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${tag.color}`}
-                  >
-                    {tag.label}
-                  </span>
-                ))}
-              </div>
+              {!isSkippedView && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${tag.color}`}
+                    >
+                      {tag.label}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
