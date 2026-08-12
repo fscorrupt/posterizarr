@@ -2077,7 +2077,7 @@ const AssetOverview = () => {
       </div>
 
       {/* Assets Grid */}
-      {isSkippedView && (
+      {activeTab === "skipped" && (
         <div className="mb-4 bg-theme-card border-l-4 border-l-theme-primary border-t border-r border-b border-theme rounded-r-lg p-4 shadow-sm">
           <div className="flex items-start gap-3">
             <Info className="w-5 h-5 text-theme-primary shrink-0 mt-0.5" />
