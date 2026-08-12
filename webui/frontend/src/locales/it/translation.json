@@ -1710,7 +1710,17 @@
     "skipMediaServerTooltip": "Aggiunge l'etichetta 'skip_posterizarr' all'elemento Plex in modo che venga ignorato nelle esecuzioni future",
     "skipMediaServerSuccess": "Etichetta per saltare aggiunta con successo in Plex per '{{title}}'",
     "skipMediaServerFailed": "Impossibile aggiungere l'etichetta per saltare in Plex: {{error}}",
-    "skipMediaServerError": "Errore durante il salto in Plex: {{error}}"
+    "skipMediaServerError": "Errore durante il salto in Plex: {{error}}",
+    "skipPlexSuccess": "Saltato con successo \"{{title}}\" nel server multimediale.",
+    "skipPlexFailed": "Impossibile saltare nel server multimediale: {{error}}",
+    "skipPlexError": "Errore durante il salto nel server multimediale: {{error}}",
+    "tabActive": "Active Actions",
+    "tabSkipped": "Skipped Items",
+    "unskipTooltip": "Remove skip label from media server and restore item",
+    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
+    "unskipFailed": "Failed to unskip: {{error}}",
+    "unskipError": "Error unskipping item: {{error}}",
+    "noSkippedItems": "No skipped items found."
   },
   "common": {
     "view": "Visualizza",

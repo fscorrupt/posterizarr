@@ -66,6 +66,22 @@ class ImageChoicesDB:
                 """
                 )
 
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS skipped_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Title TEXT NOT NULL,
+                        Type TEXT,
+                        Rootfolder TEXT,
+                        LibraryName TEXT,
+                        server_type TEXT,
+                        item_id TEXT,
+                        skipped_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+                        UNIQUE(Title, Rootfolder, Type, LibraryName)
+                    )
+                """
+                )
+
                 # Add index for faster lookups
                 cursor.execute(
                     "CREATE INDEX IF NOT EXISTS idx_rootfolder ON imagechoices(Rootfolder)"
@@ -535,6 +551,67 @@ class ImageChoicesDB:
                 if 'conn' in locals():
                     conn.close()
                 return []
+
+    # ==========================================
+    # SKIPPED ITEMS METHODS
+    # ==========================================
+
+    def add_skipped_item(self, title: str, asset_type: str, rootfolder: str, library_name: str, server_type: str, item_id: str) -> int:
+        """Add an item to the skipped_items table"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                query = """
+                    INSERT OR IGNORE INTO skipped_items 
+                    (Title, Type, Rootfolder, LibraryName, server_type, item_id) 
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """
+                cursor.execute(query, (title, asset_type, rootfolder, library_name, server_type, item_id))
+                inserted_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                return inserted_id
+            except sqlite3.Error as e:
+                logger.error(f"Error adding skipped item: {e}")
+                if 'conn' in locals():
+                    conn.rollback()
+                    conn.close()
+                raise
+
+    def get_skipped_items(self) -> List[sqlite3.Row]:
+        """Get all skipped items"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM skipped_items ORDER BY skipped_at DESC")
+                rows = cursor.fetchall()
+                conn.close()
+                return rows
+            except sqlite3.Error as e:
+                logger.error(f"Error getting skipped items: {e}")
+                if 'conn' in locals():
+                    conn.close()
+                return []
+
+    def delete_skipped_item(self, item_id: int) -> bool:
+        """Delete an item from the skipped_items table by its DB ID"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM skipped_items WHERE id = ?", (item_id,))
+                deleted = cursor.rowcount > 0
+                conn.commit()
+                conn.close()
+                return deleted
+            except sqlite3.Error as e:
+                logger.error(f"Error deleting skipped item: {e}")
+                if 'conn' in locals():
+                    conn.rollback()
+                    conn.close()
+                return False
 
 def init_database(db_path: Path) -> ImageChoicesDB:
     """Initialize the database"""

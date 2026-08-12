@@ -1711,7 +1711,17 @@
     "skipMediaServerTooltip": "Ajoute l'étiquette 'skip_posterizarr' à l'élément Plex afin qu'il soit ignoré lors des prochaines exécutions",
     "skipMediaServerSuccess": "L'étiquette pour ignorer a été ajoutée avec succès dans Plex pour '{{title}}'",
     "skipMediaServerFailed": "Échec de l'ajout de l'étiquette pour ignorer dans Plex : {{error}}",
-    "skipMediaServerError": "Erreur lors de la tentative d'ignorer dans Plex : {{error}}"
+    "skipMediaServerError": "Erreur lors de la tentative d'ignorer dans Plex : {{error}}",
+    "skipPlexSuccess": "Ignoré avec succès \"{{title}}\" dans le serveur multimédia.",
+    "skipPlexFailed": "Échec de l'ignorance dans le serveur multimédia : {{error}}",
+    "skipPlexError": "Erreur lors de l'ignorance dans le serveur multimédia : {{error}}",
+    "tabActive": "Active Actions",
+    "tabSkipped": "Skipped Items",
+    "unskipTooltip": "Remove skip label from media server and restore item",
+    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
+    "unskipFailed": "Failed to unskip: {{error}}",
+    "unskipError": "Error unskipping item: {{error}}",
+    "noSkippedItems": "No skipped items found."
   },
   "common": {
     "view": "Voir",

@@ -1763,7 +1763,17 @@
     "skipMediaServerTooltip": "Fügt dem Medienserver-Eintrag das Label 'skip_posterizarr' hinzu, damit er bei zukünftigen Durchläufen ignoriert wird",
     "skipMediaServerSuccess": "Überspringen-Label in Medienserver für '{{title}}' erfolgreich hinzugefügt",
     "skipMediaServerFailed": "Fehler beim Hinzufügen des Überspringen-Labels in Medienserver: {{error}}",
-    "skipMediaServerError": "Fehler beim Überspringen in Medienserver: {{error}}"
+    "skipMediaServerError": "Fehler beim Überspringen in Medienserver: {{error}}",
+    "skipPlexSuccess": "Überspringen in Medienserver für '{{title}}' erfolgreich",
+    "skipPlexFailed": "Fehler beim Überspringen in Medienserver: {{error}}",
+    "skipPlexError": "Fehler beim Überspringen in Medienserver: {{error}}",
+    "tabActive": "Active Actions",
+    "tabSkipped": "Skipped Items",
+    "unskipTooltip": "Remove skip label from media server and restore item",
+    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
+    "unskipFailed": "Failed to unskip: {{error}}",
+    "unskipError": "Error unskipping item: {{error}}",
+    "noSkippedItems": "No skipped items found."
   },
   "common": {
     "view": "Ansehen",

@@ -1719,7 +1719,17 @@
     "skipMediaServerTooltip": "Add 'skip_posterizarr' label to the Plex item so it is ignored in future runs",
     "skipMediaServerSuccess": "Successfully added skip label in Plex for '{{title}}'",
     "skipMediaServerFailed": "Failed to add skip label in Plex: {{error}}",
-    "skipMediaServerError": "Error skipping in Plex: {{error}}"
+    "skipMediaServerError": "Error skipping in Plex: {{error}}",
+    "skipPlexSuccess": "Successfully skipped \"{{title}}\" in media server.",
+    "skipPlexFailed": "Failed to skip in media server: {{error}}",
+    "skipPlexError": "Error skipping in media server: {{error}}",
+    "tabActive": "Active Actions",
+    "tabSkipped": "Skipped Items",
+    "unskipTooltip": "Remove skip label from media server and restore item",
+    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
+    "unskipFailed": "Failed to unskip: {{error}}",
+    "unskipError": "Error unskipping item: {{error}}",
+    "noSkippedItems": "No skipped items found."
   },
   "common": {
     "view": "View",

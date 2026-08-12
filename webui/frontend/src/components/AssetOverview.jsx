@@ -205,6 +205,8 @@ const AssetRow = React.memo(
     onReplace,
     onDelete,
     onSkipMediaServer,
+    onUnskip,
+    isSkippedView,
     isSelected,
     onToggleSelection,
     showCheckbox,
@@ -395,7 +397,25 @@ const AssetRow = React.memo(
 
           {/* Action Buttons */}
           <div className="flex items-start gap-2">
-            {isResolved ? (
+            {isSkippedView ? (
+              <>
+                <button
+                  onClick={() => onUnskip(asset)}
+                  className="flex items-center gap-2 px-4 py-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                  title={t("assetOverview.unskipTooltip", { defaultValue: "Remove skip label from media server and restore item" })}
+                >
+                  <RefreshCw className="w-4 h-4 text-theme-primary" />
+                  {t("assetOverview.unskipConfirm", { defaultValue: "Unskip" })}
+                </button>
+                <button
+                  onClick={() => onDelete(asset)}
+                  className="flex items-center justify-center p-2 bg-red-900/50 hover:bg-red-900/80 border border-red-500/30 hover:border-red-500/50 rounded-lg text-red-400 transition-all whitespace-nowrap shadow-sm"
+                  title={t("assetOverview.deleteAssetTooltip")}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </>
+            ) : isResolved ? (
               // Resolved Asset Actions
               <>
                 <button
@@ -477,6 +497,7 @@ const AssetOverview = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("All Types");
   const [selectedLibrary, setSelectedLibrary] = useState("All Libraries");
@@ -536,10 +557,24 @@ const AssetOverview = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/assets/overview");
-      if (!response.ok) throw new Error(t("assetOverview.fetchError"));
-      const result = await response.json();
-      setData(result);
+      if (activeTab === "active") {
+        const response = await fetch("/api/assets/overview");
+        if (!response.ok) throw new Error(t("assetOverview.fetchError"));
+        const result = await response.json();
+        setData(result);
+      } else {
+        const response = await fetch("/api/assets/skipped");
+        if (!response.ok) throw new Error(t("assetOverview.fetchError"));
+        const result = await response.json();
+        setData({
+          categories: {
+            skipped: {
+              count: result.length,
+              assets: result,
+            }
+          }
+        });
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -549,7 +584,7 @@ const AssetOverview = () => {
 
   useEffect(() => {
     fetchData();
-  }, [t]); // Added t dependency
+  }, [t, activeTab]); // Added t and activeTab dependencies
 
   // Clear selection and reset page when filters change
   useEffect(() => {
@@ -848,27 +883,76 @@ const AssetOverview = () => {
   };
 
   const handleSkipMediaServer = async (asset) => {
-    setIsBulkProcessing(true);
-    try {
-      const response = await fetch(`/api/assets/skip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asset_id: asset.id }),
-      });
+    setConfirmModalState({
+      isOpen: true,
+      title: t("assetOverview.skipTitle", { defaultValue: "Skip Asset" }),
+      message: t("assetOverview.skipMessage", {
+        defaultValue: `Are you sure you want to skip "${asset.Title}"? It will be ignored in future Posterizarr runs.`,
+      }),
+      confirmText: t("assetOverview.skipConfirm", { defaultValue: "Skip" }),
+      confirmColor: "warning",
+      onConfirm: async () => {
+        setIsBulkProcessing(true);
+        try {
+          const response = await fetch(`/api/assets/skip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ asset_id: asset.id }),
+          });
 
-      const data = await response.json();
-      if (response.ok) {
-        showSuccess(t("assetOverview.skipPlexSuccess", { title: asset.Title }));
-        await fetchData();
-      } else {
-        showError(t("assetOverview.skipPlexFailed", { error: data.detail || data.message || "Unknown error" }));
-      }
-    } catch (error) {
-      console.error("Error skipping in media server:", error);
-      showError(t("assetOverview.skipPlexError", { error: error.message }));
-    } finally {
-      setIsBulkProcessing(false);
-    }
+          if (!response.ok) throw new Error("Failed to skip asset");
+
+          showSuccess(t("assetOverview.skipPlexSuccess"));
+          await fetchData();
+        } catch (error) {
+          showError(
+            t("assetOverview.skipPlexError", { error: error.message })
+          );
+        } finally {
+          setIsBulkProcessing(false);
+        }
+      },
+    });
+  };
+
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  // ++ Handle Unskip Asset
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  const handleUnskipAsset = async (asset) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: t("assetOverview.unskipTitle", { defaultValue: "Unskip Asset" }),
+      message: t("assetOverview.unskipMessage", {
+        defaultValue: `Are you sure you want to unskip "${asset.Title}"? It will be restored in Posterizarr on the next run.`,
+      }),
+      confirmText: t("assetOverview.unskipConfirm", { defaultValue: "Unskip" }),
+      confirmColor: "primary",
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/assets/unskip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              id: asset.id,
+              item_id: asset.item_id,
+              server_type: asset.server_type
+            }),
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.detail || "Failed to unskip asset");
+          }
+          
+          showSuccess(t("assetOverview.unskipSuccess", { title: asset.Title }));
+          await fetchData();
+        } catch (error) {
+          showError(
+            t("assetOverview.unskipError", { error: error.message })
+          );
+        }
+      },
+    });
   };
 
   const runDeleteAsset = async (assetId) => {
@@ -1629,98 +1713,186 @@ const AssetOverview = () => {
   // Main Render
   return (
     <div className="space-y-6">
-      {/* Category Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {categoryCards.map((card) => {
-          const Icon = card.icon;
-          const isSelected = selectedCategory === card.label;
-          return (
-            <button
-              key={card.key}
-              onClick={() =>
-                setSelectedCategory(isSelected ? "All Categories" : card.label)
-              }
-              className={`relative p-5 rounded-xl border-2 transition-all duration-200 bg-black/60 ${
-                card.borderColor
-              } ${card.hoverBorderColor} ${
-                isSelected
-                  ? "ring-2 ring-theme-primary/50 scale-105 shadow-lg"
-                  : "hover:scale-102 shadow-md"
-              }`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <Icon className={`w-6 h-6 ${card.color}`} />
-                <span className={`text-3xl font-bold ${card.color}`}>
-                  {card.count}
-                </span>
-              </div>
-              <div className="text-sm font-semibold text-gray-300 text-left">
-                {card.label}
-              </div>
-              {isSelected && (
-                <div className="absolute inset-0 bg-theme-primary/5 rounded-xl pointer-events-none" />
-              )}
-            </button>
-          );
-        })}
+      {/* Tabs */}
+      <div className="flex border-b border-theme-muted/30">
+        <button
+          onClick={() => setActiveTab("active")}
+          className={`px-6 py-3 font-semibold text-sm transition-colors relative ${
+            activeTab === "active"
+              ? "text-theme-primary"
+              : "text-theme-muted hover:text-theme-text"
+          }`}
+        >
+          {t("assetOverview.tabActive", { defaultValue: "Active Actions" })}
+          {activeTab === "active" && (
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-theme-primary shadow-[0_0_8px_rgba(var(--theme-primary-rgb),0.5)]"></div>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("skipped")}
+          className={`px-6 py-3 font-semibold text-sm transition-colors relative ${
+            activeTab === "skipped"
+              ? "text-theme-primary"
+              : "text-theme-muted hover:text-theme-text"
+          }`}
+        >
+          {t("assetOverview.tabSkipped", { defaultValue: "Skipped Items" })}
+          {activeTab === "skipped" && (
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-theme-primary shadow-[0_0_8px_rgba(var(--theme-primary-rgb),0.5)]"></div>
+          )}
+        </button>
       </div>
+
+      {/* Category Cards */}
+      {activeTab === "active" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {categoryCards.map((card) => {
+            const Icon = card.icon;
+            const isSelected = selectedCategory === card.label;
+            return (
+              <button
+                key={card.key}
+                onClick={() =>
+                  setSelectedCategory(isSelected ? "All Categories" : card.label)
+                }
+                className={`relative p-5 rounded-xl border-2 transition-all duration-200 bg-black/60 ${
+                  card.borderColor
+                } ${card.hoverBorderColor} ${
+                  isSelected
+                    ? "ring-2 ring-theme-primary/50 scale-105 shadow-lg"
+                    : "hover:scale-102 shadow-md"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <Icon className={`w-6 h-6 ${card.color}`} />
+                  <span className={`text-3xl font-bold ${card.color}`}>
+                    {card.count}
+                  </span>
+                </div>
+                <div className="text-sm font-semibold text-gray-300 text-left">
+                  {card.label}
+                </div>
+                {isSelected && (
+                  <div className="absolute inset-0 bg-theme-primary/5 rounded-xl pointer-events-none" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-theme-card border border-theme rounded-lg p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          {/* Status Filter */}
-          <div className="relative" ref={statusDropdownRef}>
-            <button
-              onClick={() => {
-                const shouldOpenUp =
-                  calculateDropdownPosition(statusDropdownRef);
-                setStatusDropdownUp(shouldOpenUp);
-                setStatusDropdownOpen(!statusDropdownOpen);
-              }}
-              className="w-full px-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text text-sm flex items-center justify-between hover:bg-theme-hover hover:border-theme-primary/50 transition-all shadow-sm"
-            >
-              <span className="font-medium">
-                {selectedStatus === "All"
-                  ? t("assetOverview.allStatuses")
-                  : selectedStatus === "Resolved"
-                  ? t("assetOverview.resolved")
-                  : t("assetOverview.unresolved")}
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${
-                  statusDropdownOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {statusDropdownOpen && (
-              <div
-                className={`absolute z-50 w-full ${
-                  statusDropdownUp ? "bottom-full mb-2" : "top-full mt-2"
-                } bg-theme-card border border-theme-primary rounded-lg shadow-xl`}
-              >
-                {["All", "Resolved", "Unresolved"].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => {
-                      setSelectedStatus(status);
-                      setStatusDropdownOpen(false);
-                    }}
-                    className={`w-full px-4 py-3 text-left text-sm transition-all ${
-                      selectedStatus === status
-                        ? "bg-theme-primary text-white"
-                        : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
-                    }`}
-                  >
-                    {status === "All"
+          {activeTab === "active" && (
+            <>
+              {/* Status Filter */}
+              <div className="relative" ref={statusDropdownRef}>
+                <button
+                  onClick={() => {
+                    const shouldOpenUp =
+                      calculateDropdownPosition(statusDropdownRef);
+                    setStatusDropdownUp(shouldOpenUp);
+                    setStatusDropdownOpen(!statusDropdownOpen);
+                  }}
+                  className="w-full px-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text text-sm flex items-center justify-between hover:bg-theme-hover hover:border-theme-primary/50 transition-all shadow-sm"
+                >
+                  <span className="font-medium">
+                    {selectedStatus === "All"
                       ? t("assetOverview.allStatuses")
-                      : status === "Resolved"
+                      : selectedStatus === "Resolved"
                       ? t("assetOverview.resolved")
                       : t("assetOverview.unresolved")}
-                  </button>
-                ))}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${
+                      statusDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {statusDropdownOpen && (
+                  <div
+                    className={`absolute z-50 w-full ${
+                      statusDropdownUp ? "bottom-full mb-2" : "top-full mt-2"
+                    } bg-theme-card border border-theme-primary rounded-lg shadow-xl`}
+                  >
+                    {["All", "Resolved", "Unresolved"].map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => {
+                          setSelectedStatus(status);
+                          setStatusDropdownOpen(false);
+                        }}
+                        className={`w-full px-4 py-3 text-left text-sm transition-all ${
+                          selectedStatus === status
+                            ? "bg-theme-primary text-white"
+                            : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
+                        }`}
+                      >
+                        {status === "All"
+                          ? t("assetOverview.allStatuses")
+                          : status === "Resolved"
+                          ? t("assetOverview.resolved")
+                          : t("assetOverview.unresolved")}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* Category Filter */}
+              <div className="relative" ref={categoryDropdownRef}>
+                <button
+                  onClick={() => {
+                    const shouldOpenUp =
+                      calculateDropdownPosition(categoryDropdownRef);
+                    setCategoryDropdownUp(shouldOpenUp);
+                    setCategoryDropdownOpen(!categoryDropdownOpen);
+                  }}
+                  className="w-full px-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text text-sm flex items-center justify-between hover:bg-theme-hover hover:border-theme-primary/50 transition-all shadow-sm"
+                >
+                  <span className="font-medium truncate pr-2">
+                    {selectedCategory === "All Categories"
+                      ? t("assetOverview.allCategories")
+                      : selectedCategory}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 shrink-0 transition-transform ${
+                      categoryDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {categoryDropdownOpen && (
+                  <div
+                    className={`absolute z-50 w-full ${
+                      categoryDropdownUp ? "bottom-full mb-2" : "top-full mt-2"
+                    } bg-theme-card border border-theme-primary rounded-lg shadow-xl max-h-[300px] overflow-y-auto custom-scrollbar`}
+                  >
+                    {["All Categories", ...categoryCards.map((c) => c.label)].map(
+                      (category) => (
+                        <button
+                          key={category}
+                          onClick={() => {
+                            setSelectedCategory(category);
+                            setCategoryDropdownOpen(false);
+                          }}
+                          className={`w-full px-4 py-3 text-left text-sm transition-all truncate ${
+                            selectedCategory === category
+                              ? "bg-theme-primary text-white"
+                              : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
+                          }`}
+                        >
+                          {category === "All Categories"
+                            ? t("assetOverview.allCategories")
+                            : category}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           {/* Type Filter */}
           <div className="relative" ref={typeDropdownRef}>
             <button
@@ -2041,7 +2213,7 @@ const AssetOverview = () => {
           <div className="text-center py-12">
             <FileQuestion className="w-16 h-16 text-theme-muted mx-auto mb-4" />
             <p className="text-theme-muted">
-              {t("assetOverview.noAssetsFound")}
+              {activeTab === "skipped" ? t("assetOverview.noSkippedItems", { defaultValue: "No skipped items found." }) : t("assetOverview.noAssetsFound")}
             </p>
           </div>
         ) : (
@@ -2070,6 +2242,8 @@ const AssetOverview = () => {
                   onUnresolve={handleUnresolve}
                   onDelete={handleDeleteAsset}
                   onSkipMediaServer={handleSkipMediaServer}
+                  onUnskip={handleUnskipAsset}
+                  isSkippedView={activeTab === "skipped"}
                   isSelected={selectedAssetIds.has(asset.id)}
                   onToggleSelection={handleToggleSelection}
                   showCheckbox={selectedAssetIds.size > 0 || isBulkProcessing}
