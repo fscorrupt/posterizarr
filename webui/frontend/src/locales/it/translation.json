@@ -1714,13 +1714,15 @@
     "skipPlexSuccess": "Saltato con successo \"{{title}}\" nel server multimediale.",
     "skipPlexFailed": "Impossibile saltare nel server multimediale: {{error}}",
     "skipPlexError": "Errore durante il salto nel server multimediale: {{error}}",
-    "tabActive": "Active Actions",
-    "tabSkipped": "Skipped Items",
-    "unskipTooltip": "Remove skip label from media server and restore item",
-    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
-    "unskipFailed": "Failed to unskip: {{error}}",
-    "unskipError": "Error unskipping item: {{error}}",
-    "noSkippedItems": "No skipped items found."
+    "tabActive": "Azioni Attive",
+    "tabSkipped": "Elementi Ignorati",
+    "unskipTooltip": "Rimuovi etichetta di ignoramento dal media server e ripristina l'elemento",
+    "unskipSuccess": "Elemento \"{{title}}\" ripristinato con successo",
+    "unskipFailed": "Impossibile ripristinare: {{error}}",
+    "unskipError": "Errore durante il ripristino dell'elemento: {{error}}",
+    "noSkippedItems": "Nessun elemento ignorato trovato.",
+    "skippedInfoTitle": "Informazioni sugli Elementi Ignorati",
+    "skippedInfoDesc": "Questa vista mostra tutti gli asset che hanno l'etichetta 'skip_posterizarr' applicata nel tuo media server, oltre agli elementi ignorati manualmente tramite l'interfaccia utente di Posterizarr. Gli elementi elencati qui verranno ignorati da Posterizarr durante le sincronizzazioni in background."
   },
   "common": {
     "view": "Visualizza",

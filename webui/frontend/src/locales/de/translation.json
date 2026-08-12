@@ -1767,13 +1767,15 @@
     "skipPlexSuccess": "Überspringen in Medienserver für '{{title}}' erfolgreich",
     "skipPlexFailed": "Fehler beim Überspringen in Medienserver: {{error}}",
     "skipPlexError": "Fehler beim Überspringen in Medienserver: {{error}}",
-    "tabActive": "Active Actions",
-    "tabSkipped": "Skipped Items",
-    "unskipTooltip": "Remove skip label from media server and restore item",
-    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
-    "unskipFailed": "Failed to unskip: {{error}}",
-    "unskipError": "Error unskipping item: {{error}}",
-    "noSkippedItems": "No skipped items found."
+    "tabActive": "Aktive Aktionen",
+    "tabSkipped": "Übersprungene Elemente",
+    "unskipTooltip": "Überspringen-Label vom Medienserver entfernen und Element wiederherstellen",
+    "unskipSuccess": "\"{{title}}\" erfolgreich wiederhergestellt",
+    "unskipFailed": "Fehler beim Wiederherstellen: {{error}}",
+    "unskipError": "Fehler beim Wiederherstellen des Elements: {{error}}",
+    "noSkippedItems": "Keine übersprungenen Elemente gefunden.",
+    "skippedInfoTitle": "Informationen zu übersprungenen Elementen",
+    "skippedInfoDesc": "Diese Ansicht zeigt alle Assets, denen in Ihrem Medienserver das Label 'skip_posterizarr' zugewiesen wurde, sowie Elemente, die manuell über die Posterizarr-Benutzeroberfläche übersprungen wurden. Die hier aufgelisteten Elemente werden von Posterizarr bei Hintergrundsynchronisierungen ignoriert."
   },
   "common": {
     "view": "Ansehen",

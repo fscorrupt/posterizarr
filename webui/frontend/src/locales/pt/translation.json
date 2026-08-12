@@ -1714,13 +1714,15 @@
     "skipPlexSuccess": "Ignorado com sucesso \"{{title}}\" no servidor de mídia.",
     "skipPlexFailed": "Falha ao ignorar no servidor de mídia: {{error}}",
     "skipPlexError": "Erro ao ignorar no servidor de mídia: {{error}}",
-    "tabActive": "Active Actions",
-    "tabSkipped": "Skipped Items",
-    "unskipTooltip": "Remove skip label from media server and restore item",
-    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
-    "unskipFailed": "Failed to unskip: {{error}}",
-    "unskipError": "Error unskipping item: {{error}}",
-    "noSkippedItems": "No skipped items found."
+    "tabActive": "Ações Ativas",
+    "tabSkipped": "Itens Ignorados",
+    "unskipTooltip": "Remover rótulo de ignorar do servidor de mídia e restaurar o item",
+    "unskipSuccess": "Item \"{{title}}\" restaurado com sucesso",
+    "unskipFailed": "Falha ao restaurar: {{error}}",
+    "unskipError": "Erro ao restaurar o item: {{error}}",
+    "noSkippedItems": "Nenhum item ignorado encontrado.",
+    "skippedInfoTitle": "Sobre Itens Ignorados",
+    "skippedInfoDesc": "Esta visualização mostra todos os ativos que têm o rótulo 'skip_posterizarr' aplicado em seu servidor de mídia, bem como os itens ignorados manualmente pela interface do Posterizarr. Os itens listados aqui serão ignorados pelo Posterizarr durante as sincronizações em segundo plano."
   },
   "common": {
     "view": "Visualizar",

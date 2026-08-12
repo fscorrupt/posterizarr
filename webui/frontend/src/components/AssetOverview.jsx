@@ -22,6 +22,7 @@ import {
   X,
   Trash2,
   Tag,
+  Info,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
@@ -2076,6 +2077,21 @@ const AssetOverview = () => {
       </div>
 
       {/* Assets Grid */}
+      {isSkippedView && (
+        <div className="mb-4 bg-theme-card border-l-4 border-l-theme-primary border-t border-r border-b border-theme rounded-r-lg p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-theme-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-theme-text mb-1">
+                {t("assetOverview.skippedInfoTitle")}
+              </p>
+              <p className="text-theme-muted text-sm leading-relaxed">
+                {t("assetOverview.skippedInfoDesc")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-theme-card border border-theme rounded-lg p-6">
         {/* Bulk Action Toolbar */}
         {selectedAssetIds.size > 0 && (

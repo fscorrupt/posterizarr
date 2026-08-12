@@ -1715,13 +1715,15 @@
     "skipPlexSuccess": "Ignoré avec succès \"{{title}}\" dans le serveur multimédia.",
     "skipPlexFailed": "Échec de l'ignorance dans le serveur multimédia : {{error}}",
     "skipPlexError": "Erreur lors de l'ignorance dans le serveur multimédia : {{error}}",
-    "tabActive": "Active Actions",
-    "tabSkipped": "Skipped Items",
-    "unskipTooltip": "Remove skip label from media server and restore item",
-    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
-    "unskipFailed": "Failed to unskip: {{error}}",
-    "unskipError": "Error unskipping item: {{error}}",
-    "noSkippedItems": "No skipped items found."
+    "tabActive": "Actions Actives",
+    "tabSkipped": "Éléments Ignorés",
+    "unskipTooltip": "Supprimer l'étiquette d'ignorance du serveur multimédia et restaurer l'élément",
+    "unskipSuccess": "Élément \"{{title}}\" restauré avec succès",
+    "unskipFailed": "Échec de la restauration : {{error}}",
+    "unskipError": "Erreur lors de la restauration de l'élément : {{error}}",
+    "noSkippedItems": "Aucun élément ignoré trouvé.",
+    "skippedInfoTitle": "À propos des éléments ignorés",
+    "skippedInfoDesc": "Cette vue montre tous les actifs qui ont l'étiquette 'skip_posterizarr' appliquée dans votre serveur multimédia, ainsi que les éléments ignorés manuellement via l'interface utilisateur de Posterizarr. Les éléments listés ici seront ignorés par Posterizarr lors des synchronisations en arrière-plan."
   },
   "common": {
     "view": "Voir",

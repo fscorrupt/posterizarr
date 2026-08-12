@@ -1729,7 +1729,9 @@
     "unskipSuccess": "Successfully unskipped \"{{title}}\"",
     "unskipFailed": "Failed to unskip: {{error}}",
     "unskipError": "Error unskipping item: {{error}}",
-    "noSkippedItems": "No skipped items found."
+    "noSkippedItems": "No skipped items found.",
+    "skippedInfoTitle": "About Skipped Items",
+    "skippedInfoDesc": "This view shows all assets that have the 'skip_posterizarr' label applied in your media server, as well as items manually skipped via the Posterizarr UI. Items listed here will be ignored by Posterizarr during background syncs."
   },
   "common": {
     "view": "View",
