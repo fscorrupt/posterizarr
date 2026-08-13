@@ -13632,17 +13632,36 @@ async def refresh_skipped_metadata_background(ids: List[str]):
         plex_url, plex_token = _get_media_server_credentials("plex")
         jf_url, jf_token = _get_media_server_credentials("jellyfin")
         
-        # Get all skipped items from local DB
-        rows = db.get_skipped_items()
+        # Get all skipped items (including from media_export.db)
+        # get_skipped_assets is an async function, we can await it
+        rows_data = await get_skipped_assets()
         
         async with httpx.AsyncClient(timeout=10.0) as client:
-            for row in rows:
-                item = dict(row)
+            for item in rows_data:
                 
                 # Check if we should process this item
                 str_id = str(item['id'])
                 if ids and str_id not in ids:
                     continue
+                    
+                # If this is a manual item from media_export, we need to add it to local DB first
+                if str_id.startswith("manual_"):
+                    try:
+                        new_id = db.add_skipped_item(
+                            title=item.get("Title", "Unknown"),
+                            asset_type=item.get("Type", "Unknown"),
+                            rootfolder=item.get("Rootfolder", ""),
+                            library_name=item.get("LibraryName", "Unknown"),
+                            server_type=item.get("server_type"),
+                            item_id=item.get("item_id"),
+                            poster_path="", year="", overview="", media_url=""
+                        )
+                        db_id = new_id
+                    except Exception as e:
+                        logger.error(f"Failed to add manual skipped item to db: {e}")
+                        continue
+                else:
+                    db_id = item['id']
                     
                 server_type = item.get("server_type", "").lower()
                 item_id = item.get("item_id")
@@ -13667,8 +13686,7 @@ async def refresh_skipped_metadata_background(ids: List[str]):
                                 poster_path = m.get("thumb", "")
                                 year = str(m.get("year", ""))
                                 overview = m.get("summary", "")
-                                
-                                db.update_skipped_item_metadata(item['id'], poster_path, year, overview, "")
+                                db.update_skipped_item_metadata(db_id, poster_path, year, overview, "")
                     except Exception as e:
                         logger.error(f"Error refreshing Plex metadata for skipped item {item_id}: {e}")
                         
@@ -13691,8 +13709,7 @@ async def refresh_skipped_metadata_background(ids: List[str]):
                             if "Primary" in m.get("ImageTags", {}):
                                 poster_path = f"/Items/{safe_item_id}/Images/Primary?tag={m['ImageTags']['Primary']}"
                             media_url = f"{server_url}/web/index.html#!/details?id={safe_item_id}"
-                            
-                            db.update_skipped_item_metadata(item['id'], poster_path, year, overview, media_url)
+                            db.update_skipped_item_metadata(db_id, poster_path, year, overview, media_url)
                     except Exception as e:
                         logger.error(f"Error refreshing Jellyfin metadata for skipped item {item_id}: {e}")
                         

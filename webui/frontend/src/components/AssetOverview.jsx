@@ -209,6 +209,7 @@ const AssetRow = React.memo(
     onUnskip,
     onRefreshMetadata,
     isSkippedView,
+    isActiveView,
     isSelected,
     onToggleSelection,
     showCheckbox,
@@ -260,6 +261,20 @@ const AssetRow = React.memo(
               <div className="hidden sm:block w-20 h-28 shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center">
                 <img
                   src={`/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`}
+                  alt={asset.Title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+            
+            {/* Poster Thumbnail for Active Actions / General */}
+            {isActiveView && asset.poster_url && (
+              <div className="hidden sm:block w-20 h-28 shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(asset.poster_url, '_blank')}>
+                <img
+                  src={asset.poster_url}
                   alt={asset.Title}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -2385,6 +2400,7 @@ const AssetOverview = () => {
                   onUnskip={handleUnskipAsset}
                   onRefreshMetadata={(id) => handleBulkRefreshMetadata([String(id)])}
                   isSkippedView={activeTab === "skipped"}
+                  isActiveView={activeTab === "active"}
                   isSelected={selectedAssetIds.has(asset.id)}
                   onToggleSelection={handleToggleSelection}
                   showCheckbox={activeTab !== "skipped" && (selectedAssetIds.size > 0 || isBulkProcessing)}
