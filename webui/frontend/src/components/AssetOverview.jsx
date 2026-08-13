@@ -956,6 +956,8 @@ const AssetOverview = () => {
           showError(
             t("assetOverview.unskipError", { error: error.message })
           );
+        } finally {
+          setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
         }
       },
     });

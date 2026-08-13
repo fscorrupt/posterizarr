@@ -13573,8 +13573,12 @@ async def unskip_asset(request: UnskipAssetRequest):
             existing_labels = metadata_item.get("Label", [])
             label_names = [label.get("tag") for label in existing_labels]
             
-            if "skip_posterizarr" in label_names:
-                label_names.remove("skip_posterizarr")
+            # Case-insensitive match to find any skip_posterizarr labels
+            has_skip_label = any(str(tag).lower() == "skip_posterizarr" for tag in label_names)
+            
+            if has_skip_label:
+                # Remove all variations (Skip_posterizarr, skip_posterizarr, etc)
+                label_names = [tag for tag in label_names if str(tag).lower() != "skip_posterizarr"]
                 
                 type_map = {"movie": 1, "show": 2, "season": 3, "episode": 4}
                 type_id = type_map.get(metadata_item.get("type", "movie"), 1)
@@ -13611,9 +13615,10 @@ async def unskip_asset(request: UnskipAssetRequest):
             
             item_metadata = item_resp.json()
             tags = item_metadata.get("Tags", [])
-            if "skip_posterizarr" in tags:
-                tags.remove("skip_posterizarr")
-                item_metadata["Tags"] = tags
+            has_skip_tag = any(str(tag).lower() == "skip_posterizarr" for tag in tags)
+            
+            if has_skip_tag:
+                item_metadata["Tags"] = [tag for tag in tags if str(tag).lower() != "skip_posterizarr"]
                 
                 post_resp = await client.post(item_url, headers=headers, json=item_metadata)
                 if post_resp.status_code not in (200, 204):
