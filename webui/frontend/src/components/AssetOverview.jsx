@@ -28,6 +28,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import AssetReplacer from "./AssetReplacer";
 import ScrollToButtons from "./ScrollToButtons";
+import ImagePreviewModal from "./ImagePreviewModal";
 
 // Helper function to detect provider from URL and return badge styling
 const getProviderBadge = (url) => {
@@ -216,6 +217,7 @@ const AssetRow = React.memo(
     usePlex,
     useJellyfin,
     useEmby,
+    onPreviewImage,
   }) => {
     const { t } = useTranslation();
     const [logoError, setLogoError] = useState(false);
@@ -258,7 +260,22 @@ const AssetRow = React.memo(
 
             {/* Poster Thumbnail for Skipped View */}
             {isSkippedView && asset.server_type && asset.item_id && (
-              <div className="hidden sm:block w-20 h-28 shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center">
+              <div 
+                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type === 'episode' || asset.Type === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+                }`}
+                onClick={() => {
+                  if (onPreviewImage) {
+                    onPreviewImage({
+                      url: `/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`,
+                      name: asset.Title,
+                      type: asset.Type
+                    });
+                  } else {
+                    window.open(`/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`, '_blank');
+                  }
+                }}
+              >
                 <img
                   src={`/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`}
                   alt={asset.Title}
@@ -272,7 +289,22 @@ const AssetRow = React.memo(
             
             {/* Poster Thumbnail for Active Actions / General */}
             {isActiveView && asset.poster_url && (
-              <div className="hidden sm:block w-20 h-28 shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(asset.poster_url, '_blank')}>
+              <div 
+                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type === 'episode' || asset.Type === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+                }`}
+                onClick={() => {
+                  if (onPreviewImage) {
+                    onPreviewImage({
+                      url: asset.poster_url,
+                      name: asset.Title,
+                      type: asset.Type
+                    });
+                  } else {
+                    window.open(asset.poster_url, '_blank');
+                  }
+                }}
+              >
                 <img
                   src={asset.poster_url}
                   alt={asset.Title}
@@ -566,6 +598,7 @@ const AssetOverview = () => {
   const [selectedStatus, setSelectedStatus] = useState("Unresolved");
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [showReplacer, setShowReplacer] = useState(false);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
 
   // PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1);
@@ -2409,6 +2442,7 @@ const AssetOverview = () => {
                   isSelected={selectedAssetIds.has(asset.id)}
                   onToggleSelection={handleToggleSelection}
                   showCheckbox={activeTab !== "skipped" && (selectedAssetIds.size > 0 || isBulkProcessing)}
+                  onPreviewImage={setSelectedPreviewImage}
                   usePlex={usePlex}
                   useJellyfin={useJellyfin}
                   useEmby={useEmby}
@@ -2571,6 +2605,12 @@ const AssetOverview = () => {
         ++ END: Generic Confirmation Modal
         +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
       */}
+
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        selectedImage={selectedPreviewImage}
+        onClose={() => setSelectedPreviewImage(null)}
+      />
 
       {/* Asset Replacer Modal */}
       {showReplacer && selectedAsset && (
