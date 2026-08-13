@@ -76,6 +76,10 @@ class ImageChoicesDB:
                         LibraryName TEXT,
                         server_type TEXT,
                         item_id TEXT,
+                        poster_path TEXT,
+                        year TEXT,
+                        overview TEXT,
+                        media_url TEXT,
                         skipped_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
                         UNIQUE(Title, Rootfolder, Type, LibraryName)
                     )
@@ -140,9 +144,35 @@ class ImageChoicesDB:
 
                 if changes_made:
                     conn.commit()
-                    logger.info("✓ Schema migration completed successfully")
+                    logger.info("✓ Schema migration for imagechoices completed successfully")
                 else:
-                    logger.debug("Schema is up to date")
+                    logger.debug("ImageChoices schema is up to date")
+
+                # ==========================================
+                # Migrate skipped_items table
+                # ==========================================
+                cursor.execute("PRAGMA table_info(skipped_items)")
+                existing_skipped_columns = {row['name'] for row in cursor.fetchall()}
+
+                required_skipped_columns = {
+                    "poster_path": "TEXT",
+                    "year": "TEXT",
+                    "overview": "TEXT",
+                    "media_url": "TEXT"
+                }
+
+                skipped_changes_made = False
+                for col_name, col_type in required_skipped_columns.items():
+                    if col_name not in existing_skipped_columns:
+                        logger.info(f"MIGRATION: Adding missing column '{col_name}' to skipped_items database...")
+                        cursor.execute(f"ALTER TABLE skipped_items ADD COLUMN {col_name} {col_type}")
+                        skipped_changes_made = True
+
+                if skipped_changes_made:
+                    conn.commit()
+                    logger.info("✓ Schema migration for skipped_items completed successfully")
+                else:
+                    logger.debug("skipped_items schema is up to date")
 
                 conn.close()
             except sqlite3.Error as e:
@@ -556,7 +586,7 @@ class ImageChoicesDB:
     # SKIPPED ITEMS METHODS
     # ==========================================
 
-    def add_skipped_item(self, title: str, asset_type: str, rootfolder: str, library_name: str, server_type: str, item_id: str) -> int:
+    def add_skipped_item(self, title: str, asset_type: str, rootfolder: str, library_name: str, server_type: str, item_id: str, poster_path: str = "", year: str = "", overview: str = "", media_url: str = "") -> int:
         """Add an item to the skipped_items table"""
         with self.lock:
             try:
@@ -564,10 +594,10 @@ class ImageChoicesDB:
                 cursor = conn.cursor()
                 query = """
                     INSERT OR IGNORE INTO skipped_items 
-                    (Title, Type, Rootfolder, LibraryName, server_type, item_id) 
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (Title, Type, Rootfolder, LibraryName, server_type, item_id, poster_path, year, overview, media_url) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
-                cursor.execute(query, (title, asset_type, rootfolder, library_name, server_type, item_id))
+                cursor.execute(query, (title, asset_type, rootfolder, library_name, server_type, item_id, poster_path, year, overview, media_url))
                 inserted_id = cursor.lastrowid
                 conn.commit()
                 conn.close()
@@ -608,6 +638,29 @@ class ImageChoicesDB:
                 return deleted
             except sqlite3.Error as e:
                 logger.error(f"Error deleting skipped item: {e}")
+                if 'conn' in locals():
+                    conn.rollback()
+                    conn.close()
+                return False
+
+    def update_skipped_item_metadata(self, item_id: int, poster_path: str, year: str, overview: str, media_url: str) -> bool:
+        """Update metadata for a skipped item"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                query = """
+                    UPDATE skipped_items
+                    SET poster_path = ?, year = ?, overview = ?, media_url = ?
+                    WHERE id = ?
+                """
+                cursor.execute(query, (poster_path, year, overview, media_url, item_id))
+                updated = cursor.rowcount > 0
+                conn.commit()
+                conn.close()
+                return updated
+            except sqlite3.Error as e:
+                logger.error(f"Error updating skipped item metadata: {e}")
                 if 'conn' in locals():
                     conn.rollback()
                     conn.close()

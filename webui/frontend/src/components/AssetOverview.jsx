@@ -207,6 +207,7 @@ const AssetRow = React.memo(
     onDelete,
     onSkipMediaServer,
     onUnskip,
+    onRefreshMetadata,
     isSkippedView,
     isSelected,
     onToggleSelection,
@@ -254,18 +255,45 @@ const AssetRow = React.memo(
               </div>
             )}
 
+            {/* Poster Thumbnail for Skipped View */}
+            {isSkippedView && asset.server_type && asset.item_id && (
+              <div className="hidden sm:block w-20 h-28 shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center">
+                <img
+                  src={`/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`}
+                  alt={asset.Title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-semibold text-theme-text break-words">
-                {showName ? (
-                  <>
-                    <span className="text-theme-primary">{showName}</span>
-                    <span className="text-theme-muted mx-2">|</span>
-                    <span>{asset.Title}</span>
-                  </>
-                ) : (
-                  asset.Title
+              <div className="flex items-start justify-between gap-4">
+                <h3 className="text-lg font-semibold text-theme-text break-words">
+                  {showName ? (
+                    <>
+                      <span className="text-theme-primary">{showName}</span>
+                      <span className="text-theme-muted mx-2">|</span>
+                      <span>{asset.Title} {asset.year ? `(${asset.year})` : ''}</span>
+                    </>
+                  ) : (
+                    <>{asset.Title} {asset.year ? `(${asset.year})` : ''}</>
+                  )}
+                </h3>
+                {isSkippedView && asset.media_url && (
+                  <a
+                    href={asset.media_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 p-1.5 text-theme-muted hover:text-theme-primary hover:bg-theme-primary/10 rounded transition-colors"
+                    title={t("assetOverview.viewInMediaServer", { defaultValue: "View in Media Server" })}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
                 )}
-              </h3>
+              </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-sm text-theme-muted">
                 {/* Type */}
                 <span className="font-medium">{t("assetOverview.type")}:</span>
@@ -385,6 +413,12 @@ const AssetRow = React.memo(
                   </>
                 )}
               </div>
+              {/* Description for Skipped View */}
+              {isSkippedView && asset.overview && (
+                <p className="mt-3 text-sm text-theme-text/80 line-clamp-2">
+                  {asset.overview}
+                </p>
+              )}
               {/* Tags */}
               {!isSkippedView && (
                 <div className="flex flex-wrap gap-2 mt-3">
@@ -405,6 +439,14 @@ const AssetRow = React.memo(
           <div className="flex items-start gap-2">
             {isSkippedView ? (
               <>
+                <button
+                  onClick={() => onRefreshMetadata(asset.id)}
+                  className="flex items-center gap-2 px-4 py-2 bg-theme-primary/10 hover:bg-theme-primary/20 border border-theme-primary hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                  title={t("assetOverview.refreshMetadataTooltip", { defaultValue: "Refresh Metadata" })}
+                >
+                  <RefreshCw className="w-4 h-4 text-theme-primary" />
+                  {t("assetOverview.refreshMetadata", { defaultValue: "Refresh Metadata" })}
+                </button>
                 <button
                   onClick={() => onUnskip(asset)}
                   className="flex items-center gap-2 px-4 py-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
@@ -1160,6 +1202,54 @@ const AssetOverview = () => {
     }
   };
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  // ++ NEW: Bulk Refresh Metadata (for skipped items)
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  const handleBulkRefreshMetadata = async (ids = Array.from(selectedAssetIds)) => {
+    if (ids.length === 0) return;
+    setIsBulkProcessing(true);
+
+    try {
+      const response = await fetch("/api/assets/skipped/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+
+      if (response.ok) {
+        showSuccess(t("assetOverview.refreshMetadataStarted", { defaultValue: "Metadata refresh started in background" }));
+        setSelectedAssetIds(new Set());
+      } else {
+        showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
+      }
+    } catch (error) {
+      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleRefreshAllMetadata = async () => {
+    setIsBulkProcessing(true);
+    try {
+      const response = await fetch("/api/assets/skipped/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [] }),
+      });
+
+      if (response.ok) {
+        showSuccess(t("assetOverview.refreshAllMetadataStarted", { defaultValue: "Refresh of all metadata started in background" }));
+      } else {
+        showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
+      }
+    } catch (error) {
+      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
 
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   // ++ REFACTORED: Bulk Mark All Filtered (to use new modal)
@@ -2107,31 +2197,48 @@ const AssetOverview = () => {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={handleBulkMarkAsResolved}
-                disabled={isBulkProcessing}
-                className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
-              >
-                {isBulkProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckIcon className="w-4 h-4" />
-                )}
-                {t("assetOverview.markSelectedAsResolved")}
-              </button>
-              {/* <-- UPDATED: Bulk Delete Button --> */}
-              <button
-                onClick={handleBulkDelete}
-                disabled={isBulkProcessing}
-                className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-800 disabled:bg-red-700/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
-              >
-                {isBulkProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
-                {t("assetOverview.deleteSelected")}
-              </button>
+              {activeTab !== "skipped" && (
+                <>
+                  <button
+                    onClick={handleBulkMarkAsResolved}
+                    disabled={isBulkProcessing}
+                    className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
+                  >
+                    {isBulkProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CheckIcon className="w-4 h-4" />
+                    )}
+                    {t("assetOverview.markSelectedAsResolved")}
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={isBulkProcessing}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-800 disabled:bg-red-700/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
+                  >
+                    {isBulkProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    {t("assetOverview.deleteSelected")}
+                  </button>
+                </>
+              )}
+              {activeTab === "skipped" && (
+                <button
+                  onClick={() => handleBulkRefreshMetadata()}
+                  disabled={isBulkProcessing}
+                  className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
+                >
+                  {isBulkProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {t("assetOverview.refreshMetadata", { defaultValue: "Refresh Metadata" })}
+                </button>
+              )}
               <button
                 onClick={() => setSelectedAssetIds(new Set())}
                 disabled={isBulkProcessing}
@@ -2180,7 +2287,7 @@ const AssetOverview = () => {
             )}
 
             {/* Mark All Filtered as Resolved (Refactored) */}
-            {filteredAssets.length > 0 && selectedStatus !== "Resolved" && (
+            {filteredAssets.length > 0 && selectedStatus !== "Resolved" && activeTab !== "skipped" && (
               <button
                 onClick={handleBulkMarkAllFilteredAsResolved}
                 disabled={isBulkProcessing}
@@ -2201,7 +2308,7 @@ const AssetOverview = () => {
             )}
 
             {/* <-- ADDED: Bulk Delete All Filtered Button --> */}
-            {filteredAssets.length > 0 && (
+            {filteredAssets.length > 0 && activeTab !== "skipped" && (
               <button
                 onClick={handleBulkDeleteAllFiltered}
                 disabled={isBulkProcessing}
@@ -2218,6 +2325,23 @@ const AssetOverview = () => {
                     count: filteredAssets.length,
                   })}
                 </span>
+              </button>
+            )}
+
+
+
+            {activeTab === "skipped" && (
+              <button
+                onClick={handleRefreshAllMetadata}
+                disabled={isBulkProcessing}
+                className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-sm font-medium transition-all shadow-sm text-white"
+              >
+                {isBulkProcessing ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 text-white" />
+                )}
+                <span className="text-white">{t("assetOverview.refreshAllMetadata", { defaultValue: "Refresh All Metadata" })}</span>
               </button>
             )}
 
@@ -2266,10 +2390,11 @@ const AssetOverview = () => {
                   onDelete={handleDeleteAsset}
                   onSkipMediaServer={handleSkipMediaServer}
                   onUnskip={handleUnskipAsset}
+                  onRefreshMetadata={(id) => handleBulkRefreshMetadata([String(id)])}
                   isSkippedView={activeTab === "skipped"}
                   isSelected={selectedAssetIds.has(asset.id)}
                   onToggleSelection={handleToggleSelection}
-                  showCheckbox={selectedAssetIds.size > 0 || isBulkProcessing}
+                  showCheckbox={activeTab !== "skipped" && (selectedAssetIds.size > 0 || isBulkProcessing)}
                   usePlex={usePlex}
                   useJellyfin={useJellyfin}
                   useEmby={useEmby}

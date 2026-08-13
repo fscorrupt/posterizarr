@@ -13298,6 +13298,14 @@ async def skip_media_server_asset(request: SkipAssetRequest):
             item = item_metadata[0]
             item_type_str = item.get("type", "movie")
             
+            # Extract rich metadata for skipped items
+            poster_path = item.get("thumb", "")
+            year = str(item.get("year", ""))
+            overview = item.get("summary", "")
+            # Example Plex Web URL requires machine identifier, we'll store server_url/web/index.html#!/server/... if possible
+            # But since we don't know machine identifier easily here, we'll store a generic or API link, or just leave it empty.
+            media_url = ""
+            
             # Map type string to id
             type_map = {"movie": 1, "show": 2, "season": 3, "episode": 4}
             type_id = type_map.get(item_type_str, 1)
@@ -13339,7 +13347,9 @@ async def skip_media_server_asset(request: SkipAssetRequest):
             # Resolve season/episode item_id if necessary
             if season_num is not None:
                 # Get show's seasons
-                seasons_url = f"{server_url}/Shows/{item_id}/Seasons"
+                import urllib.parse
+                safe_item_id = urllib.parse.quote(item_id, safe="")
+                seasons_url = f"{server_url}/Shows/{safe_item_id}/Seasons"
                 seasons_resp = await client.get(seasons_url, headers=headers)
                 if seasons_resp.status_code == 200:
                     seasons = seasons_resp.json().get("Items", [])
@@ -13354,7 +13364,10 @@ async def skip_media_server_asset(request: SkipAssetRequest):
                             item_id = season_key
                         elif episode_num is not None:
                             # Get season's episodes
-                            ep_url = f"{server_url}/Shows/{item_id}/Episodes?seasonId={season_key}"
+                            import urllib.parse
+                            safe_item_id_for_show = urllib.parse.quote(item_id, safe="")
+                            safe_season_key = urllib.parse.quote(season_key, safe="")
+                            ep_url = f"{server_url}/Shows/{safe_item_id_for_show}/Episodes?seasonId={safe_season_key}"
                             ep_resp = await client.get(ep_url, headers=headers)
                             if ep_resp.status_code == 200:
                                 episodes = ep_resp.json().get("Items", [])
@@ -13363,12 +13376,22 @@ async def skip_media_server_asset(request: SkipAssetRequest):
                                         item_id = ep.get("Id")
                                         break
             
-            item_url = f"{server_url}/Items/{item_id}"
+            import urllib.parse
+            safe_item_id = urllib.parse.quote(item_id, safe="")
+            item_url = f"{server_url}/Items/{safe_item_id}"
             item_resp = await client.get(item_url, headers=headers)
             if item_resp.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Failed to fetch {active_server.capitalize()} item metadata")
             
             item_metadata = item_resp.json()
+            
+            # Extract rich metadata for Jellyfin/Emby
+            year = str(item_metadata.get("ProductionYear", ""))
+            overview = item_metadata.get("Overview", "")
+            poster_path = ""
+            if "Primary" in item_metadata.get("ImageTags", {}):
+                poster_path = f"/Items/{safe_item_id}/Images/Primary?tag={item_metadata['ImageTags']['Primary']}"
+            media_url = f"{server_url}/web/index.html#!/details?id={safe_item_id}"
             
             tags = item_metadata.get("Tags", [])
             if "skip_posterizarr" not in tags:
@@ -13382,7 +13405,8 @@ async def skip_media_server_asset(request: SkipAssetRequest):
     # 5. Insert into skipped_items tracking table
     if DATABASE_AVAILABLE and db is not None:
         try:
-            db.add_skipped_item(asset_title, asset_type, rootfolder, library_name, active_server, str(item_id))
+            # Note: For Plex we could construct a direct link if we had machine ID. For now we use the API path.
+            db.add_skipped_item(asset_title, asset_type, rootfolder, library_name, active_server, str(item_id), poster_path, year, overview, media_url)
         except Exception as e:
             logger.error(f"Failed to add item to skipped_items: {e}")
 
@@ -13420,6 +13444,10 @@ async def get_skipped_assets():
                 "Type": item.get("type", "Unknown"),
                 "LibraryName": item.get("library", "Unknown"),
                 "Rootfolder": item.get("rootfolder", ""),
+                "poster_path": item.get("poster_path", ""),
+                "year": item.get("year", ""),
+                "overview": item.get("overview", ""),
+                "media_url": item.get("media_url", ""),
             })
         
         # Track existing items to deduplicate
@@ -13438,7 +13466,7 @@ async def get_skipped_assets():
             
             try:
                 # Plex
-                cursor.execute("SELECT title, library_name, rating_key as item_id, 'movie/show' as type, 'plex' as server_type, root_foldername as rootfolder FROM plex_library_export WHERE labels LIKE '%skip_posterizarr%'")
+                cursor.execute("SELECT title, library_name, rating_key as item_id, 'movie/show' as type, 'plex' as server_type, root_foldername as rootfolder, poster_path, year, overview FROM plex_library_export WHERE labels LIKE '%skip_posterizarr%'")
                 for row in cursor.fetchall():
                     item = dict(row)
                     key = f"plex_{item['item_id']}"
@@ -13451,15 +13479,34 @@ async def get_skipped_assets():
                             "Type": item.get("type", "movie"),
                             "LibraryName": item.get("library_name", "Unknown"),
                             "Rootfolder": item.get("rootfolder", ""),
+                            "poster_path": item.get("poster_path", ""),
+                            "year": item.get("year", ""),
+                            "overview": item.get("overview", ""),
+                            "media_url": "", # We don't easily know Plex machine identifier for web links
                         })
                         existing_keys.add(key)
                         
                 # Jellyfin/Emby
-                cursor.execute("SELECT title, library_name, media_id as item_id, 'movie/show' as type, 'jellyfin/emby' as server_type, root_foldername as rootfolder FROM other_media_library_export WHERE labels LIKE '%skip_posterizarr%'")
+                cursor.execute("SELECT title, library_name, media_id as item_id, 'movie/show' as type, 'jellyfin/emby' as server_type, root_foldername as rootfolder, poster_path, year, overview FROM other_media_library_export WHERE labels LIKE '%skip_posterizarr%'")
                 for row in cursor.fetchall():
                     item = dict(row)
                     key = f"jellyfin_{item['item_id']}" 
                     if key not in existing_keys:
+                        
+                        # Fallback for Jellyfin URLs (need server URL which we don't store in media_export, we only have config)
+                        jellyfin_url = ""
+                        try:
+                            # We can try to get the server URL from config database
+                            config_conn = sqlite3.connect(BASE_DIR / "database" / "config.db")
+                            config_cursor = config_conn.cursor()
+                            config_cursor.execute("SELECT URL FROM JFEMBY_Settings LIMIT 1")
+                            config_row = config_cursor.fetchone()
+                            if config_row:
+                                jellyfin_url = f"{config_row[0]}/web/index.html#!/details?id={item['item_id']}"
+                            config_conn.close()
+                        except:
+                            pass
+
                         skipped_list.append({
                             "id": f"manual_{key}",
                             "item_id": str(item["item_id"]),
@@ -13468,6 +13515,10 @@ async def get_skipped_assets():
                             "Type": item.get("type", "movie"),
                             "LibraryName": item.get("library_name", "Unknown"),
                             "Rootfolder": item.get("rootfolder", ""),
+                            "poster_path": item.get("poster_path", ""),
+                            "year": item.get("year", ""),
+                            "overview": item.get("overview", ""),
+                            "media_url": jellyfin_url,
                         })
                         existing_keys.add(key)
             except Exception as e:
@@ -13479,6 +13530,171 @@ async def get_skipped_assets():
     except Exception as e:
         logger.error(f"Error fetching skipped items: {e}")
         raise HTTPException(status_code=500, detail="Error fetching skipped items")
+
+from fastapi.responses import StreamingResponse
+import httpx
+
+@app.get("/api/proxy/poster")
+async def get_proxy_poster(server_type: str, item_id: str):
+    """Proxy endpoint to fetch poster images from media servers without exposing tokens or dealing with CORS"""
+    if not DATABASE_AVAILABLE or db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    import re
+    if not re.match(r"^[a-zA-Z0-9\-]+$", item_id):
+        raise HTTPException(status_code=400, detail="Invalid item_id format")
+
+    try:
+        if server_type.lower() == "plex":
+            active_server = "plex"
+            from webui.backend.config_mapper import get_plex_settings
+            config_conn = sqlite3.connect(BASE_DIR / "database" / "config.db")
+            plex_settings = get_plex_settings(config_conn)
+            config_conn.close()
+            
+            if not plex_settings or not plex_settings.get("URL") or not plex_settings.get("Token"):
+                raise HTTPException(status_code=400, detail="Plex credentials missing")
+                
+            server_url = plex_settings["URL"].rstrip('/')
+            server_token = plex_settings["Token"]
+            
+            import urllib.parse
+            safe_item_id = urllib.parse.quote(item_id, safe="")
+            
+            # Plex poster is usually /library/metadata/{item_id}/thumb
+            image_url = f"{server_url}/library/metadata/{safe_item_id}/thumb"
+            headers = {"X-Plex-Token": server_token}
+            
+        elif server_type.lower() in ["jellyfin", "emby", "jellyfin/emby"]:
+            active_server = "jellyfin"
+            from webui.backend.config_mapper import get_jfemby_settings
+            config_conn = sqlite3.connect(BASE_DIR / "database" / "config.db")
+            jf_settings = get_jfemby_settings(config_conn)
+            config_conn.close()
+            
+            if not jf_settings or not jf_settings.get("URL") or not jf_settings.get("Token"):
+                raise HTTPException(status_code=400, detail="Jellyfin credentials missing")
+                
+            server_url = jf_settings["URL"].rstrip('/')
+            server_token = jf_settings["Token"]
+            
+            import urllib.parse
+            safe_item_id = urllib.parse.quote(item_id, safe="")
+            
+            image_url = f"{server_url}/Items/{safe_item_id}/Images/Primary"
+            headers = {"Authorization": f'MediaBrowser Token="{server_token}"'}
+        else:
+            raise HTTPException(status_code=400, detail="Unknown server type")
+            
+        # Fetch image
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(image_url, headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail="Image not found")
+                
+            return StreamingResponse(
+                resp.iter_bytes(),
+                media_type=resp.headers.get("content-type", "image/jpeg")
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in proxy poster: {e}")
+        raise HTTPException(status_code=500, detail="Failed to proxy image")
+
+
+from fastapi import BackgroundTasks
+
+class RefreshSkippedRequest(BaseModel):
+    ids: List[str] = [] # If empty, refresh all
+
+async def refresh_skipped_metadata_background(ids: List[str]):
+    """Background task to fetch and update metadata for skipped items"""
+    if not DATABASE_AVAILABLE or db is None:
+        return
+        
+    try:
+        # Get active server credentials
+        from webui.backend.config_mapper import get_plex_settings, get_jfemby_settings
+        config_conn = sqlite3.connect(BASE_DIR / "database" / "config.db")
+        plex_settings = get_plex_settings(config_conn)
+        jf_settings = get_jfemby_settings(config_conn)
+        config_conn.close()
+        
+        # Get all skipped items from local DB
+        rows = db.get_skipped_items()
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for row in rows:
+                item = dict(row)
+                
+                # Check if we should process this item
+                str_id = str(item['id'])
+                if ids and str_id not in ids:
+                    continue
+                    
+                server_type = item.get("server_type", "").lower()
+                item_id = item.get("item_id")
+                
+                if not server_type or not item_id:
+                    continue
+                    
+                # Fetch from Plex
+                if server_type == "plex" and plex_settings.get("URL") and plex_settings.get("Token"):
+                    server_url = plex_settings["URL"].rstrip('/')
+                    headers = {"X-Plex-Token": plex_settings["Token"], "Accept": "application/json"}
+                    
+                    try:
+                        import urllib.parse
+                        safe_item_id = urllib.parse.quote(item_id, safe="")
+                        metadata_url = f"{server_url}/library/metadata/{safe_item_id}"
+                        resp = await client.get(metadata_url, headers=headers)
+                        if resp.status_code == 200:
+                            meta = resp.json().get("MediaContainer", {}).get("Metadata", [])
+                            if meta:
+                                m = meta[0]
+                                poster_path = m.get("thumb", "")
+                                year = str(m.get("year", ""))
+                                overview = m.get("summary", "")
+                                
+                                db.update_skipped_item_metadata(item['id'], poster_path, year, overview, "")
+                    except Exception as e:
+                        logger.error(f"Error refreshing Plex metadata for skipped item {item_id}: {e}")
+                        
+                # Fetch from Jellyfin
+                elif server_type in ["jellyfin", "emby", "jellyfin/emby"] and jf_settings.get("URL") and jf_settings.get("Token"):
+                    server_url = jf_settings["URL"].rstrip('/')
+                    headers = {"Authorization": f'MediaBrowser Token="{jf_settings["Token"]}"', "Accept": "application/json"}
+                    
+                    try:
+                        import urllib.parse
+                        safe_item_id = urllib.parse.quote(item_id, safe="")
+                        item_url = f"{server_url}/Items/{safe_item_id}"
+                        resp = await client.get(item_url, headers=headers)
+                        if resp.status_code == 200:
+                            m = resp.json()
+                            
+                            year = str(m.get("ProductionYear", ""))
+                            overview = m.get("Overview", "")
+                            poster_path = ""
+                            if "Primary" in m.get("ImageTags", {}):
+                                poster_path = f"/Items/{safe_item_id}/Images/Primary?tag={m['ImageTags']['Primary']}"
+                            media_url = f"{server_url}/web/index.html#!/details?id={safe_item_id}"
+                            
+                            db.update_skipped_item_metadata(item['id'], poster_path, year, overview, media_url)
+                    except Exception as e:
+                        logger.error(f"Error refreshing Jellyfin metadata for skipped item {item_id}: {e}")
+                        
+    except Exception as e:
+        logger.error(f"Error in background metadata refresh task: {e}")
+
+@app.post("/api/assets/skipped/refresh")
+async def refresh_skipped_metadata(request: RefreshSkippedRequest, background_tasks: BackgroundTasks):
+    """Trigger a background refresh of skipped items metadata"""
+    if not DATABASE_AVAILABLE or db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+        
+    background_tasks.add_task(refresh_skipped_metadata_background, request.ids)
+    return {"success": True, "message": "Metadata refresh started in the background"}
 
 from typing import Optional, Union
 
@@ -13560,7 +13776,9 @@ async def unskip_asset(request: UnskipAssetRequest):
             headers = {"X-Plex-Token": server_token, "Accept": "application/json"}
             
             # Fetch existing tags
-            metadata_url = f"{server_url}/library/metadata/{item_id}"
+            import urllib.parse
+            safe_item_id = urllib.parse.quote(item_id, safe="")
+            metadata_url = f"{server_url}/library/metadata/{safe_item_id}"
             metadata_resp = await client.get(metadata_url, headers=headers)
             if metadata_resp.status_code != 200:
                 raise HTTPException(status_code=500, detail="Failed to fetch Plex metadata")
@@ -13591,23 +13809,26 @@ async def unskip_asset(request: UnskipAssetRequest):
             import urllib.parse
             query_string = urllib.parse.urlencode(params, safe="[]-")
             
-            import logging
-            logging.info(f"UNSKIP - Sending PUT request to Plex: {put_url}")
-            logging.info(f"UNSKIP - Params string: {query_string}")
-            
             put_resp = await client.put(put_url, headers=headers, params=query_string)
-            
-            logging.info(f"UNSKIP - Plex PUT response status: {put_resp.status_code}")
-            logging.info(f"UNSKIP - Plex PUT response body: {put_resp.text}")
             
             if put_resp.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Failed to update Plex labels: {put_resp.status_code}")
+                
+            # Remove label from local DB to instantly update the UI without waiting for a sync
+            try:
+                db.cursor.execute("UPDATE plex_library_export SET labels = REPLACE(REPLACE(labels, 'skip_posterizarr,', ''), 'skip_posterizarr', '') WHERE rating_key = ?", (item_id,))
+                db.cursor.execute("UPDATE plex_library_export SET labels = REPLACE(REPLACE(labels, 'Skip_posterizarr,', ''), 'Skip_posterizarr', '') WHERE rating_key = ?", (item_id,))
+                db.conn.commit()
+            except Exception:
+                pass
                     
         else:
             auth_header = f'MediaBrowser Token="{server_token}"'
             headers = {"Authorization": auth_header, "Accept": "application/json", "Content-Type": "application/json"}
             
-            item_url = f"{server_url}/Items/{item_id}"
+            import urllib.parse
+            safe_item_id = urllib.parse.quote(item_id, safe="")
+            item_url = f"{server_url}/Items/{safe_item_id}"
             item_resp = await client.get(item_url, headers=headers)
             if item_resp.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Failed to fetch {active_server.capitalize()} item metadata")
@@ -13622,6 +13843,14 @@ async def unskip_asset(request: UnskipAssetRequest):
                 post_resp = await client.post(item_url, headers=headers, json=item_metadata)
                 if post_resp.status_code not in (200, 204):
                     raise HTTPException(status_code=500, detail=f"Failed to update tags: {post_resp.status_code}")
+                    
+                # Remove label from local DB to instantly update the UI without waiting for a sync
+                try:
+                    db.cursor.execute("UPDATE other_media_library_export SET labels = REPLACE(REPLACE(labels, 'skip_posterizarr,', ''), 'skip_posterizarr', '') WHERE media_id = ?", (item_id,))
+                    db.cursor.execute("UPDATE other_media_library_export SET labels = REPLACE(REPLACE(labels, 'Skip_posterizarr,', ''), 'Skip_posterizarr', '') WHERE media_id = ?", (item_id,))
+                    db.conn.commit()
+                except Exception:
+                    pass
                     
     # Delete from local DB if it was a UI-tracked skip
     if db_id is not None:
