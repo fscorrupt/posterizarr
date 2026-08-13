@@ -262,7 +262,7 @@ const AssetRow = React.memo(
             {isSkippedView && asset.server_type && asset.item_id && (
               <div 
                 className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
-                  asset.Type === 'episode' || asset.Type === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
                 }`}
                 onClick={() => {
                   if (onPreviewImage) {
@@ -291,7 +291,7 @@ const AssetRow = React.memo(
             {isActiveView && asset.poster_url && (
               <div 
                 className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
-                  asset.Type === 'episode' || asset.Type === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
                 }`}
                 onClick={() => {
                   if (onPreviewImage) {
