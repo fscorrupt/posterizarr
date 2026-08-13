@@ -13677,11 +13677,21 @@ async def refresh_skipped_metadata_background(ids: List[str]):
                     try:
                         import urllib.parse
                         safe_item_id = urllib.parse.quote(item_id, safe="")
+                        
+                        # Get machineIdentifier first
+                        machine_id = ""
+                        try:
+                            identity_url = f"{server_url}/identity"
+                            id_resp = await client.get(identity_url, headers=headers)
+                            if id_resp.status_code == 200:
+                                machine_id = id_resp.json().get("MediaContainer", {}).get("machineIdentifier", "")
+                        except Exception as e:
+                            logger.error(f"Failed to get Plex machine identifier: {e}")
+
                         metadata_url = f"{server_url}/library/metadata/{safe_item_id}"
                         resp = await client.get(metadata_url, headers=headers)
                         if resp.status_code == 200:
                             meta_container = resp.json().get("MediaContainer", {})
-                            machine_id = meta_container.get("machineIdentifier", "")
                             meta = meta_container.get("Metadata", [])
                             
                             if meta:
