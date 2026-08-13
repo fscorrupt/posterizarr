@@ -13189,7 +13189,7 @@ async def skip_media_server_asset(request: SkipAssetRequest):
             raise HTTPException(status_code=400, detail=f"{active_server.capitalize()} URL or Token not configured")
             
         server_url = server_url.rstrip("/")
-    except Exception as e:
+    except (json.JSONDecodeError, OSError) as e:
         import logging
         logging.error(f"Error loading config: {e}")
         raise HTTPException(status_code=500, detail="Error loading media server configuration")
@@ -13531,23 +13531,23 @@ async def unskip_asset(request: UnskipAssetRequest):
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)
             
-        plex_part = config.get("PlexPart", {})
-        jellyfin_part = config.get("JellyfinPart", {})
+        plex_part = config.get("PlexPart") or {}
+        jellyfin_part = config.get("JellyfinPart") or {}
         
         server_url = ""
         server_token = ""
         
         if active_server == "plex":
-            server_url = plex_part.get("PlexUrl", "").rstrip("/")
-            server_token = plex_part.get("PlexToken", "")
+            server_url = (plex_part.get("PlexUrl") or "").rstrip("/")
+            server_token = plex_part.get("PlexToken") or ""
         else:
-            server_url = jellyfin_part.get("JellyfinUrl", "").rstrip("/")
-            server_token = jellyfin_part.get("JellyfinToken", "")
+            server_url = (jellyfin_part.get("JellyfinUrl") or "").rstrip("/")
+            server_token = jellyfin_part.get("JellyfinToken") or ""
             
         if not server_url or not server_token:
-            raise HTTPException(status_code=400, detail=f"{active_server.capitalize()} credentials missing")
+            raise HTTPException(status_code=400, detail=f"{active_server.capitalize()} credentials missing in Posterizarr UI configuration")
             
-    except Exception as e:
+    except (json.JSONDecodeError, OSError) as e:
         logger.error(f"Error loading config in unskip_asset: {e}")
         raise HTTPException(status_code=500, detail="Failed to load media server configuration")
 
