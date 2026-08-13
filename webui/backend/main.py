@@ -13594,13 +13594,26 @@ async def unskip_asset(request: UnskipAssetRequest):
                     "id": item_id,
                     "label.locked": 1,
                 }
-                for i, tag in enumerate(label_names):
-                    params[f"label[{i}].tag.tag"] = tag
+                
+                if not label_names:
+                    # To clear labels in Plex, we must send an empty tag parameter
+                    params["label[].tag.tag"] = ""
+                else:
+                    for i, tag in enumerate(label_names):
+                        params[f"label[{i}].tag.tag"] = tag
                     
                 import urllib.parse
                 query_string = urllib.parse.urlencode(params, safe="[]")
                 
+                import logging
+                logging.info(f"UNSKIP - Sending PUT request to Plex: {put_url}")
+                logging.info(f"UNSKIP - Params string: {query_string}")
+                
                 put_resp = await client.put(put_url, headers=headers, params=query_string)
+                
+                logging.info(f"UNSKIP - Plex PUT response status: {put_resp.status_code}")
+                logging.info(f"UNSKIP - Plex PUT response body: {put_resp.text}")
+                
                 if put_resp.status_code != 200:
                     raise HTTPException(status_code=500, detail=f"Failed to update Plex labels: {put_resp.status_code}")
                     
