@@ -13538,11 +13538,15 @@ async def unskip_asset(request: UnskipAssetRequest):
         server_token = ""
         
         if active_server == "plex":
-            server_url = (plex_part.get("PlexUrl") or "").rstrip("/")
-            server_token = plex_part.get("PlexToken") or ""
+            url_val = plex_part.get("PlexUrl") or config.get("PlexUrl") or ""
+            server_url = url_val.rstrip("/")
+            server_token = plex_part.get("PlexToken") or config.get("PlexToken") or ""
+            if not server_token and config.get("ApiPart"):
+                server_token = config.get("ApiPart").get("PlexToken") or ""
         else:
-            server_url = (jellyfin_part.get("JellyfinUrl") or "").rstrip("/")
-            server_token = jellyfin_part.get("JellyfinToken") or ""
+            url_val = jellyfin_part.get("JellyfinUrl") or config.get("JellyfinUrl") or ""
+            server_url = url_val.rstrip("/")
+            server_token = jellyfin_part.get("JellyfinToken") or config.get("JellyfinToken") or ""
             
         if not server_url or not server_token:
             raise HTTPException(status_code=400, detail=f"{active_server.capitalize()} credentials missing in Posterizarr UI configuration")
