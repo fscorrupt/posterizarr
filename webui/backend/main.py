@@ -13466,7 +13466,7 @@ async def get_skipped_assets():
             
             try:
                 # Plex
-                cursor.execute("SELECT title, library_name, rating_key as item_id, 'movie/show' as type, 'plex' as server_type, root_foldername as rootfolder, poster_path, year, overview FROM plex_library_export WHERE labels LIKE '%skip_posterizarr%'")
+                cursor.execute("SELECT title, library_name, rating_key as item_id, 'movie/show' as type, 'plex' as server_type, root_foldername as rootfolder FROM plex_library_export WHERE labels LIKE '%skip_posterizarr%'")
                 for row in cursor.fetchall():
                     item = dict(row)
                     key = f"plex_{item['item_id']}"
@@ -13479,15 +13479,15 @@ async def get_skipped_assets():
                             "Type": item.get("type", "movie"),
                             "LibraryName": item.get("library_name", "Unknown"),
                             "Rootfolder": item.get("rootfolder", ""),
-                            "poster_path": item.get("poster_path", ""),
-                            "year": item.get("year", ""),
-                            "overview": item.get("overview", ""),
+                            "poster_path": "",
+                            "year": "",
+                            "overview": "",
                             "media_url": "", # We don't easily know Plex machine identifier for web links
                         })
                         existing_keys.add(key)
                         
                 # Jellyfin/Emby
-                cursor.execute("SELECT title, library_name, media_id as item_id, 'movie/show' as type, 'jellyfin/emby' as server_type, root_foldername as rootfolder, poster_path, year, overview FROM other_media_library_export WHERE labels LIKE '%skip_posterizarr%'")
+                cursor.execute("SELECT title, library_name, media_id as item_id, 'movie/show' as type, 'jellyfin/emby' as server_type, root_foldername as rootfolder FROM other_media_library_export WHERE labels LIKE '%skip_posterizarr%'")
                 for row in cursor.fetchall():
                     item = dict(row)
                     key = f"jellyfin_{item['item_id']}" 
@@ -13515,9 +13515,9 @@ async def get_skipped_assets():
                             "Type": item.get("type", "movie"),
                             "LibraryName": item.get("library_name", "Unknown"),
                             "Rootfolder": item.get("rootfolder", ""),
-                            "poster_path": item.get("poster_path", ""),
-                            "year": item.get("year", ""),
-                            "overview": item.get("overview", ""),
+                            "poster_path": "",
+                            "year": "",
+                            "overview": "",
                             "media_url": jellyfin_url,
                         })
                         existing_keys.add(key)
@@ -13534,6 +13534,31 @@ async def get_skipped_assets():
 from fastapi.responses import StreamingResponse
 import httpx
 
+def _get_media_server_credentials(server_type: str):
+    server_url = ""
+    server_token = ""
+    try:
+        import json
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                
+            if server_type.lower() == "plex":
+                plex_part = config.get("PlexPart") or {}
+                url_val = plex_part.get("PlexUrl") or config.get("PlexUrl") or ""
+                server_url = url_val.rstrip("/")
+                server_token = plex_part.get("PlexToken") or config.get("PlexToken") or ""
+                if not server_token and config.get("ApiPart"):
+                    server_token = config.get("ApiPart").get("PlexToken") or ""
+            else:
+                jellyfin_part = config.get("JellyfinPart") or {}
+                url_val = jellyfin_part.get("JellyfinUrl") or config.get("JellyfinUrl") or ""
+                server_url = url_val.rstrip("/")
+                server_token = jellyfin_part.get("JellyfinToken") or config.get("JellyfinToken") or ""
+    except Exception as e:
+        logger.error(f"Error loading credentials: {e}")
+    return server_url, server_token
+
 @app.get("/api/proxy/poster")
 async def get_proxy_poster(server_type: str, item_id: str):
     """Proxy endpoint to fetch poster images from media servers without exposing tokens or dealing with CORS"""
@@ -13547,17 +13572,11 @@ async def get_proxy_poster(server_type: str, item_id: str):
     try:
         if server_type.lower() == "plex":
             active_server = "plex"
-            from webui.backend.config_mapper import get_plex_settings
-            config_conn = sqlite3.connect(BASE_DIR / "database" / "config.db")
-            plex_settings = get_plex_settings(config_conn)
-            config_conn.close()
+            server_url, server_token = _get_media_server_credentials("plex")
             
-            if not plex_settings or not plex_settings.get("URL") or not plex_settings.get("Token"):
+            if not server_url or not server_token:
                 raise HTTPException(status_code=400, detail="Plex credentials missing")
                 
-            server_url = plex_settings["URL"].rstrip('/')
-            server_token = plex_settings["Token"]
-            
             import urllib.parse
             safe_item_id = urllib.parse.quote(item_id, safe="")
             
@@ -13567,17 +13586,11 @@ async def get_proxy_poster(server_type: str, item_id: str):
             
         elif server_type.lower() in ["jellyfin", "emby", "jellyfin/emby"]:
             active_server = "jellyfin"
-            from webui.backend.config_mapper import get_jfemby_settings
-            config_conn = sqlite3.connect(BASE_DIR / "database" / "config.db")
-            jf_settings = get_jfemby_settings(config_conn)
-            config_conn.close()
+            server_url, server_token = _get_media_server_credentials("jellyfin")
             
-            if not jf_settings or not jf_settings.get("URL") or not jf_settings.get("Token"):
+            if not server_url or not server_token:
                 raise HTTPException(status_code=400, detail="Jellyfin credentials missing")
                 
-            server_url = jf_settings["URL"].rstrip('/')
-            server_token = jf_settings["Token"]
-            
             import urllib.parse
             safe_item_id = urllib.parse.quote(item_id, safe="")
             
@@ -13614,11 +13627,8 @@ async def refresh_skipped_metadata_background(ids: List[str]):
         
     try:
         # Get active server credentials
-        from webui.backend.config_mapper import get_plex_settings, get_jfemby_settings
-        config_conn = sqlite3.connect(BASE_DIR / "database" / "config.db")
-        plex_settings = get_plex_settings(config_conn)
-        jf_settings = get_jfemby_settings(config_conn)
-        config_conn.close()
+        plex_url, plex_token = _get_media_server_credentials("plex")
+        jf_url, jf_token = _get_media_server_credentials("jellyfin")
         
         # Get all skipped items from local DB
         rows = db.get_skipped_items()
@@ -13639,9 +13649,9 @@ async def refresh_skipped_metadata_background(ids: List[str]):
                     continue
                     
                 # Fetch from Plex
-                if server_type == "plex" and plex_settings.get("URL") and plex_settings.get("Token"):
-                    server_url = plex_settings["URL"].rstrip('/')
-                    headers = {"X-Plex-Token": plex_settings["Token"], "Accept": "application/json"}
+                if server_type == "plex" and plex_url and plex_token:
+                    server_url = plex_url
+                    headers = {"X-Plex-Token": plex_token, "Accept": "application/json"}
                     
                     try:
                         import urllib.parse
@@ -13661,9 +13671,9 @@ async def refresh_skipped_metadata_background(ids: List[str]):
                         logger.error(f"Error refreshing Plex metadata for skipped item {item_id}: {e}")
                         
                 # Fetch from Jellyfin
-                elif server_type in ["jellyfin", "emby", "jellyfin/emby"] and jf_settings.get("URL") and jf_settings.get("Token"):
-                    server_url = jf_settings["URL"].rstrip('/')
-                    headers = {"Authorization": f'MediaBrowser Token="{jf_settings["Token"]}"', "Accept": "application/json"}
+                elif server_type in ["jellyfin", "emby", "jellyfin/emby"] and jf_url and jf_token:
+                    server_url = jf_url
+                    headers = {"Authorization": f'MediaBrowser Token="{jf_token}"', "Accept": "application/json"}
                     
                     try:
                         import urllib.parse
