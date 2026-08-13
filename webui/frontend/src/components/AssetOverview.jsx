@@ -315,6 +315,11 @@ const AssetRow = React.memo(
                 <span className="bg-theme-card px-2 py-0.5 rounded">
                   {asset.Type || "Unknown"}
                 </span>
+                <span className="hidden sm:inline">•</span>
+                <span className="font-medium">{t("assetOverview.library", { defaultValue: "Library" })}:</span>
+                <span className="bg-theme-card px-2 py-0.5 rounded">
+                  {asset.LibraryName || "Unknown"}
+                </span>
                 {/* Language, Source, Fav Provider */}
                 {!isSkippedView && (
                   <>

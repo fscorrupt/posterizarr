@@ -643,7 +643,7 @@ class ImageChoicesDB:
                     conn.close()
                 return False
 
-    def update_skipped_item_metadata(self, item_id: int, poster_path: str, year: str, overview: str, media_url: str) -> bool:
+    def update_skipped_item_metadata(self, item_id: int, poster_path: str, year: str, overview: str, media_url: str, asset_type: str) -> bool:
         """Update metadata for a skipped item"""
         with self.lock:
             try:
@@ -651,10 +651,10 @@ class ImageChoicesDB:
                 cursor = conn.cursor()
                 query = """
                     UPDATE skipped_items
-                    SET poster_path = ?, year = ?, overview = ?, media_url = ?
+                    SET poster_path = ?, year = ?, overview = ?, media_url = ?, Type = ?
                     WHERE id = ?
                 """
-                cursor.execute(query, (poster_path, year, overview, media_url, item_id))
+                cursor.execute(query, (poster_path, year, overview, media_url, asset_type, item_id))
                 updated = cursor.rowcount > 0
                 conn.commit()
                 conn.close()

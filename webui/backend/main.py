@@ -13680,13 +13680,23 @@ async def refresh_skipped_metadata_background(ids: List[str]):
                         metadata_url = f"{server_url}/library/metadata/{safe_item_id}"
                         resp = await client.get(metadata_url, headers=headers)
                         if resp.status_code == 200:
-                            meta = resp.json().get("MediaContainer", {}).get("Metadata", [])
+                            meta_container = resp.json().get("MediaContainer", {})
+                            machine_id = meta_container.get("machineIdentifier", "")
+                            meta = meta_container.get("Metadata", [])
+                            
                             if meta:
                                 m = meta[0]
                                 poster_path = m.get("thumb", "")
                                 year = str(m.get("year", ""))
                                 overview = m.get("summary", "")
-                                db.update_skipped_item_metadata(db_id, poster_path, year, overview, "")
+                                asset_type = m.get("type", "movie")
+                                
+                                media_url = ""
+                                if machine_id:
+                                    # Construct Plex Web app URL for this specific server and item
+                                    media_url = f"https://app.plex.tv/desktop/#!/server/{machine_id}/details?key=%2Flibrary%2Fmetadata%2F{item_id}"
+                                    
+                                db.update_skipped_item_metadata(db_id, poster_path, year, overview, media_url, asset_type)
                     except Exception as e:
                         logger.error(f"Error refreshing Plex metadata for skipped item {item_id}: {e}")
 
@@ -13709,7 +13719,8 @@ async def refresh_skipped_metadata_background(ids: List[str]):
                             if "Primary" in m.get("ImageTags", {}):
                                 poster_path = f"/Items/{safe_item_id}/Images/Primary?tag={m['ImageTags']['Primary']}"
                             media_url = f"{server_url}/web/index.html#!/details?id={safe_item_id}"
-                            db.update_skipped_item_metadata(db_id, poster_path, year, overview, media_url)
+                            asset_type = m.get("Type", "Movie").lower()
+                            db.update_skipped_item_metadata(db_id, poster_path, year, overview, media_url, asset_type)
                     except Exception as e:
                         logger.error(f"Error refreshing Jellyfin metadata for skipped item {item_id}: {e}")
 
