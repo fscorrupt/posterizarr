@@ -13610,6 +13610,8 @@ async def get_proxy_poster(server_type: str, item_id: str):
                 media_type=resp.headers.get("content-type", "image/jpeg")
             )
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in proxy poster: {e}")
         raise HTTPException(status_code=500, detail="Failed to proxy image")
@@ -13824,11 +13826,17 @@ async def unskip_asset(request: UnskipAssetRequest):
             if put_resp.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Failed to update Plex labels: {put_resp.status_code}")
                 
-            # Remove label from local DB to instantly update the UI without waiting for a sync
+            # Remove label from media_export.db to instantly update the UI without waiting for a sync
             try:
-                db.cursor.execute("UPDATE plex_library_export SET labels = REPLACE(REPLACE(labels, 'skip_posterizarr,', ''), 'skip_posterizarr', '') WHERE rating_key = ?", (item_id,))
-                db.cursor.execute("UPDATE plex_library_export SET labels = REPLACE(REPLACE(labels, 'Skip_posterizarr,', ''), 'Skip_posterizarr', '') WHERE rating_key = ?", (item_id,))
-                db.conn.commit()
+                import sqlite3
+                media_export_path = BASE_DIR / "database" / "media_export.db"
+                if media_export_path.exists():
+                    me_conn = sqlite3.connect(media_export_path)
+                    me_cursor = me_conn.cursor()
+                    me_cursor.execute("UPDATE plex_library_export SET labels = REPLACE(REPLACE(labels, 'skip_posterizarr,', ''), 'skip_posterizarr', '') WHERE rating_key = ?", (item_id,))
+                    me_cursor.execute("UPDATE plex_library_export SET labels = REPLACE(REPLACE(labels, 'Skip_posterizarr,', ''), 'Skip_posterizarr', '') WHERE rating_key = ?", (item_id,))
+                    me_conn.commit()
+                    me_conn.close()
             except Exception:
                 pass
                     
@@ -13854,11 +13862,17 @@ async def unskip_asset(request: UnskipAssetRequest):
                 if post_resp.status_code not in (200, 204):
                     raise HTTPException(status_code=500, detail=f"Failed to update tags: {post_resp.status_code}")
                     
-                # Remove label from local DB to instantly update the UI without waiting for a sync
+                # Remove label from media_export.db to instantly update the UI without waiting for a sync
                 try:
-                    db.cursor.execute("UPDATE other_media_library_export SET labels = REPLACE(REPLACE(labels, 'skip_posterizarr,', ''), 'skip_posterizarr', '') WHERE media_id = ?", (item_id,))
-                    db.cursor.execute("UPDATE other_media_library_export SET labels = REPLACE(REPLACE(labels, 'Skip_posterizarr,', ''), 'Skip_posterizarr', '') WHERE media_id = ?", (item_id,))
-                    db.conn.commit()
+                    import sqlite3
+                    media_export_path = BASE_DIR / "database" / "media_export.db"
+                    if media_export_path.exists():
+                        me_conn = sqlite3.connect(media_export_path)
+                        me_cursor = me_conn.cursor()
+                        me_cursor.execute("UPDATE other_media_library_export SET labels = REPLACE(REPLACE(labels, 'skip_posterizarr,', ''), 'skip_posterizarr', '') WHERE media_id = ?", (item_id,))
+                        me_cursor.execute("UPDATE other_media_library_export SET labels = REPLACE(REPLACE(labels, 'Skip_posterizarr,', ''), 'Skip_posterizarr', '') WHERE media_id = ?", (item_id,))
+                        me_conn.commit()
+                        me_conn.close()
                 except Exception:
                     pass
                     

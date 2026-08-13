@@ -455,13 +455,6 @@ const AssetRow = React.memo(
                   <RefreshCw className="w-4 h-4 text-theme-primary" />
                   {t("assetOverview.unskipConfirm", { defaultValue: "Unskip" })}
                 </button>
-                <button
-                  onClick={() => onDelete(asset)}
-                  className="flex items-center justify-center p-2 bg-red-900/50 hover:bg-red-900/80 border border-red-500/30 hover:border-red-500/50 rounded-lg text-red-400 transition-all whitespace-nowrap shadow-sm"
-                  title={t("assetOverview.deleteAssetTooltip")}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
               </>
             ) : isResolved ? (
               // Resolved Asset Actions
