@@ -680,6 +680,15 @@ const AssetOverview = () => {
     fetchData();
   }, [t, activeTab]); // Added t and activeTab dependencies
 
+  // Reset filters when changing tabs
+  useEffect(() => {
+    setSelectedCategory("All Categories");
+    setSelectedStatus("Unresolved");
+    setSelectedType("All Types");
+    setSelectedLibrary("All Libraries");
+    setSearchQuery("");
+  }, [activeTab]);
+
   // Clear selection and reset page when filters change
   useEffect(() => {
     setSelectedAssetIds(new Set());
