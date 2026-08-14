@@ -12134,7 +12134,7 @@ async def upload_asset_replacement(
 
                     # Handle TitleCards (S01E01.jpg, etc.)
                     elif episode_number and episode_title:
-                        command.extend(["-TitleCards"])
+                        command.extend(["-TitleCard"])
                         command.extend(["-EpisodeNumber", sanitize_command_arg(episode_number)])
                         command.extend(["-EPTitleName", sanitize_command_arg(episode_title)])
 
