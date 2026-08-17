@@ -62,6 +62,15 @@
         }
         ```
 
+    - `TmdbLanguageMappings`: Map standard language codes to specific TMDB regional locale codes. For example, if you prefer European French posters, you can map `fr` to `fr-FR` so that TMDB queries specifically target that region, while Fanart and TVDB continue to use the standard `fr` code.
+        ```json
+        "TmdbLanguageMappings": {
+          "fr": "fr-FR",
+          "de": "de-DE",
+          "es": "es-ES"
+        }
+        ```
+
 
     #### PlexPart
 
