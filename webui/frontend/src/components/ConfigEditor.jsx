@@ -205,7 +205,8 @@ function ConfigEditor() {
 
     // APIs
     if (k.includes("provider") || k.includes("sorting")) return "Preferences";
-    if (k.includes("languageorder")) return "Lang Preferences";
+    if (k.includes("languageorder") || k.includes("tmdblanguagemappings")) return "Lang Preferences";
+
 
     // Notifications
     const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl"];
@@ -1027,7 +1028,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                                     <Trash2 className="w-5 h-5" />
                                 </button>
                             </div>
-                            
+
                             <div className="pt-3 border-t border-theme/50">
                                 <LanguageOrderSelector
                                     value={v?.PreferredLanguageOrder || []}
