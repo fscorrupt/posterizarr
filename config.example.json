@@ -45,6 +45,8 @@
       "en",
       "de"
     ],
+    "TmdbLanguageMappings": {
+    },
     "LibraryLanguageOverrides": {
       "Beispiel-Bibliothek": {
         "PreferredLanguageOrder": [

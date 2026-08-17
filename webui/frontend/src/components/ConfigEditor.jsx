@@ -605,6 +605,7 @@ function ConfigEditor() {
     if (key === "SymbolsToKeepOnNewLine" && !getValue("NewLineOnSpecificSymbols")) return true;
     if (key === "NewLineSymbols" && !getValue("NewLineOnSpecificSymbols")) return true;
     if (key === "NewLineWords" && !getValue("NewLineOnSpecificWords")) return true;
+    if (key === "TmdbLanguageMappings") return false; // Show it unconditionally or based on TMDB provider
     if (key === "TitleCardSkipWords" && !getValue("SkipTBA")) return true;
 
     // Logo Logic
@@ -1068,7 +1069,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                 </div>
             );
         }
-        if (settingKey === "NewLineWords") {
+        if (settingKey === "NewLineWords" || settingKey === "TmdbLanguageMappings") {
             const dictValue = value && typeof value === 'object' ? value : {};
 
             const handleUpdatePair = (oldKey, newKey, newVal) => {
@@ -1087,9 +1088,15 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
 
             const handleAddPair = () => {
-                const newDict = { ...dictValue, "NEW_WORD": "NEW-\\nWORD" };
+                const defaultKey = settingKey === "TmdbLanguageMappings" ? "fr" : "NEW_WORD";
+                const defaultValue = settingKey === "TmdbLanguageMappings" ? "fr-FR" : "NEW-\\nWORD";
+                const newDict = { ...dictValue, [defaultKey]: defaultValue };
                 updateValue(fieldKey, newDict);
             };
+
+            const placeholderKey = settingKey === "TmdbLanguageMappings" ? "fr" : "Word";
+            const placeholderValue = settingKey === "TmdbLanguageMappings" ? "fr-FR" : "Replacement";
+            const buttonText = settingKey === "TmdbLanguageMappings" ? "Add Language Mapping" : "Add Word Mapping";
 
             return (
                 <div className="space-y-2">
@@ -1098,7 +1105,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                             <input
                                 className={`${commonInputClass} font-mono text-xs`}
                                 value={k}
-                                placeholder="Word"
+                                placeholder={placeholderKey}
                                 onChange={(e) => handleUpdatePair(k, e.target.value, v)}
                                 disabled={disabled}
                             />
@@ -1106,7 +1113,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                             <textarea
                                 className={`${commonInputClass} font-mono text-xs h-[42px] min-h-[42px] resize-none`}
                                 value={v}
-                                placeholder="Replacement"
+                                placeholder={placeholderValue}
                                 onChange={(e) => handleUpdatePair(k, k, e.target.value)}
                                 disabled={disabled}
                             />
@@ -1124,7 +1131,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                         className="w-full py-2 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-theme-primary transition-all flex items-center justify-center gap-2 text-sm"
                         disabled={disabled}
                     >
-                        <Plus className="w-4 h-4" /> Add Word Mapping
+                        <Plus className="w-4 h-4" /> {buttonText}
                     </button>
                 </div>
             );

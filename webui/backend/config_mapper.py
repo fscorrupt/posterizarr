@@ -604,6 +604,7 @@ UI_GROUPS = {
         "PreferredTCLanguageOrder",
         "LogoLanguageOrder",
         "LibraryLanguageOverrides",
+        "TmdbLanguageMappings",
         "SendNotification",
         "Discord",
         "AppriseUrl",
@@ -628,6 +629,7 @@ UI_GROUPS = {
         "NewLineSymbols",
         "SymbolsToKeepOnNewLine",
         "NewLineOnSpecificWords",
+        "LibraryLanguageOverrides",
         "NewLineWords",
         "RTLFont",
         "SkipAddText",
@@ -1037,6 +1039,7 @@ DISPLAY_NAMES = {
     "PreferredTCLanguageOrder": "TitleCard Language Order",
     "LogoLanguageOrder": "Logo Language Order",
     "LibraryLanguageOverrides": "Per-Library Language Overrides",
+    "TmdbLanguageMappings": "TMDB Language Mappings",
     # Image Filters
     "WidthHeightFilter": "Width/Height Filter",
     "PosterMinWidth": "Poster Min Width",

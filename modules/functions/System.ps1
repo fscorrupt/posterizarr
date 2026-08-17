@@ -534,7 +534,7 @@ function Output-ConfigJson {
                 if ($parsedBlueprints) {
                     $bpCount = @($parsedBlueprints).Count
                     Write-Entry -Subtext "$indent$($prop.Name): <$bpCount custom blueprint(s) loaded>" -Path $global:configLogging -Color Cyan -log Info
-                    
+
                     foreach ($bp in $parsedBlueprints) {
                         $bpName = if ($bp.customTitle) { $bp.customTitle } else { $bp.id }
                         Write-Entry -Subtext "$indent  - Blueprint: $bpName" -Path $global:configLogging -Color Yellow -log Info
@@ -599,7 +599,24 @@ function Initialize-LanguageSettings {
     Set-Variable -Name $SettingName -Scope Global -Value $validLangs -Force
 
     # Derived variants
-    Set-Variable -Name "${SettingName}TMDB"   -Scope Global -Value $validLangs
+    $tmdbLangs = @()
+    foreach ($lang in $validLangs) {
+        $mappedLang = $null
+        if ($null -ne $global:TmdbLanguageMappings) {
+            if ($global:TmdbLanguageMappings -is [System.Collections.IDictionary]) {
+                $mappedLang = $global:TmdbLanguageMappings[$lang]
+            } else {
+                $mappedLang = $global:TmdbLanguageMappings.$lang
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($mappedLang)) {
+            $tmdbLangs += $mappedLang
+        } else {
+            $tmdbLangs += $lang
+        }
+    }
+    Set-Variable -Name "${SettingName}TMDB"   -Scope Global -Value $tmdbLangs
     Set-Variable -Name "${SettingName}Fanart" -Scope Global -Value ($validLangs -replace '^xx$', '00')
     Set-Variable -Name "${SettingName}TVDB"   -Scope Global -Value ($validLangs -replace '^xx$', 'null')
 
@@ -639,13 +656,12 @@ function Set-LibraryLanguageOverride {
     # config.json, but crossing into a -Parallel runspace via $using: deserializes
     # it as a Hashtable instead - handle both shapes rather than assuming one.
     $override = $null
-    if ($global:LibraryLanguageOverrides -is [System.Collections.IDictionary]) {
-        if ($global:LibraryLanguageOverrides.Contains($LibraryName)) {
+    if ($null -ne $global:LibraryLanguageOverrides) {
+        if ($global:LibraryLanguageOverrides -is [System.Collections.IDictionary]) {
             $override = $global:LibraryLanguageOverrides[$LibraryName]
+        } else {
+            $override = $global:LibraryLanguageOverrides.$LibraryName
         }
-    }
-    elseif ($global:LibraryLanguageOverrides -and ($global:LibraryLanguageOverrides.PSObject.Properties.Name -contains $LibraryName)) {
-        $override = $global:LibraryLanguageOverrides.$LibraryName
     }
 
     if (-not $override) {
@@ -657,7 +673,7 @@ function Set-LibraryLanguageOverride {
     }
     else {
         $order = if ($override.PreferredLanguageOrder) { $override.PreferredLanguageOrder } else { $global:DefaultPreferredLanguageOrder }
-        
+
         $applyToPoster = if ($null -ne $override.ApplyToPoster) { [bool]$override.ApplyToPoster } else { $true }
         $applyToSeason = if ($null -ne $override.ApplyToSeason) { [bool]$override.ApplyToSeason } else { $true }
         $applyToBackground = if ($null -ne $override.ApplyToBackground) { [bool]$override.ApplyToBackground } else { $true }
@@ -679,6 +695,7 @@ function Set-LibraryLanguageOverride {
     Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder"     -Label "Season"
     Initialize-LanguageSettings -SettingName "PreferredTCLanguageOrder"         -Label "TC"
     Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background"
+    Initialize-LanguageSettings -SettingName "LogoLanguageOrder"                -Label "Logo"
 }
 function Test-PathPermissions {
     param (
