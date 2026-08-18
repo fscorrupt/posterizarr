@@ -1202,13 +1202,11 @@ function CheckJson {
         }
     }
     catch [System.Net.WebException] {
-        Write-Entry -Message "Failed to download the default configuration JSON file from the URL." -Path $global:configLogging -Color Red -log Error
-        HandleScriptExit -Message "Config.json download failed."
+        Write-Entry -Message "Failed to download the default configuration JSON file from the URL. Config check skipped." -Path $global:configLogging -Color Yellow -log Warning
     }
     catch {
-        Write-Entry -Message "An unexpected error occurred: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-        # Clear Running File
-        HandleScriptExit -Message "$($_.Exception.Message)"
+        Write-Entry -Message "An unexpected error occurred during config check: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+        Write-Entry -Subtext "Proceeding with existing configuration..." -Path $global:configLogging -Color Yellow -log Info
     }
 }
 function CheckJsonPaths {

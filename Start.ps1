@@ -544,7 +544,7 @@ function CheckJson {
     }
     catch {
         Write-Host "An unexpected error occurred during config check: $($_.Exception.Message)" -ForegroundColor Red
-        Exit
+        Write-Host "Proceeding with existing configuration..." -ForegroundColor Yellow
     }
 }
 function Ensure-WebUIConfig {
