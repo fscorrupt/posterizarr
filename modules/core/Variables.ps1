@@ -264,7 +264,7 @@ $global:FavProvider = $config.ApiPart.FavProvider.ToUpper()
 $global:OverrideProviderOrder = if ($null -ne $config.ApiPart.OverrideProviderOrder) { $config.ApiPart.OverrideProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
 $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.ApiPart.ProviderOrder } else { @("TMDB", "TVDB", "Fanart", "Plex") }
 if ($global:ProviderOrder) {
-    $global:ProviderOrder = $global:ProviderOrder | ForEach-Object { $_.ToUpper() }
+    $global:ProviderOrder = @($global:ProviderOrder | ForEach-Object { $_.ToUpper() })
 }
 $global:TMDBVoteSorting = "$($config.ApiPart.tmdb_vote_sorting)".ToLower()
 if (!$global:TMDBVoteSorting) {
