@@ -677,10 +677,12 @@ function Set-LibraryLanguageOverride {
         $applyToPoster = if ($null -ne $override.ApplyToPoster) { [bool]$override.ApplyToPoster } else { $true }
         $applyToSeason = if ($null -ne $override.ApplyToSeason) { [bool]$override.ApplyToSeason } else { $true }
         $applyToBackground = if ($null -ne $override.ApplyToBackground) { [bool]$override.ApplyToBackground } else { $true }
+        $applyToLogo = if ($null -ne $override.ApplyToLogo) { [bool]$override.ApplyToLogo } else { $true }
 
         $posterOrder = if ($applyToPoster) { $order } else { $global:DefaultPreferredLanguageOrder }
         $seasonOrder = if ($applyToSeason) { $order } else { $global:DefaultPreferredSeasonLanguageOrder }
         $backgroundOrder = if ($applyToBackground) { $order } else { $global:DefaultPreferredBackgroundLanguageOrder }
+        $logoOrder = if ($applyToLogo) { $order } else { $global:DefaultLogoLanguageOrder }
 
         $tcOrder = if ($order -and $order[0] -eq 'xx') { $order } else { @('xx') + $order }
 
@@ -688,7 +690,7 @@ function Set-LibraryLanguageOverride {
         Set-Variable -Name "PreferredSeasonLanguageOrder" -Scope Global -Value $seasonOrder
         Set-Variable -Name "PreferredTCLanguageOrder" -Scope Global -Value $tcOrder
         Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $backgroundOrder
-        Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $order
+        Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $logoOrder
     }
 
     Initialize-LanguageSettings -SettingName "PreferredLanguageOrder"           -Label "Poster"
@@ -1176,6 +1178,10 @@ function CheckJson {
                         }
                         if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToBackground")) {
                             $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToBackground" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToLogo")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToLogo" -Value $true
                             $modifiedLib = $true
                         }
                         if ($modifiedLib) {

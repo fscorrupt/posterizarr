@@ -994,7 +994,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
 
             const handleAddPair = () => {
-                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"], ApplyToPoster: true, ApplyToSeason: true, ApplyToBackground: true } };
+                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"], ApplyToPoster: true, ApplyToSeason: true, ApplyToBackground: true, ApplyToLogo: true } };
                 updateValue(fieldKey, newDict);
             };
 
@@ -1036,7 +1036,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                                     helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
                                 />
                                 <div className="flex gap-4 mt-3 pl-1">
-                                    {["Poster", "Season", "Background"].map((type) => {
+                                    {["Poster", "Season", "Background", "Logo"].map((type) => {
                                         const isChecked = v?.[`ApplyTo${type}`] ?? true;
                                         return (
                                             <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">

@@ -6449,13 +6449,14 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
     - Collection: Returns collection posters (only 'xx' - no language/international)
     """
 
-    def filter_and_sort_posters_by_language(posters_list, preferred_languages):
+    def filter_and_sort_posters_by_language(posters_list, preferred_languages, tmdb_language_mappings=None):
         """
-        Filter and sort posters based on preferred language order.
+        Filter and sort posters based on preferred language order, applying TMDB mappings.
 
         Args:
             posters_list: List of poster dicts from TMDB
             preferred_languages: List of language codes in order of preference (e.g., ['de', 'en', 'xx'])
+            tmdb_language_mappings: Dict mapping local language codes to TMDB locales (e.g., {'fr': 'fr-FR'})
 
         Returns:
             Filtered and sorted list of posters
@@ -6463,27 +6464,39 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
         if not preferred_languages:
             return posters_list
 
-        # Normalize language codes to lowercase
-        preferred_languages = [
-            lang.lower().strip() for lang in preferred_languages if lang
-        ]
+        tmdb_language_mappings = tmdb_language_mappings or {}
+
+        # Normalize language codes to lowercase and apply mapping
+        mapped_preferred_languages = []
+        for lang in preferred_languages:
+            if not lang:
+                continue
+            lang = lang.lower().strip()
+            # Try to get mapping (case-insensitive for keys), fallback to original lang
+            mapped_lang = None
+            for key, val in tmdb_language_mappings.items():
+                if key.lower().strip() == lang:
+                    mapped_lang = val.lower().strip()
+                    break
+            
+            mapped_preferred_languages.append(mapped_lang if mapped_lang else lang)
 
         # Group posters by language
-        language_groups = {lang: [] for lang in preferred_languages}
+        language_groups = {lang: [] for lang in mapped_preferred_languages}
         language_groups["other"] = []  # For languages not in preferences
 
         for poster in posters_list:
             poster_lang = (poster.get("iso_639_1") or "xx").lower()
 
             # Check if poster language matches any preferred language
-            if poster_lang in preferred_languages:
+            if poster_lang in mapped_preferred_languages:
                 language_groups[poster_lang].append(poster)
             else:
                 language_groups["other"].append(poster)
 
         # Build result list in order of preference
         result = []
-        for lang in preferred_languages:
+        for lang in mapped_preferred_languages:
             result.extend(language_groups[lang])
 
         # Optionally add other languages at the end (commented out to only show preferred)
@@ -6513,6 +6526,7 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
             preferred_tc_language_order = flat_config.get(
                 "PreferredTCLanguageOrder", ""
             )
+            tmdb_language_mappings = flat_config.get("TmdbLanguageMappings", {})
         else:
             # Fallback: Try both structures
             tmdb_token = grouped_config.get("tmdbtoken")
@@ -6530,6 +6544,7 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
             preferred_tc_language_order = grouped_config.get(
                 "PreferredTCLanguageOrder", ""
             )
+            tmdb_language_mappings = grouped_config.get("TmdbLanguageMappings", {})
 
             # If not found at root, try in ApiPart
             if not preferred_language_order and isinstance(
@@ -6555,6 +6570,12 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
             ):
                 preferred_tc_language_order = grouped_config["ApiPart"].get(
                     "PreferredTCLanguageOrder", ""
+                )
+            if not tmdb_language_mappings and isinstance(
+                grouped_config.get("ApiPart"), dict
+            ):
+                tmdb_language_mappings = grouped_config["ApiPart"].get(
+                    "TmdbLanguageMappings", {}
                 )
 
         # Parse language preferences (handle both string and list formats)
@@ -6753,7 +6774,7 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
 
                     # Filter and sort by PreferredTCLanguageOrder
                     filtered_stills = filter_and_sort_posters_by_language(
-                        stills, tc_language_order_list
+                        stills, tc_language_order_list, tmdb_language_mappings
                     )
 
                     logger.info(
@@ -6817,7 +6838,7 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
 
                     # Filter and sort by PreferredSeasonLanguageOrder
                     filtered_posters = filter_and_sort_posters_by_language(
-                        posters, season_language_order_list
+                        posters, season_language_order_list, tmdb_language_mappings
                     )
 
                     logger.info(
@@ -6868,11 +6889,11 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
                             "Background language order not configured, using standard poster language order"
                         )
                         filtered_backdrops = filter_and_sort_posters_by_language(
-                            backdrops, language_order_list
+                            backdrops, language_order_list, tmdb_language_mappings
                         )
                     else:
                         filtered_backdrops = filter_and_sort_posters_by_language(
-                            backdrops, background_language_order_list
+                            backdrops, background_language_order_list, tmdb_language_mappings
                         )
 
                     logger.info(
@@ -6925,7 +6946,7 @@ async def search_tmdb_posters(request: TMDBSearchRequest):
                     else:
                         # Standard posters: Filter and sort by PreferredLanguageOrder
                         filtered_posters = filter_and_sort_posters_by_language(
-                            posters, language_order_list
+                            posters, language_order_list, tmdb_language_mappings
                         )
                         logger.info(
                             f"Standard posters: {len(posters)} total, {len(filtered_posters)} after filtering by language preferences"
@@ -8628,6 +8649,8 @@ def _get_categorized_assets(config: dict) -> dict:
     try:
         # Check ApiPart for PreferredLanguageOrder
         api_part = config.get("ApiPart", {})
+        tmdb_language_mappings = api_part.get("TmdbLanguageMappings", {})
+
         lang_order = api_part.get("PreferredLanguageOrder", [])
         if lang_order and len(lang_order) > 0:
             primary_language = lang_order[0]
@@ -8775,7 +8798,18 @@ def _get_categorized_assets(config: dict) -> dict:
                 if target_primary_lang.lower() == "textless"
                 else target_primary_lang.lower()
             )
-            if lang_normalized != primary_normalized:
+            # Apply mapping to primary if it exists
+            mapped_primary = None
+            for key, val in tmdb_language_mappings.items():
+                if key.lower().strip() == primary_normalized:
+                    mapped_primary = val.lower().strip()
+                    break
+            
+            allowed_primary = [primary_normalized]
+            if mapped_primary:
+                allowed_primary.append(mapped_primary)
+
+            if lang_normalized not in allowed_primary:
                 categories["non_primary_lang"].append(record_dict)
                 has_issue = True
         elif language and not target_primary_lang:
@@ -10619,6 +10653,9 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
             preferred_logo_language_order = flat_config.get(
                 "LogoLanguageOrder", ""
             )
+            tmdb_language_mappings = flat_config.get(
+                "TmdbLanguageMappings", {}
+            )
         else:
             api_part = grouped_config.get("ApiPart", {})
             tmdb_token = api_part.get("tmdbtoken", "")
@@ -10652,6 +10689,9 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
             preferred_logo_language_order = grouped_config.get(
                 "LogoLanguageOrder", ""
             )
+            tmdb_language_mappings = grouped_config.get(
+                "TmdbLanguageMappings", {}
+            )
 
             # If not found at root, try in ApiPart
             if not preferred_language_order and isinstance(
@@ -10684,6 +10724,12 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                 preferred_logo_language_order = grouped_config["ApiPart"].get(
                     "LogoLanguageOrder", ""
                 )
+            if not tmdb_language_mappings and isinstance(
+                grouped_config.get("ApiPart"), dict
+            ):
+                tmdb_language_mappings = grouped_config["ApiPart"].get(
+                    "TmdbLanguageMappings", {}
+                )
 
         # Parse language preferences (handle both string and list formats)
         def parse_language_order(value):
@@ -10713,14 +10759,15 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
         )
 
         # Helper function to filter and sort by language preference
-        def filter_and_sort_by_language(items_list, preferred_languages):
+        def filter_and_sort_by_language(items_list, preferred_languages, mappings=None):
             """
-            Sort items based on preferred language order.
+            Sort items based on preferred language order, applying TMDB mappings.
             Preferred languages come first in order, then all other languages.
 
             Args:
                 items_list: List of item dicts with 'language' field
                 preferred_languages: List of language codes in order of preference (e.g., ['de', 'en', 'xx'])
+                mappings: Dict mapping local language codes to API locales (e.g., {'fr': 'fr-FR'})
 
             Returns:
                 Sorted list of items (preferred languages first, then others)
@@ -10728,27 +10775,37 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
             if not preferred_languages or not items_list:
                 return items_list
 
-            # Normalize language codes to lowercase
-            preferred_languages = [
-                lang.lower().strip() for lang in preferred_languages if lang
-            ]
+            mappings = mappings or {}
+
+            # Normalize language codes to lowercase and apply mapping
+            mapped_preferred_languages = []
+            for lang in preferred_languages:
+                if not lang:
+                    continue
+                lang = lang.lower().strip()
+                mapped_lang = None
+                for key, val in mappings.items():
+                    if key.lower().strip() == lang:
+                        mapped_lang = val.lower().strip()
+                        break
+                mapped_preferred_languages.append(mapped_lang if mapped_lang else lang)
 
             # Group items by language
-            language_groups = {lang: [] for lang in preferred_languages}
+            language_groups = {lang: [] for lang in mapped_preferred_languages}
             language_groups["other"] = []  # For languages not in preferences
 
             for item in items_list:
                 item_lang = (item.get("language") or "xx").lower()
 
                 # Check if item language matches any preferred language
-                if item_lang in preferred_languages:
+                if item_lang in mapped_preferred_languages:
                     language_groups[item_lang].append(item)
                 else:
                     language_groups["other"].append(item)
 
             # Build result list in order of preference, then add other languages
             result = []
-            for lang in preferred_languages:
+            for lang in mapped_preferred_languages:
                 result.extend(language_groups[lang])
 
             # Add other languages at the end
@@ -11669,7 +11726,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
             # Filter season posters by PreferredSeasonLanguageOrder
             logger.info(f"   Using season language order: {season_language_order_list}")
             results["tmdb"] = filter_and_sort_by_language(
-                results["tmdb"], season_language_order_list
+                results["tmdb"], season_language_order_list, tmdb_language_mappings
             )
             results["tvdb"] = filter_and_sort_by_language(
                 results["tvdb"], season_language_order_list
@@ -11683,7 +11740,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                 f"   Using background language order: {background_language_order_list}"
             )
             results["tmdb"] = filter_and_sort_by_language(
-                results["tmdb"], background_language_order_list
+                results["tmdb"], background_language_order_list, tmdb_language_mappings
             )
             results["tvdb"] = filter_and_sort_by_language(
                 results["tvdb"], background_language_order_list
@@ -11697,7 +11754,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                 f"   Using titlecard language order: {tc_language_order_list}"
             )
             results["tmdb"] = filter_and_sort_by_language(
-                results["tmdb"], tc_language_order_list
+                results["tmdb"], tc_language_order_list, tmdb_language_mappings
             )
             results["tvdb"] = filter_and_sort_by_language(
                 results["tvdb"], tc_language_order_list
@@ -11711,7 +11768,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                 f"   Using logo language order: {logo_language_order_list}"
             )
             results["tmdb"] = filter_and_sort_by_language(
-                results["tmdb"], logo_language_order_list
+                results["tmdb"], logo_language_order_list, tmdb_language_mappings
             )
             results["tvdb"] = filter_and_sort_by_language(
                 results["tvdb"], logo_language_order_list
@@ -11723,7 +11780,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
             # Filter standard posters by PreferredLanguageOrder
             logger.info(f"   Using standard language order: {language_order_list}")
             results["tmdb"] = filter_and_sort_by_language(
-                results["tmdb"], language_order_list
+                results["tmdb"], language_order_list, tmdb_language_mappings
             )
             results["tvdb"] = filter_and_sort_by_language(
                 results["tvdb"], language_order_list

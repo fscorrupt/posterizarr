@@ -517,6 +517,10 @@ function CheckJson {
                             $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToBackground" -Value $true
                             $modifiedLib = $true
                         }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToLogo")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToLogo" -Value $true
+                            $modifiedLib = $true
+                        }
                         if ($modifiedLib) {
                             Write-Host "Adding missing Granular Asset overrides to Library '$libName'" -ForegroundColor Yellow
                             $AttributeChanged = $True
