@@ -71,6 +71,7 @@
 
     foreach ($SelectedLib in $LibrariesToProcess) {
         $LibraryName = $SelectedLib.title
+        Set-LibraryLanguageOverride -LibraryName $LibraryName
         Write-Entry -Message "Processing library: $LibraryName ($($SelectedLib.type))" -Path $global:configLogging -Color Cyan -log Info
 
         $PlexHeaders = @{}

@@ -10777,35 +10777,44 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
 
             mappings = mappings or {}
 
-            # Normalize language codes to lowercase and apply mapping
-            mapped_preferred_languages = []
+            # Normalize language codes to lowercase and build a set of acceptable codes for each preferred language
+            normalized_preferred_languages = []
+            lang_match_sets = {}
+
             for lang in preferred_languages:
                 if not lang:
                     continue
                 lang = lang.lower().strip()
-                mapped_lang = None
+                if lang not in normalized_preferred_languages:
+                    normalized_preferred_languages.append(lang)
+                    
+                match_set = {lang}
                 for key, val in mappings.items():
                     if key.lower().strip() == lang:
-                        mapped_lang = val.lower().strip()
-                        break
-                mapped_preferred_languages.append(mapped_lang if mapped_lang else lang)
+                        match_set.add(val.lower().strip())
+                lang_match_sets[lang] = match_set
 
             # Group items by language
-            language_groups = {lang: [] for lang in mapped_preferred_languages}
+            language_groups = {lang: [] for lang in normalized_preferred_languages}
             language_groups["other"] = []  # For languages not in preferences
 
             for item in items_list:
                 item_lang = (item.get("language") or "xx").lower()
 
                 # Check if item language matches any preferred language
-                if item_lang in mapped_preferred_languages:
-                    language_groups[item_lang].append(item)
-                else:
+                matched = False
+                for pref_lang in normalized_preferred_languages:
+                    if item_lang in lang_match_sets[pref_lang]:
+                        language_groups[pref_lang].append(item)
+                        matched = True
+                        break
+                
+                if not matched:
                     language_groups["other"].append(item)
 
             # Build result list in order of preference, then add other languages
             result = []
-            for lang in mapped_preferred_languages:
+            for lang in normalized_preferred_languages:
                 result.extend(language_groups[lang])
 
             # Add other languages at the end
