@@ -111,6 +111,9 @@ const LogoBrowser = () => {
   // Filtering & Pagination State
   const [searchTerm, setSearchTerm] = useState("");
   const [showMissingOnly, setShowMissingOnly] = useState(false);
+  const [knownPlexLogos, setKnownPlexLogos] = useState({});
+  const [checkingPlexLogos, setCheckingPlexLogos] = useState(false);
+  const [plexLogosChecked, setPlexLogosChecked] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
@@ -233,6 +236,8 @@ const LogoBrowser = () => {
   // Fetch items when library changes
   useEffect(() => {
     if (activeServer && activeLibrary) {
+      setPlexLogosChecked(false);
+      setKnownPlexLogos({});
       fetchItems();
     }
   }, [activeLibrary]);
@@ -323,7 +328,14 @@ const LogoBrowser = () => {
 
   // Derive Displayed Items
   const filteredItems = items.filter(item => {
-    if (showMissingOnly && item.hasLogo && item.logoUrl) return false;
+    if (showMissingOnly) {
+       let hasLogo = item.hasLogo;
+       // For Plex, override with knownPlexLogos if we checked it
+       if (activeServer?.id === 'plex' && plexLogosChecked) {
+           hasLogo = knownPlexLogos[item.ratingKey] ?? true;
+       }
+       if (hasLogo && item.logoUrl) return false;
+    }
     return item.title.toLowerCase().includes(searchTerm.toLowerCase());
   });
   
@@ -519,7 +531,34 @@ const LogoBrowser = () => {
                   )}
                 </div>
                 <button
-                    onClick={() => setShowMissingOnly(!showMissingOnly)}
+                    onClick={async () => {
+                        const newShowMissing = !showMissingOnly;
+                        setShowMissingOnly(newShowMissing);
+                        if (newShowMissing && activeServer?.id === 'plex' && !plexLogosChecked && !checkingPlexLogos) {
+                            setCheckingPlexLogos(true);
+                            try {
+                                const ratingKeys = items.map(i => i.ratingKey);
+                                const res = await fetch(`${API_URL}/media-server/check-logos`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        server_type: activeServer.id,
+                                        url: activeServer.url,
+                                        token: activeServer.token,
+                                        rating_keys: ratingKeys
+                                    })
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                    setKnownPlexLogos(data.results);
+                                    setPlexLogosChecked(true);
+                                }
+                            } catch (e) {
+                                console.error("Failed to check logos", e);
+                            }
+                            setCheckingPlexLogos(false);
+                        }
+                    }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border flex items-center justify-center gap-2 whitespace-nowrap transition-colors ${
                         showMissingOnly 
                         ? 'bg-theme-primary border-theme-primary text-white' 
@@ -536,7 +575,13 @@ const LogoBrowser = () => {
 
         {/* Scrollable Grid Area */}
         <div ref={gridContainerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-          {!activeServer || !activeLibrary ? (
+          {checkingPlexLogos ? (
+            <div className="flex flex-col items-center justify-center h-full text-theme-muted">
+              <Loader2 className="w-12 h-12 animate-spin mb-4 text-theme-primary" />
+              <p className="text-lg font-medium text-theme-text">Scanning library for missing logos...</p>
+              <p className="text-sm opacity-70 mt-1">This may take a few seconds.</p>
+            </div>
+          ) : !activeServer || !activeLibrary ? (
             <div className="flex flex-col items-center justify-center h-full text-theme-muted">
               <ImageIcon className="w-16 h-16 opacity-20 mb-4" />
               <p>Select a server and library to view logos.</p>

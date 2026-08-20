@@ -15534,6 +15534,43 @@ async def get_media_server_items(request: MediaServerItemsRequest):
         logger.error(f"Error fetching media server items: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
+class CheckLogosRequest(BaseModel):
+    server_type: str
+    url: str
+    token: str
+    rating_keys: List[str]
+
+@app.post("/api/media-server/check-logos")
+async def check_media_server_logos(request: CheckLogosRequest):
+    """Batch check if logos exist for a list of items on the media server (specifically Plex)"""
+    import asyncio
+    url = request.url.rstrip('/')
+    results = {}
+    
+    if request.server_type != "plex":
+        return {"success": True, "results": {}}
+        
+    headers = {"X-Plex-Token": request.token}
+    
+    async def check_key(client, key):
+        api_url = f"{url}/library/metadata/{key}/clearLogo"
+        try:
+            resp = await client.head(api_url, headers=headers)
+            return key, resp.status_code != 404
+        except Exception:
+            return key, False
+
+    async with httpx.AsyncClient(timeout=30.0, limits=httpx.Limits(max_connections=50)) as client:
+        for i in range(0, len(request.rating_keys), 100):
+            chunk = request.rating_keys[i:i+100]
+            tasks = [check_key(client, k) for k in chunk]
+            res = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in res:
+                if isinstance(r, tuple):
+                    results[r[0]] = r[1]
+                    
+    return {"success": True, "results": results}
+
 from fastapi.responses import StreamingResponse
 import urllib.parse
 
