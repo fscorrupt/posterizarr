@@ -104,16 +104,16 @@
       },
       "logoUpdater": {
         "title": "Logo-Updater",
-        "description": "Plex ClearLogos automatisch abrufen"
+        "description": "Plex/Jellyfin/Emby ClearLogos automatisch abrufen"
       }
     },
     "logoUpdater": {
       "title": "Logo-Updater-Modus",
-      "info": "Plex ClearLogo Auto-Updater",
-      "subtitle": "Dieser Modus scannt die ausgewählte Plex-Bibliothek nach Elementen, denen ein ClearLogo fehlt, ruft diese automatisch ab und lädt sie in Plex hoch.",
+      "info": "Plex/Jellyfin/Emby ClearLogo Auto-Updater",
+      "subtitle": "Dieser Modus scannt die ausgewählte Bibliothek nach Elementen, denen ein ClearLogo fehlt, ruft diese automatisch ab und lädt sie auf den Server hoch.",
       "selectLibrary": "Bibliothek auswählen",
       "forceReplace": "Vorhandene ersetzen erzwingen",
-      "forceReplaceDesc": "Logos überschreiben, auch wenn sie bereits in Plex vorhanden sind",
+      "forceReplaceDesc": "Logos überschreiben, auch wenn sie bereits auf dem Server vorhanden sind",
       "start": "Logo-Updater starten",
       "browse": "Durchsuchen"
     },

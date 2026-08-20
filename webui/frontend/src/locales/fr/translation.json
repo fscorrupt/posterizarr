@@ -104,16 +104,16 @@
       },
       "logoUpdater": {
         "title": "Mise à jour des logos",
-        "description": "Récupérer automatiquement les ClearLogos Plex"
+        "description": "Récupérer automatiquement les ClearLogos Plex/Jellyfin/Emby"
       }
     },
     "logoUpdater": {
       "title": "Mode Mise à jour des logos",
-      "info": "Mise à jour automatique ClearLogo Plex",
-      "subtitle": "Ce mode analyse la bibliothèque Plex sélectionnée pour trouver les éléments sans ClearLogo, les récupère automatiquement et les télécharge dans Plex.",
+      "info": "Mise à jour automatique ClearLogo Plex/Jellyfin/Emby",
+      "subtitle": "Ce mode analyse la bibliothèque sélectionnée pour trouver les éléments sans ClearLogo, les récupère automatiquement et les télécharge sur le serveur.",
       "selectLibrary": "Sélectionner la bibliothèque",
       "forceReplace": "Forcer le remplacement",
-      "forceReplaceDesc": "Remplacer les logos même s'ils sont déjà présents dans Plex",
+      "forceReplaceDesc": "Remplacer les logos même s'ils sont déjà présents sur le serveur",
       "start": "Lancer la mise à jour des logos",
       "browse": "Parcourir"
     },

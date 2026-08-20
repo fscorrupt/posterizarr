@@ -15677,12 +15677,25 @@ async def upload_media_server_logo(request: UploadLogoRequest):
         else:
             return {"success": False, "error": "Invalid logo URL."}
                 
-        # Run ImageMagick
+        # Convert to PNG and add metadata using Pillow
         try:
-            cmd = ["magick", temp_logo, "-set", "comment", "created with posterizarr", temp_logo]
-            subprocess.run(cmd, check=True, capture_output=True)
+            from PIL import Image, PngImagePlugin
+            import tempfile
+            
+            new_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+            with Image.open(temp_logo) as img:
+                metadata = PngImagePlugin.PngInfo()
+                metadata.add_text("comment", "created with posterizarr")
+                img.save(new_temp, "PNG", pnginfo=metadata)
+                
+            import os
+            os.unlink(temp_logo)
+            temp_logo = new_temp
+            
+        except ImportError:
+            logger.warning("Pillow is not installed, skipping image conversion.")
         except Exception as e:
-            logger.error(f"ImageMagick failed: {e}")
+            logger.error(f"Image processing failed: {e}")
                 
         # Upload Logo
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -15694,18 +15707,19 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 with open(temp_logo, "rb") as f:
                     upload_resp = await client.post(upload_url, headers=headers, content=f.read())
             else:
-                auth_header = "Authorization"
-                request.token = f'MediaBrowser Token="{request.token}"'
                 upload_url = f"{url}/Items/{safe_item_id}/Images/Logo"
-                headers = {auth_header: request.token, "Content-Type": "image/png"}
+                headers = {"X-Emby-Token": request.token, "Content-Type": "image/png"}
+                import base64
                 with open(temp_logo, "rb") as f:
-                    upload_resp = await client.post(upload_url, headers=headers, content=f.read())
+                    base64_str = base64.b64encode(f.read()).decode("utf-8")
+                    upload_resp = await client.post(upload_url, headers=headers, content=base64_str)
                     
+        import os
         os.unlink(temp_logo)
         
         if upload_resp.status_code in [200, 201, 204]:
             return {"success": True}
-        return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}"}
+        return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}, Body: {upload_resp.text}"}
         
     except Exception as e:
         logger.error(f"Error uploading logo: {e}", exc_info=True)

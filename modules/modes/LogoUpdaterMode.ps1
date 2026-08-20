@@ -171,6 +171,8 @@
                 $global:tvdbid = $item.ProviderIds.Tvdb
                 $global:imdbid = $item.ProviderIds.Imdb
                 $global:LogoUrl = $null
+                $global:UseClearlogo = 'true'
+                $global:UseClearart = 'false'
                 
                 if (-not $global:tmdbid -and -not $global:tvdbid -and -not $global:imdbid) {
                     Write-Entry -Subtext "[$title] Could not extract any IDs." -Path $global:configLogging -Color Yellow -log Warning
@@ -201,7 +203,8 @@
                         $uploadUri = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
                         Write-Entry -Subtext "[$title] Uploading Logo to Jellyfin/Emby..." -Path $global:configLogging -Color DarkMagenta -log Info
                         
-                        Invoke-RestMethod -Method Post -Uri $uploadUri -Headers $global:OtherMediaServerHeaders -InFile $tempLogo -ContentType "image/png"
+                        $base64Logo = [Convert]::ToBase64String([IO.File]::ReadAllBytes($tempLogo))
+                        Invoke-RestMethod -Method Post -Uri $uploadUri -Headers $global:OtherMediaServerHeaders -Body $base64Logo -ContentType "image/png"
                         Write-Entry -Subtext "[$title] Logo uploaded successfully!" -Path $global:configLogging -Color Green -log Info
                         $global:UploadCount = Increment-GlobalStat 'UploadCount'
                         
