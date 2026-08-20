@@ -97,7 +97,7 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
 
 const LogoBrowser = () => {
   const { t } = useTranslation();
-  const { showSuccess, showError, showWarning } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
 
   const [servers, setServers] = useState([]);
   const [activeServer, setActiveServer] = useState(null);
@@ -127,6 +127,7 @@ const LogoBrowser = () => {
 
   const [selectedItemForLogo, setSelectedItemForLogo] = useState(null);
   const [showLogoSearch, setShowLogoSearch] = useState(false);
+  const [updatedLogos, setUpdatedLogos] = useState({});
 
   // Setup click outside for sort dropdown
   useEffect(() => {
@@ -143,6 +144,8 @@ const LogoBrowser = () => {
     localStorage.setItem("logo-browser-image-size", imageSize.toString());
   }, [imageSize]);
 
+  const [appConfig, setAppConfig] = useState(null);
+
   // Fetch servers from config on mount
   useEffect(() => {
     fetchConfig();
@@ -155,14 +158,23 @@ const LogoBrowser = () => {
       
       const availableServers = [];
       const config = data.config || {};
-      const plexPart = config.PlexPart || {};
-      const jellyfinPart = config.JellyfinPart || {};
-      const embyPart = config.EmbyPart || {};
-      const apiPart = config.ApiPart || {};
+      setAppConfig({ ...config, using_flat_structure: data.using_flat_structure });
       
-      if (plexPart.UsePlex === "true") availableServers.push({ id: "plex", name: "Plex", url: plexPart.PlexUrl, token: apiPart.PlexToken });
-      if (jellyfinPart.UseJellyfin === "true") availableServers.push({ id: "jellyfin", name: "Jellyfin", url: jellyfinPart.JellyfinUrl, token: apiPart.JellyfinAPIKey });
-      if (embyPart.UseEmby === "true") availableServers.push({ id: "emby", name: "Emby", url: embyPart.EmbyUrl, token: apiPart.EmbyAPIKey });
+      const usePlex = data.using_flat_structure ? config.UsePlex : config.PlexPart?.UsePlex;
+      const useJellyfin = data.using_flat_structure ? config.UseJellyfin : config.JellyfinPart?.UseJellyfin;
+      const useEmby = data.using_flat_structure ? config.UseEmby : config.EmbyPart?.UseEmby;
+      
+      const plexUrl = data.using_flat_structure ? config.PlexUrl : config.PlexPart?.PlexUrl;
+      const jellyfinUrl = data.using_flat_structure ? config.JellyfinUrl : config.JellyfinPart?.JellyfinUrl;
+      const embyUrl = data.using_flat_structure ? config.EmbyUrl : config.EmbyPart?.EmbyUrl;
+      
+      const plexToken = data.using_flat_structure ? config.PlexToken : config.ApiPart?.PlexToken;
+      const jellyfinToken = data.using_flat_structure ? config.JellyfinAPIKey : config.ApiPart?.JellyfinAPIKey;
+      const embyToken = data.using_flat_structure ? config.EmbyAPIKey : config.ApiPart?.EmbyAPIKey;
+
+      if (String(usePlex) === "true") availableServers.push({ id: "plex", name: "Plex", url: plexUrl, token: plexToken });
+      if (String(useJellyfin) === "true") availableServers.push({ id: "jellyfin", name: "Jellyfin", url: jellyfinUrl, token: jellyfinToken });
+      if (String(useEmby) === "true") availableServers.push({ id: "emby", name: "Emby", url: embyUrl, token: embyToken });
       
       setServers(availableServers);
       if (availableServers.length > 0) {
@@ -175,10 +187,10 @@ const LogoBrowser = () => {
 
   // Fetch libraries when active server changes
   useEffect(() => {
-    if (activeServer) {
+    if (activeServer && appConfig) {
       fetchLibraries(activeServer);
     }
-  }, [activeServer]);
+  }, [activeServer, appConfig]);
 
   const fetchLibraries = async (server) => {
     try {
@@ -186,11 +198,30 @@ const LogoBrowser = () => {
       setActiveLibrary(null);
       setItems([]);
       
+      let exclusions = [];
+      if (appConfig) {
+        if (server.id === "plex") exclusions = appConfig.using_flat_structure ? (appConfig.PlexLibstoExclude || []) : (appConfig.PlexPart?.LibstoExclude || []);
+        if (server.id === "jellyfin") exclusions = appConfig.using_flat_structure ? (appConfig.JellyfinLibstoExclude || []) : (appConfig.JellyfinPart?.LibstoExclude || []);
+        if (server.id === "emby") exclusions = appConfig.using_flat_structure ? (appConfig.EmbyLibstoExclude || []) : (appConfig.EmbyPart?.LibstoExclude || []);
+      }
+      
       const res = await fetch(`${API_URL}/libraries/${server.id}/cached`);
       const data = await res.json();
-      if (data.success && data.libraries && data.libraries.length > 0) {
-        setLibraries(data.libraries);
-        setActiveLibrary(data.libraries[0]);
+      if (data.success && data.libraries) {
+        // Prefer config exclusions if available, otherwise fallback to database
+        const finalExclusions = exclusions.length > 0 ? exclusions : (data.excluded || []);
+        const filteredLibs = data.libraries.filter(lib => !finalExclusions.includes(lib.name));
+        
+        if (filteredLibs.length > 0) {
+          setLibraries(filteredLibs);
+          setActiveLibrary(filteredLibs[0]);
+        } else {
+            // Fallback to all if everything is excluded somehow
+            if (data.libraries.length > 0) {
+                setLibraries(data.libraries);
+                setActiveLibrary(data.libraries[0]);
+            }
+        }
       }
     } catch (e) {
       showError(`Failed to load libraries for ${server.name}`);
@@ -254,7 +285,7 @@ const LogoBrowser = () => {
 
   const handleUploadLogo = async (logoUrl) => {
     setShowLogoSearch(false);
-    showWarning(`Uploading logo for ${selectedItemForLogo.title}...`, { autoClose: 3000 });
+    showInfo(`Uploading logo for ${selectedItemForLogo.title}...`, 3000);
     
     try {
       const res = await fetch(`${API_URL}/media-server/upload-logo`, {
@@ -271,6 +302,7 @@ const LogoBrowser = () => {
       const data = await res.json();
       if (data.success) {
         showSuccess(`Successfully updated logo for ${selectedItemForLogo.title}`);
+        setUpdatedLogos(prev => ({ ...prev, [selectedItemForLogo.ratingKey]: Date.now() }));
         fetchItems(); // Refresh items to show new logo
       } else {
         showError(data.error || "Failed to upload logo");
@@ -502,21 +534,32 @@ const LogoBrowser = () => {
             </div>
           ) : (
             <>
-              <div className={buildResponsiveGridClass({ size: imageSize })}>
+              <div className={`grid gap-4 ${buildResponsiveGridClass(imageSize)}`}>
                 {displayedItems.map((item) => (
                   <div
                     key={item.ratingKey}
                     className="group bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all hover:shadow-lg hover:shadow-theme-primary/10 flex flex-col relative"
                   >
                     <div className="aspect-[16/9] bg-theme-bg/50 relative flex items-center justify-center p-2">
-                        {item.hasLogo && item.logoUrl ? (
-                            <img src={item.logoUrl} alt={item.title} className="w-full h-full object-contain filter drop-shadow-md" loading="lazy" />
-                        ) : (
-                            <div className="text-center text-theme-muted opacity-30">
-                                <ImageIcon className="w-8 h-8 mx-auto mb-1" />
-                                <span className="text-[10px] uppercase font-bold tracking-wider">No Logo</span>
-                            </div>
+                        {item.hasLogo && item.logoUrl && (
+                            <img 
+                                src={updatedLogos[item.ratingKey] ? `${item.logoUrl}&t=${updatedLogos[item.ratingKey]}` : item.logoUrl} 
+                                alt={item.title} 
+                                className="w-full h-full object-contain filter drop-shadow-md" 
+                                loading="lazy" 
+                                onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    if (e.target.nextSibling) {
+                                        e.target.nextSibling.style.display = 'block';
+                                    }
+                                }}
+                            />
                         )}
+                        
+                        <div className="text-center text-theme-muted opacity-30" style={{ display: (!item.hasLogo || !item.logoUrl) ? 'block' : 'none' }}>
+                            <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                            <span className="text-[10px] uppercase font-bold tracking-wider">No Logo</span>
+                        </div>
                         
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
@@ -561,6 +604,7 @@ const LogoBrowser = () => {
           onClose={() => setShowLogoSearch(false)}
           query={selectedItemForLogo.title}
           mediaType={selectedItemForLogo.type === "movie" ? "movie" : "tv"}
+          favProvider={appConfig?.using_flat_structure ? appConfig?.FavProvider : appConfig?.ApiPart?.FavProvider}
           onSelectLogo={handleUploadLogo}
         />
       )}

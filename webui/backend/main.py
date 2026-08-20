@@ -4723,9 +4723,9 @@ async def get_plex_libraries(request: PlexValidationRequest):
 
                 # Save libraries to database
                 try:
-                    # Pass an empty list for exclusions
+                    # Pass None to preserve exclusions
                     server_libraries_db.save_media_server_libraries(
-                        "plex", libraries, []
+                        "plex", libraries, None
                     )
                     logger.info("Saved Plex libraries to database")
                 except Exception as db_error:
@@ -4784,9 +4784,9 @@ async def get_jellyfin_libraries(request: JellyfinValidationRequest):
 
                 # Save libraries to database
                 try:
-                    # Pass an empty list for exclusions
+                    # Pass None to preserve exclusions
                     server_libraries_db.save_media_server_libraries(
-                        "jellyfin", libraries, []
+                        "jellyfin", libraries, None
                     )
                     logger.info("Saved Jellyfin libraries to database")
                 except Exception as db_error:
@@ -4847,9 +4847,9 @@ async def get_emby_libraries(request: EmbyValidationRequest):
 
                 # Save libraries to database
                 try:
-                    # Pass an empty list for exclusions
+                    # Pass None to preserve exclusions
                     server_libraries_db.save_media_server_libraries(
-                        "emby", libraries, []
+                        "emby", libraries, None
                     )
                     logger.info("Saved Emby libraries and exclusions to database")
                 except Exception as db_error:
@@ -11136,6 +11136,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 "source": "TMDB",
                                                 "source_type": source,
                                                 "type": "logo",
+                                                "sub_type": "clearlogo",
                                                 "language": logo.get("iso_639_1"),
                                                 "vote_average": logo.get("vote_average", 0),
                                                 "width": logo.get("width", 0),
@@ -11466,6 +11467,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         art_type = str(artwork.get("type"))
                                         # Relax origin check slightly to ensure we don't miss valid types due to tagging issues
                                         is_match = False
+                                        sub_type_val = None
 
                                         # Allow "logo", "clearlogo", "clearart" to trigger logo logic
                                         if request.asset_type in ["logo", "clearlogo", "clearart"]:
@@ -11474,6 +11476,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             # We check ALL valid logo types to be safe
                                             if art_type in ['22', '23', '24', '25']:
                                                 is_match = True
+                                                sub_type_val = "clearart" if art_type in ['22', '24'] else "clearlogo"
 
                                         elif request.asset_type in ["poster", "standard"]:
                                             # Series: 2, Movies: 14
@@ -11509,6 +11512,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 "source": "TVDB",
                                                 "source_type": source,
                                                 "type": "logo" if request.asset_type in ["logo", "clearlogo", "clearart"] else request.asset_type,
+                                                **({"sub_type": sub_type_val} if sub_type_val else {}),
                                                 "language": final_lang,
                                                 # Map 'score' to 'vote_average' to ensure they aren't sorted to the bottom
                                                 "vote_average": artwork.get("score", 0),
@@ -11594,6 +11598,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                         "source": "Fanart.tv",
                                                         "source_type": source,
                                                         "type": request.asset_type,
+                                                        **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
                                                         "language": item.get("lang"),
                                                         "likes": item.get("likes", 0),
                                                     }
@@ -11634,6 +11639,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                     "source": "Fanart.tv",
                                                     "source_type": "imdb_id",
                                                     "type": request.asset_type,
+                                                    **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
                                                     "language": item.get("lang"),
                                                     "likes": item.get("likes", 0),
                                                 }
@@ -11719,6 +11725,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                     "source": "Fanart.tv",
                                                     "source_type": source,  # "provided_id" or "title_search"
                                                     "type": request.asset_type,
+                                                    **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
                                                     "language": item.get("lang"),
                                                     "likes": item.get("likes", 0),
                                                 }
@@ -15448,6 +15455,217 @@ async def run_queue(background_tasks: BackgroundTasks):
     return {"success": True, "message": "Queue execution started"}
 
 
+# ==========================================
+# MEDIA SERVER API ENDPOINTS (LOGO BROWSER)
+# ==========================================
+
+class MediaServerItemsRequest(BaseModel):
+    server_type: str
+    url: str
+    token: str
+    library_id: str
+    start: int = 0
+    limit: int = 50
+
+@app.post("/api/media-server/items")
+async def get_media_server_items(request: MediaServerItemsRequest):
+    """Fetch items from media server with pagination and logo URLs"""
+    try:
+        url = request.url.rstrip('/')
+        items = []
+        total = 0
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if request.server_type == "plex":
+                api_url = f"{url}/library/sections/{request.library_id}/all"
+                headers = {
+                    "X-Plex-Token": request.token,
+                    "X-Plex-Container-Start": str(request.start),
+                    "X-Plex-Container-Size": str(request.limit)
+                }
+                response = await client.get(api_url, headers=headers)
+                if response.status_code == 200:
+                    root = fromstring(response.content)
+                    container = root
+                    total = int(container.get("totalSize", container.get("size", 0)))
+                    for item in root.findall(".//*[@title]"):
+                        rating_key = item.get("ratingKey", "")
+                        has_logo = True # Assume true, let frontend onError handle 404s
+                                    
+                        items.append({
+                            "title": item.get("title", ""),
+                            "year": item.get("year", ""),
+                            "type": item.get("type", ""),
+                            "ratingKey": rating_key,
+                            "hasLogo": has_logo,
+                            "logoUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/clearLogo')}"
+                        })
+                        
+            elif request.server_type in ["jellyfin", "emby"]:
+                auth_header = "Authorization"
+                request.token = f'MediaBrowser Token="{request.token}"'
+                api_url = f"{url}/Items"
+                params = {
+                    "ParentId": request.library_id,
+                    "StartIndex": request.start,
+                    "Limit": request.limit,
+                    "Recursive": "true",
+                    "IncludeItemTypes": "Movie,Series",
+                    "Fields": "ProviderIds,ImageTags",
+                }
+                headers = {auth_header: request.token}
+                response = await client.get(api_url, params=params, headers=headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    total = data.get("TotalRecordCount", 0)
+                    for item in data.get("Items", []):
+                        has_logo = "Logo" in item.get("ImageTags", {})
+                        items.append({
+                            "title": item.get("Name", ""),
+                            "year": item.get("ProductionYear", ""),
+                            "type": item.get("Type", ""),
+                            "ratingKey": item.get("Id", ""),
+                            "hasLogo": has_logo,
+                            "logoUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/Logo?tag={item.get('ImageTags', {}).get('Logo', '')}')}" if has_logo else None
+                        })
+                        
+        return {"success": True, "items": items, "total": total}
+    except Exception as e:
+        logger.error(f"Error fetching media server items: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+from fastapi.responses import StreamingResponse
+import urllib.parse
+
+@app.get("/api/media-server/image")
+async def proxy_media_server_image(server_type: str, url: str):
+    """Proxies images from the media server to hide API keys/tokens from the frontend URL"""
+    config = {}
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            import json
+            config = json.load(f)
+            
+    valid_urls = []
+    if config.get("using_flat_structure"):
+        valid_urls = [config.get("PlexUrl"), config.get("JellyfinUrl"), config.get("EmbyUrl")]
+    else:
+        valid_urls = [
+            config.get("PlexPart", {}).get("PlexUrl"),
+            config.get("JellyfinPart", {}).get("JellyfinUrl"),
+            config.get("EmbyPart", {}).get("EmbyUrl")
+        ]
+    valid_urls = [u for u in valid_urls if u]
+    
+    if not any(url.startswith(v) for v in valid_urls):
+        raise HTTPException(status_code=403, detail="Proxy URL not allowed")
+        
+    headers = {}
+    
+    api_part = config.get("ApiPart", {})
+    if server_type == "plex":
+        headers["X-Plex-Token"] = api_part.get("PlexToken", "")
+    elif server_type == "jellyfin":
+        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("JellyfinAPIKey", "")}"'
+    elif server_type == "emby":
+        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("EmbyAPIKey", "")}"'
+        
+    async def stream_image():
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream("GET", url, headers=headers) as resp:
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+                    
+    # Return streaming response
+    return StreamingResponse(stream_image(), media_type="image/png")
+
+
+class UploadLogoRequest(BaseModel):
+    server_type: str
+    url: str
+    token: str
+    item_id: str
+    logo_url: str
+
+@app.post("/api/media-server/upload-logo")
+async def upload_media_server_logo(request: UploadLogoRequest):
+    """Download logo from url, tag with ImageMagick, and upload to media server"""
+    import tempfile
+    import subprocess
+    import shutil
+    
+    try:
+        url = request.url.rstrip('/')
+        
+        # SSRF Validation
+        if not request.logo_url.startswith(("http://", "https://")):
+            return {"success": False, "error": "Invalid logo URL."}
+            
+        config = {}
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                import json
+                config = json.load(f)
+                
+        valid_urls = []
+        if config.get("using_flat_structure"):
+            valid_urls = [config.get("PlexUrl"), config.get("JellyfinUrl"), config.get("EmbyUrl")]
+        else:
+            valid_urls = [
+                config.get("PlexPart", {}).get("PlexUrl"),
+                config.get("JellyfinPart", {}).get("JellyfinUrl"),
+                config.get("EmbyPart", {}).get("EmbyUrl")
+            ]
+        valid_urls = [u for u in valid_urls if u]
+        
+        if not any(url.startswith(v.rstrip('/')) for v in valid_urls):
+            return {"success": False, "error": "Target URL is not a configured media server."}
+        
+        # Download Logo
+        temp_logo = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(request.logo_url)
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Failed to download logo: {resp.status_code}"}
+            with open(temp_logo, "wb") as f:
+                f.write(resp.content)
+                
+        # Run ImageMagick
+        try:
+            cmd = ["magick", temp_logo, "-set", "comment", "created with posterizarr", temp_logo]
+            subprocess.run(cmd, check=True, capture_output=True)
+        except Exception as e:
+            logger.error(f"ImageMagick failed: {e}")
+                
+        # Upload Logo
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if request.server_type == "plex":
+                upload_url = f"{url}/library/metadata/{request.item_id}/clearLogos"
+                headers = {"X-Plex-Token": request.token, "Content-Type": "image/jpeg"}
+                with open(temp_logo, "rb") as f:
+                    upload_resp = await client.post(upload_url, headers=headers, content=f.read())
+            else:
+                auth_header = "Authorization"
+                request.token = f'MediaBrowser Token="{request.token}"'
+                upload_url = f"{url}/Items/{request.item_id}/Images/Logo"
+                headers = {auth_header: request.token, "Content-Type": "image/png"}
+                with open(temp_logo, "rb") as f:
+                    upload_resp = await client.post(upload_url, headers=headers, content=f.read())
+                    
+        os.unlink(temp_logo)
+        
+        if upload_resp.status_code in [200, 201, 204]:
+            return {"success": True}
+        return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}"}
+        
+    except Exception as e:
+        logger.error(f"Error uploading logo: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+
+
+
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
     logger.info(f"Mounted frontend from {FRONTEND_DIR}")
@@ -15580,182 +15798,6 @@ async def run_queue(background_tasks: BackgroundTasks, request: Optional[RunQueu
     return {"success": True, "message": "Queue execution started"}
 
 
-
-# ==========================================
-# MEDIA SERVER API ENDPOINTS (LOGO BROWSER)
-# ==========================================
-
-class MediaServerItemsRequest(BaseModel):
-    server_type: str
-    url: str
-    token: str
-    library_id: str
-    start: int = 0
-    limit: int = 50
-
-@app.post("/api/media-server/items")
-async def get_media_server_items(request: MediaServerItemsRequest):
-    """Fetch items from media server with pagination and logo URLs"""
-    try:
-        url = request.url.rstrip('/')
-        items = []
-        total = 0
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if request.server_type == "plex":
-                api_url = f"{url}/library/sections/{request.library_id}/all"
-                headers = {
-                    "X-Plex-Token": request.token,
-                    "X-Plex-Container-Start": str(request.start),
-                    "X-Plex-Container-Size": str(request.limit)
-                }
-                response = await client.get(api_url, headers=headers)
-                if response.status_code == 200:
-                    root = fromstring(response.content)
-                    container = root
-                    total = int(container.get("totalSize", container.get("size", 0)))
-                    for item in root.findall(".//*[@title]"):
-                        rating_key = item.get("ratingKey", "")
-                        has_logo = False
-                        
-                        # Fetch item metadata to check for clearLogo
-                        item_meta_url = f"{url}/library/metadata/{rating_key}"
-                        meta_resp = await client.get(item_meta_url, headers={"X-Plex-Token": request.token})
-                        if meta_resp.status_code == 200:
-                            meta_root = fromstring(meta_resp.content)
-                            for img in meta_root.findall(".//Image"):
-                                if img.get("type") == "clearLogo":
-                                    has_logo = True
-                                    break
-                                    
-                        items.append({
-                            "title": item.get("title", ""),
-                            "year": item.get("year", ""),
-                            "type": item.get("type", ""),
-                            "ratingKey": rating_key,
-                            "hasLogo": has_logo,
-                            "logoUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/clearLogo')}" if has_logo else None
-                        })
-                        
-            elif request.server_type in ["jellyfin", "emby"]:
-                auth_header = "Authorization"
-                request.token = f'MediaBrowser Token="{request.token}"'
-                api_url = f"{url}/Items"
-                params = {
-                    "ParentId": request.library_id,
-                    "StartIndex": request.start,
-                    "Limit": request.limit,
-                    "Recursive": "true",
-                    "IncludeItemTypes": "Movie,Series",
-                    "Fields": "ProviderIds,ImageTags",
-                }
-                headers = {auth_header: request.token}
-                response = await client.get(api_url, params=params, headers=headers)
-                if response.status_code == 200:
-                    data = response.json()
-                    total = data.get("TotalRecordCount", 0)
-                    for item in data.get("Items", []):
-                        has_logo = "Logo" in item.get("ImageTags", {})
-                        items.append({
-                            "title": item.get("Name", ""),
-                            "year": item.get("ProductionYear", ""),
-                            "type": item.get("Type", ""),
-                            "ratingKey": item.get("Id", ""),
-                            "hasLogo": has_logo,
-                            "logoUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/Logo?tag={item.get('ImageTags', {}).get('Logo', '')}')}" if has_logo else None
-                        })
-                        
-        return {"success": True, "items": items, "total": total}
-    except Exception as e:
-        logger.error(f"Error fetching media server items: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
-
-from fastapi.responses import StreamingResponse
-import urllib.parse
-
-@app.get("/api/media-server/image")
-async def proxy_media_server_image(server_type: str, url: str):
-    """Proxies images from the media server to hide API keys/tokens from the frontend URL"""
-    config = _load_config()
-    headers = {}
-    
-    api_part = config.get("ApiPart", {})
-    if server_type == "plex":
-        headers["X-Plex-Token"] = api_part.get("PlexToken", "")
-    elif server_type == "jellyfin":
-        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("JellyfinAPIKey", "")}"'
-    elif server_type == "emby":
-        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("EmbyAPIKey", "")}"'
-        
-    async def stream_image():
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("GET", url, headers=headers) as resp:
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
-                    
-    # Return streaming response
-    return StreamingResponse(stream_image(), media_type="image/png")
-
-
-class UploadLogoRequest(BaseModel):
-    server_type: str
-    url: str
-    token: str
-    item_id: str
-    logo_url: str
-    magick_path: str = "magick"
-
-@app.post("/api/media-server/upload-logo")
-async def upload_media_server_logo(request: UploadLogoRequest):
-    """Download logo from url, tag with ImageMagick, and upload to media server"""
-    import tempfile
-    import subprocess
-    import shutil
-    
-    try:
-        url = request.url.rstrip('/')
-        
-        # Download Logo
-        temp_logo = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(request.logo_url)
-            if resp.status_code != 200:
-                return {"success": False, "error": f"Failed to download logo: {resp.status_code}"}
-            with open(temp_logo, "wb") as f:
-                f.write(resp.content)
-                
-        # Run ImageMagick
-        if request.magick_path:
-            try:
-                cmd = [request.magick_path, temp_logo, "-set", "comment", "created with posterizarr", temp_logo]
-                subprocess.run(cmd, check=True, capture_output=True)
-            except Exception as e:
-                logger.error(f"ImageMagick failed: {e}")
-                
-        # Upload Logo
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if request.server_type == "plex":
-                upload_url = f"{url}/library/metadata/{request.item_id}/clearLogos"
-                headers = {"X-Plex-Token": request.token, "Content-Type": "image/jpeg"}
-                with open(temp_logo, "rb") as f:
-                    upload_resp = await client.post(upload_url, headers=headers, content=f.read())
-            else:
-                auth_header = "Authorization"
-                request.token = f'MediaBrowser Token="{request.token}"'
-                upload_url = f"{url}/Items/{request.item_id}/Images/Logo"
-                headers = {auth_header: request.token, "Content-Type": "image/png"}
-                with open(temp_logo, "rb") as f:
-                    upload_resp = await client.post(upload_url, headers=headers, content=f.read())
-                    
-        os.unlink(temp_logo)
-        
-        if upload_resp.status_code in [200, 201, 204]:
-            return {"success": True}
-        return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}"}
-        
-    except Exception as e:
-        logger.error(f"Error uploading logo: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
 
 
 if __name__ == "__main__":

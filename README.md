@@ -37,6 +37,7 @@
 Posterizarr is a PowerShell script with a full Web UI that automates generating images for your media library. It fetches artwork from Fanart.tv, TMDB, TVDB, Plex, and IMDb, focusing on textless images and applying your own custom overlays and text.
 
 * **User-Friendly Web UI:** Manage settings, monitor activity, and trigger runs from a browser.
+* **Logo Management:** Search, preview, and manually replace clearlogos directly from the Web UI.
 * **Multiple Media Servers:** Supports Plex, Jellyfin, and Emby.
 * **Kometa Integration:** Organizes assets in a Kometa-compatible folder structure.
 * **Smart Integration:** Trigger runs from Tautulli, Sonarr, and Radarr.
