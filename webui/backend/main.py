@@ -8646,10 +8646,16 @@ def _get_categorized_assets(config: dict) -> dict:
     primary_season_language = None
     primary_titlecard_language = None
     primary_provider = None
+    use_plex = True
+    use_jellyfin = False
+    use_emby = False
+    tmdb_language_mappings = {}
+    library_language_overrides = {}
     try:
         # Check ApiPart for PreferredLanguageOrder
         api_part = config.get("ApiPart", {})
         tmdb_language_mappings = api_part.get("TmdbLanguageMappings", {})
+        library_language_overrides = api_part.get("LibraryLanguageOverrides", {})
 
         lang_order = api_part.get("PreferredLanguageOrder", [])
         if lang_order and len(lang_order) > 0:
@@ -8680,6 +8686,18 @@ def _get_categorized_assets(config: dict) -> dict:
         fav_provider = api_part.get("FavProvider", "")
         if fav_provider:
             primary_provider = fav_provider.lower()
+
+        plex_part = config.get("PlexPart", {})
+        use_plex_val = plex_part.get("UsePlex", "true")
+        use_plex = str(use_plex_val).lower() == "true"
+
+        jellyfin_part = config.get("JellyfinPart", {})
+        use_jellyfin_val = jellyfin_part.get("UseJellyfin", "false")
+        use_jellyfin = str(use_jellyfin_val).lower() == "true"
+
+        emby_part = config.get("EmbyPart", {})
+        use_emby_val = emby_part.get("UseEmby", "false")
+        use_emby = str(use_emby_val).lower() == "true"
     except Exception as e:
         logger.warning(f"Could not read config for primary lang/provider: {e}")
 
@@ -8789,6 +8807,20 @@ def _get_categorized_assets(config: dict) -> dict:
         elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
             target_primary_lang = primary_titlecard_language
 
+        # Apply Library Overrides
+        lib_override = library_language_overrides.get(library)
+        if lib_override:
+            lib_preferred_langs = lib_override.get("PreferredLanguageOrder", [])
+            lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
+            
+            if lib_primary_lang:
+                if asset_type_lower == "poster" and lib_override.get("ApplyToPoster", True):
+                    target_primary_lang = lib_primary_lang
+                elif "background" in asset_type_lower and lib_override.get("ApplyToBackground", True):
+                    target_primary_lang = lib_primary_lang
+                elif "season" in asset_type_lower and lib_override.get("ApplyToSeason", True):
+                    target_primary_lang = lib_primary_lang
+
         if language and target_primary_lang:
             lang_normalized = (
                 "xx" if language.lower() == "textless" else language.lower()
@@ -8894,6 +8926,9 @@ def _get_categorized_assets(config: dict) -> dict:
             "primary_language_season": primary_season_language,
             "primary_language_titlecard": primary_titlecard_language,
             "primary_provider": primary_provider,
+            "use_plex": use_plex,
+            "use_jellyfin": use_jellyfin,
+            "use_emby": use_emby,
         },
     }
 
@@ -14051,6 +14086,8 @@ async def get_assets_overview():
         use_plex = True
         use_jellyfin = False
         use_emby = False
+        tmdb_language_mappings = {}
+        library_language_overrides = {}
 
         try:
             if CONFIG_PATH.exists():
@@ -14059,6 +14096,8 @@ async def get_assets_overview():
 
                     # Check ApiPart for Language Orders
                     api_part = config.get("ApiPart", {})
+                    tmdb_language_mappings = api_part.get("TmdbLanguageMappings", {})
+                    library_language_overrides = api_part.get("LibraryLanguageOverrides", {})
 
                     # 1. Main Poster Language
                     lang_order = api_part.get("PreferredLanguageOrder", [])
@@ -14204,6 +14243,20 @@ async def get_assets_overview():
             elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                 target_primary_lang = primary_titlecard_language
 
+            # Apply Library Overrides
+            lib_override = library_language_overrides.get(library)
+            if lib_override:
+                lib_preferred_langs = lib_override.get("PreferredLanguageOrder", [])
+                lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
+                
+                if lib_primary_lang:
+                    if asset_type_lower == "poster" and lib_override.get("ApplyToPoster", True):
+                        target_primary_lang = lib_primary_lang
+                    elif "background" in asset_type_lower and lib_override.get("ApplyToBackground", True):
+                        target_primary_lang = lib_primary_lang
+                    elif "season" in asset_type_lower and lib_override.get("ApplyToSeason", True):
+                        target_primary_lang = lib_primary_lang
+
             if language and target_primary_lang:
                 # Normalize: "Textless" = "xx"
                 lang_normalized = (
@@ -14214,8 +14267,19 @@ async def get_assets_overview():
                     if target_primary_lang.lower() == "textless"
                     else target_primary_lang.lower()
                 )
+                
+                # Apply mapping to primary if it exists
+                mapped_primary = None
+                for key, val in tmdb_language_mappings.items():
+                    if key.lower().strip() == primary_normalized:
+                        mapped_primary = val.lower().strip()
+                        break
+                
+                allowed_primary = [primary_normalized]
+                if mapped_primary:
+                    allowed_primary.append(mapped_primary)
 
-                if lang_normalized != primary_normalized:
+                if lang_normalized not in allowed_primary:
                     non_primary_lang.append(record_dict)
                     has_issue = True
             elif language and not target_primary_lang:
