@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Search, Loader2 } from "lucide-react";
+import { X, Search, Loader2, Upload } from "lucide-react";
 
 const API_URL = "/api";
 
@@ -13,6 +13,7 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
   const [activeProvider, setActiveProvider] = useState("tmdb");
   const [searchQuery, setSearchQuery] = useState(query || "");
   const [logoFilter, setLogoFilter] = useState("all");
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (isOpen && query) {
@@ -64,6 +65,17 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
       setError("Error connecting to server");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        onSelectLogo(reader.result);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -146,6 +158,23 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
                         {filter.label}
                     </button>
                 ))}
+            </div>
+            
+            <div className="flex gap-2">
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept="image/*"
+                    className="hidden"
+                />
+                <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 bg-theme-bg border border-theme rounded-lg font-medium transition-colors hover:bg-theme-hover flex items-center gap-2"
+                >
+                    <Upload className="w-4 h-4" />
+                    Upload Custom
+                </button>
             </div>
         </div>
 

@@ -110,6 +110,7 @@ const LogoBrowser = () => {
   
   // Filtering & Pagination State
   const [searchTerm, setSearchTerm] = useState("");
+  const [showMissingOnly, setShowMissingOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
@@ -117,6 +118,7 @@ const LogoBrowser = () => {
   const [sortOrder, setSortOrder] = useState("name_asc");
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const sortDropdownRef = useRef(null);
+  const gridContainerRef = useRef(null);
 
   // Image Size Slider
   const [imageSize, setImageSize] = useState(() => {
@@ -235,10 +237,12 @@ const LogoBrowser = () => {
     }
   }, [activeLibrary]);
 
-  const fetchItems = async () => {
+  const fetchItems = async (preserveState = false) => {
     setLoadingItems(true);
-    setSearchTerm("");
-    setCurrentPage(1);
+    if (!preserveState) {
+        setSearchTerm("");
+        setCurrentPage(1);
+    }
     
     // Attempting to resolve the live library ID if it's not present (needed by backend)
     let libId = activeLibrary.key || activeLibrary.id;
@@ -303,7 +307,7 @@ const LogoBrowser = () => {
       if (data.success) {
         showSuccess(`Successfully updated logo for ${selectedItemForLogo.title}`);
         setUpdatedLogos(prev => ({ ...prev, [selectedItemForLogo.ratingKey]: Date.now() }));
-        fetchItems(); // Refresh items to show new logo
+        fetchItems(true); // Refresh items to show new logo, but preserve search and pagination
       } else {
         showError(data.error || "Failed to upload logo");
       }
@@ -315,12 +319,13 @@ const LogoBrowser = () => {
   // Reset page to 1 when search or sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortOrder]);
+  }, [searchTerm, sortOrder, showMissingOnly]);
 
   // Derive Displayed Items
-  const filteredItems = items.filter(item => 
-    item.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredItems = items.filter(item => {
+    if (showMissingOnly && item.hasLogo && item.logoUrl) return false;
+    return item.title.toLowerCase().includes(searchTerm.toLowerCase());
+  });
   
   const sortedItems = [...filteredItems].sort((a, b) => {
     const titleA = a.title.toLowerCase();
@@ -492,31 +497,45 @@ const LogoBrowser = () => {
             )}
           </div>
 
-          {/* Search Bar */}
+          {/* Search Bar & Filters */}
           {activeLibrary && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-theme-muted" />
-              <input
-                type="text"
-                placeholder="Search logos..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-colors text-sm"
-              />
-              {searchTerm && (
+            <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-theme-muted" />
+                  <input
+                    type="text"
+                    placeholder="Search logos..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-colors text-sm"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
                 <button
-                  onClick={() => setSearchTerm("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text"
+                    onClick={() => setShowMissingOnly(!showMissingOnly)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border flex items-center justify-center gap-2 whitespace-nowrap transition-colors ${
+                        showMissingOnly 
+                        ? 'bg-theme-primary border-theme-primary text-white' 
+                        : 'bg-theme-bg border-theme text-theme-text hover:bg-theme-hover'
+                    }`}
                 >
-                  <X className="w-4 h-4" />
+                    <Square className={`w-4 h-4 ${showMissingOnly ? 'hidden' : 'block'}`} />
+                    <CheckSquare className={`w-4 h-4 ${showMissingOnly ? 'block' : 'hidden'}`} />
+                    Missing Only
                 </button>
-              )}
             </div>
           )}
         </div>
 
         {/* Scrollable Grid Area */}
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div ref={gridContainerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
           {!activeServer || !activeLibrary ? (
             <div className="flex flex-col items-center justify-center h-full text-theme-muted">
               <ImageIcon className="w-16 h-16 opacity-20 mb-4" />
@@ -591,7 +610,12 @@ const LogoBrowser = () => {
               <PaginationControls
                 currentPage={currentPage}
                 totalPages={totalPages}
-                onPageChange={setCurrentPage}
+                onPageChange={(page) => {
+                  setCurrentPage(page);
+                  if (gridContainerRef.current) {
+                    gridContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
               />
             </>
           )}

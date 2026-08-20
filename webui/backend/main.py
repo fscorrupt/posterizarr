@@ -15597,10 +15597,6 @@ async def upload_media_server_logo(request: UploadLogoRequest):
     try:
         url = request.url.rstrip('/')
         
-        # SSRF Validation
-        if not request.logo_url.startswith(("http://", "https://")):
-            return {"success": False, "error": "Invalid logo URL."}
-            
         config = {}
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -15621,14 +15617,28 @@ async def upload_media_server_logo(request: UploadLogoRequest):
         if not any(url.startswith(v.rstrip('/')) for v in valid_urls):
             return {"success": False, "error": "Target URL is not a configured media server."}
         
-        # Download Logo
+        # Download or Decode Logo
         temp_logo = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(request.logo_url)
-            if resp.status_code != 200:
-                return {"success": False, "error": f"Failed to download logo: {resp.status_code}"}
-            with open(temp_logo, "wb") as f:
-                f.write(resp.content)
+        
+        if request.logo_url.startswith("data:image/"):
+            import base64
+            try:
+                header, encoded = request.logo_url.split(",", 1)
+                image_data = base64.b64decode(encoded)
+                with open(temp_logo, "wb") as f:
+                    f.write(image_data)
+            except Exception as e:
+                return {"success": False, "error": f"Failed to decode base64 image: {e}"}
+        elif request.logo_url.startswith(("http://", "https://")):
+            # Download via HTTP
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(request.logo_url)
+                if resp.status_code != 200:
+                    return {"success": False, "error": f"Failed to download logo: {resp.status_code}"}
+                with open(temp_logo, "wb") as f:
+                    f.write(resp.content)
+        else:
+            return {"success": False, "error": "Invalid logo URL."}
                 
         # Run ImageMagick
         try:
@@ -15639,15 +15649,17 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 
         # Upload Logo
         async with httpx.AsyncClient(timeout=30.0) as client:
+            import urllib.parse
+            safe_item_id = urllib.parse.quote(str(request.item_id), safe="")
             if request.server_type == "plex":
-                upload_url = f"{url}/library/metadata/{request.item_id}/clearLogos"
+                upload_url = f"{url}/library/metadata/{safe_item_id}/clearLogos"
                 headers = {"X-Plex-Token": request.token, "Content-Type": "image/jpeg"}
                 with open(temp_logo, "rb") as f:
                     upload_resp = await client.post(upload_url, headers=headers, content=f.read())
             else:
                 auth_header = "Authorization"
                 request.token = f'MediaBrowser Token="{request.token}"'
-                upload_url = f"{url}/Items/{request.item_id}/Images/Logo"
+                upload_url = f"{url}/Items/{safe_item_id}/Images/Logo"
                 headers = {auth_header: request.token, "Content-Type": "image/png"}
                 with open(temp_logo, "rb") as f:
                     upload_resp = await client.post(upload_url, headers=headers, content=f.read())
