@@ -15639,7 +15639,7 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                         
             elif request.server_type in ["jellyfin", "emby"]:
                 auth_header = "Authorization"
-                request.token = f\'MediaBrowser Token="{request.token}"\'
+                request.token = f'MediaBrowser Token="{request.token}"'
                 api_url = f"{url}/Items"
                 params = {
                     "ParentId": request.library_id,
@@ -15741,7 +15741,7 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                     upload_resp = await client.post(upload_url, headers=headers, content=f.read())
             else:
                 auth_header = "Authorization"
-                request.token = f\'MediaBrowser Token="{request.token}"\'
+                request.token = f'MediaBrowser Token="{request.token}"'
                 upload_url = f"{url}/Items/{request.item_id}/Images/Logo"
                 headers = {auth_header: request.token, "Content-Type": "image/png"}
                 with open(temp_logo, "rb") as f:
