@@ -121,6 +121,7 @@ const Sidebar = () => {
         ? [
           { path: "/gallery/posters", label: t("assets.assetsFolders"), icon: FolderKanban },
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
+          { path: "/media-server-logos", label: t("mediaServerExport.logos", "Logo Browser"), icon: Image },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
           { path: "/assets-manager", label: t("nav.assetsManager", "Assets Manager"), icon: Layers },
@@ -132,6 +133,7 @@ const Sidebar = () => {
           { path: "/gallery/seasons", label: t("assets.seasons"), icon: Film },
           { path: "/gallery/titlecards", label: t("assets.titleCards"), icon: Tv },
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
+          { path: "/media-server-logos", label: t("mediaServerExport.logos", "Logo Browser"), icon: Image },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
           { path: "/assets-manager", label: t("nav.assetsManager", "Assets Manager"), icon: Layers },
@@ -179,7 +181,7 @@ const Sidebar = () => {
   const handleDragOver = (e, index) => { e.preventDefault(); if (draggedItem === null || draggedItem === index) return; const newOrder = [...navOrder]; const draggedId = newOrder[draggedItem]; newOrder.splice(draggedItem, 1); newOrder.splice(index, 0, draggedId); setDraggedItem(index); setNavOrder(newOrder); };
   const handleDragEnd = () => { if (draggedItem !== null) saveNavOrder(navOrder); setDraggedItem(null); };
 
-  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
+  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
   const isInMediaServerSection = location.pathname.startsWith("/media-server-export");
   const isInConfigSection = location.pathname.startsWith("/config") || location.pathname.startsWith("/blueprints");
 
