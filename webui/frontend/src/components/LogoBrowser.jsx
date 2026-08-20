@@ -1,29 +1,34 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  FolderOpen,
+  Folder,
   Film,
   Tv,
   RefreshCw,
   Search,
-  Upload,
   ChevronLeft,
   ChevronRight,
   ImageIcon,
+  ArrowUpDown,
+  Square,
+  CheckSquare,
+  Server,
+  Loader2,
+  X
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import LogoSearchModal from "./LogoSearchModal";
+import CompactImageSizeSlider from "./CompactImageSizeSlider";
 import { buildResponsiveGridClass } from "../utils/gridClass";
 
 const API_URL = "/api";
 
 const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
   const { t } = useTranslation();
+  if (totalPages <= 1) return null;
 
   const handlePageChange = (page) => {
-    if (page >= 1 && page <= totalPages) {
-      onPageChange(page);
-    }
+    if (page >= 1 && page <= totalPages) onPageChange(page);
   };
 
   const getPageNumbers = () => {
@@ -32,9 +37,7 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
     const half = Math.floor(maxPagesToShow / 2);
 
     if (totalPages <= maxPagesToShow + 2) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
     } else {
       pages.push(1);
       if (currentPage > half + 2) pages.push("...");
@@ -49,10 +52,8 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
     return pages;
   };
 
-  if (totalPages <= 1) return null;
-
   return (
-    <div className="flex items-center justify-center gap-2 mt-8">
+    <div className="flex items-center justify-center gap-2 mt-8 pb-8">
       <button
         onClick={() => handlePageChange(currentPage - 1)}
         disabled={currentPage === 1}
@@ -76,10 +77,7 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
             {page}
           </button>
         ) : (
-          <span
-            key={`ellipsis-${index}`}
-            className="w-10 h-10 flex items-center justify-center text-theme-muted"
-          >
+          <span key={`ellipsis-${index}`} className="w-10 h-10 flex items-center justify-center text-theme-muted">
             ...
           </span>
         )
@@ -109,15 +107,43 @@ const LogoBrowser = () => {
   
   const [items, setItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [totalItems, setTotalItems] = useState(0);
   
-  const [page, setPage] = useState(1);
-  const limit = 50;
+  // Filtering & Pagination State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
+  // Sorting State
+  const [sortOrder, setSortOrder] = useState("name_asc");
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const sortDropdownRef = useRef(null);
+
+  // Image Size Slider
+  const [imageSize, setImageSize] = useState(() => {
+    const saved = localStorage.getItem("logo-browser-image-size");
+    const parsed = saved ? parseInt(saved) : 5;
+    return Math.min(Math.max(parsed, 2), 20);
+  });
 
   const [selectedItemForLogo, setSelectedItemForLogo] = useState(null);
   const [showLogoSearch, setShowLogoSearch] = useState(false);
 
-  // Fetch servers from config
+  // Setup click outside for sort dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setSortDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("logo-browser-image-size", imageSize.toString());
+  }, [imageSize]);
+
+  // Fetch servers from config on mount
   useEffect(() => {
     fetchConfig();
   }, []);
@@ -128,11 +154,15 @@ const LogoBrowser = () => {
       const data = await res.json();
       
       const availableServers = [];
-      const root = data._root || {};
+      const config = data.config || {};
+      const plexPart = config.PlexPart || {};
+      const jellyfinPart = config.JellyfinPart || {};
+      const embyPart = config.EmbyPart || {};
+      const apiPart = config.ApiPart || {};
       
-      if (root.use_plex) availableServers.push({ id: "plex", name: "Plex", url: root.plexurl, token: root.plextoken });
-      if (root.use_jellyfin) availableServers.push({ id: "jellyfin", name: "Jellyfin", url: root.jellyfinurl, token: root.jellyfintoken });
-      if (root.use_emby) availableServers.push({ id: "emby", name: "Emby", url: root.embyurl, token: root.embytoken });
+      if (plexPart.UsePlex === "true") availableServers.push({ id: "plex", name: "Plex", url: plexPart.PlexUrl, token: apiPart.PlexToken });
+      if (jellyfinPart.UseJellyfin === "true") availableServers.push({ id: "jellyfin", name: "Jellyfin", url: jellyfinPart.JellyfinUrl, token: apiPart.JellyfinAPIKey });
+      if (embyPart.UseEmby === "true") availableServers.push({ id: "emby", name: "Emby", url: embyPart.EmbyUrl, token: apiPart.EmbyAPIKey });
       
       setServers(availableServers);
       if (availableServers.length > 0) {
@@ -158,23 +188,44 @@ const LogoBrowser = () => {
       
       const res = await fetch(`${API_URL}/libraries/${server.id}/cached`);
       const data = await res.json();
-      if (data.success && data.libraries) {
+      if (data.success && data.libraries && data.libraries.length > 0) {
         setLibraries(data.libraries);
+        setActiveLibrary(data.libraries[0]);
       }
     } catch (e) {
       showError(`Failed to load libraries for ${server.name}`);
     }
   };
 
-  // Fetch items when library or page changes
+  // Fetch items when library changes
   useEffect(() => {
     if (activeServer && activeLibrary) {
       fetchItems();
     }
-  }, [activeLibrary, page]);
+  }, [activeLibrary]);
 
   const fetchItems = async () => {
     setLoadingItems(true);
+    setSearchTerm("");
+    setCurrentPage(1);
+    
+    // Attempting to resolve the live library ID if it's not present (needed by backend)
+    let libId = activeLibrary.key || activeLibrary.id;
+    if (!libId) {
+      try {
+        const res = await fetch(`${API_URL}/libraries/${activeServer.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: activeServer.url, token: activeServer.token })
+        });
+        const data = await res.json();
+        if (data.success && data.libraries) {
+            const matched = data.libraries.find(l => l.name === activeLibrary.name);
+            if (matched) libId = matched.key || matched.id;
+        }
+      } catch(e) { }
+    }
+    
     try {
       const res = await fetch(`${API_URL}/media-server/items`, {
         method: "POST",
@@ -183,19 +234,14 @@ const LogoBrowser = () => {
           server_type: activeServer.id,
           url: activeServer.url,
           token: activeServer.token,
-          library_id: activeLibrary.key || activeLibrary.id || activeLibrary.name, // Fallbacks
-          start: (page - 1) * limit,
-          limit: limit
+          library_id: libId || activeLibrary.name, // Fallback to name if key fails
+          start: 0,
+          limit: 99999 // Fetch all to allow local searching and sorting like Gallery.jsx
         })
       });
       const data = await res.json();
       if (data.success) {
         setItems(data.items || []);
-        if (data.total !== undefined) {
-            setTotalItems(data.total);
-        } else {
-            setTotalItems(data.items.length === limit ? page * limit + 1 : (page - 1) * limit + data.items.length);
-        }
       } else {
         showError(data.error || "Failed to load items");
       }
@@ -206,35 +252,9 @@ const LogoBrowser = () => {
     }
   };
 
-  const handleLibraryClick = (lib) => {
-    fetchLiveLibraries(activeServer, lib);
-  };
-  
-  const fetchLiveLibraries = async (server, targetLib) => {
-      try {
-          const res = await fetch(`${API_URL}/libraries/${server.id}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: server.url, token: server.token })
-          });
-          const data = await res.json();
-          if (data.success && data.libraries) {
-              const matched = data.libraries.find(l => l.name === targetLib.name);
-              if (matched) {
-                  setActiveLibrary(matched);
-                  setPage(1);
-              } else {
-                  showWarning("Library not found on server");
-              }
-          }
-      } catch (e) {
-          showError("Failed to fetch live libraries");
-      }
-  };
-
   const handleUploadLogo = async (logoUrl) => {
     setShowLogoSearch(false);
-    const loadingToastId = showWarning(`Uploading logo for ${selectedItemForLogo.title}...`, { autoClose: false });
+    showWarning(`Uploading logo for ${selectedItemForLogo.title}...`, { autoClose: 3000 });
     
     try {
       const res = await fetch(`${API_URL}/media-server/upload-logo`, {
@@ -260,154 +280,280 @@ const LogoBrowser = () => {
     }
   };
 
-  const totalPages = Math.ceil(totalItems / limit);
+  // Reset page to 1 when search or sort changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortOrder]);
+
+  // Derive Displayed Items
+  const filteredItems = items.filter(item => 
+    item.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  const sortedItems = [...filteredItems].sort((a, b) => {
+    const titleA = a.title.toLowerCase();
+    const titleB = b.title.toLowerCase();
+    if (sortOrder === "name_asc") return titleA.localeCompare(titleB);
+    if (sortOrder === "name_desc") return titleB.localeCompare(titleA);
+    
+    // Sort by Year as a pseudo-date fallback
+    const yearA = parseInt(a.year) || 0;
+    const yearB = parseInt(b.year) || 0;
+    if (sortOrder === "date_newest") return yearB - yearA;
+    if (sortOrder === "date_oldest") return yearA - yearB;
+    return 0;
+  });
+
+  const totalPages = Math.ceil(sortedItems.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const displayedItems = sortedItems.slice(startIndex, startIndex + itemsPerPage);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-theme-primary to-theme-secondary flex items-center gap-2">
-            <ImageIcon className="w-6 h-6 text-theme-primary" />
-            Media Server Logo Browser
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+      
+      {/* LEFT SIDEBAR (Mimicking Gallery Folders list) */}
+      <div className="w-72 bg-theme-bg border-r border-theme flex flex-col flex-shrink-0">
+        
+        {/* Server Selector Top Block */}
+        <div className="p-4 border-b border-theme bg-theme-card">
+          <h2 className="text-lg font-bold flex items-center gap-2 text-theme-text mb-3">
+            <Server className="w-5 h-5 text-theme-primary" />
+            Media Servers
           </h2>
-          <p className="text-theme-muted mt-1">
-            Browse and replace logos directly on your media servers.
-          </p>
+          {servers.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {servers.map((server) => (
+                <button
+                  key={server.id}
+                  onClick={() => setActiveServer(server)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left flex items-center gap-2 ${
+                    activeServer?.id === server.id
+                      ? "bg-theme-primary text-white"
+                      : "bg-theme-bg text-theme-text hover:bg-theme-hover border border-theme"
+                  }`}
+                >
+                  <Server className="w-4 h-4" />
+                  {server.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-theme-muted">No servers configured.</p>
+          )}
+        </div>
+
+        {/* Libraries List */}
+        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+          <h3 className="text-xs font-bold text-theme-muted uppercase tracking-wider mb-2 ml-1">
+            Libraries
+          </h3>
+          <div className="flex flex-col gap-1">
+            {libraries.map((lib) => (
+              <button
+                key={lib.name}
+                onClick={() => setActiveLibrary(lib)}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left shadow-sm ${
+                  activeLibrary?.name === lib.name
+                    ? "bg-theme-secondary text-white border border-theme-secondary"
+                    : "bg-theme-card text-theme-text hover:bg-theme-hover border border-transparent"
+                }`}
+              >
+                <Folder className="w-4 h-4 flex-shrink-0 opacity-70" />
+                <span className="truncate">{lib.name}</span>
+              </button>
+            ))}
+            {libraries.length === 0 && activeServer && (
+              <p className="text-sm text-theme-muted p-2">No libraries found.</p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Server Picker */}
-      {servers.length > 1 && (
-        <div className="flex gap-2">
-          {servers.map((server) => (
-            <button
-              key={server.id}
-              onClick={() => setActiveServer(server)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeServer?.id === server.id
-                  ? "bg-theme-primary text-white"
-                  : "bg-theme-card text-theme-text hover:bg-theme-hover"
-              }`}
-            >
-              {server.name}
-            </button>
-          ))}
-        </div>
-      )}
-      
-      {/* Library Picker */}
-      {libraries.length > 0 && (
-        <div className="bg-theme-bg p-4 rounded-xl border border-theme">
-            <h3 className="text-sm font-semibold mb-3 text-theme-muted">Select Library</h3>
-            <div className="flex flex-wrap gap-2">
-            {libraries.map((lib) => (
-                <button
-                key={lib.name}
-                onClick={() => handleLibraryClick(lib)}
-                className={`px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    activeLibrary?.name === lib.name
-                    ? "bg-theme-secondary text-white"
-                    : "bg-theme-card text-theme-text hover:bg-theme-hover border border-theme"
-                }`}
-                >
-                <FolderOpen className="w-4 h-4" />
-                {lib.name}
-                </button>
-            ))}
-            </div>
-        </div>
-      )}
-
-      {/* Items Grid */}
-      {activeLibrary && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <FolderOpen className="w-5 h-5 text-theme-primary" />
-              {activeLibrary.name}
-              <span className="text-sm text-theme-muted font-normal bg-theme-bg px-2 py-0.5 rounded-full border border-theme">
-                {totalItems} items
-              </span>
-            </h3>
+      {/* RIGHT MAIN PANEL */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-theme-bg">
+        {/* Top Controls Header */}
+        <div className="p-4 border-b border-theme bg-theme-card shadow-sm z-10 flex flex-col gap-3">
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-theme-primary to-theme-secondary flex items-center gap-2">
+              <ImageIcon className="w-6 h-6 text-theme-primary" />
+              {activeLibrary ? activeLibrary.name : "Logo Browser"}
+              {activeLibrary && !loadingItems && (
+                 <span className="text-sm text-theme-muted font-normal ml-2">
+                   ({sortedItems.length} items)
+                 </span>
+              )}
+            </h2>
             
-            <button
-              onClick={fetchItems}
-              disabled={loadingItems}
-              className="p-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg text-theme-text transition-colors"
-              title="Refresh Items"
-            >
-              <RefreshCw className={`w-4 h-4 ${loadingItems ? "animate-spin" : ""}`} />
-            </button>
+            {/* Actions / Sorting / Sizing */}
+            {activeLibrary && (
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Size Slider */}
+                <div className="flex flex-col items-center mr-2 relative group">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-bold text-theme-muted uppercase tracking-tighter">
+                      Size
+                    </span>
+                    <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md bg-theme-primary text-white text-[10px] font-black shadow-sm">
+                      {imageSize}
+                    </span>
+                  </div>
+                  <CompactImageSizeSlider
+                    value={imageSize}
+                    onChange={setImageSize}
+                    storageKey="logo-browser-image-size"
+                  />
+                </div>
+
+                {/* Sorting */}
+                <div className="relative" ref={sortDropdownRef}>
+                  <button
+                    onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-2 bg-theme-bg hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text text-sm font-medium transition-all shadow-sm"
+                  >
+                    <ArrowUpDown className="w-4 h-4 text-theme-primary" />
+                    <span>Sort</span>
+                  </button>
+
+                  {sortDropdownOpen && (
+                    <div className="absolute z-50 right-0 top-full mt-2 w-48 bg-theme-card border border-theme-primary/50 rounded-lg shadow-xl overflow-hidden">
+                      <div className="py-1">
+                        <button
+                          onClick={() => { setSortOrder("name_asc"); setSortDropdownOpen(false); }}
+                          className={`w-full text-left px-4 py-2 text-sm ${sortOrder === "name_asc" ? "bg-theme-primary/20 text-theme-primary" : "text-theme-text hover:bg-theme-hover"}`}
+                        >
+                          Name (A-Z)
+                        </button>
+                        <button
+                          onClick={() => { setSortOrder("name_desc"); setSortDropdownOpen(false); }}
+                          className={`w-full text-left px-4 py-2 text-sm ${sortOrder === "name_desc" ? "bg-theme-primary/20 text-theme-primary" : "text-theme-text hover:bg-theme-hover"}`}
+                        >
+                          Name (Z-A)
+                        </button>
+                        <div className="border-t border-theme-border my-1"></div>
+                        <button
+                          onClick={() => { setSortOrder("date_newest"); setSortDropdownOpen(false); }}
+                          className={`w-full text-left px-4 py-2 text-sm ${sortOrder === "date_newest" ? "bg-theme-primary/20 text-theme-primary" : "text-theme-text hover:bg-theme-hover"}`}
+                        >
+                          Newest Year
+                        </button>
+                        <button
+                          onClick={() => { setSortOrder("date_oldest"); setSortDropdownOpen(false); }}
+                          className={`w-full text-left px-4 py-2 text-sm ${sortOrder === "date_oldest" ? "bg-theme-primary/20 text-theme-primary" : "text-theme-text hover:bg-theme-hover"}`}
+                        >
+                          Oldest Year
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={fetchItems}
+                  disabled={loadingItems}
+                  className="flex items-center gap-2 px-3 py-2 bg-theme-bg hover:bg-theme-hover border border-theme hover:border-theme-primary/50 disabled:opacity-50 rounded-lg text-theme-text text-sm font-medium transition-all shadow-sm"
+                >
+                  <RefreshCw className={`w-4 h-4 text-theme-primary ${loadingItems ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+              </div>
+            )}
           </div>
 
-          {loadingItems ? (
-            <div className="py-12 flex flex-col items-center justify-center text-theme-muted">
-              <Loader2 className="w-8 h-8 animate-spin text-theme-primary mb-4" />
-              <p>Loading items from {activeServer?.name}...</p>
+          {/* Search Bar */}
+          {activeLibrary && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-theme-muted" />
+              <input
+                type="text"
+                placeholder="Search logos..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-colors text-sm"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-          ) : items.length === 0 ? (
-            <div className="py-12 text-center text-theme-muted bg-theme-bg/50 rounded-xl border border-theme border-dashed">
-              <Film className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No items found in this library.</p>
+          )}
+        </div>
+
+        {/* Scrollable Grid Area */}
+        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          {!activeServer || !activeLibrary ? (
+            <div className="flex flex-col items-center justify-center h-full text-theme-muted">
+              <ImageIcon className="w-16 h-16 opacity-20 mb-4" />
+              <p>Select a server and library to view logos.</p>
+            </div>
+          ) : loadingItems ? (
+            <div className="flex flex-col items-center justify-center h-full text-theme-muted">
+              <Loader2 className="w-10 h-10 animate-spin text-theme-primary mb-4" />
+              <p>Loading items from {activeLibrary.name}...</p>
+            </div>
+          ) : displayedItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-theme-muted">
+              <Film className="w-16 h-16 opacity-20 mb-4" />
+              <p>{searchTerm ? "No matching items found." : "No items found in this library."}</p>
             </div>
           ) : (
             <>
-              <div className={buildResponsiveGridClass({ size: 100 })}>
-                {items.map((item) => (
+              <div className={buildResponsiveGridClass({ size: imageSize })}>
+                {displayedItems.map((item) => (
                   <div
                     key={item.ratingKey}
-                    className="group bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all hover:shadow-lg hover:shadow-theme-primary/10 flex flex-col"
+                    className="group bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all hover:shadow-lg hover:shadow-theme-primary/10 flex flex-col relative"
                   >
-                    <div className="aspect-[16/9] bg-theme-bg relative flex items-center justify-center p-4">
+                    <div className="aspect-[16/9] bg-theme-bg/50 relative flex items-center justify-center p-2">
                         {item.hasLogo && item.logoUrl ? (
-                            <img src={item.logoUrl} alt={item.title} className="w-full h-full object-contain filter drop-shadow-md" />
+                            <img src={item.logoUrl} alt={item.title} className="w-full h-full object-contain filter drop-shadow-md" loading="lazy" />
                         ) : (
-                            <div className="text-center text-theme-muted opacity-50">
-                                <ImageIcon className="w-8 h-8 mx-auto mb-2" />
-                                <span className="text-xs">No Logo</span>
+                            <div className="text-center text-theme-muted opacity-30">
+                                <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                                <span className="text-[10px] uppercase font-bold tracking-wider">No Logo</span>
                             </div>
                         )}
                         
                         {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-theme-bg/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
                             <button
                                 onClick={() => {
                                     setSelectedItemForLogo(item);
                                     setShowLogoSearch(true);
                                 }}
-                                className="px-4 py-2 bg-theme-primary hover:bg-theme-primary-hover text-white rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center gap-2"
+                                className="px-3 py-1.5 bg-theme-primary hover:bg-theme-primary-hover text-white text-sm rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center gap-1.5"
                             >
-                                <Search className="w-4 h-4" />
-                                Replace Logo
+                                <Search className="w-3.5 h-3.5" />
+                                Replace
                             </button>
                         </div>
                     </div>
                     
-                    <div className="p-3 bg-theme-card border-t border-theme flex-1 flex flex-col justify-between">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium text-sm truncate text-theme-text" title={item.title}>
-                            {item.title}
-                          </p>
-                          <p className="text-xs text-theme-muted mt-0.5 flex items-center gap-1">
-                            {item.year && <span>{item.year}</span>}
-                          </p>
-                        </div>
-                      </div>
+                    <div className="p-2.5 bg-theme-card border-t border-theme">
+                      <p className="font-semibold text-xs truncate text-theme-text" title={item.title}>
+                        {item.title}
+                      </p>
+                      <p className="text-[10px] text-theme-muted mt-0.5 opacity-70">
+                        {item.year || "Unknown"}
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
 
               <PaginationControls
-                currentPage={page}
+                currentPage={currentPage}
                 totalPages={totalPages}
-                onPageChange={setPage}
+                onPageChange={setCurrentPage}
               />
             </>
           )}
         </div>
-      )}
+      </div>
 
       {showLogoSearch && selectedItemForLogo && (
         <LogoSearchModal

@@ -15634,11 +15634,12 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                             "type": item.get("type", ""),
                             "ratingKey": rating_key,
                             "hasLogo": has_logo,
-                            "logoUrl": f"{url}/library/metadata/{rating_key}/clearLogo?X-Plex-Token={request.token}" if has_logo else None
+                            "logoUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/clearLogo')}" if has_logo else None
                         })
                         
             elif request.server_type in ["jellyfin", "emby"]:
-                auth_header = "X-Emby-Token" if request.server_type == "emby" else "X-Emby-Token"
+                auth_header = "Authorization"
+                request.token = f\'MediaBrowser Token="{request.token}"\'
                 api_url = f"{url}/Items"
                 params = {
                     "ParentId": request.library_id,
@@ -15661,13 +15662,40 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                             "type": item.get("Type", ""),
                             "ratingKey": item.get("Id", ""),
                             "hasLogo": has_logo,
-                            "logoUrl": f"{url}/Items/{item.get('Id')}/Images/Logo?tag={item.get('ImageTags', {}).get('Logo', '')}" if has_logo else None
+                            "logoUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/Logo?tag={item.get('ImageTags', {}).get('Logo', '')}')}" if has_logo else None
                         })
                         
         return {"success": True, "items": items, "total": total}
     except Exception as e:
         logger.error(f"Error fetching media server items: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
+
+from fastapi.responses import StreamingResponse
+import urllib.parse
+
+@app.get("/api/media-server/image")
+async def proxy_media_server_image(server_type: str, url: str):
+    """Proxies images from the media server to hide API keys/tokens from the frontend URL"""
+    config = _load_config()
+    headers = {}
+    
+    api_part = config.get("ApiPart", {})
+    if server_type == "plex":
+        headers["X-Plex-Token"] = api_part.get("PlexToken", "")
+    elif server_type == "jellyfin":
+        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("JellyfinAPIKey", "")}"'
+    elif server_type == "emby":
+        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("EmbyAPIKey", "")}"'
+        
+    async def stream_image():
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream("GET", url, headers=headers) as resp:
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+                    
+    # Return streaming response
+    return StreamingResponse(stream_image(), media_type="image/png")
+
 
 class UploadLogoRequest(BaseModel):
     server_type: str
@@ -15712,7 +15740,8 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 with open(temp_logo, "rb") as f:
                     upload_resp = await client.post(upload_url, headers=headers, content=f.read())
             else:
-                auth_header = "X-Emby-Token"
+                auth_header = "Authorization"
+                request.token = f\'MediaBrowser Token="{request.token}"\'
                 upload_url = f"{url}/Items/{request.item_id}/Images/Logo"
                 headers = {auth_header: request.token, "Content-Type": "image/png"}
                 with open(temp_logo, "rb") as f:
