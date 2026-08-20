@@ -258,7 +258,11 @@ const LogoBrowser = () => {
         const res = await fetch(`${API_URL}/libraries/${activeServer.id}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: activeServer.url, token: activeServer.token })
+            body: JSON.stringify(
+                activeServer.id === "plex" 
+                ? { url: activeServer.url, token: activeServer.token }
+                : { url: activeServer.url, api_key: activeServer.token }
+            )
         });
         const data = await res.json();
         if (data.success && data.libraries) {
