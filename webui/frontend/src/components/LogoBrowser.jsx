@@ -14,7 +14,8 @@ import {
   CheckSquare,
   Server,
   Loader2,
-  X
+  X,
+  Menu
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import LogoSearchModal from "./LogoSearchModal";
@@ -133,6 +134,7 @@ const LogoBrowser = () => {
   const [selectedItemForLogo, setSelectedItemForLogo] = useState(null);
   const [showLogoSearch, setShowLogoSearch] = useState(false);
   const [updatedLogos, setUpdatedLogos] = useState({});
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Setup click outside for sort dropdown
   useEffect(() => {
@@ -358,10 +360,10 @@ const LogoBrowser = () => {
   const displayedItems = sortedItems.slice(startIndex, startIndex + itemsPerPage);
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-64px)] overflow-hidden">
       
       {/* LEFT SIDEBAR (Mimicking Gallery Folders list) */}
-      <div className="w-72 bg-theme-bg border-r border-theme flex flex-col flex-shrink-0">
+      <div className={`w-full md:w-72 bg-theme-bg border-b md:border-b-0 md:border-r border-theme flex-col flex-shrink-0 md:h-full max-h-[45vh] md:max-h-none overflow-y-auto z-20 ${isSidebarOpen ? 'flex' : 'hidden md:flex'}`}>
         
         {/* Server Selector Top Block */}
         <div className="p-4 border-b border-theme bg-theme-card">
@@ -424,15 +426,24 @@ const LogoBrowser = () => {
         <div className="p-4 border-b border-theme bg-theme-card shadow-sm z-10 flex flex-col gap-3">
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-theme-primary to-theme-secondary flex items-center gap-2">
-              <ImageIcon className="w-6 h-6 text-theme-primary" />
-              {activeLibrary ? activeLibrary.name : "Logo Browser"}
-              {activeLibrary && !loadingItems && (
-                 <span className="text-sm text-theme-muted font-normal ml-2">
-                   ({sortedItems.length} items)
-                 </span>
-              )}
-            </h2>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="md:hidden p-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg text-theme-text transition-colors shadow-sm"
+                title="Toggle Sidebar"
+              >
+                <Menu className="w-5 h-5 text-theme-primary" />
+              </button>
+              <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-theme-primary to-theme-secondary flex items-center gap-2">
+                <ImageIcon className="w-6 h-6 text-theme-primary" />
+                {activeLibrary ? activeLibrary.name : "Logo Browser"}
+                {activeLibrary && !loadingItems && (
+                   <span className="text-sm text-theme-muted font-normal ml-2">
+                     ({sortedItems.length} items)
+                   </span>
+                )}
+              </h2>
+            </div>
             
             {/* Actions / Sorting / Sizing */}
             {activeLibrary && (
