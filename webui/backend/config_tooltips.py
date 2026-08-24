@@ -31,7 +31,8 @@ CONFIG_TOOLTIPS = {
     "BgTcMinWidth": "Minimum background/titlecard width filter—greater than or equal to: 3840 (default value).",
     "BgTcMinHeight": "Minimum background/titlecard height filter—greater than or equal to: 2160 (default value).",
     "LogoLanguageOrder": "Specify language preferences for Logos. Default is en,de. Use 2-digit ISO 3166-1 language codes.",
-    "LibraryLanguageOverrides": "Override the language order on a per-library basis. Keyed by exact Plex/Jellyfin/Emby library name. Applies uniformly to that library's posters, season posters, and backgrounds.",
+    "TmdbLanguageMappings": "Map Posterizarr languages to specific TMDB locales. For example, map 'fr' to 'fr-FR' so TMDB queries return accurate regions without affecting other providers.",
+    "LibraryLanguageOverrides": "Override the language order on a per-library basis. Keyed by exact Plex/Jellyfin/Emby library name. You can configure whether it applies to posters, season posters, and backgrounds.",
 
     # PlexPart
     "PlexLibstoExclude": "Libraries, by name, to exclude from processing on your Plex server.",

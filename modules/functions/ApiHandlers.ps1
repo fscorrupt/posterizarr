@@ -16,7 +16,7 @@ function GetTMDBLogo {
                 foreach ($lang in $global:LogoLanguageOrder) {
                     if ($lang -ne 'null' -and $lang -ne 'xx') {
                         if ($global:UseClearlogo -eq 'true') {
-                            $FavPoster = ($response.images.logos | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.logos | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
 
@@ -341,10 +341,10 @@ function GetTMDBMoviePoster {
                     }
                     Else {
                         if ($global:WidthHeightFilter -eq 'true') {
-                            $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.images.posters | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -536,7 +536,7 @@ function GetTMDBMovieBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
+                            $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                     }
                     Else {
@@ -544,7 +544,7 @@ function GetTMDBMovieBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -757,7 +757,7 @@ function GetTMDBShowPoster {
                                 $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                             }
                             Else {
-                                $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                                $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                             }
                         }
                         Else {
@@ -765,7 +765,7 @@ function GetTMDBShowPoster {
                                 $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                             }
                             Else {
-                                $FavPoster = ($response.images.posters | Where-Object iso_639_1 -eq $lang)
+                                $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                             }
                         }
                         if ($FavPoster) {
@@ -966,7 +966,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($responseBackup.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($responseBackup.images.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                     }
                     Else {
@@ -974,7 +974,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -1016,7 +1016,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($response.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($response.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                     }
                     Else {
@@ -1024,7 +1024,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.posters | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -1225,7 +1225,7 @@ function GetTMDBShowBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                     }
                     Else {
@@ -1233,7 +1233,7 @@ function GetTMDBShowBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -1429,7 +1429,7 @@ function GetTMDBTitleCard {
                             $FavPoster = ($response.stills | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.stills | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
+                            $FavPoster = ($response.stills | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                     }
                     Else {
@@ -1437,7 +1437,7 @@ function GetTMDBTitleCard {
                             $FavPoster = ($response.stills | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.stills | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.stills | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {

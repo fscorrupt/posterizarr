@@ -21,11 +21,14 @@ import {
   CheckCheck,
   X,
   Trash2,
+  Tag,
+  Info,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import AssetReplacer from "./AssetReplacer";
 import ScrollToButtons from "./ScrollToButtons";
+import ImagePreviewModal from "./ImagePreviewModal";
 
 // Helper function to detect provider from URL and return badge styling
 const getProviderBadge = (url) => {
@@ -202,10 +205,19 @@ const AssetRow = React.memo(
     onNoEditsNeeded,
     onUnresolve,
     onReplace,
-    onDelete, // <-- Delete prop
+    onDelete,
+    onSkipMediaServer,
+    onUnskip,
+    onRefreshMetadata,
+    isSkippedView,
+    isActiveView,
     isSelected,
     onToggleSelection,
     showCheckbox,
+    usePlex,
+    useJellyfin,
+    useEmby,
+    onPreviewImage,
   }) => {
     const { t } = useTranslation();
     const [logoError, setLogoError] = useState(false);
@@ -246,18 +258,89 @@ const AssetRow = React.memo(
               </div>
             )}
 
+            {/* Poster Thumbnail for Skipped View */}
+            {isSkippedView && asset.server_type && asset.item_id && (
+              <div 
+                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+                }`}
+                onClick={() => {
+                  if (onPreviewImage) {
+                    onPreviewImage({
+                      url: `/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`,
+                      name: asset.Title,
+                      type: asset.Type
+                    });
+                  } else {
+                    window.open(`/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`, '_blank');
+                  }
+                }}
+              >
+                <img
+                  src={`/api/proxy/poster?server_type=${asset.server_type}&item_id=${asset.item_id}`}
+                  alt={asset.Title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+            
+            {/* Poster Thumbnail for Active Actions / General */}
+            {isActiveView && asset.poster_url && (
+              <div 
+                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+                }`}
+                onClick={() => {
+                  if (onPreviewImage) {
+                    onPreviewImage({
+                      url: asset.poster_url,
+                      name: asset.Title,
+                      type: asset.Type
+                    });
+                  } else {
+                    window.open(asset.poster_url, '_blank');
+                  }
+                }}
+              >
+                <img
+                  src={asset.poster_url}
+                  alt={asset.Title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-semibold text-theme-text break-words">
-                {showName ? (
-                  <>
-                    <span className="text-theme-primary">{showName}</span>
-                    <span className="text-theme-muted mx-2">|</span>
-                    <span>{asset.Title}</span>
-                  </>
-                ) : (
-                  asset.Title
+              <div className="flex items-start justify-between gap-4">
+                <h3 className="text-lg font-semibold text-theme-text break-words">
+                  {showName ? (
+                    <>
+                      <span className="text-theme-primary">{showName}</span>
+                      <span className="text-theme-muted mx-2">|</span>
+                      <span>{asset.Title} {asset.year ? `(${asset.year})` : ''}</span>
+                    </>
+                  ) : (
+                    <>{asset.Title} {asset.year ? `(${asset.year})` : ''}</>
+                  )}
+                </h3>
+                {isSkippedView && asset.media_url && (
+                  <a
+                    href={asset.media_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 p-1.5 text-theme-muted hover:text-theme-primary hover:bg-theme-primary/10 rounded transition-colors"
+                    title={t("assetOverview.viewInMediaServer", { defaultValue: "View in Media Server" })}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
                 )}
-              </h3>
+              </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-sm text-theme-muted">
                 {/* Type */}
                 <span className="font-medium">{t("assetOverview.type")}:</span>
@@ -265,43 +348,60 @@ const AssetRow = React.memo(
                   {asset.Type || "Unknown"}
                 </span>
                 <span className="hidden sm:inline">•</span>
-                {/* Language */}
-                {!(!asset.DownloadSource || asset.DownloadSource === "false" || asset.DownloadSource === false) && (
-                  <>
-                    <span className="font-medium">
-                      {t("assetOverview.language")}:
-                    </span>
-                    <span className="bg-theme-card px-2 py-0.5 rounded">
-                      {asset.Language &&
-                      asset.Language !== "false" &&
-                      asset.Language !== false
-                        ? asset.Language
-                        : "Unknown"}
-                    </span>
-                    <span className="hidden sm:inline">•</span>
-                  </>
-                )}
-                {/* Source */}
-                <span className="font-medium">
-                  {t("assetOverview.source")}:
+                <span className="font-medium">{t("assetOverview.library", { defaultValue: "Library" })}:</span>
+                <span className="bg-theme-card px-2 py-0.5 rounded">
+                  {asset.LibraryName || "Unknown"}
                 </span>
-                {asset.DownloadSource &&
-                asset.DownloadSource !== "false" &&
-                asset.DownloadSource !== false ? (
-                  <a
-                    href={asset.DownloadSource}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
-                    title={asset.DownloadSource}
-                  >
-                    {downloadBadge.logo && !logoError ? (
-                      <img
-                        src={downloadBadge.logo}
-                        alt={downloadBadge.name}
-                        className="h-[35px] object-contain"
-                        onError={() => setLogoError(true)}
-                      />
+                {/* Language, Source, Fav Provider */}
+                {!isSkippedView && (
+                  <>
+                    <span className="hidden sm:inline">•</span>
+                    {/* Language */}
+                    {!(!asset.DownloadSource || asset.DownloadSource === "false" || asset.DownloadSource === false) && (
+                      <>
+                        <span className="font-medium">
+                          {t("assetOverview.language")}:
+                        </span>
+                        <span className="bg-theme-card px-2 py-0.5 rounded">
+                          {asset.Language &&
+                          asset.Language !== "false" &&
+                          asset.Language !== false
+                            ? asset.Language
+                            : "Unknown"}
+                        </span>
+                        <span className="hidden sm:inline">•</span>
+                      </>
+                    )}
+                    {/* Source */}
+                    <span className="font-medium">
+                      {t("assetOverview.source")}:
+                    </span>
+                    {asset.DownloadSource &&
+                    asset.DownloadSource !== "false" &&
+                    asset.DownloadSource !== false ? (
+                      <a
+                        href={asset.DownloadSource}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                        title={asset.DownloadSource}
+                      >
+                        {downloadBadge.logo && !logoError ? (
+                          <img
+                            src={downloadBadge.logo}
+                            alt={downloadBadge.name}
+                            className="h-[35px] object-contain"
+                            onError={() => setLogoError(true)}
+                          />
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${downloadBadge.color}`}
+                          >
+                            {downloadBadge.name}
+                          </span>
+                        )}
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </a>
                     ) : (
                       <span
                         className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${downloadBadge.color}`}
@@ -309,53 +409,44 @@ const AssetRow = React.memo(
                         {downloadBadge.name}
                       </span>
                     )}
-                    <ExternalLink className="w-3 h-3 opacity-60" />
-                  </a>
-                ) : (
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${downloadBadge.color}`}
-                  >
-                    {downloadBadge.name}
-                  </span>
-                )}
-                {/* Fav Provider */}
-                <>
-                  <span className="hidden sm:inline">•</span>
-                  <span className="font-medium">
-                    {t("assetOverview.favProvider")}:
-                  </span>
-                  {favProviderBadge.name === "Missing" ? (
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
-                    >
-                      {favProviderBadge.name}
+                    {/* Fav Provider */}
+                    <span className="hidden sm:inline">•</span>
+                    <span className="font-medium">
+                      {t("assetOverview.favProvider")}:
                     </span>
-                  ) : (
-                    <a
-                      href={asset.FavProviderLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
-                      title={asset.FavProviderLink}
-                    >
-                      {favProviderBadge.logo && !favLogoError ? (
-                        <img
-                          src={favProviderBadge.logo}
-                          alt={favProviderBadge.name}
-                          className="h-[35px] object-contain"
-                          onError={() => setFavLogoError(true)}
-                        />
-                      ) : (
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
-                        >
-                          {favProviderBadge.name}
-                        </span>
-                      )}
-                      <ExternalLink className="w-3 h-3 opacity-60" />
-                    </a>
-                  )}
-                </>
+                    {favProviderBadge.name === "Missing" ? (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
+                      >
+                        {favProviderBadge.name}
+                      </span>
+                    ) : (
+                      <a
+                        href={asset.FavProviderLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                        title={asset.FavProviderLink}
+                      >
+                        {favProviderBadge.logo && !favLogoError ? (
+                          <img
+                            src={favProviderBadge.logo}
+                            alt={favProviderBadge.name}
+                            className="h-[35px] object-contain"
+                            onError={() => setFavLogoError(true)}
+                          />
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
+                          >
+                            {favProviderBadge.name}
+                          </span>
+                        )}
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </a>
+                    )}
+                  </>
+                )}
                 {/* Timestamp */}
                 {asset.created_at && (
                   <>
@@ -374,23 +465,50 @@ const AssetRow = React.memo(
                   </>
                 )}
               </div>
+              {/* Description for Skipped View */}
+              {isSkippedView && asset.overview && (
+                <p className="mt-3 text-sm text-theme-text/80 line-clamp-2">
+                  {asset.overview}
+                </p>
+              )}
               {/* Tags */}
-              <div className="flex flex-wrap gap-2 mt-3">
-                {tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${tag.color}`}
-                  >
-                    {tag.label}
-                  </span>
-                ))}
-              </div>
+              {!isSkippedView && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${tag.color}`}
+                    >
+                      {tag.label}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Action Buttons */}
           <div className="flex items-start gap-2">
-            {isResolved ? (
+            {isSkippedView ? (
+              <>
+                <button
+                  onClick={() => onRefreshMetadata(asset.id)}
+                  className="flex items-center gap-2 px-4 py-2 bg-theme-primary/10 hover:bg-theme-primary/20 border border-theme-primary hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                  title={t("assetOverview.refreshMetadataTooltip", { defaultValue: "Refresh Metadata" })}
+                >
+                  <RefreshCw className="w-4 h-4 text-theme-primary" />
+                  {t("assetOverview.refreshMetadata", { defaultValue: "Refresh Metadata" })}
+                </button>
+                <button
+                  onClick={() => onUnskip(asset)}
+                  className="flex items-center gap-2 px-4 py-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                  title={t("assetOverview.unskipTooltip", { defaultValue: "Remove skip label from media server and restore item" })}
+                >
+                  <RefreshCw className="w-4 h-4 text-theme-primary" />
+                  {t("assetOverview.unskipConfirm", { defaultValue: "Unskip" })}
+                </button>
+              </>
+            ) : isResolved ? (
               // Resolved Asset Actions
               <>
                 <button
@@ -401,6 +519,15 @@ const AssetRow = React.memo(
                   <Edit className="w-4 h-4 text-theme-primary" />
                   {t("assetOverview.unresolve")}
                 </button>
+                {(usePlex || useJellyfin || useEmby) && (
+                  <button
+                    onClick={() => onSkipMediaServer(asset)}
+                    className="flex items-center justify-center p-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                    title={t("assetOverview.skipMediaServerTooltip")}
+                  >
+                    <Tag className="w-4 h-4 text-theme-primary" />
+                  </button>
+                )}
                 {/* <-- UPDATED: Delete button for resolved assets --> */}
                 <button
                   onClick={() => onDelete(asset)}
@@ -429,6 +556,15 @@ const AssetRow = React.memo(
                   <Replace className="w-4 h-4 text-theme-primary" />
                   {t("assetOverview.replace")}
                 </button>
+                {(usePlex || useJellyfin || useEmby) && (
+                  <button
+                    onClick={() => onSkipMediaServer(asset)}
+                    className="flex items-center justify-center p-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-theme-text transition-all whitespace-nowrap shadow-sm"
+                    title={t("assetOverview.skipMediaServerTooltip")}
+                  >
+                    <Tag className="w-4 h-4 text-theme-primary" />
+                  </button>
+                )}
                 {/* <-- UPDATED: Delete button for unresolved assets --> */}
                 <button
                   onClick={() => onDelete(asset)}
@@ -454,6 +590,7 @@ const AssetOverview = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("All Types");
   const [selectedLibrary, setSelectedLibrary] = useState("All Libraries");
@@ -461,6 +598,7 @@ const AssetOverview = () => {
   const [selectedStatus, setSelectedStatus] = useState("Unresolved");
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [showReplacer, setShowReplacer] = useState(false);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
 
   // PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1);
@@ -513,10 +651,24 @@ const AssetOverview = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/assets/overview");
-      if (!response.ok) throw new Error(t("assetOverview.fetchError"));
-      const result = await response.json();
-      setData(result);
+      if (activeTab === "active") {
+        const response = await fetch("/api/assets/overview");
+        if (!response.ok) throw new Error(t("assetOverview.fetchError"));
+        const result = await response.json();
+        setData(result);
+      } else {
+        const response = await fetch("/api/assets/skipped");
+        if (!response.ok) throw new Error(t("assetOverview.fetchError"));
+        const result = await response.json();
+        setData({
+          categories: {
+            skipped: {
+              count: result.length,
+              assets: result,
+            }
+          }
+        });
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -526,7 +678,16 @@ const AssetOverview = () => {
 
   useEffect(() => {
     fetchData();
-  }, [t]); // Added t dependency
+  }, [t, activeTab]); // Added t and activeTab dependencies
+
+  // Reset filters when changing tabs
+  useEffect(() => {
+    setSelectedCategory("All Categories");
+    setSelectedStatus("Unresolved");
+    setSelectedType("All Types");
+    setSelectedLibrary("All Libraries");
+    setSearchQuery("");
+  }, [activeTab]);
 
   // Clear selection and reset page when filters change
   useEffect(() => {
@@ -824,6 +985,81 @@ const AssetOverview = () => {
     });
   };
 
+  const handleSkipMediaServer = async (asset) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: t("assetOverview.skipTitle", { defaultValue: "Skip Asset" }),
+      message: t("assetOverview.skipMessage", {
+        defaultValue: `Are you sure you want to skip "${asset.Title}"? It will be ignored in future Posterizarr runs.`,
+      }),
+      confirmText: t("assetOverview.skipConfirm", { defaultValue: "Skip" }),
+      confirmColor: "warning",
+      onConfirm: async () => {
+        setIsBulkProcessing(true);
+        try {
+          const response = await fetch(`/api/assets/skip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ asset_id: asset.id }),
+          });
+
+          if (!response.ok) throw new Error("Failed to skip asset");
+
+          showSuccess(t("assetOverview.skipPlexSuccess"));
+          await fetchData();
+        } catch (error) {
+          showError(
+            t("assetOverview.skipPlexError", { error: error.message })
+          );
+        } finally {
+          setIsBulkProcessing(false);
+        }
+      },
+    });
+  };
+
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  // ++ Handle Unskip Asset
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  const handleUnskipAsset = async (asset) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: t("assetOverview.unskipTitle", { defaultValue: "Unskip Asset" }),
+      message: t("assetOverview.unskipMessage", {
+        defaultValue: `Are you sure you want to unskip "${asset.Title}"? It will be restored in Posterizarr on the next run.`,
+      }),
+      confirmText: t("assetOverview.unskipConfirm", { defaultValue: "Unskip" }),
+      confirmColor: "primary",
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/assets/unskip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              id: asset.id,
+              item_id: asset.item_id,
+              server_type: asset.server_type
+            }),
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.detail || "Failed to unskip asset");
+          }
+          
+          showSuccess(t("assetOverview.unskipSuccess", { title: asset.Title }));
+          await fetchData();
+        } catch (error) {
+          showError(
+            t("assetOverview.unskipError", { error: error.message })
+          );
+        } finally {
+          setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
+  };
+
   const runDeleteAsset = async (assetId) => {
     setIsBulkProcessing(true); // Use same processing flag
     try {
@@ -1021,6 +1257,54 @@ const AssetOverview = () => {
     }
   };
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  // ++ NEW: Bulk Refresh Metadata (for skipped items)
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  const handleBulkRefreshMetadata = async (ids = Array.from(selectedAssetIds)) => {
+    if (ids.length === 0) return;
+    setIsBulkProcessing(true);
+
+    try {
+      const response = await fetch("/api/assets/skipped/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+
+      if (response.ok) {
+        showSuccess(t("assetOverview.refreshMetadataStarted", { defaultValue: "Metadata refresh started in background" }));
+        setSelectedAssetIds(new Set());
+      } else {
+        showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
+      }
+    } catch (error) {
+      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleRefreshAllMetadata = async () => {
+    setIsBulkProcessing(true);
+    try {
+      const response = await fetch("/api/assets/skipped/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [] }),
+      });
+
+      if (response.ok) {
+        showSuccess(t("assetOverview.refreshAllMetadataStarted", { defaultValue: "Refresh of all metadata started in background" }));
+      } else {
+        showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
+      }
+    } catch (error) {
+      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
 
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   // ++ REFACTORED: Bulk Mark All Filtered (to use new modal)
@@ -1260,7 +1544,7 @@ const AssetOverview = () => {
 
   // Category cards configuration
   const categoryCards = useMemo(() => {
-    if (!data) return [];
+    if (!data || activeTab === "skipped") return [];
     return [
       {
         key: "assets_with_issues",
@@ -1582,98 +1866,186 @@ const AssetOverview = () => {
   // Main Render
   return (
     <div className="space-y-6">
-      {/* Category Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {categoryCards.map((card) => {
-          const Icon = card.icon;
-          const isSelected = selectedCategory === card.label;
-          return (
-            <button
-              key={card.key}
-              onClick={() =>
-                setSelectedCategory(isSelected ? "All Categories" : card.label)
-              }
-              className={`relative p-5 rounded-xl border-2 transition-all duration-200 bg-black/60 ${
-                card.borderColor
-              } ${card.hoverBorderColor} ${
-                isSelected
-                  ? "ring-2 ring-theme-primary/50 scale-105 shadow-lg"
-                  : "hover:scale-102 shadow-md"
-              }`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <Icon className={`w-6 h-6 ${card.color}`} />
-                <span className={`text-3xl font-bold ${card.color}`}>
-                  {card.count}
-                </span>
-              </div>
-              <div className="text-sm font-semibold text-gray-300 text-left">
-                {card.label}
-              </div>
-              {isSelected && (
-                <div className="absolute inset-0 bg-theme-primary/5 rounded-xl pointer-events-none" />
-              )}
-            </button>
-          );
-        })}
+      {/* Tabs */}
+      <div className="flex border-b border-theme-muted/30">
+        <button
+          onClick={() => setActiveTab("active")}
+          className={`px-6 py-3 font-semibold text-sm transition-colors relative ${
+            activeTab === "active"
+              ? "text-theme-primary"
+              : "text-theme-muted hover:text-theme-text"
+          }`}
+        >
+          {t("assetOverview.tabActive", { defaultValue: "Active Actions" })}
+          {activeTab === "active" && (
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-theme-primary shadow-[0_0_8px_rgba(var(--theme-primary-rgb),0.5)]"></div>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("skipped")}
+          className={`px-6 py-3 font-semibold text-sm transition-colors relative ${
+            activeTab === "skipped"
+              ? "text-theme-primary"
+              : "text-theme-muted hover:text-theme-text"
+          }`}
+        >
+          {t("assetOverview.tabSkipped", { defaultValue: "Skipped Items" })}
+          {activeTab === "skipped" && (
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-theme-primary shadow-[0_0_8px_rgba(var(--theme-primary-rgb),0.5)]"></div>
+          )}
+        </button>
       </div>
+
+      {/* Category Cards */}
+      {activeTab === "active" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {categoryCards.map((card) => {
+            const Icon = card.icon;
+            const isSelected = selectedCategory === card.label;
+            return (
+              <button
+                key={card.key}
+                onClick={() =>
+                  setSelectedCategory(isSelected ? "All Categories" : card.label)
+                }
+                className={`relative p-5 rounded-xl border-2 transition-all duration-200 bg-black/60 ${
+                  card.borderColor
+                } ${card.hoverBorderColor} ${
+                  isSelected
+                    ? "ring-2 ring-theme-primary/50 scale-105 shadow-lg"
+                    : "hover:scale-102 shadow-md"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <Icon className={`w-6 h-6 ${card.color}`} />
+                  <span className={`text-3xl font-bold ${card.color}`}>
+                    {card.count}
+                  </span>
+                </div>
+                <div className="text-sm font-semibold text-gray-300 text-left">
+                  {card.label}
+                </div>
+                {isSelected && (
+                  <div className="absolute inset-0 bg-theme-primary/5 rounded-xl pointer-events-none" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-theme-card border border-theme rounded-lg p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          {/* Status Filter */}
-          <div className="relative" ref={statusDropdownRef}>
-            <button
-              onClick={() => {
-                const shouldOpenUp =
-                  calculateDropdownPosition(statusDropdownRef);
-                setStatusDropdownUp(shouldOpenUp);
-                setStatusDropdownOpen(!statusDropdownOpen);
-              }}
-              className="w-full px-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text text-sm flex items-center justify-between hover:bg-theme-hover hover:border-theme-primary/50 transition-all shadow-sm"
-            >
-              <span className="font-medium">
-                {selectedStatus === "All"
-                  ? t("assetOverview.allStatuses")
-                  : selectedStatus === "Resolved"
-                  ? t("assetOverview.resolved")
-                  : t("assetOverview.unresolved")}
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${
-                  statusDropdownOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {statusDropdownOpen && (
-              <div
-                className={`absolute z-50 w-full ${
-                  statusDropdownUp ? "bottom-full mb-2" : "top-full mt-2"
-                } bg-theme-card border border-theme-primary rounded-lg shadow-xl`}
-              >
-                {["All", "Resolved", "Unresolved"].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => {
-                      setSelectedStatus(status);
-                      setStatusDropdownOpen(false);
-                    }}
-                    className={`w-full px-4 py-3 text-left text-sm transition-all ${
-                      selectedStatus === status
-                        ? "bg-theme-primary text-white"
-                        : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
-                    }`}
-                  >
-                    {status === "All"
+          {activeTab === "active" && (
+            <>
+              {/* Status Filter */}
+              <div className="relative" ref={statusDropdownRef}>
+                <button
+                  onClick={() => {
+                    const shouldOpenUp =
+                      calculateDropdownPosition(statusDropdownRef);
+                    setStatusDropdownUp(shouldOpenUp);
+                    setStatusDropdownOpen(!statusDropdownOpen);
+                  }}
+                  className="w-full px-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text text-sm flex items-center justify-between hover:bg-theme-hover hover:border-theme-primary/50 transition-all shadow-sm"
+                >
+                  <span className="font-medium">
+                    {selectedStatus === "All"
                       ? t("assetOverview.allStatuses")
-                      : status === "Resolved"
+                      : selectedStatus === "Resolved"
                       ? t("assetOverview.resolved")
                       : t("assetOverview.unresolved")}
-                  </button>
-                ))}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${
+                      statusDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {statusDropdownOpen && (
+                  <div
+                    className={`absolute z-50 w-full ${
+                      statusDropdownUp ? "bottom-full mb-2" : "top-full mt-2"
+                    } bg-theme-card border border-theme-primary rounded-lg shadow-xl`}
+                  >
+                    {["All", "Resolved", "Unresolved"].map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => {
+                          setSelectedStatus(status);
+                          setStatusDropdownOpen(false);
+                        }}
+                        className={`w-full px-4 py-3 text-left text-sm transition-all ${
+                          selectedStatus === status
+                            ? "bg-theme-primary text-white"
+                            : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
+                        }`}
+                      >
+                        {status === "All"
+                          ? t("assetOverview.allStatuses")
+                          : status === "Resolved"
+                          ? t("assetOverview.resolved")
+                          : t("assetOverview.unresolved")}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* Category Filter */}
+              <div className="relative" ref={categoryDropdownRef}>
+                <button
+                  onClick={() => {
+                    const shouldOpenUp =
+                      calculateDropdownPosition(categoryDropdownRef);
+                    setCategoryDropdownUp(shouldOpenUp);
+                    setCategoryDropdownOpen(!categoryDropdownOpen);
+                  }}
+                  className="w-full px-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text text-sm flex items-center justify-between hover:bg-theme-hover hover:border-theme-primary/50 transition-all shadow-sm"
+                >
+                  <span className="font-medium truncate pr-2">
+                    {selectedCategory === "All Categories"
+                      ? t("assetOverview.allCategories")
+                      : selectedCategory}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 shrink-0 transition-transform ${
+                      categoryDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {categoryDropdownOpen && (
+                  <div
+                    className={`absolute z-50 w-full ${
+                      categoryDropdownUp ? "bottom-full mb-2" : "top-full mt-2"
+                    } bg-theme-card border border-theme-primary rounded-lg shadow-xl max-h-[300px] overflow-y-auto custom-scrollbar`}
+                  >
+                    {["All Categories", ...categoryCards.map((c) => c.label)].map(
+                      (category) => (
+                        <button
+                          key={category}
+                          onClick={() => {
+                            setSelectedCategory(category);
+                            setCategoryDropdownOpen(false);
+                          }}
+                          className={`w-full px-4 py-3 text-left text-sm transition-all truncate ${
+                            selectedCategory === category
+                              ? "bg-theme-primary text-white"
+                              : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
+                          }`}
+                        >
+                          {category === "All Categories"
+                            ? t("assetOverview.allCategories")
+                            : category}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           {/* Type Filter */}
           <div className="relative" ref={typeDropdownRef}>
             <button
@@ -1852,6 +2224,21 @@ const AssetOverview = () => {
       </div>
 
       {/* Assets Grid */}
+      {activeTab === "skipped" && (
+        <div className="mb-4 bg-theme-card border-l-4 border-l-theme-primary border-t border-r border-b border-theme rounded-r-lg p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-theme-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-theme-text mb-1">
+                {t("assetOverview.skippedInfoTitle")}
+              </p>
+              <p className="text-theme-muted text-sm leading-relaxed">
+                {t("assetOverview.skippedInfoDesc")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-theme-card border border-theme rounded-lg p-6">
         {/* Bulk Action Toolbar */}
         {selectedAssetIds.size > 0 && (
@@ -1865,31 +2252,48 @@ const AssetOverview = () => {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={handleBulkMarkAsResolved}
-                disabled={isBulkProcessing}
-                className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
-              >
-                {isBulkProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckIcon className="w-4 h-4" />
-                )}
-                {t("assetOverview.markSelectedAsResolved")}
-              </button>
-              {/* <-- UPDATED: Bulk Delete Button --> */}
-              <button
-                onClick={handleBulkDelete}
-                disabled={isBulkProcessing}
-                className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-800 disabled:bg-red-700/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
-              >
-                {isBulkProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
-                {t("assetOverview.deleteSelected")}
-              </button>
+              {activeTab !== "skipped" && (
+                <>
+                  <button
+                    onClick={handleBulkMarkAsResolved}
+                    disabled={isBulkProcessing}
+                    className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
+                  >
+                    {isBulkProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CheckIcon className="w-4 h-4" />
+                    )}
+                    {t("assetOverview.markSelectedAsResolved")}
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={isBulkProcessing}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-800 disabled:bg-red-700/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
+                  >
+                    {isBulkProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    {t("assetOverview.deleteSelected")}
+                  </button>
+                </>
+              )}
+              {activeTab === "skipped" && (
+                <button
+                  onClick={() => handleBulkRefreshMetadata()}
+                  disabled={isBulkProcessing}
+                  className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-white font-medium transition-all shadow-sm disabled:cursor-not-allowed"
+                >
+                  {isBulkProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {t("assetOverview.refreshMetadata", { defaultValue: "Refresh Metadata" })}
+                </button>
+              )}
               <button
                 onClick={() => setSelectedAssetIds(new Set())}
                 disabled={isBulkProcessing}
@@ -1938,7 +2342,7 @@ const AssetOverview = () => {
             )}
 
             {/* Mark All Filtered as Resolved (Refactored) */}
-            {filteredAssets.length > 0 && selectedStatus !== "Resolved" && (
+            {filteredAssets.length > 0 && selectedStatus !== "Resolved" && activeTab !== "skipped" && (
               <button
                 onClick={handleBulkMarkAllFilteredAsResolved}
                 disabled={isBulkProcessing}
@@ -1959,7 +2363,7 @@ const AssetOverview = () => {
             )}
 
             {/* <-- ADDED: Bulk Delete All Filtered Button --> */}
-            {filteredAssets.length > 0 && (
+            {filteredAssets.length > 0 && activeTab !== "skipped" && (
               <button
                 onClick={handleBulkDeleteAllFiltered}
                 disabled={isBulkProcessing}
@@ -1979,6 +2383,23 @@ const AssetOverview = () => {
               </button>
             )}
 
+
+
+            {activeTab === "skipped" && (
+              <button
+                onClick={handleRefreshAllMetadata}
+                disabled={isBulkProcessing}
+                className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 disabled:bg-theme-primary/50 rounded-lg text-sm font-medium transition-all shadow-sm text-white"
+              >
+                {isBulkProcessing ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 text-white" />
+                )}
+                <span className="text-white">{t("assetOverview.refreshAllMetadata", { defaultValue: "Refresh All Metadata" })}</span>
+              </button>
+            )}
+
             <button
               onClick={fetchData}
               className="flex items-center gap-2 px-4 py-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-sm font-medium transition-all shadow-sm"
@@ -1994,7 +2415,7 @@ const AssetOverview = () => {
           <div className="text-center py-12">
             <FileQuestion className="w-16 h-16 text-theme-muted mx-auto mb-4" />
             <p className="text-theme-muted">
-              {t("assetOverview.noAssetsFound")}
+              {activeTab === "skipped" ? t("assetOverview.noSkippedItems", { defaultValue: "No skipped items found." }) : t("assetOverview.noAssetsFound")}
             </p>
           </div>
         ) : (
@@ -2008,6 +2429,9 @@ const AssetOverview = () => {
               const showName = isEpisodeType
                 ? parseShowName(asset.Rootfolder)
                 : null;
+              const usePlex = data?.config?.use_plex ?? false;
+              const useJellyfin = data?.config?.use_jellyfin ?? false;
+              const useEmby = data?.config?.use_emby ?? false;
 
               return (
                 <AssetRow
@@ -2019,9 +2443,18 @@ const AssetOverview = () => {
                   onReplace={handleReplace}
                   onUnresolve={handleUnresolve}
                   onDelete={handleDeleteAsset}
+                  onSkipMediaServer={handleSkipMediaServer}
+                  onUnskip={handleUnskipAsset}
+                  onRefreshMetadata={(id) => handleBulkRefreshMetadata([String(id)])}
+                  isSkippedView={activeTab === "skipped"}
+                  isActiveView={activeTab === "active"}
                   isSelected={selectedAssetIds.has(asset.id)}
                   onToggleSelection={handleToggleSelection}
-                  showCheckbox={selectedAssetIds.size > 0 || isBulkProcessing}
+                  showCheckbox={activeTab !== "skipped" && (selectedAssetIds.size > 0 || isBulkProcessing)}
+                  onPreviewImage={setSelectedPreviewImage}
+                  usePlex={usePlex}
+                  useJellyfin={useJellyfin}
+                  useEmby={useEmby}
                 />
               );
             })}
@@ -2181,6 +2614,12 @@ const AssetOverview = () => {
         ++ END: Generic Confirmation Modal
         +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
       */}
+
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        selectedImage={selectedPreviewImage}
+        onClose={() => setSelectedPreviewImage(null)}
+      />
 
       {/* Asset Replacer Modal */}
       {showReplacer && selectedAsset && (

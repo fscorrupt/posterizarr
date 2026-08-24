@@ -45,12 +45,17 @@
       "en",
       "de"
     ],
+    "TmdbLanguageMappings": {
+    },
     "LibraryLanguageOverrides": {
       "Beispiel-Bibliothek": {
         "PreferredLanguageOrder": [
           "de",
           "en"
-        ]
+        ],
+        "ApplyToPoster": true,
+        "ApplyToSeason": true,
+        "ApplyToBackground": true
       }
     }
   },

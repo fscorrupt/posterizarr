@@ -51,7 +51,7 @@ function ImagePreviewModal({
 
     // Fallback to filename-based detection if type not provided
     if (getMediaType) {
-      const fallbackType = getMediaType(selectedImage.path, selectedImage.name);
+      const fallbackType = getMediaType(selectedImage.path || "", selectedImage.name || "");
       console.log(
         `[ImagePreviewModal] No backend type for ${selectedImage.name}, using fallback: ${fallbackType}`
       );
@@ -143,8 +143,9 @@ function ImagePreviewModal({
               <div>
                 <label className="text-sm text-theme-muted">Show/Movie</label>
                 <p className="text-theme-text break-all mt-1">
-                  {selectedImage.path.split(/[\\/]/).slice(-2, -1)[0] ||
-                    "Unknown"}
+                  {selectedImage.path
+                    ? selectedImage.path.split(/[\\/]/).slice(-2, -1)[0] || "Unknown"
+                    : (selectedImage.show_name || "Unknown")}
                 </p>
               </div>
 
@@ -171,7 +172,7 @@ function ImagePreviewModal({
                         ? new Date(selectedImage.created * 1000)
                             .toLocaleString("sv-SE")
                             .replace("T", " ")
-                        : formatTimestamp(selectedImage.path)}
+                        : (formatTimestamp ? formatTimestamp(selectedImage.path) : "Unknown")}
                     </p>
                   </div>
 
@@ -185,7 +186,7 @@ function ImagePreviewModal({
                         ? new Date(selectedImage.modified * 1000)
                             .toLocaleString("sv-SE")
                             .replace("T", " ")
-                        : formatTimestamp(selectedImage.path)}
+                        : (formatTimestamp ? formatTimestamp(selectedImage.path) : "Unknown")}
                     </p>
                   </div>
 
@@ -209,7 +210,7 @@ function ImagePreviewModal({
                     {t("common.path")}
                   </label>
                   <p className="text-theme-text text-sm break-all mt-1 font-mono bg-theme-bg p-2 rounded border border-theme">
-                    {formatDisplayPath(selectedImage.path)}
+                    {selectedImage.path && formatDisplayPath ? formatDisplayPath(selectedImage.path) : (selectedImage.path || "N/A")}
                   </p>
                 </div>
               )}

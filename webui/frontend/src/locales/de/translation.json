@@ -104,16 +104,16 @@
       },
       "logoUpdater": {
         "title": "Logo-Updater",
-        "description": "Plex ClearLogos automatisch abrufen"
+        "description": "Plex/Jellyfin/Emby ClearLogos automatisch abrufen"
       }
     },
     "logoUpdater": {
       "title": "Logo-Updater-Modus",
-      "info": "Plex ClearLogo Auto-Updater",
-      "subtitle": "Dieser Modus scannt die ausgewählte Plex-Bibliothek nach Elementen, denen ein ClearLogo fehlt, ruft diese automatisch ab und lädt sie in Plex hoch.",
+      "info": "Plex/Jellyfin/Emby ClearLogo Auto-Updater",
+      "subtitle": "Dieser Modus scannt die ausgewählte Bibliothek nach Elementen, denen ein ClearLogo fehlt, ruft diese automatisch ab und lädt sie auf den Server hoch.",
       "selectLibrary": "Bibliothek auswählen",
       "forceReplace": "Vorhandene ersetzen erzwingen",
-      "forceReplaceDesc": "Logos überschreiben, auch wenn sie bereits in Plex vorhanden sind",
+      "forceReplaceDesc": "Logos überschreiben, auch wenn sie bereits auf dem Server vorhanden sind",
       "start": "Logo-Updater starten",
       "browse": "Durchsuchen"
     },
@@ -1758,7 +1758,24 @@
     "noAssetsToDelete": "Keine gefilterten Assets zum Löschen vorhanden.",
     "bulkDeleteAllFilteredTitle": "Alle gefilterten Assets löschen?",
     "bulkDeleteAllFilteredConfirm": "Möchten Sie wirklich alle {{count}} gefilterten Assets dauerhaft löschen?\n\nDies löscht sowohl die Dateien als auch ihre Datenbankeinträge. Diese Aktion kann nicht rückgängig gemacht werden.",
-    "confirmDeleteAll": "Bestätigen & Löschen ({{count}})"
+    "confirmDeleteAll": "Bestätigen & Löschen ({{count}})",
+    "skipMediaServer": "Im Medienserver überspringen",
+    "skipMediaServerTooltip": "Fügt dem Medienserver-Eintrag das Label 'skip_posterizarr' hinzu, damit er bei zukünftigen Durchläufen ignoriert wird",
+    "skipMediaServerSuccess": "Überspringen-Label in Medienserver für '{{title}}' erfolgreich hinzugefügt",
+    "skipMediaServerFailed": "Fehler beim Hinzufügen des Überspringen-Labels in Medienserver: {{error}}",
+    "skipMediaServerError": "Fehler beim Überspringen in Medienserver: {{error}}",
+    "skipPlexSuccess": "Überspringen in Medienserver für '{{title}}' erfolgreich",
+    "skipPlexFailed": "Fehler beim Überspringen in Medienserver: {{error}}",
+    "skipPlexError": "Fehler beim Überspringen in Medienserver: {{error}}",
+    "tabActive": "Aktive Aktionen",
+    "tabSkipped": "Übersprungene Elemente",
+    "unskipTooltip": "Überspringen-Label vom Medienserver entfernen und Element wiederherstellen",
+    "unskipSuccess": "\"{{title}}\" erfolgreich wiederhergestellt",
+    "unskipFailed": "Fehler beim Wiederherstellen: {{error}}",
+    "unskipError": "Fehler beim Wiederherstellen des Elements: {{error}}",
+    "noSkippedItems": "Keine übersprungenen Elemente gefunden.",
+    "skippedInfoTitle": "Informationen zu übersprungenen Elementen",
+    "skippedInfoDesc": "Diese Ansicht zeigt alle Assets, denen in Ihrem Medienserver das Label 'skip_posterizarr' zugewiesen wurde, sowie Elemente, die manuell über die Posterizarr-Benutzeroberfläche übersprungen wurden. Die hier aufgelisteten Elemente werden von Posterizarr bei Hintergrundsynchronisierungen ignoriert."
   },
   "common": {
     "view": "Ansehen",

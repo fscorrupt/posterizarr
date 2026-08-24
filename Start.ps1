@@ -497,6 +497,39 @@ function CheckJson {
             }
         }
 
+        # Check and add missing granular asset overrides to existing LibraryLanguageOverrides
+        if ($config.PSObject.Properties.Name.Contains("ApiPart") -and $config.ApiPart.PSObject.Properties.Name.Contains("LibraryLanguageOverrides")) {
+            $overrides = $config.ApiPart.LibraryLanguageOverrides
+            if ($overrides -is [System.Management.Automation.PSCustomObject]) {
+                foreach ($libName in $overrides.PSObject.Properties.Name) {
+                    $libConfig = $overrides.$libName
+                    if ($libConfig -is [System.Management.Automation.PSCustomObject]) {
+                        $modifiedLib = $false
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToPoster")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToPoster" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToSeason")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToSeason" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToBackground")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToBackground" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToLogo")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToLogo" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if ($modifiedLib) {
+                            Write-Host "Adding missing Granular Asset overrides to Library '$libName'" -ForegroundColor Yellow
+                            $AttributeChanged = $True
+                        }
+                    }
+                }
+            }
+        }
+
         if ($AttributeChanged -eq 'true') {
             # Convert the updated configuration object back to JSON and save it
             $configJson = $config | ConvertTo-Json -Depth 10
@@ -511,7 +544,7 @@ function CheckJson {
     }
     catch {
         Write-Host "An unexpected error occurred during config check: $($_.Exception.Message)" -ForegroundColor Red
-        Exit
+        Write-Host "Proceeding with existing configuration..." -ForegroundColor Yellow
     }
 }
 function Ensure-WebUIConfig {

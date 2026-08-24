@@ -205,7 +205,8 @@ function ConfigEditor() {
 
     // APIs
     if (k.includes("provider") || k.includes("sorting")) return "Preferences";
-    if (k.includes("languageorder")) return "Lang Preferences";
+    if (k.includes("languageorder") || k.includes("tmdblanguagemappings")) return "Lang Preferences";
+
 
     // Notifications
     const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl"];
@@ -605,6 +606,7 @@ function ConfigEditor() {
     if (key === "SymbolsToKeepOnNewLine" && !getValue("NewLineOnSpecificSymbols")) return true;
     if (key === "NewLineSymbols" && !getValue("NewLineOnSpecificSymbols")) return true;
     if (key === "NewLineWords" && !getValue("NewLineOnSpecificWords")) return true;
+    if (key === "TmdbLanguageMappings") return false; // Show it unconditionally or based on TMDB provider
     if (key === "TitleCardSkipWords" && !getValue("SkipTBA")) return true;
 
     // Logo Logic
@@ -992,7 +994,13 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
 
             const handleAddPair = () => {
-                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"] } };
+                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"], ApplyToPoster: true, ApplyToSeason: true, ApplyToBackground: true, ApplyToLogo: true } };
+                updateValue(fieldKey, newDict);
+            };
+
+            const handleToggleApplyTo = (key, type, value) => {
+                const newDict = { ...dictValue };
+                newDict[key] = { ...(dictValue[key] || {}), [`ApplyTo${type}`]: value };
                 updateValue(fieldKey, newDict);
             };
 
@@ -1020,13 +1028,30 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                                     <Trash2 className="w-5 h-5" />
                                 </button>
                             </div>
-                            
+
                             <div className="pt-3 border-t border-theme/50">
                                 <LanguageOrderSelector
                                     value={v?.PreferredLanguageOrder || []}
                                     onChange={(newOrder) => handleUpdateOrder(k, newOrder)}
-                                    helpText="Applies to posters, seasons and backgrounds for this library; title cards keep their textless-first preference automatically."
+                                    helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
                                 />
+                                <div className="flex gap-4 mt-3 pl-1">
+                                    {["Poster", "Season", "Background", "Logo"].map((type) => {
+                                        const isChecked = v?.[`ApplyTo${type}`] ?? true;
+                                        return (
+                                            <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={(e) => handleToggleApplyTo(k, type, e.target.checked)}
+                                                    disabled={disabled}
+                                                    className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                                />
+                                                {type}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -1045,7 +1070,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                 </div>
             );
         }
-        if (settingKey === "NewLineWords") {
+        if (settingKey === "NewLineWords" || settingKey === "TmdbLanguageMappings") {
             const dictValue = value && typeof value === 'object' ? value : {};
 
             const handleUpdatePair = (oldKey, newKey, newVal) => {
@@ -1064,9 +1089,15 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
 
             const handleAddPair = () => {
-                const newDict = { ...dictValue, "NEW_WORD": "NEW-\\nWORD" };
+                const defaultKey = settingKey === "TmdbLanguageMappings" ? "fr" : "NEW_WORD";
+                const defaultValue = settingKey === "TmdbLanguageMappings" ? "fr-FR" : "NEW-\\nWORD";
+                const newDict = { ...dictValue, [defaultKey]: defaultValue };
                 updateValue(fieldKey, newDict);
             };
+
+            const placeholderKey = settingKey === "TmdbLanguageMappings" ? "fr" : "Word";
+            const placeholderValue = settingKey === "TmdbLanguageMappings" ? "fr-FR" : "Replacement";
+            const buttonText = settingKey === "TmdbLanguageMappings" ? "Add Language Mapping" : "Add Word Mapping";
 
             return (
                 <div className="space-y-2">
@@ -1075,7 +1106,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                             <input
                                 className={`${commonInputClass} font-mono text-xs`}
                                 value={k}
-                                placeholder="Word"
+                                placeholder={placeholderKey}
                                 onChange={(e) => handleUpdatePair(k, e.target.value, v)}
                                 disabled={disabled}
                             />
@@ -1083,7 +1114,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                             <textarea
                                 className={`${commonInputClass} font-mono text-xs h-[42px] min-h-[42px] resize-none`}
                                 value={v}
-                                placeholder="Replacement"
+                                placeholder={placeholderValue}
                                 onChange={(e) => handleUpdatePair(k, k, e.target.value)}
                                 disabled={disabled}
                             />
@@ -1101,7 +1132,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                         className="w-full py-2 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-theme-primary transition-all flex items-center justify-center gap-2 text-sm"
                         disabled={disabled}
                     >
-                        <Plus className="w-4 h-4" /> Add Word Mapping
+                        <Plus className="w-4 h-4" /> {buttonText}
                     </button>
                 </div>
             );

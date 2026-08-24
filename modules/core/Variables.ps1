@@ -266,7 +266,7 @@ $global:FavProvider = $config.ApiPart.FavProvider.ToUpper()
 $global:OverrideProviderOrder = if ($null -ne $config.ApiPart.OverrideProviderOrder) { $config.ApiPart.OverrideProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
 $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.ApiPart.ProviderOrder } else { @("TMDB", "TVDB", "Fanart", "Plex") }
 if ($global:ProviderOrder) {
-    $global:ProviderOrder = $global:ProviderOrder | ForEach-Object { $_.ToUpper() }
+    $global:ProviderOrder = @($global:ProviderOrder | ForEach-Object { $_.ToUpper() })
 }
 $global:TMDBVoteSorting = "$($config.ApiPart.tmdb_vote_sorting)".ToLower()
 if (!$global:TMDBVoteSorting) {
@@ -280,6 +280,7 @@ $global:PreferredSeasonLanguageOrder = $config.ApiPart.PreferredSeasonLanguageOr
 $global:PreferredTCLanguageOrder = $config.ApiPart.PreferredTCLanguageOrder
 $global:PreferredBackgroundLanguageOrder = $config.ApiPart.PreferredBackgroundLanguageOrder
 $global:LogoLanguageOrder = $config.ApiPart.LogoLanguageOrder
+$global:TmdbLanguageMappings = $config.ApiPart.TmdbLanguageMappings
 
 # Special handling: inherit poster language if set to "PleaseFillMe"
 if ($global:PreferredBackgroundLanguageOrder -eq 'PleaseFillMe') {
@@ -293,6 +294,7 @@ Initialize-LanguageSettings -SettingName "PreferredLanguageOrder"           -Lab
 Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder"     -Label "Season"
 Initialize-LanguageSettings -SettingName "PreferredTCLanguageOrder"         -Label "TC"
 Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background"
+Initialize-LanguageSettings -SettingName "LogoLanguageOrder"                -Label "Logo"
 
 # Library-specific language override support
 $global:LibraryLanguageOverrides = $config.ApiPart.LibraryLanguageOverrides
