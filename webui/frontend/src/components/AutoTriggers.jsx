@@ -680,7 +680,7 @@ function AgregarrContent() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center flex-shrink-0">
-            <Server className="w-7 h-7 text-orange-400" />
+            <img src="/agregarr.svg" alt="Agregarr" className="w-8 h-8 object-contain" />
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-theme-text">{t("autoTriggers.agregarr.title")}</h2>
@@ -734,6 +734,23 @@ function AgregarrContent() {
           <p className="text-xs text-theme-muted mt-2">{t("autoTriggers.agregarr.apiKeyHelp")}</p>
         </div>
 
+        <div className="bg-theme-hover border border-theme rounded-lg p-4">
+          <h3 className="text-base font-bold text-theme-text mb-4 flex items-center gap-2">
+            <Info className="w-5 h-5 text-theme-primary" />
+            {t("autoTriggers.agregarr.workflowTitle")}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {t("autoTriggers.agregarr.workflow", { returnObjects: true }).map((step, index) => (
+              <div key={step} className="bg-theme-card border border-theme rounded-lg p-4">
+                <div className="w-7 h-7 rounded-full bg-theme-primary text-white text-sm font-bold flex items-center justify-center mb-3">
+                  {index + 1}
+                </div>
+                <p className="text-sm text-theme-muted leading-relaxed">{step}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {missingRequiredSettings && (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -773,10 +790,11 @@ function AutoTriggers() {
     <div className="px-4 py-6 space-y-8">
       {/* Header */}
       <div className="text-center mb-10">
-        <div className="flex justify-center gap-4 mb-4">
+        <div className="flex flex-wrap justify-center gap-4 mb-4">
           <img src="/sonarr.png" alt="Sonarr" className="h-16 w-auto" />
           <img src="/radarr.png" alt="Radarr" className="h-16 w-auto" />
           <img src="/tautulli.png" alt="Tautulli" className="h-16 w-auto" />
+          <img src="/agregarr.svg" alt="Agregarr" className="h-16 w-auto" />
         </div>
         <h1 className="text-4xl font-bold text-theme-text mb-3">{t("autoTriggers.header.title")}</h1>
         <p className="text-lg text-theme-muted max-w-2xl mx-auto mb-5">{t("autoTriggers.header.subtitle")}</p>
@@ -801,7 +819,7 @@ function AutoTriggers() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
-            const logoMap = { tautulli: "/tautulli2.png", sonarr: "/sonarr.png", radarr: "/radarr.png" };
+            const logoMap = { tautulli: "/tautulli2.png", sonarr: "/sonarr.png", radarr: "/radarr.png", agregarr: "/agregarr.svg" };
             const TabIcon = tab.icon;
             return (
               <button

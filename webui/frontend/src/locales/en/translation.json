@@ -2045,6 +2045,12 @@
       "apiKeyLabel": "Agregarr API key",
       "apiKeyHelp": "Use the API key configured in Agregarr. It is stored in Posterizarr's central config.json.",
       "apiKeyPlaceholder": "Enter Agregarr API key",
+      "workflowTitle": "How the Agregarr follow-up works",
+      "workflow": [
+        "Sonarr or Radarr triggers Posterizarr, which creates and uploads the selected artwork to Plex.",
+        "After Plex confirms the upload, Posterizarr sends Agregarr the Plex item and any available season or episode details.",
+        "Agregarr updates matching collections and applies its configured movie, show, season, or episode overlays."
+      ],
       "required": "An Agregarr URL and API key are required when the callback is enabled.",
       "save": "Save integration"
     },
