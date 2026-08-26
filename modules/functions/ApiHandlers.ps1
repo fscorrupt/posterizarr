@@ -5,7 +5,7 @@ function GetTMDBLogo {
     if ($global:tmdbid) {
         Write-Entry -Subtext "Searching on TMDB for a Logo - TMDBID: $global:tmdbid" -Path $global:configLogging -Color Cyan -log Info
         try {
-            $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/$Type/$($global:tmdbid)?append_to_response=images&language=$($global:LogoLanguageOrder[0])&include_image_language=$($global:LogoLanguageOrder -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+            $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/$Type/$($global:tmdbid)?append_to_response=images&language=$($global:LogoLanguageOrderTMDB[0])&include_image_language=$($global:LogoLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
             Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
@@ -13,7 +13,7 @@ function GetTMDBLogo {
         }
         if ($response) {
             if ($response.images.logos) {
-                foreach ($lang in $global:LogoLanguageOrder) {
+                foreach ($lang in $global:LogoLanguageOrderTMDB) {
                     if ($lang -ne 'null' -and $lang -ne 'xx') {
                         if ($global:UseClearlogo -eq 'true') {
                             $FavPoster = ($response.images.logos | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
@@ -70,7 +70,7 @@ function GetTVDBLogo {
         }
         if ($response) {
             if ($response.data) {
-                foreach ($lang in $global:LogoLanguageOrder) {
+                foreach ($lang in $global:LogoLanguageOrderTVDB) {
                     if ($lang -ne 'null') {
                         if ($global:UseClearart -eq 'true') {
                             if ($Type -eq 'series') {
@@ -147,7 +147,7 @@ function GetFanartLogo {
         }
 
         if ($field -and $entrytemp.$field) {
-            foreach ($lang in $global:LogoLanguageOrder) {
+            foreach ($lang in $global:LogoLanguageOrderFanart) {
                 $matchedLogos = $entrytemp.$field | Where-Object { $_.lang -eq $lang }
 
                 if ($matchedLogos) {

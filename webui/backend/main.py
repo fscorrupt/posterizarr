@@ -8902,14 +8902,16 @@ def _get_categorized_assets(config: dict) -> dict:
         if lib_override:
             lib_preferred_langs = lib_override.get("PreferredLanguageOrder", [])
             lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
-            
             if lib_primary_lang:
-                if asset_type_lower == "poster" and lib_override.get("ApplyToPoster", True):
-                    target_primary_lang = lib_primary_lang
-                elif "background" in asset_type_lower and lib_override.get("ApplyToBackground", True):
-                    target_primary_lang = lib_primary_lang
-                elif "season" in asset_type_lower and lib_override.get("ApplyToSeason", True):
-                    target_primary_lang = lib_primary_lang
+                if "background" in asset_type_lower:
+                    if lib_override.get("ApplyToBackground", True):
+                        target_primary_lang = lib_primary_lang
+                elif "season" in asset_type_lower:
+                    if lib_override.get("ApplyToSeason", True):
+                        target_primary_lang = lib_primary_lang
+                elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
+                    if lib_override.get("ApplyToPoster", True):
+                        target_primary_lang = lib_primary_lang
 
         if language and target_primary_lang:
             lang_normalized = (
@@ -14347,12 +14349,15 @@ async def get_assets_overview():
                 lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
                 
                 if lib_primary_lang:
-                    if asset_type_lower == "poster" and lib_override.get("ApplyToPoster", True):
-                        target_primary_lang = lib_primary_lang
-                    elif "background" in asset_type_lower and lib_override.get("ApplyToBackground", True):
-                        target_primary_lang = lib_primary_lang
-                    elif "season" in asset_type_lower and lib_override.get("ApplyToSeason", True):
-                        target_primary_lang = lib_primary_lang
+                    if "background" in asset_type_lower:
+                        if lib_override.get("ApplyToBackground", True):
+                            target_primary_lang = lib_primary_lang
+                    elif "season" in asset_type_lower:
+                        if lib_override.get("ApplyToSeason", True):
+                            target_primary_lang = lib_primary_lang
+                    elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
+                        if lib_override.get("ApplyToPoster", True):
+                            target_primary_lang = lib_primary_lang
 
             if language and target_primary_lang:
                 # Normalize: "Textless" = "xx"
