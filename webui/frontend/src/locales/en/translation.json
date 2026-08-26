@@ -2024,7 +2024,29 @@
       },
       "radarr": {
         "description": "Trigger on movie imports"
+      },
+      "agregarr": {
+        "description": "Run collections and overlays after upload"
       }
+    },
+    "agregarr": {
+      "title": "Agregarr follow-up automation",
+      "description": "Notify Agregarr after Posterizarr successfully uploads Arr-triggered artwork to Plex.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "loading": "Loading Agregarr settings...",
+      "loadFailed": "Could not load Posterizarr configuration",
+      "saveFailed": "Could not save Agregarr settings",
+      "saved": "Agregarr integration settings saved",
+      "enableLabel": "Enable Agregarr callback",
+      "enableHelp": "Send a callback after an Arr job successfully uploads a movie, show, season, or episode image to Plex.",
+      "urlLabel": "Agregarr URL",
+      "urlHelp": "Use an address reachable from the Posterizarr container, including the port.",
+      "apiKeyLabel": "Agregarr API key",
+      "apiKeyHelp": "Use the API key configured in Agregarr. It is stored in Posterizarr's central config.json.",
+      "apiKeyPlaceholder": "Enter Agregarr API key",
+      "required": "An Agregarr URL and API key are required when the callback is enabled.",
+      "save": "Save integration"
     },
     "setupSteps": "Setup Steps",
     "howItWorks": "How It Works",

@@ -615,9 +615,6 @@ UI_GROUPS = {
         "DiscordUserName",
         "UseUptimeKuma",
         "UptimeKumaUrl",
-        "AgregarrTriggerEnabled",
-        "AgregarrUrl",
-        "AgregarrApiKey",
     ],
     "Global Visuals": [
         "ImageProcessing",
