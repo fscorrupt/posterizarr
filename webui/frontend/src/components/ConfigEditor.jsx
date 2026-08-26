@@ -879,12 +879,12 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     // Render Input Logic
     const renderInput = () => {
         // Validation Fields (Tokens/Keys) - Use PasswordInput for secrecy + Validate Button
-        const renderValidate = (type, placeholder, label = "Validate") => (
+        const renderValidate = (type, placeholder) => (
             <div className="flex gap-2">
                 <div className="relative flex-1">
                     <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder={placeholder} />
                 </div>
-                <ValidateButton type={type} config={config} label={label} onSuccess={showSuccess} onError={showError} disabled={disabled} />
+                <ValidateButton type={type} config={config} label="Validate" onSuccess={showSuccess} onError={showError} disabled={disabled} />
             </div>
         );
 
@@ -902,7 +902,6 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         if (settingKey === "tmdbtoken") return renderValidate("tmdb", "Enter TMDB Token");
         if (settingKey === "tvdbapi") return renderValidate("tvdb", "Enter TVDB API Key");
         if (settingKey === "FanartTvAPIKey") return renderValidate("fanart", "Enter Fanart API Key");
-        if (settingKey === "AgregarrApiKey") return renderValidate("agregarr", "Enter Agregarr API Key", "Test");
         if (settingKey === "NewLineSymbols" || settingKey === "SymbolsToKeepOnNewLine" || settingKey === "SkipWords" || settingKey === "TitleCardSkipWords") {
             const symbols = Array.isArray(value)
                 ? value
@@ -1145,8 +1144,8 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         }
 
         // Webhooks (Standard Input + Validate Button, generally not masked but can be long)
-        if (["Discord", "AppriseUrl", "UptimeKumaUrl"].includes(settingKey)) {
-             const type = settingKey === "Discord" ? "discord" : settingKey === "AppriseUrl" ? "apprise" : "uptimekuma";
+        if (["Discord", "AppriseUrl", "UptimeKumaUrl", "AgregarrUrl"].includes(settingKey)) {
+             const type = settingKey === "Discord" ? "discord" : settingKey === "AppriseUrl" ? "apprise" : settingKey === "UptimeKumaUrl" ? "uptimekuma" : "agregarr";
              return (
                 <div className="flex gap-2">
                     <input type="text" value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={commonInputClass} placeholder="Enter URL" />
