@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useToast } from "../context/ToastContext";
 import {
   Zap,
   Activity,
@@ -20,9 +19,6 @@ import {
   Check,
   Download,
   Globe,
-  KeyRound,
-  Loader2,
-  Save,
 } from "lucide-react";
 
 // Helper function to handle robust copying to clipboard (with fallback)
@@ -580,200 +576,6 @@ function TautulliContent() {
   );
 }
 
-function AgregarrContent() {
-  const { t } = useTranslation();
-  const { showSuccess, showError } = useToast();
-  const [settings, setSettings] = useState({
-    enabled: false,
-    url: "",
-    apiKey: "",
-  });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadSettings = async () => {
-      try {
-        const response = await fetch("/api/config");
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-          throw new Error(data.detail || t("autoTriggers.agregarr.loadFailed"));
-        }
-
-        if (active) {
-          setSettings({
-            enabled: data.config.AgregarrTriggerEnabled === true || String(data.config.AgregarrTriggerEnabled).toLowerCase() === "true",
-            url: data.config.AgregarrUrl || "",
-            apiKey: data.config.AgregarrApiKey || "",
-          });
-        }
-      } catch (error) {
-        if (active) showError(error.message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    loadSettings();
-    return () => {
-      active = false;
-    };
-  }, [showError, t]);
-
-  const updateField = (field, value) => {
-    setSettings((current) => ({ ...current, [field]: value }));
-  };
-
-  const saveSettings = async () => {
-    setSaving(true);
-
-    try {
-      const currentResponse = await fetch("/api/config");
-      const currentData = await currentResponse.json();
-      if (!currentResponse.ok || !currentData.success) {
-        throw new Error(currentData.detail || t("autoTriggers.agregarr.loadFailed"));
-      }
-
-      const normalizedUrl = settings.url.trim().replace(/\/+$/, "");
-      const updatedConfig = {
-        ...currentData.config,
-        AgregarrTriggerEnabled: settings.enabled ? "true" : "false",
-        AgregarrUrl: normalizedUrl,
-        AgregarrApiKey: settings.apiKey.trim(),
-      };
-
-      const response = await fetch("/api/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config: updatedConfig }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.detail || t("autoTriggers.agregarr.saveFailed"));
-      }
-
-      setSettings((current) => ({ ...current, url: normalizedUrl }));
-      showSuccess(t("autoTriggers.agregarr.saved"));
-    } catch (error) {
-      showError(error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const inputClass = "w-full bg-theme-bg border border-theme rounded-lg px-3 py-2.5 text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary";
-  const missingRequiredSettings = settings.enabled && (!settings.url.trim() || !settings.apiKey.trim());
-
-  if (loading) {
-    return (
-      <div className="bg-theme-card border border-theme rounded-lg p-12 flex items-center justify-center gap-3 text-theme-muted">
-        <Loader2 className="w-5 h-5 animate-spin" />
-        {t("autoTriggers.agregarr.loading")}
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-theme-card border border-theme rounded-lg p-5 sm:p-6 animate-in fade-in duration-300">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-        <div className="flex items-start gap-4">
-          <div className="w-14 h-14 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center flex-shrink-0">
-            <img src="/agregarr.svg" alt="Agregarr" className="w-8 h-8 object-contain" />
-          </div>
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-theme-text">{t("autoTriggers.agregarr.title")}</h2>
-            <p className="text-sm text-theme-muted mt-1 max-w-2xl">{t("autoTriggers.agregarr.description")}</p>
-          </div>
-        </div>
-        <span className={`self-start px-3 py-1 rounded-full text-xs font-semibold border ${settings.enabled ? "bg-green-500/10 text-green-400 border-green-500/30" : "bg-theme-hover text-theme-muted border-theme"}`}>
-          {settings.enabled ? t("autoTriggers.agregarr.enabled") : t("autoTriggers.agregarr.disabled")}
-        </span>
-      </div>
-
-      <div className="space-y-5">
-        <label className="flex items-center justify-between gap-4 bg-theme-hover border border-theme rounded-lg p-4">
-          <div>
-            <span className="font-semibold text-theme-text">{t("autoTriggers.agregarr.enableLabel")}</span>
-            <p className="text-xs text-theme-muted mt-1">{t("autoTriggers.agregarr.enableHelp")}</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={settings.enabled}
-            onChange={(event) => updateField("enabled", event.target.checked)}
-            className="w-5 h-5 accent-[var(--color-primary)]"
-          />
-        </label>
-
-        <div>
-          <label className="text-sm font-medium text-theme-text block mb-2">{t("autoTriggers.agregarr.urlLabel")}</label>
-          <input
-            type="url"
-            value={settings.url}
-            onChange={(event) => updateField("url", event.target.value)}
-            placeholder="http://agregarr:7171"
-            className={inputClass}
-          />
-          <p className="text-xs text-theme-muted mt-2">{t("autoTriggers.agregarr.urlHelp")}</p>
-        </div>
-
-        <div>
-          <label className="text-sm font-medium text-theme-text block mb-2">{t("autoTriggers.agregarr.apiKeyLabel")}</label>
-          <div className="relative">
-            <KeyRound className="absolute left-3 top-3 w-4 h-4 text-theme-muted" />
-            <input
-              type="password"
-              value={settings.apiKey}
-              onChange={(event) => updateField("apiKey", event.target.value)}
-              placeholder={t("autoTriggers.agregarr.apiKeyPlaceholder")}
-              autoComplete="new-password"
-              className={`${inputClass} pl-10`}
-            />
-          </div>
-          <p className="text-xs text-theme-muted mt-2">{t("autoTriggers.agregarr.apiKeyHelp")}</p>
-        </div>
-
-        <div className="bg-theme-hover border border-theme rounded-lg p-4">
-          <h3 className="text-base font-bold text-theme-text mb-4 flex items-center gap-2">
-            <Info className="w-5 h-5 text-theme-primary" />
-            {t("autoTriggers.agregarr.workflowTitle")}
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {t("autoTriggers.agregarr.workflow", { returnObjects: true }).map((step, index) => (
-              <div key={step} className="bg-theme-card border border-theme rounded-lg p-4">
-                <div className="w-7 h-7 rounded-full bg-theme-primary text-white text-sm font-bold flex items-center justify-center mb-3">
-                  {index + 1}
-                </div>
-                <p className="text-sm text-theme-muted leading-relaxed">{step}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {missingRequiredSettings && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-theme-text">{t("autoTriggers.agregarr.required")}</p>
-          </div>
-        )}
-
-        <div className="flex justify-end pt-2">
-          <button
-            type="button"
-            onClick={saveSettings}
-            disabled={saving || missingRequiredSettings}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-theme-primary hover:bg-theme-primary/80 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {t("autoTriggers.agregarr.save")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // --- Main AutoTriggers Component ---
 function AutoTriggers() {
   const { t } = useTranslation();
@@ -783,18 +585,16 @@ function AutoTriggers() {
     { id: "tautulli", label: "Tautulli", icon: Activity, description: t("autoTriggers.tabs.tautulli.description") },
     { id: "sonarr", label: "Sonarr", icon: Tv, description: t("autoTriggers.tabs.sonarr.description") },
     { id: "radarr", label: "Radarr", icon: Film, description: t("autoTriggers.tabs.radarr.description") },
-    { id: "agregarr", label: "Agregarr", icon: Server, description: t("autoTriggers.tabs.agregarr.description") },
   ];
 
   return (
     <div className="px-4 py-6 space-y-8">
       {/* Header */}
       <div className="text-center mb-10">
-        <div className="flex flex-wrap justify-center gap-4 mb-4">
+        <div className="flex justify-center gap-4 mb-4">
           <img src="/sonarr.png" alt="Sonarr" className="h-16 w-auto" />
           <img src="/radarr.png" alt="Radarr" className="h-16 w-auto" />
           <img src="/tautulli.png" alt="Tautulli" className="h-16 w-auto" />
-          <img src="/agregarr.svg" alt="Agregarr" className="h-16 w-auto" />
         </div>
         <h1 className="text-4xl font-bold text-theme-text mb-3">{t("autoTriggers.header.title")}</h1>
         <p className="text-lg text-theme-muted max-w-2xl mx-auto mb-5">{t("autoTriggers.header.subtitle")}</p>
@@ -816,11 +616,10 @@ function AutoTriggers() {
 
       {/* Tabs */}
       <div className="bg-theme-card border border-theme rounded-lg p-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
-            const logoMap = { tautulli: "/tautulli2.png", sonarr: "/sonarr.png", radarr: "/radarr.png", agregarr: "/agregarr.svg" };
-            const TabIcon = tab.icon;
+            const logoMap = { tautulli: "/tautulli2.png", sonarr: "/sonarr.png", radarr: "/radarr.png" };
             return (
               <button
                 key={tab.id}
@@ -830,9 +629,7 @@ function AutoTriggers() {
                 }`}
               >
                 <div className="flex items-center justify-center gap-3 mb-2">
-                  {logoMap[tab.id]
-                    ? <img src={logoMap[tab.id]} alt={tab.label} className="w-6 h-6 object-contain" />
-                    : <TabIcon className="w-6 h-6" />}
+                  <img src={logoMap[tab.id]} alt={tab.label} className="w-6 h-6 object-contain" />
                   <span className="font-semibold text-lg">{tab.label}</span>
                 </div>
                 <p className="text-xs opacity-80">{tab.description}</p>
@@ -844,9 +641,7 @@ function AutoTriggers() {
 
       {/* Tab Content */}
       <div className="space-y-6">
-        {activeTab === "tautulli" && <TautulliContent />}
-        {(activeTab === "sonarr" || activeTab === "radarr") && <ArrContent type={activeTab} />}
-        {activeTab === "agregarr" && <AgregarrContent />}
+        {activeTab === "tautulli" ? <TautulliContent /> : <ArrContent type={activeTab} />}
       </div>
     </div>
   );

@@ -6,8 +6,8 @@ adds it to matching collections, and applies its configured overlays. Sonarr
 callbacks also include the imported season and episode numbers, allowing
 Agregarr to update that season poster and episode title card.
 
-Open **Auto Triggers** in the Posterizarr Web UI, select **Agregarr**, and
-configure:
+Open **Settings > System > Language & Notifications** in the Posterizarr Web
+UI and configure:
 
 - **Enable Agregarr Callback**
 - **Agregarr URL**
@@ -27,6 +27,15 @@ also be edited directly under the existing `Notification` section:
 `AgregarrUrl` must be reachable from the Posterizarr container. The service-name
 URL above works when both containers share a Docker network. Otherwise, use the
 Agregarr server's reachable IP address and port.
+
+## How it works
+
+1. Sonarr or Radarr triggers Posterizarr, which creates and uploads the selected
+   artwork to Plex.
+2. After Plex confirms the upload, Posterizarr sends Agregarr the Plex item and
+   any available season or episode details.
+3. Agregarr updates matching collections and applies its configured movie,
+   show, season, or episode overlays.
 
 The callback is sent only when all of these conditions are met:
 
