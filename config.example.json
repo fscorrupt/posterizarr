@@ -102,7 +102,10 @@
     "UseUptimeKuma": "false",
     "AppriseUrl": "discord://{WebhookID}/{WebhookToken}/",
     "Discord": "https://discordapp.com/api/webhooks/{WebhookID}/{WebhookToken}",
-    "UptimeKumaUrl": "https://uptime-kuma.domain.com/api/push/qXpb7Mf1vW"
+    "UptimeKumaUrl": "https://uptime-kuma.domain.com/api/push/qXpb7Mf1vW",
+    "AgregarrTriggerEnabled": "false",
+    "AgregarrUrl": "",
+    "AgregarrApiKey": ""
   },
   "PrerequisitePart": {
     "ParallelJobs": "5",

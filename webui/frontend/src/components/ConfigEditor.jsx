@@ -209,7 +209,7 @@ function ConfigEditor() {
 
 
     // Notifications
-    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl"];
+    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl", "agregarrtriggerenabled", "agregarrurl", "agregarrapikey"];
     if (notificationKeys.includes(k)) return "Notifications";
 
     // Library Overrides
@@ -1139,7 +1139,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         }
 
         // Passwords & Other Secrets (No validate button, just PasswordInput)
-        if (settingKey.toLowerCase().includes("password") || settingKey.toLowerCase().includes("secret")) {
+        if (settingKey.toLowerCase().includes("password") || settingKey.toLowerCase().includes("secret") || settingKey.toLowerCase().endsWith("apikey")) {
              return <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder="Enter value" />;
         }
 

@@ -59,10 +59,6 @@ try:
     from .queue_manager import QueueManager
 except ImportError:
     from queue_manager import QueueManager
-try:
-    from .agregarr_integration import AgregarrIntegrationStore, normalize_agregarr_url
-except ImportError:
-    from agregarr_integration import AgregarrIntegrationStore, normalize_agregarr_url
 
 try:
     from dotenv import load_dotenv
@@ -321,8 +317,6 @@ LOG_LEVEL_MAP = {
 }
 
 WEBUI_SETTINGS_PATH = UI_LOGS_DIR / "webui_settings.json"
-AGREGARR_INTEGRATION_PATH = BASE_DIR / "agregarr_integration.json"
-agregarr_integration_store = AgregarrIntegrationStore(AGREGARR_INTEGRATION_PATH)
 
 # Global queue listener for thread-safe logging
 queue_listener = None
@@ -2349,18 +2343,6 @@ async def complete_onboarding():
 
 class ConfigUpdate(BaseModel):
     config: dict
-
-
-class AgregarrIntegrationUpdate(BaseModel):
-    enabled: bool = False
-    url: str = ""
-    api_key: Optional[str] = None
-    clear_api_key: bool = False
-
-
-class AgregarrIntegrationTest(BaseModel):
-    url: Optional[str] = None
-    api_key: Optional[str] = None
 
 
 class ResetPostersRequest(BaseModel):
@@ -5488,135 +5470,6 @@ async def update_webui_settings(data: dict):
         logger.exception("Full traceback:")
         logger.info("=" * 60)
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@app.get("/api/integrations/agregarr")
-async def get_agregarr_integration():
-    """Return effective Agregarr settings without exposing the API key."""
-    try:
-        return {
-            "success": True,
-            "integration": agregarr_integration_store.public(
-                agregarr_integration_store.effective()
-            ),
-        }
-    except Exception as e:
-        logger.error(f"Could not read Agregarr integration settings: {e}")
-        raise HTTPException(status_code=500, detail="Could not read Agregarr integration settings")
-
-
-@app.post("/api/integrations/agregarr")
-async def update_agregarr_integration(data: AgregarrIntegrationUpdate):
-    """Persist Agregarr callback settings in /config without returning secrets."""
-    try:
-        current = agregarr_integration_store.load()
-        url = normalize_agregarr_url(data.url)
-
-        if data.clear_api_key:
-            api_key = ""
-        elif data.api_key is not None and data.api_key.strip():
-            api_key = data.api_key.strip()
-        else:
-            api_key = current.get("api_key", "")
-
-        stored = {
-            "enabled": bool(data.enabled),
-            "url": url,
-            "api_key": api_key,
-        }
-        effective = agregarr_integration_store.effective(stored)
-
-        if effective["enabled"] and (not effective["url"] or not effective["api_key"]):
-            raise HTTPException(
-                status_code=400,
-                detail="An Agregarr URL and API key are required before enabling the integration",
-            )
-
-        agregarr_integration_store.save(stored)
-        logger.info("Agregarr integration settings updated")
-        return {
-            "success": True,
-            "message": "Agregarr integration settings saved",
-            "integration": agregarr_integration_store.public(
-                agregarr_integration_store.effective(stored)
-            ),
-        }
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Could not save Agregarr integration settings: {e}")
-        raise HTTPException(status_code=500, detail="Could not save Agregarr integration settings")
-
-
-@app.post("/api/integrations/agregarr/test")
-async def test_agregarr_integration(data: AgregarrIntegrationTest):
-    """Test the Agregarr status endpoint with stored or unsaved UI values."""
-    try:
-        stored = agregarr_integration_store.load()
-        env_url = os.getenv("AGREGARR_URL")
-        env_api_key = os.getenv("AGREGARR_API_KEY")
-
-        if env_url is not None and env_url.strip():
-            url = normalize_agregarr_url(env_url)
-        elif data.url is not None:
-            url = normalize_agregarr_url(data.url)
-        else:
-            url = stored.get("url", "")
-
-        if env_api_key is not None and env_api_key.strip():
-            api_key = env_api_key.strip()
-        elif data.api_key is not None and data.api_key.strip():
-            api_key = data.api_key.strip()
-        else:
-            api_key = stored.get("api_key", "")
-
-        if not url or not api_key:
-            return {
-                "valid": False,
-                "message": "Enter an Agregarr URL and API key before testing",
-            }
-        if not is_safe_url(url, allow_private=True):
-            return {
-                "valid": False,
-                "message": "The Agregarr URL could not be resolved or is not allowed",
-            }
-
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
-            response = await client.get(
-                f"{url}/api/v1/posterizarr/status",
-                headers={"X-Api-Key": api_key},
-            )
-
-        if response.status_code in {401, 403}:
-            return {"valid": False, "message": "Agregarr rejected the API key"}
-        if response.status_code >= 400:
-            return {
-                "valid": False,
-                "message": f"Agregarr returned HTTP {response.status_code}",
-            }
-
-        try:
-            status = response.json()
-        except ValueError:
-            status = None
-
-        return {
-            "valid": True,
-            "message": "Connected to Agregarr successfully",
-            "status": status,
-        }
-    except ValueError as e:
-        return {"valid": False, "message": str(e)}
-    except httpx.TimeoutException:
-        return {"valid": False, "message": "Agregarr connection timed out"}
-    except httpx.RequestError as e:
-        logger.warning(f"Agregarr connection test failed: {e.__class__.__name__}")
-        return {"valid": False, "message": "Could not connect to Agregarr"}
-    except Exception as e:
-        logger.error(f"Agregarr connection test failed: {e}")
-        return {"valid": False, "message": "Agregarr connection test failed"}
 
 
 @app.get("/api/upload-diagnostics")

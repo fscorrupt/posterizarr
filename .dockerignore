@@ -12,10 +12,6 @@ Cache/
 
 # UI
 webui/frontend/node_modules
-webui/frontend/dist
-webui/backend/tests
-webui/backend/**/__pycache__
-webui/backend/**/*.py[cod]
 
 # Dev
 .pester.yml

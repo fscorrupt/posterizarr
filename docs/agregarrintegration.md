@@ -6,30 +6,27 @@ adds it to matching collections, and applies its configured overlays. Sonarr
 callbacks also include the imported season and episode numbers, allowing
 Agregarr to update that season poster and episode title card.
 
-Open **Auto Triggers** in the Posterizarr Web UI, select **Agregarr**, and
-configure:
+Open **Settings > System > Language & Notifications** in the Posterizarr Web
+UI and configure:
 
-- **Enable Agregarr callback**
+- **Enable Agregarr Callback**
 - **Agregarr URL**
-- **Agregarr API key**
+- **Agregarr API Key**
 
-Use **Test connection** before saving. The API key is stored in
-`/config/agregarr_integration.json`, is never returned to the browser, and is
-written with owner-only permissions where the platform supports it.
+These settings use Posterizarr's central `config.json` configuration. They can
+also be edited directly under the existing `Notification` section:
 
-Docker environment variables can be used instead for headless deployments:
-
-```yaml
-environment:
-  - AGREGARR_TRIGGER_ENABLED=true
-  - AGREGARR_URL=http://agregarr:7171
-  - AGREGARR_API_KEY=replace-with-the-agregarr-api-key
+```json
+"Notification": {
+  "AgregarrTriggerEnabled": "true",
+  "AgregarrUrl": "http://agregarr:7171",
+  "AgregarrApiKey": "replace-with-the-agregarr-api-key"
+}
 ```
 
-`AGREGARR_URL` must be reachable from the Posterizarr container. The service-name
+`AgregarrUrl` must be reachable from the Posterizarr container. The service-name
 URL above works when both containers share a Docker network. Otherwise, use the
-Agregarr server's reachable IP address and port. Environment variables override
-the corresponding Web UI values and make those fields read-only.
+Agregarr server's reachable IP address and port.
 
 The callback is sent only when all of these conditions are met:
 

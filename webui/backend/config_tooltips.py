@@ -33,6 +33,9 @@ CONFIG_TOOLTIPS = {
     "LogoLanguageOrder": "Specify language preferences for Logos. Default is en,de. Use 2-digit ISO 3166-1 language codes.",
     "TmdbLanguageMappings": "Map Posterizarr languages to specific TMDB locales. For example, map 'fr' to 'fr-FR' so TMDB queries return accurate regions without affecting other providers.",
     "LibraryLanguageOverrides": "Override the language order on a per-library basis. Keyed by exact Plex/Jellyfin/Emby library name. You can configure whether it applies to posters, season posters, and backgrounds.",
+    "AgregarrTriggerEnabled": "Send a callback to Agregarr after an Arr-triggered job successfully uploads Plex artwork.",
+    "AgregarrUrl": "The base URL Posterizarr can use to reach Agregarr, for example http://agregarr:7171.",
+    "AgregarrApiKey": "The API key configured in Agregarr. Posterizarr sends it in the X-Api-Key header.",
 
     # PlexPart
     "PlexLibstoExclude": "Libraries, by name, to exclude from processing on your Plex server.",

@@ -2024,39 +2024,7 @@
       },
       "radarr": {
         "description": "Trigger on movie imports"
-      },
-      "agregarr": {
-        "description": "Apply collections and overlays after upload"
       }
-    },
-    "agregarr": {
-      "title": "Agregarr follow-up automation",
-      "description": "Notify Agregarr after Posterizarr successfully uploads Arr-triggered artwork to Plex, including the Sonarr season and episode.",
-      "enabled": "Enabled",
-      "disabled": "Disabled",
-      "loading": "Loading Agregarr settings...",
-      "loadFailed": "Could not load Agregarr settings",
-      "saveFailed": "Could not save Agregarr settings",
-      "saved": "Agregarr integration settings saved",
-      "testFailed": "Agregarr connection test failed",
-      "environmentOverride": "One or more values are controlled by Docker environment variables. Overridden fields are read-only here.",
-      "enableLabel": "Enable Agregarr callback",
-      "enableHelp": "Send one callback after a completed Arr job uploads a root poster, season poster, or episode title card to Plex.",
-      "urlLabel": "Agregarr URL",
-      "urlHelp": "Use the Docker service name when both containers share a network, or an address reachable from this container.",
-      "apiKeyLabel": "Agregarr API key",
-      "apiKeyHelp": "Use the normal API key from Agregarr settings. The saved key is never returned to the browser.",
-      "apiKeySaved": "Saved API key (enter a new value to replace it)",
-      "apiKeyPlaceholder": "Enter Agregarr API key",
-      "clearApiKey": "Clear saved key",
-      "testConnection": "Test connection",
-      "save": "Save integration",
-      "workflowTitle": "What happens after a new item is imported",
-      "workflow": [
-        "Sonarr or Radarr triggers Posterizarr, which creates and uploads the selected poster to Plex.",
-        "After each completed Arr job, Posterizarr sends one callback when Plex confirms a root or child artwork upload; Sonarr callbacks include the season and episode numbers.",
-        "Agregarr adds the item to matching collections first, then applies Main, Season, and Episode-targeted overlay templates."
-      ]
     },
     "setupSteps": "Setup Steps",
     "howItWorks": "How It Works",

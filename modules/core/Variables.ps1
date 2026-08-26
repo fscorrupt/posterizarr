@@ -218,6 +218,9 @@ Send-PosterizarrTelemetry
 $global:SendNotification = "$($config.Notification.SendNotification)".ToLower()
 $global:UseUptimeKuma = "$($config.Notification.UseUptimeKuma)".ToLower()
 $global:DiscordUserName = $config.Notification.DiscordUserName
+$global:AgregarrTriggerEnabled = "$($config.Notification.AgregarrTriggerEnabled)".ToLower()
+$global:AgregarrUrl = "$($config.Notification.AgregarrUrl)".TrimEnd('/')
+$global:AgregarrApiKey = "$($config.Notification.AgregarrApiKey)"
 if ($global:UseUptimeKuma -eq 'true') {
     $global:UptimeKumaUrl = $config.Notification.UptimeKumaUrl
 }
@@ -336,42 +339,6 @@ $global:languageDirections = @{
 
 # Plex Part
 $PlexUrl = $config.PlexPart.PlexUrl
-$agregarrIntegration = $null
-$agregarrIntegrationPath = Join-Path $global:ScriptRoot 'agregarr_integration.json'
-if (Test-Path -LiteralPath $agregarrIntegrationPath) {
-    try {
-        $agregarrIntegration = Get-Content -LiteralPath $agregarrIntegrationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
-    }
-    catch {
-        Write-Entry -Message "Could not load Agregarr integration settings: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
-    }
-}
-
-$agregarrEnabledValue = if (-not [string]::IsNullOrWhiteSpace($env:AGREGARR_TRIGGER_ENABLED)) {
-    $env:AGREGARR_TRIGGER_ENABLED
-} elseif ($agregarrIntegration) {
-    "$($agregarrIntegration.enabled)"
-} else {
-    'false'
-}
-$agregarrUrlValue = if (-not [string]::IsNullOrWhiteSpace($env:AGREGARR_URL)) {
-    $env:AGREGARR_URL
-} elseif ($agregarrIntegration) {
-    "$($agregarrIntegration.url)"
-} else {
-    ''
-}
-$agregarrApiKeyValue = if (-not [string]::IsNullOrWhiteSpace($env:AGREGARR_API_KEY)) {
-    $env:AGREGARR_API_KEY
-} elseif ($agregarrIntegration) {
-    "$($agregarrIntegration.api_key)"
-} else {
-    ''
-}
-
-$global:AgregarrTriggerEnabled = "$agregarrEnabledValue".ToLower()
-$global:AgregarrUrl = "$agregarrUrlValue".TrimEnd('/')
-$global:AgregarrApiKey = "$agregarrApiKeyValue"
 $UsePlex = "$($config.PlexPart.UsePlex)".ToLower()
 if ($UsePlex -eq 'true') {
     $LibstoExclude = $config.PlexPart.LibstoExclude

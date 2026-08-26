@@ -107,6 +107,9 @@
     - `DiscordUserName`: Username for the discord webhook, default is `Posterizarr`
     - `UptimeKumaUrl`: Uptime-Kuma Webhook Url.
     - `UseUptimeKuma`: Set to `true` if you want to send webhook to Uptime-Kuma.
+    - `AgregarrTriggerEnabled`: Set to `true` to notify Agregarr after an Arr-triggered job successfully uploads artwork to Plex.
+    - `AgregarrUrl`: Base URL that Posterizarr can use to reach Agregarr (for example, `http://agregarr:7171`).
+    - `AgregarrApiKey`: API key configured in Agregarr and sent in the `X-Api-Key` header. See the [Agregarr integration guide](agregarrintegration.md).
 
     #### PrerequisitePart
 
