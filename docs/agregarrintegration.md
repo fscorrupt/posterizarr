@@ -13,6 +13,10 @@ UI and configure:
 - **Agregarr URL**
 - **Agregarr API Key**
 
+Use **Test** beside the API key to verify that Posterizarr can reach Agregarr
+and authenticate. The test reads Agregarr's integration status and does not
+queue collection or overlay work.
+
 These settings use Posterizarr's central `config.json` configuration. They can
 also be edited directly under the existing `Notification` section:
 

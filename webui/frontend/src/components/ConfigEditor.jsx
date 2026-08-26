@@ -879,12 +879,12 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     // Render Input Logic
     const renderInput = () => {
         // Validation Fields (Tokens/Keys) - Use PasswordInput for secrecy + Validate Button
-        const renderValidate = (type, placeholder) => (
+        const renderValidate = (type, placeholder, label = "Validate") => (
             <div className="flex gap-2">
                 <div className="relative flex-1">
                     <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder={placeholder} />
                 </div>
-                <ValidateButton type={type} config={config} label="Validate" onSuccess={showSuccess} onError={showError} disabled={disabled} />
+                <ValidateButton type={type} config={config} label={label} onSuccess={showSuccess} onError={showError} disabled={disabled} />
             </div>
         );
 
@@ -902,6 +902,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         if (settingKey === "tmdbtoken") return renderValidate("tmdb", "Enter TMDB Token");
         if (settingKey === "tvdbapi") return renderValidate("tvdb", "Enter TVDB API Key");
         if (settingKey === "FanartTvAPIKey") return renderValidate("fanart", "Enter Fanart API Key");
+        if (settingKey === "AgregarrApiKey") return renderValidate("agregarr", "Enter Agregarr API Key", "Test");
         if (settingKey === "NewLineSymbols" || settingKey === "SymbolsToKeepOnNewLine" || settingKey === "SkipWords" || settingKey === "TitleCardSkipWords") {
             const symbols = Array.isArray(value)
                 ? value

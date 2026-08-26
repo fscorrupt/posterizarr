@@ -736,6 +736,21 @@ Submits data or triggers an action at `/api/validate/uptimekuma`.
     }
     ```
 
+### `/api/validate/agregarr`
+Validates the Agregarr URL and API key against its read-only Posterizarr
+integration status endpoint.
+
+??? example "View Response"
+    ```json
+    {
+      "valid": true,
+      "message": "Agregarr connection and API key are valid.",
+      "details": {
+        "status_code": 200
+      }
+    }
+    ```
+
 
 ---
 
@@ -1928,4 +1943,3 @@ Retrieves data from `/api/version-ui`.
       "success": true
     }
     ```
-
