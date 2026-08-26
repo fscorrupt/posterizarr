@@ -2451,6 +2451,11 @@ class AppriseValidationRequest(BaseModel):
 class UptimeKumaValidationRequest(BaseModel):
     url: str
 
+
+class AgregarrValidationRequest(BaseModel):
+    url: str
+    api_key: str
+
 # In backend/main.py
 
 class OverlayCreatorRequest(BaseModel):
@@ -4383,6 +4388,91 @@ async def validate_uptimekuma(request: UptimeKumaValidationRequest):
             "valid": False,
             "message": f" Error validating Uptime Kuma URL: {str(e)}",
             "details": {"error": str(e)},
+        }
+
+
+@app.post("/api/validate/agregarr")
+async def validate_agregarr(request: AgregarrValidationRequest):
+    """Validate the Agregarr URL, integration endpoint, and API key."""
+    base_url = request.url.strip().rstrip("/")
+    api_key = request.api_key.strip()
+
+    logger.info("=" * 60)
+    logger.info("AGREGARR VALIDATION STARTED")
+    logger.info(f"[URL] URL: {base_url}")
+    logger.info(f"[KEY] API Key: {mask_secret(api_key)}")
+
+    if not base_url or not api_key:
+        return {
+            "valid": False,
+            "message": "Enter both the Agregarr URL and API key before testing.",
+            "details": {"error": "missing_configuration"},
+        }
+
+    if not is_safe_url(base_url, allow_private=True):
+        logger.warning(f"Invalid or unsafe Agregarr URL: {base_url[:50]}...")
+        return {
+            "valid": False,
+            "message": "Invalid or unsafe Agregarr URL.",
+            "details": {"error": "invalid_url"},
+        }
+
+    status_url = f"{base_url}/api/v1/posterizarr/status"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                status_url,
+                headers={"X-Api-Key": api_key},
+            )
+
+        logger.info(f"Response received - Status: {response.status_code}")
+        logger.info("=" * 60)
+
+        if response.status_code == 200:
+            return {
+                "valid": True,
+                "message": "Agregarr connection and API key are valid.",
+                "details": {"status_code": 200},
+            }
+        if response.status_code in (401, 403):
+            return {
+                "valid": False,
+                "message": "Agregarr rejected the API key.",
+                "details": {"status_code": response.status_code},
+            }
+        if response.status_code == 404:
+            return {
+                "valid": False,
+                "message": "Agregarr is reachable, but its Posterizarr integration endpoint is unavailable.",
+                "details": {"status_code": 404},
+            }
+
+        return {
+            "valid": False,
+            "message": f"Agregarr connection failed (Status: {response.status_code}).",
+            "details": {"status_code": response.status_code},
+        }
+    except httpx.TimeoutException:
+        logger.error("Agregarr validation timed out")
+        return {
+            "valid": False,
+            "message": "Connection timed out. Check that the Agregarr URL is reachable from Posterizarr.",
+            "details": {"error": "timeout"},
+        }
+    except httpx.RequestError as e:
+        logger.error(f"Agregarr validation connection error: {str(e)}")
+        return {
+            "valid": False,
+            "message": "Could not connect to Agregarr. Check the URL and container network access.",
+            "details": {"error": "connection_failed"},
+        }
+    except Exception as e:
+        logger.error(f"Unexpected Agregarr validation error: {str(e)}")
+        return {
+            "valid": False,
+            "message": "Could not validate the Agregarr connection.",
+            "details": {"error": "validation_failed"},
         }
 
 
@@ -14945,6 +15035,7 @@ async def arr_webhook(request: Request):
             return {"success": True, "message": f"Ignored event type: {event_type}"}
 
         data_map = {}
+        trigger_maps = []
         platform = "Unknown"
 
         # Map JSON Data to Posterizarr Arguments (mimicking ArrTrigger.sh logic)
@@ -14968,6 +15059,8 @@ async def arr_webhook(request: Request):
                 data_map["arr_moviefile_path"] = movie_file.get("path", "")
                 data_map["arr_moviefile_id"] = movie_file.get("id", "")
 
+            trigger_maps.append(data_map)
+
         # SONARR
         elif "series" in payload:
             platform = "Sonarr"
@@ -14984,43 +15077,57 @@ async def arr_webhook(request: Request):
             if "imdbId" in series:
                 data_map["arr_series_imdb"] = series.get("imdbId")
 
-            # Handle Episode Data
+            # Queue every episode represented by this Sonarr event. Multi-episode
+            # files legitimately contain more than one entry here; keeping only
+            # the first silently skipped the remaining title cards and callbacks.
             if episodes:
-                first_ep = episodes[0]
-                data_map["arr_episode_season"] = first_ep.get("seasonNumber", "")
-                data_map["arr_episode_numbers"] = first_ep.get("episodeNumber", "")
-                data_map["arr_episode_titles"] = first_ep.get("title", "")
+                for episode in episodes:
+                    episode_map = dict(data_map)
+                    episode_map["arr_episode_season"] = episode.get("seasonNumber", "")
+                    episode_map["arr_episode_numbers"] = episode.get("episodeNumber", "")
+                    episode_map["arr_episode_titles"] = episode.get("title", "")
 
-                # If there's an episode file payload
+                    # A multi-episode file shares this path across its episodes.
+                    if "episodeFile" in payload:
+                        episode_map["arr_episode_path"] = payload["episodeFile"].get("path", "")
+                    trigger_maps.append(episode_map)
+            else:
                 if "episodeFile" in payload:
                     data_map["arr_episode_path"] = payload["episodeFile"].get("path", "")
+                trigger_maps.append(data_map)
 
         else:
             logger.warning(f"Unknown payload format received: {payload.keys()}")
             raise HTTPException(status_code=400, detail="Unknown payload format")
 
-        # 3. Write the .posterizarr file
+        # 3. Write one .posterizarr file per movie/episode job
         watcher_dir = BASE_DIR / "watcher"
         watcher_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create unique filename timestamp_random.posterizarr
-        # The prefix "recently_added_" is used by Start.ps1 to calculate delay times
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3]
-        rand_str = os.urandom(3).hex()
-        filename = f"recently_added_{timestamp}_{rand_str}.posterizarr"
-        file_path = watcher_dir / filename
+        created_files = []
+        for trigger_index, trigger_map in enumerate(trigger_maps):
+            # The prefix "recently_added_" is used by Start.ps1 to calculate delay times.
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3]
+            rand_str = os.urandom(3).hex()
+            filename = (
+                f"recently_added_{timestamp}_{trigger_index:03d}_{rand_str}.posterizarr"
+            )
+            file_path = watcher_dir / filename
 
-        logger.info(f"Creating Arr trigger file for {platform}: {file_path}")
+            logger.info(f"Creating Arr trigger file for {platform}: {file_path}")
 
-        with open(file_path, "w", encoding="utf-8") as f:
-            for key, value in data_map.items():
-                # Write in the format: [key]: value
-                f.write(f"[{key}]: {value}\n")
+            with open(file_path, "w", encoding="utf-8") as f:
+                for key, value in trigger_map.items():
+                    # Write in the format: [key]: value
+                    f.write(f"[{key}]: {value}\n")
+            created_files.append(str(file_path))
 
         return {
             "success": True,
-            "message": f"Trigger queued for {platform}",
-            "file": str(file_path)
+            "message": f"{len(created_files)} trigger job(s) queued for {platform}",
+            "file": created_files[0] if created_files else None,
+            "files": created_files,
+            "queued": len(created_files),
         }
 
     except Exception as e:

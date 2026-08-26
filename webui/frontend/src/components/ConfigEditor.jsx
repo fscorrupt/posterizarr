@@ -209,7 +209,7 @@ function ConfigEditor() {
 
 
     // Notifications
-    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl"];
+    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl", "agregarrtriggerenabled", "agregarrurl", "agregarrapikey"];
     if (notificationKeys.includes(k)) return "Notifications";
 
     // Library Overrides
@@ -1139,13 +1139,13 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         }
 
         // Passwords & Other Secrets (No validate button, just PasswordInput)
-        if (settingKey.toLowerCase().includes("password") || settingKey.toLowerCase().includes("secret")) {
+        if (settingKey.toLowerCase().includes("password") || settingKey.toLowerCase().includes("secret") || settingKey.toLowerCase().endsWith("apikey")) {
              return <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder="Enter value" />;
         }
 
         // Webhooks (Standard Input + Validate Button, generally not masked but can be long)
-        if (["Discord", "AppriseUrl", "UptimeKumaUrl"].includes(settingKey)) {
-             const type = settingKey === "Discord" ? "discord" : settingKey === "AppriseUrl" ? "apprise" : "uptimekuma";
+        if (["Discord", "AppriseUrl", "UptimeKumaUrl", "AgregarrUrl"].includes(settingKey)) {
+             const type = settingKey === "Discord" ? "discord" : settingKey === "AppriseUrl" ? "apprise" : settingKey === "UptimeKumaUrl" ? "uptimekuma" : "agregarr";
              return (
                 <div className="flex gap-2">
                     <input type="text" value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={commonInputClass} placeholder="Enter URL" />

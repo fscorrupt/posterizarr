@@ -425,3 +425,42 @@ function Send-SummaryNotification {
         Push-ObjectToDiscord -strDiscordWebhook $webhookUrl -objPayload $jsonPayload
     }
 }
+
+function Send-AgregarrTrigger {
+    param (
+        [Parameter(Mandatory = $true)][string]$RatingKey,
+        [Parameter(Mandatory = $true)][ValidateSet('movie', 'show')][string]$MediaType,
+        [string]$Title,
+        [Nullable[int]]$SeasonNumber,
+        [Nullable[int]]$EpisodeNumber
+    )
+
+    if ($global:AgregarrTriggerEnabled -ne 'true') { return }
+
+    if ([string]::IsNullOrWhiteSpace($global:AgregarrUrl) -or [string]::IsNullOrWhiteSpace($global:AgregarrApiKey)) {
+        Write-Entry -Message "Agregarr trigger is enabled, but Url or ApiKey is missing." -Path $global:configLogging -Color Yellow -log Warning
+        return
+    }
+
+    $triggerUrl = "$($global:AgregarrUrl)/api/v1/posterizarr/trigger"
+    $headers = @{ 'X-Api-Key' = $global:AgregarrApiKey }
+    $bodyObject = @{
+        ratingKey = $RatingKey
+        mediaType = $MediaType
+        title = $Title
+    }
+    if ($null -ne $SeasonNumber) { $bodyObject['seasonNumber'] = $SeasonNumber }
+    if ($null -ne $EpisodeNumber) { $bodyObject['episodeNumber'] = $EpisodeNumber }
+    $body = $bodyObject | ConvertTo-Json -Compress
+
+    try {
+        $response = Invoke-RestMethod -Method Post -Uri $triggerUrl -Headers $headers -Body $body -ContentType 'application/json' -TimeoutSec 15 -ErrorAction Stop
+        Write-Entry -Message "Agregarr trigger accepted for '$Title' (Plex rating key $RatingKey)." -Path $global:configLogging -Color Green -log Info
+        Write-Entry -Subtext "Queued: $($response.queued) | Deduplicated: $($response.deduplicated)" -Path $global:configLogging -Color Cyan -log Debug
+    }
+    catch {
+        # Artwork creation already succeeded. A downstream automation outage must
+        # be visible, but it must not turn the Posterizarr run into a failure.
+        Write-Entry -Message "Agregarr trigger failed for '$Title': $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+    }
+}

@@ -112,6 +112,8 @@ $global:tsMissMsBag = [System.Collections.Concurrent.ConcurrentBag[long]]::new()
 $global:runspaceStats = [hashtable]::Synchronized(@{
     errorCount = 0
     posterCount = 0
+    PlexRootPosterUploads = 0
+    PlexChildArtworkUploads = 0
     FallbackCount = 0
     PosterUnknownCount = 0
     TruncatedCount = 0
@@ -216,6 +218,9 @@ Send-PosterizarrTelemetry
 $global:SendNotification = "$($config.Notification.SendNotification)".ToLower()
 $global:UseUptimeKuma = "$($config.Notification.UseUptimeKuma)".ToLower()
 $global:DiscordUserName = $config.Notification.DiscordUserName
+$global:AgregarrTriggerEnabled = "$($config.Notification.AgregarrTriggerEnabled)".ToLower()
+$global:AgregarrUrl = "$($config.Notification.AgregarrUrl)".TrimEnd('/')
+$global:AgregarrApiKey = "$($config.Notification.AgregarrApiKey)"
 if ($global:UseUptimeKuma -eq 'true') {
     $global:UptimeKumaUrl = $config.Notification.UptimeKumaUrl
 }

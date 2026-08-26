@@ -309,6 +309,9 @@ CONFIG_GROUPS = {
     "UseUptimeKuma": "Notification",
     "UptimeKumaUrl": "Notification",
     "DiscordUserName": "Notification",
+    "AgregarrTriggerEnabled": "Notification",
+    "AgregarrUrl": "Notification",
+    "AgregarrApiKey": "Notification",
     # PrerequisitePart
     "AssetPath": "PrerequisitePart",
     "FileTestOnTrigger": "PrerequisitePart",
@@ -612,6 +615,9 @@ UI_GROUPS = {
         "DiscordUserName",
         "UseUptimeKuma",
         "UptimeKumaUrl",
+        "AgregarrTriggerEnabled",
+        "AgregarrUrl",
+        "AgregarrApiKey",
     ],
     "Global Visuals": [
         "ImageProcessing",
@@ -1033,6 +1039,9 @@ DISPLAY_NAMES = {
     "OverrideProviderOrder": "Override Provider Order",
     "ProviderOrder": "Provider Custom Order",
     "tmdb_vote_sorting": "TMDB Vote Sorting",
+    "AgregarrTriggerEnabled": "Enable Agregarr Callback",
+    "AgregarrUrl": "Agregarr URL",
+    "AgregarrApiKey": "Agregarr API Key",
     # Language & Preferences
     "PreferredLanguageOrder": "Preferred Language Order",
     "PreferredSeasonLanguageOrder": "Season Language Order",
