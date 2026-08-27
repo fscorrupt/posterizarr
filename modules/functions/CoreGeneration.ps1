@@ -3,7 +3,7 @@ function Invoke-MoviePosterCreation {
         $entry
     )
         if ($null -eq $entry) { return }
-        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name'
+        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name' -MediaType 'Movie'
         try {
             if ($($entry.RootFoldername)) {
                 # check if item has skip label
@@ -1720,7 +1720,7 @@ function Invoke-ShowPosterCreation {
         $entry
     )
         if ($null -eq $entry) { return }
-        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name'
+        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name' -MediaType 'Show'
 
         if ($($entry.RootFoldername)) {
             # check if item has skip label
@@ -4441,7 +4441,7 @@ function Invoke-TitleCardCreation {
         $episode
     )
         if ($null -eq $episode) { return }
-        Set-LibraryLanguageOverride -LibraryName $episode.'Library Name'
+        Set-LibraryLanguageOverride -LibraryName $episode.'Library Name' -MediaType 'Show'
 
     try {
         $SkippingText = 'false'

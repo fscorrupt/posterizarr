@@ -1052,6 +1052,36 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                                         );
                                     })}
                                 </div>
+                                <div className="mt-4 pt-3 border-t border-theme/50">
+                                    <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={v?.EnableProviderOrderOverride ?? false}
+                                            onChange={(e) => {
+                                                const newDict = { ...dictValue };
+                                                newDict[k] = { ...(dictValue[k] || {}), EnableProviderOrderOverride: e.target.checked };
+                                                updateValue(fieldKey, newDict);
+                                            }}
+                                            disabled={disabled}
+                                            className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                        />
+                                        Enable Provider Order Override
+                                    </label>
+                                    
+                                    {(v?.EnableProviderOrderOverride) && (
+                                        <div className="pl-6">
+                                            <ProviderOrderSelector 
+                                                value={v?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]} 
+                                                onChange={(newOrder) => {
+                                                    const newDict = { ...dictValue };
+                                                    newDict[k] = { ...(dictValue[k] || {}), ProviderOrder: newOrder };
+                                                    updateValue(fieldKey, newDict);
+                                                }}
+                                                helpText="Select the specific provider priority for this library."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -1198,7 +1228,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         }
 
         // Selectors
-        if (settingKey === "ProviderOrder") return <ProviderOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
+        if (settingKey.includes("ProviderOrder") && settingKey !== "OverrideProviderOrder") return <ProviderOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LanguageOrder")) return <LanguageOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LibstoExclude")) {
             const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : "emby";

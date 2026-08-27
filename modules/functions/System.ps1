@@ -650,7 +650,10 @@ function Set-LibraryLanguageOverride {
     # Background inherit it directly; TC keeps its textless-first ("xx") lead
     # unless the override already starts with one, since TC language is about
     # base-image search, not the library's spoken language.
-    param([string]$LibraryName)
+    param(
+        [string]$LibraryName,
+        [string]$MediaType = 'None'
+    )
 
     # $global:LibraryLanguageOverrides is a PSCustomObject when read fresh from
     # config.json, but crossing into a -Parallel runspace via $using: deserializes
@@ -670,6 +673,22 @@ function Set-LibraryLanguageOverride {
         Set-Variable -Name "PreferredTCLanguageOrder" -Scope Global -Value $global:DefaultPreferredTCLanguageOrder
         Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $global:DefaultPreferredBackgroundLanguageOrder
         Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $global:DefaultLogoLanguageOrder
+        
+        # Reset provider order to MediaType specific or Global
+        if ($MediaType -eq 'Movie' -and $null -ne $global:MovieProviderOrder -and $global:MovieProviderOrder.Count -gt 0 -and $global:EnableMovieProviderOrder) {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:MovieProviderOrder
+            Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value $true
+        } elseif ($MediaType -eq 'Show' -and $null -ne $global:ShowProviderOrder -and $global:ShowProviderOrder.Count -gt 0 -and $global:EnableShowProviderOrder) {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:ShowProviderOrder
+            Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value $true
+        } else {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:DefaultProviderOrder
+            if ($null -ne $config.ApiPart.OverrideProviderOrder) {
+                Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value ($config.ApiPart.OverrideProviderOrder.ToString().ToLower() -eq 'true')
+            } else {
+                Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value $false
+            }
+        }
     }
     else {
         $order = if ($override.PreferredLanguageOrder) { $override.PreferredLanguageOrder } else { $global:DefaultPreferredLanguageOrder }
@@ -691,6 +710,30 @@ function Set-LibraryLanguageOverride {
         Set-Variable -Name "PreferredTCLanguageOrder" -Scope Global -Value $tcOrder
         Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $backgroundOrder
         Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $logoOrder
+
+        # Provider overrides
+        $enableLibraryProviderOrder = if ($null -ne $override.EnableProviderOrderOverride) { [bool]$override.EnableProviderOrderOverride } else { $false }
+        
+        if ($enableLibraryProviderOrder -and $null -ne $override.ProviderOrder -and $override.ProviderOrder.Count -gt 0) {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value @($override.ProviderOrder | ForEach-Object { $_.ToUpper() })
+            Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value $true
+        } else {
+            if ($MediaType -eq 'Movie' -and $null -ne $global:MovieProviderOrder -and $global:MovieProviderOrder.Count -gt 0 -and $global:EnableMovieProviderOrder) {
+                Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:MovieProviderOrder
+                Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value $true
+            } elseif ($MediaType -eq 'Show' -and $null -ne $global:ShowProviderOrder -and $global:ShowProviderOrder.Count -gt 0 -and $global:EnableShowProviderOrder) {
+                Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:ShowProviderOrder
+                Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value $true
+            } else {
+                Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:DefaultProviderOrder
+                # Fallback to the original global setting
+                if ($null -ne $config.ApiPart.OverrideProviderOrder) {
+                    Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value ($config.ApiPart.OverrideProviderOrder.ToString().ToLower() -eq 'true')
+                } else {
+                    Set-Variable -Name "OverrideProviderOrder" -Scope Global -Value $false
+                }
+            }
+        }
     }
 
     Initialize-LanguageSettings -SettingName "PreferredLanguageOrder"           -Label "Poster"

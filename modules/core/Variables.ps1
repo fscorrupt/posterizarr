@@ -271,6 +271,20 @@ $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.A
 if ($global:ProviderOrder) {
     $global:ProviderOrder = @($global:ProviderOrder | ForEach-Object { $_.ToUpper() })
 }
+$global:DefaultProviderOrder = $global:ProviderOrder
+
+$global:EnableMovieProviderOrder = if ($null -ne $config.ApiPart.EnableMovieProviderOrder) { $config.ApiPart.EnableMovieProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
+$global:MovieProviderOrder = if ($global:EnableMovieProviderOrder -and $null -ne $config.ApiPart.MovieProviderOrder) { $config.ApiPart.MovieProviderOrder } else { @() }
+if ($global:MovieProviderOrder) {
+    $global:MovieProviderOrder = @($global:MovieProviderOrder | ForEach-Object { $_.ToUpper() })
+}
+
+$global:EnableShowProviderOrder = if ($null -ne $config.ApiPart.EnableShowProviderOrder) { $config.ApiPart.EnableShowProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
+$global:ShowProviderOrder = if ($global:EnableShowProviderOrder -and $null -ne $config.ApiPart.ShowProviderOrder) { $config.ApiPart.ShowProviderOrder } else { @() }
+if ($global:ShowProviderOrder) {
+    $global:ShowProviderOrder = @($global:ShowProviderOrder | ForEach-Object { $_.ToUpper() })
+}
+
 $global:TMDBVoteSorting = "$($config.ApiPart.tmdb_vote_sorting)".ToLower()
 if (!$global:TMDBVoteSorting) {
     Write-Entry -Message "TMDB Sorting option not set in config, setting it to 'vote_average' for you" -Path $global:configLogging -Color Yellow -log Warning

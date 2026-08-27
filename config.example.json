@@ -13,9 +13,23 @@
     "EmbyAPIKey": "EMBYAPIKEY",
     "FavProvider": "tmdb",
     "OverrideProviderOrder": false,
+    "EnableMovieProviderOrder": false,
     "ProviderOrder": [
       "TMDB",
       "TVDB",
+      "Fanart",
+      "Plex"
+    ],
+    "MovieProviderOrder": [
+      "TMDB",
+      "TVDB",
+      "Fanart",
+      "Plex"
+    ],
+    "EnableShowProviderOrder": false,
+    "ShowProviderOrder": [
+      "TVDB",
+      "TMDB",
       "Fanart",
       "Plex"
     ],
@@ -55,7 +69,14 @@
         ],
         "ApplyToPoster": true,
         "ApplyToSeason": true,
-        "ApplyToBackground": true
+        "ApplyToBackground": true,
+        "EnableProviderOrderOverride": false,
+        "ProviderOrder": [
+          "TMDB",
+          "TVDB",
+          "Fanart",
+          "Plex"
+        ]
       }
     }
   },
