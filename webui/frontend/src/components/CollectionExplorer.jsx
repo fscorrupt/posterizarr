@@ -18,7 +18,7 @@ import {
   Menu
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
-import AssetSearchModal from "./AssetSearchModal";
+import CollectionLiveEditor from "./CollectionLiveEditor";
 import CompactImageSizeSlider from "./CompactImageSizeSlider";
 import { buildResponsiveGridClass } from "../utils/gridClass";
 
@@ -96,7 +96,7 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-const LogoBrowser = () => {
+const CollectionExplorer = () => {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
 
@@ -131,9 +131,9 @@ const LogoBrowser = () => {
     return Math.min(Math.max(parsed, 2), 20);
   });
 
-  const [selectedItemForLogo, setSelectedItemForLogo] = useState(null);
-  const [showLogoSearch, setShowLogoSearch] = useState(false);
-  const [updatedLogos, setUpdatedLogos] = useState({});
+  const [selectedCollection, setSelectedCollection] = useState(null);
+  const [showLiveEditor, setShowLiveEditor] = useState(false);
+  const [updatedPosters, setUpdatedPosters] = useState({});
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Setup click outside for sort dropdown
@@ -273,7 +273,7 @@ const LogoBrowser = () => {
     }
     
     try {
-      const res = await fetch(`${API_URL}/media-server/items`, {
+      const res = await fetch(`${API_URL}/media-server/collections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -298,34 +298,11 @@ const LogoBrowser = () => {
     }
   };
 
-  const handleUploadLogo = async (logoUrl) => {
-    setShowLogoSearch(false);
-    showInfo(`Uploading logo for ${selectedItemForLogo.title}...`, 3000);
-    
-    try {
-      const res = await fetch(`${API_URL}/media-server/upload-logo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          server_type: activeServer.id,
-          url: activeServer.url,
-          token: activeServer.token,
-          item_id: selectedItemForLogo.ratingKey,
-          logo_url: logoUrl
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showSuccess(`Successfully updated logo for ${selectedItemForLogo.title}`);
-        setUpdatedLogos(prev => ({ ...prev, [selectedItemForLogo.ratingKey]: Date.now() }));
-        fetchItems(true); // Refresh items to show new logo, but preserve search and pagination
-      } else {
-        showError(data.error || "Failed to upload logo");
-      }
-    } catch (e) {
-      showError("Error uploading logo");
-    }
+  const handleEditorClose = () => {
+    setShowLiveEditor(false);
+    fetchItems(true); // Refresh items to show new poster
   };
+  // Removing handleUploadLogo body since CollectionLiveEditor handles saving
 
   // Reset page to 1 when search or sort changes
   useEffect(() => {
@@ -335,12 +312,8 @@ const LogoBrowser = () => {
   // Derive Displayed Items
   const filteredItems = items.filter(item => {
     if (showMissingOnly) {
-       let hasLogo = item.hasLogo;
-       // For Plex, override with knownPlexLogos if we checked it
-       if (activeServer?.id === 'plex' && plexLogosChecked) {
-           hasLogo = knownPlexLogos[item.ratingKey] ?? true;
-       }
-       if (hasLogo && item.logoUrl) return false;
+       let hasPoster = item.hasPoster;
+       if (hasPoster && item.posterUrl) return false;
     }
     return item.title.toLowerCase().includes(searchTerm.toLowerCase());
   });
@@ -619,12 +592,12 @@ const LogoBrowser = () => {
                     key={item.ratingKey}
                     className="group bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all hover:shadow-lg hover:shadow-theme-primary/10 flex flex-col relative"
                   >
-                    <div className="aspect-[16/9] bg-theme-bg/50 relative flex items-center justify-center p-2">
-                        {item.hasLogo && item.logoUrl && (
+                    <div className="aspect-[2/3] bg-theme-bg/50 relative flex items-center justify-center p-2">
+                        {item.hasPoster && item.posterUrl && (
                             <img 
-                                src={updatedLogos[item.ratingKey] ? `${item.logoUrl}&t=${updatedLogos[item.ratingKey]}` : item.logoUrl} 
+                                src={updatedPosters[item.ratingKey] ? `${item.posterUrl}&t=${updatedPosters[item.ratingKey]}` : item.posterUrl} 
                                 alt={item.title} 
-                                className="w-full h-full object-contain filter drop-shadow-md" 
+                                className="w-full h-full object-cover filter drop-shadow-md" 
                                 loading="lazy" 
                                 onError={(e) => {
                                     e.target.style.display = 'none';
@@ -635,22 +608,22 @@ const LogoBrowser = () => {
                             />
                         )}
                         
-                        <div className="text-center text-theme-muted opacity-30" style={{ display: (!item.hasLogo || !item.logoUrl) ? 'block' : 'none' }}>
+                        <div className="text-center text-theme-muted opacity-30" style={{ display: (!item.hasPoster || !item.posterUrl) ? 'block' : 'none' }}>
                             <ImageIcon className="w-8 h-8 mx-auto mb-1" />
-                            <span className="text-[10px] uppercase font-bold tracking-wider">No Logo</span>
+                            <span className="text-[10px] uppercase font-bold tracking-wider">No Poster</span>
                         </div>
                         
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
                             <button
                                 onClick={() => {
-                                    setSelectedItemForLogo(item);
-                                    setShowLogoSearch(true);
+                                    setSelectedCollection(item);
+                                    setShowLiveEditor(true);
                                 }}
                                 className="px-3 py-1.5 bg-theme-primary hover:bg-theme-primary-hover text-white text-sm rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center gap-1.5"
                             >
                                 <Search className="w-3.5 h-3.5" />
-                                Replace
+                                Edit Poster
                             </button>
                         </div>
                     </div>
@@ -682,18 +655,17 @@ const LogoBrowser = () => {
         </div>
       </div>
 
-      {showLogoSearch && selectedItemForLogo && (
-        <AssetSearchModal
-          isOpen={showLogoSearch}
-          onClose={() => setShowLogoSearch(false)}
-          query={selectedItemForLogo.title}
-          mediaType={selectedItemForLogo.type === "movie" ? "movie" : "tv"}
-          favProvider={appConfig?.using_flat_structure ? appConfig?.FavProvider : appConfig?.ApiPart?.FavProvider}
-          onSelectLogo={handleUploadLogo}
+      {showLiveEditor && selectedCollection && (
+        <CollectionLiveEditor
+          isOpen={showLiveEditor}
+          onClose={handleEditorClose}
+          collection={selectedCollection}
+          libraryName={activeLibrary?.name}
+          activeServer={activeServer}
         />
       )}
     </div>
   );
 };
 
-export default LogoBrowser;
+export default CollectionExplorer;

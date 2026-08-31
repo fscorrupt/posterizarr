@@ -266,21 +266,20 @@ $global:PosterMinHeight = $config.ApiPart.PosterMinHeight
 $global:BgTcMinWidth = $config.ApiPart.BgTcMinWidth
 $global:BgTcMinHeight = $config.ApiPart.BgTcMinHeight
 $global:FavProvider = $config.ApiPart.FavProvider.ToUpper()
-$global:OverrideProviderOrder = if ($null -ne $config.ApiPart.OverrideProviderOrder) { $config.ApiPart.OverrideProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
+$global:ProviderPriorityMode = if ($null -ne $config.ApiPart.ProviderPriorityMode) { $config.ApiPart.ProviderPriorityMode } else { "Simple" }
+
 $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.ApiPart.ProviderOrder } else { @("TMDB", "TVDB", "Fanart", "Plex") }
 if ($global:ProviderOrder) {
     $global:ProviderOrder = @($global:ProviderOrder | ForEach-Object { $_.ToUpper() })
 }
 $global:DefaultProviderOrder = $global:ProviderOrder
 
-$global:EnableMovieProviderOrder = if ($null -ne $config.ApiPart.EnableMovieProviderOrder) { $config.ApiPart.EnableMovieProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
-$global:MovieProviderOrder = if ($global:EnableMovieProviderOrder -and $null -ne $config.ApiPart.MovieProviderOrder) { $config.ApiPart.MovieProviderOrder } else { @() }
+$global:MovieProviderOrder = if ($null -ne $config.ApiPart.MovieProviderOrder) { $config.ApiPart.MovieProviderOrder } else { @() }
 if ($global:MovieProviderOrder) {
     $global:MovieProviderOrder = @($global:MovieProviderOrder | ForEach-Object { $_.ToUpper() })
 }
 
-$global:EnableShowProviderOrder = if ($null -ne $config.ApiPart.EnableShowProviderOrder) { $config.ApiPart.EnableShowProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
-$global:ShowProviderOrder = if ($global:EnableShowProviderOrder -and $null -ne $config.ApiPart.ShowProviderOrder) { $config.ApiPart.ShowProviderOrder } else { @() }
+$global:ShowProviderOrder = if ($null -ne $config.ApiPart.ShowProviderOrder) { $config.ApiPart.ShowProviderOrder } else { @() }
 if ($global:ShowProviderOrder) {
     $global:ShowProviderOrder = @($global:ShowProviderOrder | ForEach-Object { $_.ToUpper() })
 }

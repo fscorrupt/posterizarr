@@ -137,6 +137,7 @@ function ConfigEditor() {
   const initialAuthStatus = useRef(null);
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [hideProviderBanner, setHideProviderBanner] = useState(() => localStorage.getItem('hideProviderBanner') === 'true');
   const lastSavedConfigRef = useRef(null);
 
   const [useJellySync, setUseJellySync] = useState(false);
@@ -781,6 +782,16 @@ function ConfigEditor() {
 
                                 {isExpanded && (
                                     <div className="p-4 border-t border-theme bg-theme-bg/20 rounded-b-lg">
+                                        {groupName === "Provider Settings" && !hideProviderBanner && !searchQuery && (
+                                            <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg flex gap-4">
+                                                <AlertCircle className="w-6 h-6 text-blue-400 shrink-0" />
+                                                <div className="flex-1">
+                                                    <h3 className="text-sm font-semibold text-blue-400 mb-1">Provider Settings Overhauled</h3>
+                                                    <p className="text-sm text-theme-muted mb-2">Legacy provider override switches have been removed in favor of a single unified Priority Strategy. If you previously used overrides, they have been reset and you must select your preferred mode below.</p>
+                                                    <button onClick={() => { setHideProviderBanner(true); localStorage.setItem('hideProviderBanner', 'true'); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Dismiss</button>
+                                                </div>
+                                            </div>
+                                        )}
                                         {/* If Searching: Flat List */}
                                         {searchQuery ? (
                                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -875,6 +886,15 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     const fieldKey = usingFlatStructure ? settingKey : `${groupName}.${settingKey}`;
     const disabled = isFieldDisabled(settingKey, groupName);
     const stringValue = value === null || value === undefined ? "" : String(value);
+
+    const providerPriorityMode = usingFlatStructure ? config.ProviderPriorityMode : config.ApiPart?.ProviderPriorityMode;
+    const isSimple = !providerPriorityMode || providerPriorityMode === "Simple";
+    const isGlobal = providerPriorityMode === "Global";
+    const isPerMediaType = providerPriorityMode === "PerMediaType";
+
+    if (settingKey === "FavProvider" && !isSimple) return null;
+    if (settingKey === "ProviderOrder" && !isGlobal) return null;
+    if ((settingKey === "MovieProviderOrder" || settingKey === "ShowProviderOrder") && !isPerMediaType) return null;
 
     // Render Input Logic
     const renderInput = () => {
@@ -1235,6 +1255,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={tooltips[settingKey]} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
         }
         if (settingKey === "FavProvider") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none uppercase`}><option value="tmdb">TMDB</option><option value="tvdb">TVDB</option><option value="fanart">FANART</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
+        if (settingKey === "ProviderPriorityMode") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="Simple">Simple (Favorite Provider)</option><option value="Global">Global Custom Order</option><option value="PerMediaType">Per-Media Type Custom Order</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "tmdb_vote_sorting") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="vote_average">Vote Average</option><option value="vote_count">Vote Count</option><option value="primary">Primary (Default TMDB View)</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "logLevel") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="1">1 - Warning/Error</option><option value="2">2 - Info/Warning/Error (Default)</option><option value="3">3 - Debug/Info/Warning/Error</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey.toLowerCase().includes("gravity")) return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}>{["NorthWest", "North", "NorthEast", "West", "Center", "East", "SouthWest", "South", "SouthEast"].map(opt => (<option key={opt} value={opt.toLowerCase()}>{opt}</option>))}</select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);

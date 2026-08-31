@@ -193,7 +193,7 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -1010,7 +1010,7 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -1912,7 +1912,7 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -2723,7 +2723,7 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -3580,7 +3580,7 @@ function Invoke-ShowPosterCreation {
                                         }
                                     }
                                     Write-Entry -Message "Start Season Poster Search for: $Titletext | $global:seasonTitle" -Path $global:configLogging -Color White -log Info
-                                if ($global:OverrideProviderOrder) {
+                                if ($global:UseCustomProviderOrder) {
                                     $global:LoopFallbackPosterUrl = $null
                                     foreach ($provider in $global:ProviderOrder) {
                                         if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -4681,7 +4681,7 @@ function Invoke-TitleCardCreation {
                             }
                             if ($global:TempImagecopied -ne 'true') {
                                 # now search for TitleCards
-                            if ($global:OverrideProviderOrder) {
+                            if ($global:UseCustomProviderOrder) {
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
                                     switch -Wildcard ($provider) {

@@ -12,8 +12,7 @@
     "JellyfinAPIKey": "JELLYFINAPIKEY",
     "EmbyAPIKey": "EMBYAPIKEY",
     "FavProvider": "tmdb",
-    "OverrideProviderOrder": false,
-    "EnableMovieProviderOrder": false,
+    "ProviderPriorityMode": "Simple",
     "ProviderOrder": [
       "TMDB",
       "TVDB",
@@ -26,7 +25,6 @@
       "Fanart",
       "Plex"
     ],
-    "EnableShowProviderOrder": false,
     "ShowProviderOrder": [
       "TVDB",
       "TMDB",

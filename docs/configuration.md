@@ -29,14 +29,16 @@
 
         [Search order in script](searchorder.md)
 
-    - `OverrideProviderOrder`: If set to `true`, Posterizarr will ignore the legacy `FavProvider` hardcoded priority lists and instead strictly follow the array you define in `ProviderOrder`.
-    - `ProviderOrder`: A list specifying the exact sequential order in which Posterizarr searches for artwork when `OverrideProviderOrder` is true.
+    - `ProviderPriorityMode`: Select the strategy Posterizarr uses when searching for artwork. 
+        - `Simple`: Uses the `FavProvider` hardcoded fallback list (Legacy default).
+        - `Global`: Strictly follows the custom array you define in `ProviderOrder`.
+        - `PerMediaType`: Strictly follows the `MovieProviderOrder` array for Movies and `ShowProviderOrder` for TV Shows.
+        - **Note:** You can still override any of these strategies on a per-library basis using the `EnableProviderOrderOverride` and `ProviderOrder` fields within `PlexLibraries` or `JellyfinLibraries`.
+    - `ProviderOrder`: A list specifying the exact sequential order for artwork when `ProviderPriorityMode` is `Global`.
         - Possible values: `"TMDB"`, `"TVDB"`, `"Fanart"`, `"Plex"`
         - Example: `["TMDB", "TVDB", "Fanart", "Plex"]`
-    - `EnableMovieProviderOrder`: If set to `true`, overrides the global `ProviderOrder` for Movies.
-    - `MovieProviderOrder`: A list specifying the exact sequential order for Movie artwork when `EnableMovieProviderOrder` is true.
-    - `EnableShowProviderOrder`: If set to `true`, overrides the global `ProviderOrder` for TV Shows.
-    - `ShowProviderOrder`: A list specifying the exact sequential order for TV Show artwork when `EnableShowProviderOrder` is true.
+    - `MovieProviderOrder`: A list specifying the exact sequential order for Movie artwork when `ProviderPriorityMode` is `PerMediaType`.
+    - `ShowProviderOrder`: A list specifying the exact sequential order for TV Show artwork when `ProviderPriorityMode` is `PerMediaType`.
 
 
     - `WidthHeightFilter`: If set to `true`, an additional resolution filter will be applied to Posters/Backgrounds (TMDB and TVDB) and Titlecards (only on TMDB) searches.

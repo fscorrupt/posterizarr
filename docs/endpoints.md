@@ -1943,3 +1943,49 @@ Retrieves data from `/api/version-ui`.
       "success": true
     }
     ```
+
+---
+
+## 🎨 Creator Mode & Collections
+
+### `GET /api/collections/presets`
+Get collection presets from the configuration database.
+
+??? example "View Response"
+    ```json
+    [
+      {
+        "id": "1234567890",
+        "name": "My Custom Blue Preset",
+        "bgType": "texture",
+        "overlayImage": "data:image/png;base64,..."
+      }
+    ]
+    ```
+
+### `POST /api/collections/presets`
+Save collection presets to the configuration database.
+
+### `POST /api/collections/save`
+Save the generated collection poster locally in the Assets directory.
+
+### `POST /api/collections/upload-to-server`
+Upload a poster directly to the connected Media Server (Plex, Jellyfin, Emby).
+
+### `POST /api/media-server/collections`
+Fetch collections directly from the configured media server.
+
+### `GET /api/studio-logos`
+Get the list of available studio logos from the GitHub repository, caching them locally.
+
+### `GET /api/studio-logos/image/{filename}`
+Serve a specific studio logo image from the local cache.
+
+### `POST /api/collections/search`
+Search TMDB for collections by name or ID (e.g. `tmdb:12345`).
+
+### `POST /api/media/logos`
+Search TMDB for media (movies or TV shows) and retrieve their logos.
+
+### `GET /api/proxy-image`
+Proxy external images (like TMDB/Fanart) to avoid CORS issues on the frontend canvas.

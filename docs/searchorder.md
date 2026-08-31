@@ -1,6 +1,6 @@
 This table illustrates the legacy fallback order when searching for assets (Posters, Backgrounds, etc.) based on the **Favorite Provider** you set in your configuration.
 
-> **Note:** You can now bypass these hardcoded priority lists by setting `OverrideProviderOrder` to `true` in your configuration. When enabled, Posterizarr will sequentially check providers based strictly on the custom `ProviderOrder` array you specify (e.g., `["TMDB", "TVDB", "Fanart", "Plex"]`).
+> **Note:** You can now bypass these hardcoded priority lists by setting `ProviderPriorityMode` to `Global` or `PerMediaType` in your configuration. When enabled, Posterizarr will sequentially check providers based strictly on the custom `ProviderOrder` arrays you specify (e.g., `["TMDB", "TVDB", "Fanart", "Plex"]`).
 
 | Asset Category | If Favorite Provider is... | Priority Order (1st to 5th) | Notes |
 | :--- | :--- | :--- | :--- |

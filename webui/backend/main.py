@@ -2069,12 +2069,55 @@ async def get_script_version():
         "is_update_available": is_update_available,  # Boolean for update availability
     }
 
+def migrate_provider_order_config():
+    """Migrates the config file to use ProviderPriorityMode instead of the multiple overrides."""
+    if not CONFIG_PATH.exists():
+        return
+
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            config_data = json.load(f)
+
+        if "ApiPart" not in config_data:
+            return
+
+        api_part = config_data["ApiPart"]
+        changed = False
+
+        if "ProviderPriorityMode" not in api_part:
+            # Determine the correct mode based on old variables
+            if str(api_part.get("EnableMovieProviderOrder", "false")).lower() == "true" or \
+               str(api_part.get("EnableShowProviderOrder", "false")).lower() == "true":
+                api_part["ProviderPriorityMode"] = "PerMediaType"
+            elif str(api_part.get("OverrideProviderOrder", "false")).lower() == "true":
+                api_part["ProviderPriorityMode"] = "Global"
+            else:
+                api_part["ProviderPriorityMode"] = "Simple"
+            changed = True
+
+        # Remove deprecated keys
+        for key in ["OverrideProviderOrder", "EnableMovieProviderOrder", "EnableShowProviderOrder"]:
+            if key in api_part:
+                del api_part[key]
+                changed = True
+
+        if changed:
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2)
+            logger.info(f"Successfully migrated Provider Priority Mode in config to: {api_part['ProviderPriorityMode']}")
+            
+    except Exception as e:
+        logger.error(f"Error migrating provider priority config: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
     global scheduler, db, config_db, media_export_db, logs_watcher, server_libraries_db
 
     logger.info("Starting Posterizarr Web UI Backend")
+    
+    # Run configuration migrations
+    migrate_provider_order_config()
 
     # Setup default images for Creator Mode preview
     try:
@@ -2869,7 +2912,59 @@ async def update_config(data: ConfigUpdate):
         logger.info("=" * 60)
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
 # ============================================================================
+# COLLECTION PRESETS ENDPOINTS
+# ============================================================================
+
+@app.get("/api/collections/presets")
+async def get_collection_presets():
+    """Get collection presets from the configuration database"""
+    try:
+        if not CONFIG_DATABASE_AVAILABLE or not config_db:
+            return []
+
+        presets_str = config_db.get_value("CollectionBlueprints", "presets")
+        if not presets_str:
+            return []
+
+        return json.loads(presets_str)
+    except Exception as e:
+        logger.error(f"Error reading collection presets: {e}")
+        return []
+
+@app.post("/api/collections/presets")
+async def save_collection_presets(request: Request):
+    """Save collection presets to the configuration database"""
+    try:
+        if not CONFIG_DATABASE_AVAILABLE or not config_db:
+            raise HTTPException(status_code=500, detail="Database not available")
+
+        data = await request.json()
+
+        # Ensure it's a list
+        if not isinstance(data, list):
+            data = [data]
+
+        success = config_db.set_value(
+            "CollectionBlueprints",
+            "presets",
+            json.dumps(data)
+        )
+
+        if success:
+            return {"status": "success", "message": "Collection presets saved successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save collection presets")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving collection presets: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+# ============================================================================
+
 # CUSTOM BLUEPRINTS ENDPOINTS
 # ============================================================================
 
@@ -11317,6 +11412,51 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             }
                                         )
 
+                        elif request.asset_type == "texture":
+                            # Texture: BOTH Backgrounds and Posters
+                            url = f"https://api.themoviedb.org/3/{media_endpoint}/{tmdb_id}/images"
+                            response = await client.get(url, headers=headers)
+                            if response.status_code == 200:
+                                data = response.json()
+                                # Add Backdrops
+                                for backdrop in data.get("backdrops", []):
+                                    original_url = f"https://image.tmdb.org/t/p/original{backdrop.get('file_path')}"
+                                    if original_url not in seen_urls:
+                                        seen_urls.add(original_url)
+                                        all_results.append(
+                                            {
+                                                "url": f"https://image.tmdb.org/t/p/w500{backdrop.get('file_path')}",
+                                                "original_url": original_url,
+                                                "source": "TMDB",
+                                                "source_type": source,
+                                                "type": "backdrop",
+                                                "sub_type": "background",
+                                                "language": backdrop.get("iso_639_1"),
+                                                "vote_average": backdrop.get("vote_average", 0),
+                                                "width": backdrop.get("width", 0),
+                                                "height": backdrop.get("height", 0),
+                                            }
+                                        )
+                                # Add Posters
+                                for poster in data.get("posters", []):
+                                    original_url = f"https://image.tmdb.org/t/p/original{poster.get('file_path')}"
+                                    if original_url not in seen_urls:
+                                        seen_urls.add(original_url)
+                                        all_results.append(
+                                            {
+                                                "url": f"https://image.tmdb.org/t/p/w500{poster.get('file_path')}",
+                                                "original_url": original_url,
+                                                "source": "TMDB",
+                                                "source_type": source,
+                                                "type": "poster",
+                                                "sub_type": "poster",
+                                                "language": poster.get("iso_639_1"),
+                                                "vote_average": poster.get("vote_average", 0),
+                                                "width": poster.get("width", 0),
+                                                "height": poster.get("height", 0),
+                                            }
+                                        )
+
                         else:
                             # Standard posters
                             url = f"https://api.themoviedb.org/3/{media_endpoint}/{tmdb_id}/images"
@@ -11574,11 +11714,16 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             # Series: 2, Movies: 14
                                             if art_type in ['2', '14']:
                                                 is_match = True
+                                                sub_type_val = "poster" if request.asset_type == "texture" else None
 
-                                        elif request.asset_type == "background":
+                                        elif request.asset_type in ["background", "texture"]:
                                             # Series: 3, Movies: 15
                                             if art_type in ['3', '15']:
                                                 is_match = True
+                                                sub_type_val = "background" if request.asset_type == "texture" else None
+                                            if request.asset_type == "texture" and art_type in ['2', '14']:
+                                                is_match = True
+                                                sub_type_val = "poster"
 
                                         if is_match:
                                             seen_urls.add(image_url)
@@ -11675,6 +11820,8 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         fanart_keys = ["movieposter"]
                                     elif request.asset_type == "background":
                                         fanart_keys = ["moviebackground"]
+                                    elif request.asset_type == "texture":
+                                        fanart_keys = ["moviebackground", "movieposter"]
                                     else:
                                         fanart_keys = []
 
@@ -11683,6 +11830,16 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             item_url = item.get("url")
                                             if item_url and item_url not in seen_urls:
                                                 seen_urls.add(item_url)
+                                                # Determine sub_type
+                                                sub_type = None
+                                                if request.asset_type == "logo":
+                                                    sub_type = "clearart" if "art" in key else "clearlogo"
+                                                elif request.asset_type == "texture":
+                                                    if "poster" in key:
+                                                        sub_type = "poster"
+                                                    elif "background" in key:
+                                                        sub_type = "background"
+
                                                 all_results.append(
                                                     {
                                                         "url": item_url,
@@ -11690,7 +11847,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                         "source": "Fanart.tv",
                                                         "source_type": source,
                                                         "type": request.asset_type,
-                                                        **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
+                                                        **({"sub_type": sub_type} if sub_type else {}),
                                                         "language": item.get("lang"),
                                                         "likes": item.get("likes", 0),
                                                     }
@@ -11769,6 +11926,8 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                     fanart_keys = ["seasonposter"]
                                 elif request.asset_type == "background":
                                     fanart_keys = ["showbackground"]
+                                elif request.asset_type == "texture":
+                                    fanart_keys = ["showbackground", "tvposter"]
                                 else:
                                     fanart_keys = []
 
@@ -11890,6 +12049,19 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
             )
             results["fanart"] = filter_and_sort_by_language(
                 results["fanart"], background_language_order_list
+            )
+        elif request.asset_type == "texture":
+            logger.info("   Using texture language order (preferring textless 'xx')")
+            # Create a new list with 'xx' and 'none' at the front, then original background languages
+            texture_order = ["xx", "none", "null"] + [l for l in background_language_order_list if l not in ["xx", "none", "null"]]
+            results["tmdb"] = filter_and_sort_by_language(
+                results["tmdb"], texture_order, tmdb_language_mappings
+            )
+            results["tvdb"] = filter_and_sort_by_language(
+                results["tvdb"], texture_order
+            )
+            results["fanart"] = filter_and_sort_by_language(
+                results["fanart"], texture_order
             )
         elif request.asset_type == "titlecard":
             # Filter titlecards by PreferredTCLanguageOrder
@@ -15729,6 +15901,25 @@ async def proxy_media_server_image(server_type: str, url: str):
     return StreamingResponse(stream_image(), media_type="image/png")
 
 
+@app.get("/api/proxy-image")
+async def proxy_image(url: str):
+    """Proxy external images (like TMDB/Fanart) to avoid CORS issues on frontend canvas."""
+    if not url.startswith("http"):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+    
+    async def stream_image():
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream("GET", url) as resp:
+                if resp.status_code != 200:
+                    yield b""
+                    return
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+                    
+    return StreamingResponse(stream_image(), media_type="image/jpeg")
+
+
+
 class UploadLogoRequest(BaseModel):
     server_type: str
     url: str
@@ -15840,25 +16031,6 @@ async def upload_media_server_logo(request: UploadLogoRequest):
 
 
 
-
-if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-    logger.info(f"Mounted frontend from {FRONTEND_DIR}")
-
-
-# SPA fallback - must be AFTER static files mount
-# This catches all routes that don't match API endpoints or static files
-# and returns index.html so React Router can handle the routing
-@app.exception_handler(404)
-async def spa_fallback(request: Request, exc: HTTPException):
-    """
-    Catch-all handler for SPA (Single Page Application) support.
-    Returns index.html for any 404 that doesn't match an API endpoint,
-    allowing React Router to handle client-side routing.
-    """
-    # Don't intercept API calls or WebSocket connections
-    if request.url.path.startswith(("/api/", "/ws/")):
-        raise exc
 
     # Return index.html for all other 404s (client-side routes)
     index_path = FRONTEND_DIR / "index.html"
@@ -15974,6 +16146,264 @@ async def run_queue(background_tasks: BackgroundTasks, request: Optional[RunQueu
 
 
 
+@app.post("/api/media-server/collections")
+async def get_media_server_collections(request: MediaServerItemsRequest):
+    """Fetch collections from media server"""
+    try:
+        url = request.url.rstrip('/')
+        items = []
+        total = 0
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if request.server_type == "plex":
+                api_url = f"{url}/library/sections/{request.library_id}/all"
+                headers = {
+                    "X-Plex-Token": request.token,
+                    "X-Plex-Container-Start": str(request.start),
+                    "X-Plex-Container-Size": str(request.limit)
+                }
+                params = {"type": "18"} # 18 = Collection
+                response = await client.get(api_url, headers=headers, params=params)
+                if response.status_code == 200:
+                    root = fromstring(response.content)
+                    container = root
+                    total = int(container.get("totalSize", container.get("size", 0)))
+                    for item in root.findall(".//*[@title]"):
+                        rating_key = item.get("ratingKey", "")
+                        has_poster = True 
+                        items.append({
+                            "title": item.get("title", ""),
+                            "year": item.get("year", ""),
+                            "type": "collection",
+                            "ratingKey": rating_key,
+                            "hasPoster": has_poster,
+                            "posterUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/thumb')}"
+                        })
+                        
+            elif request.server_type in ["jellyfin", "emby"]:
+                auth_header = "Authorization"
+                request.token = f'MediaBrowser Token="{request.token}"'
+                api_url = f"{url}/Items"
+                params = {
+                    "ParentId": request.library_id,
+                    "StartIndex": request.start,
+                    "Limit": request.limit,
+                    "Recursive": "true",
+                    "IncludeItemTypes": "BoxSet",
+                    "Fields": "ProviderIds,ImageTags",
+                }
+                headers = {auth_header: request.token}
+                response = await client.get(api_url, params=params, headers=headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    total = data.get("TotalRecordCount", 0)
+                    for item in data.get("Items", []):
+                        has_poster = "Primary" in item.get("ImageTags", {})
+                        items.append({
+                            "title": item.get("Name", ""),
+                            "year": item.get("ProductionYear", ""),
+                            "type": "collection",
+                            "ratingKey": item.get("Id", ""),
+                            "hasPoster": has_poster,
+                            "posterUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/Primary?tag={item.get('ImageTags', {}).get('Primary', '')}')}" if has_poster else None
+                        })
+                        
+        return {"success": True, "items": items, "total": total}
+    except Exception as e:
+        logger.error(f"Error fetching media server collections: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/studio-logos")
+async def api_get_studio_logos():
+    try:
+        from studio_logos import get_studio_logos
+        logos = get_studio_logos(IMAGES_DIR)
+        return {"success": True, "logos": logos}
+    except Exception as e:
+        logger.error(f"Error getting studio logos: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/studio-logos/image/{filename}")
+async def api_get_studio_logo_image(filename: str):
+    # Prevent path traversal by extracting only the filename
+    safe_filename = Path(filename).name
+    file_path = IMAGES_DIR / "studio_logos" / safe_filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Logo not found")
+    return FileResponse(file_path)
+
+
+class UploadToServerRequest(BaseModel):
+    rating_key: str
+    server_type: str
+    server_url: str
+    server_token: str
+    image_data: str
+
+@app.post("/api/collections/upload-to-server")
+async def api_upload_collection_to_server(request: UploadToServerRequest):
+    """Upload poster directly to Media Server (Plex/Jellyfin/Emby)"""
+    try:
+        # Decode base64 image
+        import base64
+        header, encoded = request.image_data.split(",", 1)
+        data = base64.b64decode(encoded)
+
+        server_url = request.server_url.rstrip('/')
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if request.server_type == "plex":
+                url = f"{server_url}/library/metadata/{request.rating_key}/posters"
+                headers = {
+                    "X-Plex-Token": request.server_token,
+                    "Content-Type": "image/jpeg"
+                }
+                response = await client.post(url, headers=headers, content=data)
+                if response.status_code not in [200, 201]:
+                    return {"success": False, "error": f"Plex returned status {response.status_code}"}
+                    
+            elif request.server_type in ["jellyfin", "emby"]:
+                url = f"{server_url}/Items/{request.rating_key}/Images/Primary"
+                headers = {
+                    "Authorization": f'MediaBrowser Token="{request.server_token}"',
+                    "Content-Type": "image/jpeg"
+                }
+                response = await client.post(url, headers=headers, content=data)
+                if response.status_code not in [200, 201, 204]:
+                    return {"success": False, "error": f"{request.server_type.capitalize()} returned status {response.status_code}"}
+            else:
+                return {"success": False, "error": "Unknown server type"}
+
+        return {"success": True, "message": "Uploaded successfully to Media Server"}
+    except Exception as e:
+        logger.error(f"Error uploading to media server: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+class CollectionSaveRequest(BaseModel):
+    collection_name: str
+    library_name: str
+    image_data: str # Base64 encoded PNG/JPG
+
+@app.post("/api/collections/save")
+async def api_save_collection_poster(request: CollectionSaveRequest):
+    try:
+        # Decode base64
+        import base64
+        header, encoded = request.image_data.split(",", 1) if "," in request.image_data else ("", request.image_data)
+        data = base64.b64decode(encoded)
+        
+        # Sanitize to prevent path traversal
+        safe_library_name = Path(request.library_name).name
+        safe_collection_name = Path(request.collection_name).name
+        
+        # Save path: ASSETS_DIR / "Collections" / library_name / collection_name / "poster.png"
+        save_dir = ASSETS_DIR / "Collections" / safe_library_name / safe_collection_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        save_path = save_dir / "poster.png"
+        with open(save_path, "wb") as f:
+            f.write(data)
+            
+        return {"success": True, "message": "Saved successfully", "path": str(save_path)}
+    except Exception as e:
+        logger.error(f"Error saving collection poster: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+class TMDBCollectionSearchRequest(BaseModel):
+    query: str
+    token: str
+
+@app.post("/api/collections/search")
+async def api_search_tmdb_collections(request: TMDBCollectionSearchRequest):
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            headers = {
+                "Authorization": f"Bearer {request.token}",
+                "Content-Type": "application/json"
+            }
+            if request.query.lower().startswith("tmdb:"):
+                # Fetch by ID
+                tmdb_id = request.query.split(":")[1].strip()
+                resp = await client.get(f"https://api.themoviedb.org/3/collection/{tmdb_id}", headers=headers)
+                if resp.status_code == 200:
+                    return {"success": True, "results": [resp.json()]}
+                return {"success": False, "error": "Not found"}
+            else:
+                # Search by name
+                resp = await client.get("https://api.themoviedb.org/3/search/collection", headers=headers, params={"query": request.query})
+                if resp.status_code == 200:
+                    return {"success": True, "results": resp.json().get("results", [])}
+                return {"success": False, "error": f"Search failed: {resp.status_code}"}
+    except Exception as e:
+        logger.error(f"Error searching TMDB collections: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/media/logos")
+async def api_search_media_logos(request: TMDBCollectionSearchRequest):
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            headers = {
+                "Authorization": f"Bearer {request.token}",
+                "Content-Type": "application/json"
+            }
+            # Search for movie or tv show
+            resp = await client.get("https://api.themoviedb.org/3/search/multi", headers=headers, params={"query": request.query})
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Search failed: {resp.status_code}"}
+            
+            results = resp.json().get("results", [])
+            # Filter to movies and tv shows
+            media_items = [r for r in results if r.get("media_type") in ("movie", "tv")]
+            if not media_items:
+                return {"success": False, "error": "No media found for query"}
+                
+            first_media = media_items[0]
+            media_type = first_media["media_type"]
+            media_id = first_media["id"]
+            
+            # Fetch images
+            # include_image_language=en,null to get English and textless logos
+            img_resp = await client.get(f"https://api.themoviedb.org/3/{media_type}/{media_id}/images", headers=headers, params={"include_image_language": "en,null"})
+            if img_resp.status_code != 200:
+                return {"success": False, "error": f"Images fetch failed: {img_resp.status_code}"}
+                
+            images = img_resp.json()
+            logos = images.get("logos", [])
+            
+            return {"success": True, "media": first_media, "logos": logos}
+    except Exception as e:
+        logger.error(f"Error searching media logos: {e}")
+        return {"success": False, "error": str(e)}
+
+
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+    logger.info(f"Mounted frontend from {FRONTEND_DIR}")
+
+
+# SPA fallback - must be AFTER static files mount
+# This catches all routes that don't match API endpoints or static files
+# and returns index.html so React Router can handle the routing
+@app.exception_handler(404)
+async def spa_fallback(request: Request, exc: HTTPException):
+    """
+    Catch-all handler for SPA (Single Page Application) support.
+    Returns index.html for any 404 that doesn't match an API endpoint,
+    allowing React Router to handle client-side routing.
+    """
+    # Don't intercept API calls or WebSocket connections
+    if request.url.path.startswith(("/api/", "/ws/")):
+        raise exc
+
+    # Return index.html for all other 404s (client-side routes)
+    index_path = FRONTEND_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+
+    # If index.html doesn't exist, return the original 404
+    raise exc
 
 if __name__ == "__main__":
     import uvicorn

@@ -4,7 +4,7 @@ import { X, Search, Loader2, Upload } from "lucide-react";
 
 const API_URL = "/api";
 
-const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSelectLogo }) => {
+const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSelectLogo, assetType = "logo" }) => {
   const { t } = useTranslation();
   
   const [loading, setLoading] = useState(false);
@@ -31,9 +31,9 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
 
     try {
       const requestBody = {
-        asset_path: `manual_logo_${Date.now()}`,
+        asset_path: `manual_${assetType}_${Date.now()}`,
         media_type: mediaType === "tv" ? "tv" : "movie",
-        asset_type: "logo",
+        asset_type: assetType,
         title: q
       };
 
@@ -59,7 +59,7 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
         else if (fetchedResults.tmdb.length > 0) setActiveProvider("tmdb");
         else if (fetchedResults.tvdb.length > 0) setActiveProvider("tvdb");
       } else {
-        setError(data.message || "Failed to search logos");
+        setError(data.message || "Failed to search assets");
       }
     } catch (e) {
       setError("Error connecting to server");
@@ -92,7 +92,7 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
         <div className="p-4 border-b border-theme flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Search className="w-5 h-5 text-theme-primary" />
-            Search Logos for "{query}"
+            Search {assetType === "texture" ? "Backgrounds" : assetType === "poster" ? "Posters" : "Logos"} for "{query}"
           </h2>
           <button onClick={onClose} className="p-2 hover:bg-theme-hover rounded-lg transition-colors">
             <X className="w-5 h-5" />
@@ -143,8 +143,7 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
             <div className="flex bg-theme-bg p-1 rounded-lg border border-theme">
                 {[
                     { id: "all", label: "All Types" },
-                    { id: "clearlogo", label: "ClearLogo" },
-                    { id: "clearart", label: "ClearArt" }
+                    ...[...new Set((results[activeProvider] || []).map(item => item.sub_type).filter(Boolean))].map(st => ({ id: st, label: st.charAt(0).toUpperCase() + st.slice(1) }))
                 ].map(filter => (
                     <button
                         key={filter.id}
@@ -183,13 +182,13 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-theme-muted">
               <Loader2 className="w-8 h-8 animate-spin text-theme-primary mb-4" />
-              <p>Searching for logos...</p>
+              <p>Searching for {assetType === "texture" ? "backgrounds" : assetType === "poster" ? "posters" : "logos"}...</p>
             </div>
           ) : error ? (
             <div className="text-center text-red-500 py-12">{error}</div>
           ) : currentResults.length === 0 ? (
             <div className="text-center text-theme-muted py-12">
-              <p>No logos found on this provider.</p>
+              <p>No assets found on this provider.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -199,11 +198,11 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
                   className="group bg-slate-700/50 p-2 rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all cursor-pointer relative"
                   onClick={() => onSelectLogo(item.original_url || item.url)}
                 >
-                  <div className="aspect-[16/9] relative flex items-center justify-center">
+                  <div className={`${assetType === "poster" || item.sub_type === "poster" ? "aspect-[2/3]" : "aspect-[16/9]"} relative flex items-center justify-center`}>
                     <img
                       src={item.url}
-                      alt="Logo"
-                      className="w-full h-full object-contain filter drop-shadow-md group-hover:scale-105 transition-transform"
+                      alt="Asset"
+                      className={`w-full h-full ${assetType === "logo" ? "object-contain" : "object-cover"} filter drop-shadow-md group-hover:scale-105 transition-transform`}
                       loading="lazy"
                     />
                   </div>
@@ -234,4 +233,4 @@ const LogoSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSel
   );
 };
 
-export default LogoSearchModal;
+export default AssetSearchModal;

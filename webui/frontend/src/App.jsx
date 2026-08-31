@@ -40,6 +40,7 @@ import RuntimeHistory from "./components/RuntimeHistory";
 import PlexExport from "./components/PlexExport";
 import JellyfinEmbyExport from "./components/JellyfinEmbyExport";
 import LogoBrowser from "./components/LogoBrowser";
+import CollectionExplorer from "./components/CollectionExplorer";
 import Sidebar from "./components/Sidebar";
 import TopNavbar from "./components/TopNavbar";
 import LoginScreen from "./components/LoginScreen";
@@ -266,6 +267,7 @@ function AppContent() {
                   element={<JellyfinEmbyExport />}
                 />
                 <Route path="/media-server-logos" element={<LogoBrowser />} />
+                <Route path="/media-server-collections" element={<CollectionExplorer />} />
 
                 <Route
                   path="/gallery"

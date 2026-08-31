@@ -434,6 +434,16 @@ function CheckJson {
                 foreach ($existingSubKey in $config.$partKey.PSObject.Properties.Name) {
                     if (-not $defaultConfig.$partKey.PSObject.Properties.Name.Contains($existingSubKey)) {
                         Write-Host "Removing obsolete Sub-Attribute from your Config file: $partKey.$existingSubKey." -ForegroundColor Yellow
+                        
+                        # Add specific warning for Provider Settings overhaul
+                        if ($existingSubKey -in @('OverrideProviderOrder', 'EnableMovieProviderOrder', 'EnableShowProviderOrder')) {
+                            Write-Host "==========================================================================================" -ForegroundColor Red
+                            Write-Host "WARNING: The Provider Order settings have been completely overhauled to be much simpler." -ForegroundColor Red
+                            Write-Host "Your legacy override setting '$existingSubKey' has been reset." -ForegroundColor Red
+                            Write-Host "Please open the Posterizarr WebUI -> Settings -> Providers and configure the new 'Provider Priority Strategy'." -ForegroundColor Red
+                            Write-Host "==========================================================================================" -ForegroundColor Red
+                        }
+                        
                         $config.$partKey.PSObject.Properties.Remove($existingSubKey)
                         $AttributeChanged = $True
                     }
