@@ -640,7 +640,6 @@ UI_GROUPS = {
         "NewLineSymbols",
         "SymbolsToKeepOnNewLine",
         "NewLineOnSpecificWords",
-        "LibraryLanguageOverrides",
         "NewLineWords",
         "RTLFont",
         "SkipAddText",
