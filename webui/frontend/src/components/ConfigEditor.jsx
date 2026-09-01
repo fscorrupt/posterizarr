@@ -33,6 +33,7 @@ import {
   Plus,
   Copy,
   CheckCircle2,
+  Square,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ValidateButton from "./ValidateButton";
@@ -168,6 +169,7 @@ function ConfigEditor() {
     Seasons: { groups: ["Season Settings", "Season Overlays", "Season Show Title"], icon: Library, path: "/config/seasons" },
     Backgrounds: { groups: ["Background Settings", "Background Overlays"], icon: Image, path: "/config/backgrounds" },
     "Title Cards": { groups: ["Title Card Settings", "Title Card Overlay", "Title Card Title Text", "Title Card Episode Text"], icon: Type, path: "/config/titlecards" },
+    "Square Art": { groups: ["Square Art Settings", "Square Art Overlays"], icon: Square, path: "/config/squarearts" },
     Collections: { groups: ["Collection Settings", "Collection Poster", "Collection Title"], icon: Library, path: "/config/collections" },
   };
 
@@ -181,6 +183,7 @@ function ConfigEditor() {
     if (path.includes("/config/seasons")) return "Seasons";
     if (path.includes("/config/backgrounds")) return "Backgrounds";
     if (path.includes("/config/titlecards")) return "Title Cards";
+    if (path.includes("/config/squarearts")) return "Square Art";
     if (path.includes("/config/collections")) return "Collections";
     return "System";
   };

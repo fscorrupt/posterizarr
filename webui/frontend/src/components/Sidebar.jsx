@@ -140,12 +140,12 @@ const Sidebar = () => {
     { id: "autoTriggers", path: "/auto-triggers", label: t("nav.autoTriggers"), icon: Zap },
     {
       id: "builders",
-      path: "/media-server-collections",
+      path: "/asset-builder",
       label: "Builders",
       icon: Hammer,
       hasSubItems: true,
       subItems: [
-        { path: "/media-server-collections", label: "Collection Builder", icon: Layers },
+        { path: "/asset-builder", label: "Asset Builder", icon: Layers },
         { path: "/media-server-logos", label: "Logo Builder", icon: Image },
         { path: "/assets-manager", label: "Overlay Builder", icon: Layers },
         { path: "/blueprints", label: "Blueprint Builder", icon: Layers }
@@ -190,10 +190,10 @@ const Sidebar = () => {
   const handleDragOver = (e, index) => { e.preventDefault(); if (draggedItem === null || draggedItem === index) return; const newOrder = [...navOrder]; const draggedId = newOrder[draggedItem]; newOrder.splice(draggedItem, 1); newOrder.splice(index, 0, draggedId); setDraggedItem(index); setNavOrder(newOrder); };
   const handleDragEnd = () => { if (draggedItem !== null) saveNavOrder(navOrder); setDraggedItem(null); };
 
-  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
+  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/asset-builder") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
   const isInMediaServerSection = location.pathname.startsWith("/media-server-export");
   const isInConfigSection = location.pathname.startsWith("/config");
-  const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/blueprints");
+  const isInBuildersSection = location.pathname.startsWith("/asset-builder") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/blueprints");
 
   return (
     <>

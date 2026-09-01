@@ -88,6 +88,25 @@ ORIGINAL_KEYS = {
     "BackgroundTextOffset": "text_offset",
     "BackgroundLineSpacing": "lineSpacing",
     "BackgroundTextGravity": "TextGravity",
+    # SquareArtOverlayPart
+    "SquareArtFontAllCaps": "SquareArtOverlayPart",
+    "SquareArtAddBorder": "SquareArtOverlayPart",
+    "SquareArtAddText": "SquareArtOverlayPart",
+    "SquareArtAddOverlay": "SquareArtOverlayPart",
+    "SquareArtFontcolor": "SquareArtOverlayPart",
+    "SquareArtBordercolor": "SquareArtOverlayPart",
+    "SquareArtMinPointSize": "SquareArtOverlayPart",
+    "SquareArtMaxPointSize": "SquareArtOverlayPart",
+    "SquareArtBorderwidth": "SquareArtOverlayPart",
+    "SquareArtMaxWidth": "SquareArtOverlayPart",
+    "SquareArtMaxHeight": "SquareArtOverlayPart",
+    "SquareArtTextOffset": "SquareArtOverlayPart",
+    "SquareArtAddTextStroke": "SquareArtOverlayPart",
+    "SquareArtStrokecolor": "SquareArtOverlayPart",
+    "SquareArtStrokewidth": "SquareArtOverlayPart",
+    "SquareArtLineSpacing": "SquareArtOverlayPart",
+    "SquareArtTextGravity": "SquareArtOverlayPart",
+
     # TitleCardOverlayPart
     "TitleCardUseBackgroundAsTitleCard": "UseBackgroundAsTitleCard",
     "TitleCardBackgroundFallback": "BackgroundFallback",
@@ -334,6 +353,7 @@ CONFIG_GROUPS = {
     "SeasonPosters": "PrerequisitePart",
     "BackgroundPosters": "PrerequisitePart",
     "TitleCards": "PrerequisitePart",
+    "SquareArts": "PrerequisitePart",
     "SkipTBA": "PrerequisitePart",
     "SkipJapTitle": "PrerequisitePart",
     "AssetCleanup": "PrerequisitePart",
@@ -456,6 +476,25 @@ CONFIG_GROUPS = {
     "BackgroundStrokewidth": "BackgroundOverlayPart",
     "BackgroundLineSpacing": "BackgroundOverlayPart",
     "BackgroundTextGravity": "BackgroundOverlayPart",
+    # SquareArtOverlayPart
+    "SquareArtFontAllCaps": "SquareArtOverlayPart",
+    "SquareArtAddBorder": "SquareArtOverlayPart",
+    "SquareArtAddText": "SquareArtOverlayPart",
+    "SquareArtAddOverlay": "SquareArtOverlayPart",
+    "SquareArtFontcolor": "SquareArtOverlayPart",
+    "SquareArtBordercolor": "SquareArtOverlayPart",
+    "SquareArtMinPointSize": "SquareArtOverlayPart",
+    "SquareArtMaxPointSize": "SquareArtOverlayPart",
+    "SquareArtBorderwidth": "SquareArtOverlayPart",
+    "SquareArtMaxWidth": "SquareArtOverlayPart",
+    "SquareArtMaxHeight": "SquareArtOverlayPart",
+    "SquareArtTextOffset": "SquareArtOverlayPart",
+    "SquareArtAddTextStroke": "SquareArtOverlayPart",
+    "SquareArtStrokecolor": "SquareArtOverlayPart",
+    "SquareArtStrokewidth": "SquareArtOverlayPart",
+    "SquareArtLineSpacing": "SquareArtOverlayPart",
+    "SquareArtTextGravity": "SquareArtOverlayPart",
+
     # TitleCardOverlayPart
     "TitleCardUseBackgroundAsTitleCard": "TitleCardOverlayPart",
     "TitleCardAddOverlay": "TitleCardOverlayPart",
@@ -915,6 +954,8 @@ def flatten_config(grouped_config):
                     flat_key = apply_prefix_with_conversion("SeasonPoster", key)
                 elif group_name == "BackgroundOverlayPart":
                     flat_key = apply_prefix_with_conversion("Background", key)
+                elif group_name == "SquareArtOverlayPart":
+                    flat_key = apply_prefix_with_conversion("SquareArt", key)
                 elif group_name == "TitleCardOverlayPart":
                     flat_key = apply_prefix_with_conversion("TitleCard", key)
                 elif group_name == "TitleCardTitleTextPart":
@@ -992,6 +1033,9 @@ def unflatten_config(flat_config):
         elif key.startswith("SeasonPoster") and group_name == "SeasonPosterOverlayPart":
             storage_key = remove_prefix_with_original_case(key)
         elif key.startswith("Background") and group_name == "BackgroundOverlayPart":
+            original_key = key.replace("Background", "", 1)
+            original_key = original_key[0].lower() + original_key[1:] if original_key else ""
+        elif key.startswith("SquareArt") and group_name == "SquareArtOverlayPart":
             storage_key = remove_prefix_with_original_case(key)
         elif (
             key.startswith("TitleCardTitle") and group_name == "TitleCardTitleTextPart"

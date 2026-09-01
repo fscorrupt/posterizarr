@@ -27,7 +27,7 @@ const Accordion = ({ title, icon: Icon, isOpen, onToggle, children }) => {
     );
 };
 
-const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, activeServer }) => {
+const AssetLiveEditor = ({ isOpen, onClose, asset, assetType = 'poster', libraryName, activeServer }) => {
     const { t } = useTranslation();
     const { showSuccess, showError, showInfo } = useToast();
 
@@ -43,7 +43,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     // Background State
     const [bgType, setBgType] = useState('texture'); // 'color', 'texture'
     const [bgColor, setBgColor] = useState('#202020');
-    const [bgImage, setBgImage] = useState(collection?.posterUrl || null);
+    const [bgImage, setBgImage] = useState((asset?.posterUrl || asset?.backgroundUrl) || null);
     
     // Effects State
     const [bgEffect, setBgEffect] = useState('none');
@@ -89,7 +89,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     const [layerOrder, setLayerOrder] = useState(defaultLayers);
 
     // Media Logo State
-    const [mediaLogoQuery, setMediaLogoQuery] = useState(collection?.title || "");
+    const [mediaLogoQuery, setMediaLogoQuery] = useState(asset?.title || "");
     const [mediaLogoSearchOpen, setMediaLogoSearchOpen] = useState(false);
     const [mediaLogoResults, setMediaLogoResults] = useState([]);
     const [isSearchingMediaLogos, setIsSearchingMediaLogos] = useState(false);
@@ -100,7 +100,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     
     // Text State (Main)
     const [textEnabled, setTextEnabled] = useState(true);
-    const [textContent, setTextContent] = useState(collection?.title || "Test Collection");
+    const [textContent, setTextContent] = useState(asset?.title || "Test Collection");
     const [textFont, setTextFont] = useState('Arial');
     const [textColor, setTextColor] = useState('#FFFFFF');
     const [textSize, setTextSize] = useState(100);
@@ -122,7 +122,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     const [borderWidth, setBorderWidth] = useState(20);
 
     // External Resources
-    const [searchQuery, setSearchQuery] = useState(collection?.title || "");
+    const [searchQuery, setSearchQuery] = useState(asset?.title || "");
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
     const [studioLogos, setStudioLogos] = useState([]);
@@ -141,10 +141,10 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
         fetchPresets();
         fetchLocalOverlays();
         fetchLocalFonts();
-        if (!collection?.posterUrl) {
-            handleSearch(collection?.title);
+        if (!(asset?.posterUrl || asset?.backgroundUrl)) {
+            handleSearch(asset?.title);
         }
-    }, [collection]);
+    }, [asset]);
 
     const fetchLocalOverlays = async () => {
         try {
@@ -191,7 +191,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
 
     const fetchPresets = async () => {
         try {
-            const res = await fetch("/api/collections/presets");
+            const res = await fetch("/api/assets/presets");
             const data = await res.json();
             setPresets(data);
         } catch (e) {
@@ -221,7 +221,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
         
         const updatedPresets = [...presets, newPreset];
         try {
-            const res = await fetch("/api/collections/presets", {
+            const res = await fetch("/api/assets/presets", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updatedPresets)
@@ -293,7 +293,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     const handleDeletePreset = async (presetId) => {
         const updatedPresets = presets.filter(p => p.id !== presetId);
         try {
-            const res = await fetch("/api/collections/presets", {
+            const res = await fetch("/api/assets/presets", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updatedPresets)
@@ -356,7 +356,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
 
         setIsSearching(true);
         try {
-            const res = await fetch("/api/collections/search", {
+            const res = await fetch("/api/assets/search", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query, token })
@@ -457,8 +457,8 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
             const ctx = canvas.getContext('2d');
             
             // Poster Resolution
-            const CANVAS_WIDTH = 1000;
-            const CANVAS_HEIGHT = 1500;
+            const CANVAS_WIDTH = (asset?.type || assetType) === 'background' || (asset?.type || assetType) === 'titlecard' ? 1920 : ((asset?.type || assetType) === 'squareart' ? 1000 : 1000);
+        const CANVAS_HEIGHT = (asset?.type || assetType) === 'background' || (asset?.type || assetType) === 'titlecard' ? 1080 : ((asset?.type || assetType) === 'squareart' ? 1000 : 1500);
             const CENTER_X = CANVAS_WIDTH / 2;
             const CENTER_Y = CANVAS_HEIGHT / 2;
             
@@ -910,20 +910,20 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
         showInfo("Saving poster...");
         try {
             const dataUrl = previewCanvasRef.current.toDataURL("image/jpeg", 0.9);
-            const res = await fetch("/api/collections/save", {
+            const res = await fetch("/api/assets/save", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ collection_name: collection.title, library_name: libraryName, image_data: dataUrl })
+                body: JSON.stringify({ item_name: asset?.title, library_name: libraryName, image_data: dataUrl })
             });
             const data = await res.json();
             if (data.success) {
                 if (uploadToServer && activeServer) {
                     showInfo("Uploading to Media Server...");
-                    const uploadRes = await fetch("/api/collections/upload-to-server", {
+                    const uploadRes = await fetch("/api/assets/upload-to-server", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            rating_key: collection.ratingKey,
+                            rating_key: asset?.ratingKey,
                             server_type: activeServer.id,
                             server_url: activeServer.url,
                             server_token: activeServer.token,
@@ -959,7 +959,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                 <div className="flex items-center justify-between p-4 border-b border-theme bg-theme-card shrink-0">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-theme-text">
                         <LayoutTemplate className="w-5 h-5 text-theme-primary" />
-                        Poster Creator: {collection.title}
+                        Asset Creator: {asset?.title}
                     </h2>
                     <div className="flex items-center gap-3">
                         <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-white">
@@ -1467,7 +1467,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                         </div>
                         
                         <div className="flex-1 flex items-center justify-center overflow-hidden pb-4">
-                            <div className="relative shadow-2xl rounded-sm overflow-hidden" style={{ aspectRatio: '2/3', height: '100%', maxHeight: 'calc(100vh - 200px)' }}>
+                            <div className={`relative shadow-2xl rounded-sm overflow-hidden ${(asset?.type || assetType) === 'background' || (asset?.type || assetType) === 'titlecard' ? 'aspect-video w-full' : ((asset?.type || assetType) === 'squareart' ? 'aspect-square w-full md:w-3/4' : 'aspect-[2/3] h-full')}`} style={{ maxHeight: 'calc(100vh - 200px)' }}>
                                 {/* Canvas Preview scales to fit container using CSS */}
                                 <canvas 
                                     ref={previewCanvasRef} 
@@ -1547,4 +1547,4 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     );
 };
 
-export default CollectionLiveEditor;
+export default AssetLiveEditor;

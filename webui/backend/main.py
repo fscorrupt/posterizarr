@@ -2914,53 +2914,52 @@ async def update_config(data: ConfigUpdate):
 
 
 # ============================================================================
-# COLLECTION PRESETS ENDPOINTS
+# ASSET PRESETS ENDPOINTS
 # ============================================================================
 
-@app.get("/api/collections/presets")
-async def get_collection_presets():
-    """Get collection presets from the configuration database"""
+@app.get("/api/assets/presets")
+async def get_asset_presets():
+    """Get asset presets from the configuration database"""
     try:
-        if not CONFIG_DATABASE_AVAILABLE or not config_db:
-            return []
-
-        presets_str = config_db.get_value("CollectionBlueprints", "presets")
+        from modules.db import config_db
+        # Fallback to CollectionBlueprints for backward compatibility, then migrate to AssetBlueprints
+        presets_str = config_db.get_value("AssetBlueprints", "presets")
+        if not presets_str:
+            presets_str = config_db.get_value("CollectionBlueprints", "presets")
         if not presets_str:
             return []
-
+            
         return json.loads(presets_str)
     except Exception as e:
-        logger.error(f"Error reading collection presets: {e}")
+        logger.error(f"Error reading asset presets: {e}")
         return []
 
-@app.post("/api/collections/presets")
-async def save_collection_presets(request: Request):
-    """Save collection presets to the configuration database"""
+@app.post("/api/assets/presets")
+async def save_asset_presets(request: Request):
+    """Save asset presets to the configuration database"""
     try:
-        if not CONFIG_DATABASE_AVAILABLE or not config_db:
-            raise HTTPException(status_code=500, detail="Database not available")
-
         data = await request.json()
-
-        # Ensure it's a list
+        
+        # Ensure we're saving a list
         if not isinstance(data, list):
-            data = [data]
-
+            raise HTTPException(status_code=400, detail="Expected a list of presets")
+            
+        from modules.db import config_db
         success = config_db.set_value(
-            "CollectionBlueprints",
+            "AssetBlueprints",
             "presets",
             json.dumps(data)
         )
-
+        
         if success:
-            return {"status": "success", "message": "Collection presets saved successfully"}
+            return {"status": "success", "message": "Asset presets saved successfully"}
         else:
-            raise HTTPException(status_code=500, detail="Failed to save collection presets")
-
-    except HTTPException:
-        raise
+            raise HTTPException(status_code=500, detail="Failed to save asset presets")
+            
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON data")
     except Exception as e:
-        logger.error(f"Error saving collection presets: {e}")
+        logger.error(f"Error saving asset presets: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
 # ============================================================================
@@ -15748,12 +15747,13 @@ class MediaServerItemsRequest(BaseModel):
     url: str
     token: str
     library_id: str
+    asset_type: str = "poster" # "poster", "season", "background", "titlecard", "collection", "squareart"
     start: int = 0
     limit: int = 50
 
 @app.post("/api/media-server/items")
 async def get_media_server_items(request: MediaServerItemsRequest):
-    """Fetch items from media server with pagination and logo URLs"""
+    """Fetch generic items from media server based on asset_type"""
     try:
         url = request.url.rstrip('/')
         items = []
@@ -15767,34 +15767,78 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                     "X-Plex-Container-Start": str(request.start),
                     "X-Plex-Container-Size": str(request.limit)
                 }
-                response = await client.get(api_url, headers=headers)
+                
+                params = {}
+                if request.asset_type == "collection":
+                    params = {"type": "18"}
+                elif request.asset_type == "season":
+                    params = {"type": "3"}
+                elif request.asset_type == "titlecard":
+                    params = {"type": "4"}
+                
+                response = await client.get(api_url, headers=headers, params=params)
                 if response.status_code == 200:
                     root = fromstring(response.content)
                     container = root
                     total = int(container.get("totalSize", container.get("size", 0)))
                     for item in root.findall(".//*[@title]"):
                         rating_key = item.get("ratingKey", "")
-                        has_logo = True # Assume true, let frontend onError handle 404s
-                                    
+                        img_path = "art" if request.asset_type in ["background", "titlecard"] else "thumb"
+                        if request.asset_type == "titlecard": img_path = "thumb"
+                        if request.asset_type == "background": img_path = "art"
+                        if request.asset_type == "squareart": img_path = "squareArt"
+                        
+                        exact_url = None
+                        if request.asset_type == "squareart":
+                            square_node = item.find(".//Image[@type='backgroundSquare']")
+                            if square_node is not None and square_node.get("url"):
+                                exact_url = square_node.get("url")
+                                
+                        if exact_url:
+                            poster_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}{exact_url}')}"
+                        else:
+                            poster_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/{img_path}')}"
+                        
+                        has_poster = True
+                        
+                        title = item.get("title", "")
+                        parent_title = item.get("parentTitle", "")
+                        grandparent_title = item.get("grandparentTitle", "")
+                        
+                        if request.asset_type == "season" and parent_title:
+                            title = f"{parent_title} - {title}"
+                        elif request.asset_type == "titlecard" and grandparent_title:
+                            index = item.get("index", "")
+                            parent_index = item.get("parentIndex", "")
+                            s_e = f"S{int(parent_index):02d}E{int(index):02d}" if parent_index and index else ""
+                            title = f"{grandparent_title} - {s_e} - {title}" if s_e else f"{grandparent_title} - {title}"
+                            
                         items.append({
-                            "title": item.get("title", ""),
+                            "title": title,
                             "year": item.get("year", ""),
-                            "type": item.get("type", ""),
+                            "type": request.asset_type,
                             "ratingKey": rating_key,
-                            "hasLogo": has_logo,
-                            "logoUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/clearLogo')}"
+                            "hasPoster": has_poster,
+                            "posterUrl": poster_url
                         })
                         
             elif request.server_type in ["jellyfin", "emby"]:
                 auth_header = "Authorization"
                 request.token = f'MediaBrowser Token="{request.token}"'
                 api_url = f"{url}/Items"
+                
+                include_types = ""
+                if request.asset_type == "collection": include_types = "BoxSet"
+                elif request.asset_type == "season": include_types = "Season"
+                elif request.asset_type == "titlecard": include_types = "Episode"
+                else: include_types = "Movie,Series,MusicAlbum,MusicArtist"
+                
                 params = {
                     "ParentId": request.library_id,
                     "StartIndex": request.start,
                     "Limit": request.limit,
                     "Recursive": "true",
-                    "IncludeItemTypes": "Movie,Series",
+                    "IncludeItemTypes": include_types,
                     "Fields": "ProviderIds,ImageTags",
                 }
                 headers = {auth_header: request.token}
@@ -15803,14 +15847,29 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                     data = response.json()
                     total = data.get("TotalRecordCount", 0)
                     for item in data.get("Items", []):
-                        has_logo = "Logo" in item.get("ImageTags", {})
+                        img_type = "Backdrop" if request.asset_type == "background" else "Primary"
+                        if request.asset_type == "squareart": img_type = "Square"
+                        has_poster = img_type in item.get("ImageTags", {})
+                        if not has_poster:
+                            has_poster = True
+                        
+                        title = item.get("Name", "")
+                        series_name = item.get("SeriesName", "")
+                        if request.asset_type == "season" and series_name:
+                            title = f"{series_name} - {title}"
+                        elif request.asset_type == "titlecard" and series_name:
+                            parent_index = item.get("ParentIndexNumber", "")
+                            index = item.get("IndexNumber", "")
+                            s_e = f"S{int(parent_index):02d}E{int(index):02d}" if parent_index and index else ""
+                            title = f"{series_name} - {s_e} - {title}" if s_e else f"{series_name} - {title}"
+                            
                         items.append({
-                            "title": item.get("Name", ""),
+                            "title": title,
                             "year": item.get("ProductionYear", ""),
-                            "type": item.get("Type", ""),
+                            "type": request.asset_type,
                             "ratingKey": item.get("Id", ""),
-                            "hasLogo": has_logo,
-                            "logoUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/Logo?tag={item.get('ImageTags', {}).get('Logo', '')}')}" if has_logo else None
+                            "hasPoster": has_poster,
+                            "posterUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/{img_type}')}"
                         })
                         
         return {"success": True, "items": items, "total": total}
@@ -15822,7 +15881,7 @@ class CheckLogosRequest(BaseModel):
     server_type: str
     url: str
     token: str
-    rating_keys: List[str]
+    rating_keys: list[str]
 
 @app.post("/api/media-server/check-logos")
 async def check_media_server_logos(request: CheckLogosRequest):
@@ -16146,9 +16205,9 @@ async def run_queue(background_tasks: BackgroundTasks, request: Optional[RunQueu
 
 
 
-@app.post("/api/media-server/collections")
-async def get_media_server_collections(request: MediaServerItemsRequest):
-    """Fetch collections from media server"""
+@app.post("/api/media-server/items")
+async def get_media_server_items(request: MediaServerItemsRequest):
+    """Fetch generic items from media server based on asset_type"""
     try:
         url = request.url.rstrip('/')
         items = []
@@ -16162,7 +16221,15 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
                     "X-Plex-Container-Start": str(request.start),
                     "X-Plex-Container-Size": str(request.limit)
                 }
-                params = {"type": "18"} # 18 = Collection
+                
+                params = {}
+                if request.asset_type == "collection":
+                    params = {"type": "18"}
+                elif request.asset_type == "season":
+                    params = {"type": "3"}
+                elif request.asset_type == "titlecard":
+                    params = {"type": "4"}
+                
                 response = await client.get(api_url, headers=headers, params=params)
                 if response.status_code == 200:
                     root = fromstring(response.content)
@@ -16170,26 +16237,62 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
                     total = int(container.get("totalSize", container.get("size", 0)))
                     for item in root.findall(".//*[@title]"):
                         rating_key = item.get("ratingKey", "")
-                        has_poster = True 
+                        img_path = "art" if request.asset_type in ["background", "titlecard"] else "thumb"
+                        if request.asset_type == "titlecard": img_path = "thumb"
+                        if request.asset_type == "background": img_path = "art"
+                        if request.asset_type == "squareart": img_path = "squareArt"
+                        
+                        exact_url = None
+                        if request.asset_type == "squareart":
+                            square_node = item.find(".//Image[@type='backgroundSquare']")
+                            if square_node is not None and square_node.get("url"):
+                                exact_url = square_node.get("url")
+                                
+                        if exact_url:
+                            poster_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}{exact_url}')}"
+                        else:
+                            poster_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/{img_path}')}"
+                        
+                        has_poster = True
+                        
+                        title = item.get("title", "")
+                        parent_title = item.get("parentTitle", "")
+                        grandparent_title = item.get("grandparentTitle", "")
+                        
+                        if request.asset_type == "season" and parent_title:
+                            title = f"{parent_title} - {title}"
+                        elif request.asset_type == "titlecard" and grandparent_title:
+                            index = item.get("index", "")
+                            parent_index = item.get("parentIndex", "")
+                            s_e = f"S{int(parent_index):02d}E{int(index):02d}" if parent_index and index else ""
+                            title = f"{grandparent_title} - {s_e} - {title}" if s_e else f"{grandparent_title} - {title}"
+                            
                         items.append({
-                            "title": item.get("title", ""),
+                            "title": title,
                             "year": item.get("year", ""),
-                            "type": "collection",
+                            "type": request.asset_type,
                             "ratingKey": rating_key,
                             "hasPoster": has_poster,
-                            "posterUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/thumb')}"
+                            "posterUrl": poster_url
                         })
                         
             elif request.server_type in ["jellyfin", "emby"]:
                 auth_header = "Authorization"
                 request.token = f'MediaBrowser Token="{request.token}"'
                 api_url = f"{url}/Items"
+                
+                include_types = ""
+                if request.asset_type == "collection": include_types = "BoxSet"
+                elif request.asset_type == "season": include_types = "Season"
+                elif request.asset_type == "titlecard": include_types = "Episode"
+                else: include_types = "Movie,Series,MusicAlbum,MusicArtist"
+                
                 params = {
                     "ParentId": request.library_id,
                     "StartIndex": request.start,
                     "Limit": request.limit,
                     "Recursive": "true",
-                    "IncludeItemTypes": "BoxSet",
+                    "IncludeItemTypes": include_types,
                     "Fields": "ProviderIds,ImageTags",
                 }
                 headers = {auth_header: request.token}
@@ -16198,21 +16301,35 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
                     data = response.json()
                     total = data.get("TotalRecordCount", 0)
                     for item in data.get("Items", []):
-                        has_poster = "Primary" in item.get("ImageTags", {})
+                        img_type = "Backdrop" if request.asset_type == "background" else "Primary"
+                        if request.asset_type == "squareart": img_type = "Square"
+                        has_poster = img_type in item.get("ImageTags", {})
+                        if not has_poster:
+                            has_poster = True
+                        
+                        title = item.get("Name", "")
+                        series_name = item.get("SeriesName", "")
+                        if request.asset_type == "season" and series_name:
+                            title = f"{series_name} - {title}"
+                        elif request.asset_type == "titlecard" and series_name:
+                            parent_index = item.get("ParentIndexNumber", "")
+                            index = item.get("IndexNumber", "")
+                            s_e = f"S{int(parent_index):02d}E{int(index):02d}" if parent_index and index else ""
+                            title = f"{series_name} - {s_e} - {title}" if s_e else f"{series_name} - {title}"
+                            
                         items.append({
-                            "title": item.get("Name", ""),
+                            "title": title,
                             "year": item.get("ProductionYear", ""),
-                            "type": "collection",
+                            "type": request.asset_type,
                             "ratingKey": item.get("Id", ""),
                             "hasPoster": has_poster,
-                            "posterUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/Primary?tag={item.get('ImageTags', {}).get('Primary', '')}')}" if has_poster else None
+                            "posterUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/{img_type}')}"
                         })
                         
         return {"success": True, "items": items, "total": total}
     except Exception as e:
-        logger.error(f"Error fetching media server collections: {e}", exc_info=True)
+        logger.error(f"Error fetching media server items: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
-
 
 @app.get("/api/studio-logos")
 async def api_get_studio_logos():
@@ -16241,10 +16358,11 @@ class UploadToServerRequest(BaseModel):
     server_url: str
     server_token: str
     image_data: str
+    asset_type: str = "poster" # "poster", "background", "season", "titlecard", "collection", "squareart"
 
-@app.post("/api/collections/upload-to-server")
-async def api_upload_collection_to_server(request: UploadToServerRequest):
-    """Upload poster directly to Media Server (Plex/Jellyfin/Emby)"""
+@app.post("/api/assets/upload-to-server")
+async def api_upload_asset_to_server(request: UploadToServerRequest):
+    """Upload asset directly to Media Server (Plex/Jellyfin/Emby)"""
     try:
         # Decode base64 image
         import base64
@@ -16252,10 +16370,12 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
         data = base64.b64decode(encoded)
 
         server_url = request.server_url.rstrip('/')
+        is_backdrop = request.asset_type.lower() in ["background", "titlecard"]
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             if request.server_type == "plex":
-                url = f"{server_url}/library/metadata/{request.rating_key}/posters"
+                endpoint = "arts" if is_backdrop else "posters"
+                url = f"{server_url}/library/metadata/{request.rating_key}/{endpoint}"
                 headers = {
                     "X-Plex-Token": request.server_token,
                     "Content-Type": "image/jpeg"
@@ -16265,7 +16385,8 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
                     return {"success": False, "error": f"Plex returned status {response.status_code}"}
                     
             elif request.server_type in ["jellyfin", "emby"]:
-                url = f"{server_url}/Items/{request.rating_key}/Images/Primary"
+                endpoint = "Backdrop" if is_backdrop else "Primary"
+                url = f"{server_url}/Items/{request.rating_key}/Images/{endpoint}"
                 headers = {
                     "Authorization": f'MediaBrowser Token="{request.server_token}"',
                     "Content-Type": "image/jpeg"
@@ -16276,18 +16397,19 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
             else:
                 return {"success": False, "error": "Unknown server type"}
 
-        return {"success": True, "message": "Uploaded successfully to Media Server"}
+        return {"success": True, "message": f"Uploaded {request.asset_type} successfully to Media Server"}
     except Exception as e:
         logger.error(f"Error uploading to media server: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
-class CollectionSaveRequest(BaseModel):
-    collection_name: str
+class AssetSaveRequest(BaseModel):
+    item_name: str
     library_name: str
     image_data: str # Base64 encoded PNG/JPG
+    asset_type: str = "poster" # "collection", "poster", "background", etc.
 
-@app.post("/api/collections/save")
-async def api_save_collection_poster(request: CollectionSaveRequest):
+@app.post("/api/assets/save")
+async def api_save_asset(request: AssetSaveRequest):
     try:
         # Decode base64
         import base64
@@ -16296,19 +16418,37 @@ async def api_save_collection_poster(request: CollectionSaveRequest):
         
         # Sanitize to prevent path traversal
         safe_library_name = Path(request.library_name).name
-        safe_collection_name = Path(request.collection_name).name
+        safe_item_name = Path(request.item_name).name
         
-        # Save path: ASSETS_DIR / "Collections" / library_name / collection_name / "poster.png"
-        save_dir = ASSETS_DIR / "Collections" / safe_library_name / safe_collection_name
+        # Map asset_type to directory
+        asset_dir_map = {
+            "collection": "Collections",
+            "poster": "Posters",
+            "season": "Seasons",
+            "background": "Backgrounds",
+            "titlecard": "Titlecards",
+            "squareart": "Squarearts"
+        }
+        dir_name = asset_dir_map.get(request.asset_type.lower(), "Posters")
+        
+        save_dir = (ASSETS_DIR / dir_name / safe_library_name / safe_item_name).resolve()
+        if not save_dir.is_relative_to(ASSETS_DIR.resolve()):
+            raise ValueError("Invalid path: path traversal detected")
+            
         save_dir.mkdir(parents=True, exist_ok=True)
         
-        save_path = save_dir / "poster.png"
+        if request.asset_type.lower() == "squareart":
+            filename = "square.png"
+        else:
+            filename = "background.png" if request.asset_type.lower() in ["background", "titlecard"] else "poster.png"
+        save_path = save_dir / filename
+        
         with open(save_path, "wb") as f:
             f.write(data)
             
         return {"success": True, "message": "Saved successfully", "path": str(save_path)}
     except Exception as e:
-        logger.error(f"Error saving collection poster: {e}", exc_info=True)
+        logger.error(f"Error saving asset: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 class TMDBCollectionSearchRequest(BaseModel):

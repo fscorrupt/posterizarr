@@ -865,7 +865,15 @@ export default function Blueprints() {
              SeasonTCText: configData.TitleCardEPTextPart?.SeasonTCText || prev.TitleCardEPText.SeasonTCText,
              EpisodeTCText: configData.TitleCardEPTextPart?.EpisodeTCText || prev.TitleCardEPText.EpisodeTCText
           },
-          Collection: { SampleText: "Collection Name", 
+          
+      SquareArt: {
+        fontAllCaps: true, AddBorder: true, AddText: true, AddTextStroke: false,
+        strokecolor: "black", strokewidth: "6", AddOverlay: true, fontcolor: "white",
+        bordercolor: "black", minPointSize: "45", maxPointSize: "300", borderwidth: "30",
+        MaxWidth: "1000", MaxHeight: "300", text_offset: "+250", lineSpacing: "0",
+        TextGravity: "south", overlayfile: ""
+      },
+      Collection: { SampleText: "Collection Name", 
              ...prev.Collection,
              AddBorder: configData.CollectionPosterOverlayPart?.AddBorder === "true",
              AddOverlay: configData.CollectionPosterOverlayPart?.AddOverlay === "true",
@@ -1712,6 +1720,7 @@ export default function Blueprints() {
                         {((previewType === 'Poster' && builderState.Poster.AddText) ||
                          (previewType === 'Season' && builderState.Season.AddText) ||
                          (previewType === 'Collection' && builderState.Collection.AddText) ||
+                    (previewType === 'SquareArt' && builderState.SquareArt.AddText) ||
                          (previewType === 'Background' && builderState.Background.AddText)) && (
                           <div className={`z-20 pointer-events-none transition-all ${selectedLayer?.endsWith('.Text') ? 'border-2 border-dashed border-red-500/50 bg-red-500/5 ring-2 ring-theme-primary ring-inset' : ''}`} style={{ ...getBoundingBoxStyle(builderState[previewType]), ...previewStyles.text }}>
                             {builderState.Global.UseClearlogo && previewType !== 'Season' ? (
@@ -1784,7 +1793,15 @@ export default function Blueprints() {
                         )}
 
                         {/* COLLECTION SPECIFIC TEXT */}
-                        {previewType === 'Collection' && builderState.Collection.AddText && (
+                        
+                    {previewType === 'SquareArt' && (
+                      <div className="space-y-1">
+                        <LayerItem id="SquareArt.Border" label="Border" icon={Square} active={selectedLayer === "SquareArt.Border"} onSelect={setSelectedLayer} enabled={builderState.SquareArt.AddBorder} onToggle={(v) => updateBuilder("SquareArt", "AddBorder", v)} />
+                        <LayerItem id="SquareArt.Overlay" label="Overlay" icon={Layers} active={selectedLayer === "SquareArt.Overlay"} onSelect={setSelectedLayer} enabled={builderState.SquareArt.AddOverlay} onToggle={(v) => updateBuilder("SquareArt", "AddOverlay", v)} />
+                        <LayerItem id="SquareArt.Text" label="Text" icon={Type} active={selectedLayer === "SquareArt.Text"} onSelect={setSelectedLayer} enabled={builderState.SquareArt.AddText} onToggle={(v) => updateBuilder("SquareArt", "AddText", v)} />
+                      </div>
+                    )}
+                    {previewType === 'Collection' && builderState.Collection.AddText && (
                           <>
                             {builderState.CollectionTitle.AddCollectionTitle && (
                                <div className={`z-20 pointer-events-none transition-all ${selectedLayer === 'CollectionTitle' ? 'border-2 border-dashed border-red-500/50 bg-red-500/5 ring-2 ring-theme-primary ring-inset' : ''}`} style={{ ...getBoundingBoxStyle(builderState.CollectionTitle), ...collectionTitleStyles.text }}>
@@ -1798,7 +1815,8 @@ export default function Blueprints() {
                         {((previewType === 'Poster' && builderState.Poster.AddOverlay) ||
                          (previewType === 'Season' && builderState.Season.AddOverlay) ||
                          (previewType === 'Background' && builderState.Background.AddOverlay) ||
-                         (previewType === 'TitleCard' && builderState.TitleCard.AddOverlay)) && builderState[previewType]?.overlayfile && (
+                         (previewType === 'TitleCard' && builderState.TitleCard.AddOverlay) ||
+                  (previewType === 'SquareArt' && builderState.SquareArt.AddOverlay)) && builderState[previewType]?.overlayfile && (
                           <div className={`absolute inset-0 pointer-events-none z-[15] overflow-hidden transition-all ${selectedLayer?.endsWith('.Overlay') ? 'border-2 border-dashed border-red-500/50 bg-red-500/5 ring-2 ring-theme-primary ring-inset' : ''}`}>
                             <img 
                               src={`${API_URL}/overlayfiles/preview/${builderState[previewType].overlayfile}`} 

@@ -571,6 +571,7 @@ function MassDownloadPlexArtwork {
                         $LibraryName = $entry.'Library Name'
                         $EntryDir = "$BackupPath\$LibraryName\$($entry.RootFoldername)"
                         $backgroundImageoriginal = "$EntryDir\background.jpg"
+                $squareImageoriginal = "$EntryDir\square.jpg"
                         $TestPath = $EntryDir
                         $Testfile = "background"
 
@@ -580,6 +581,7 @@ function MassDownloadPlexArtwork {
                     }
                     Else {
                         $backgroundImageoriginal = "$BackupPath\$($entry.RootFoldername)_background.jpg"
+                $squareImageoriginal = "$BackupPath\$($entry.RootFoldername)_square.jpg"
                         $TestPath = $BackupPath
                         $Testfile = "$($entry.RootFoldername)_background"
                     }
@@ -881,6 +883,7 @@ function MassDownloadPlexArtwork {
                     $LibraryName = $entry.'Library Name'
                     $EntryDir = "$BackupPath\$LibraryName\$($entry.RootFoldername)"
                     $backgroundImageoriginal = "$EntryDir\background.jpg"
+                $squareImageoriginal = "$EntryDir\square.jpg"
                     $TestPath = $EntryDir
                     $Testfile = "background"
 
@@ -890,6 +893,7 @@ function MassDownloadPlexArtwork {
                 }
                 Else {
                     $backgroundImageoriginal = "$BackupPath\$($entry.RootFoldername)_background.jpg"
+                $squareImageoriginal = "$BackupPath\$($entry.RootFoldername)_square.jpg"
                     $TestPath = $BackupPath
                     $Testfile = "$($entry.RootFoldername)_background"
                 }
@@ -2046,6 +2050,7 @@ function MassRestorePlexArtwork {
 
         $posterPath = if ($LibraryFolders -eq 'true') { "$EntryDir\poster.jpg" } else { "$EntryDir\$($entry.RootFoldername).jpg" }
         $backgroundPath = if ($LibraryFolders -eq 'true') { "$EntryDir\background.jpg" } else { "$EntryDir\$($entry.RootFoldername)_background.jpg" }
+        $squarePath = if ($LibraryFolders -eq 'true') { "$EntryDir\square.jpg" } else { "$EntryDir\$($entry.RootFoldername)_square.jpg" }
 
         if (!$RestoreType -or $RestoreType -eq 'poster') {
             if (Push-PlexAsset -RatingKey $entry.ratingKey -AssetPath $posterPath -Type "posters") { $posterCount++ }
@@ -2066,6 +2071,7 @@ function MassRestorePlexArtwork {
 
         $posterPath = if ($LibraryFolders -eq 'true') { "$EntryDir\poster.jpg" } else { "$EntryDir\$($entry.RootFoldername).jpg" }
         $backgroundPath = if ($LibraryFolders -eq 'true') { "$EntryDir\background.jpg" } else { "$EntryDir\$($entry.RootFoldername)_background.jpg" }
+        $squarePath = if ($LibraryFolders -eq 'true') { "$EntryDir\square.jpg" } else { "$EntryDir\$($entry.RootFoldername)_square.jpg" }
 
         if (!$RestoreType -or $RestoreType -eq 'poster') {
             if (Push-PlexAsset -RatingKey $entry.ratingKey -AssetPath $posterPath -Type "posters") { $posterCount++ }

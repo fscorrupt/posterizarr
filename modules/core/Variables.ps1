@@ -504,6 +504,7 @@ $LibraryFolders = "$($config.PrerequisitePart.LibraryFolders)".ToLower()
 $global:SeasonPosters = "$($config.PrerequisitePart.SeasonPosters)".ToLower()
 $global:Posters = "$($config.PrerequisitePart.Posters)".ToLower()
 $global:BackgroundPosters = "$($config.PrerequisitePart.BackgroundPosters)".ToLower()
+$global:SquareArts = "$($config.PrerequisitePart.SquareArts)".ToLower()
 $global:TitleCards = "$($config.PrerequisitePart.TitleCards)".ToLower()
 $SkipTBA = "$($config.PrerequisitePart.SkipTBA)".ToLower()
 $SkipJapTitle = "$($config.PrerequisitePart.SkipJapTitle)".ToLower()
@@ -663,6 +664,28 @@ $BackgroundlineSpacing = $config.BackgroundOverlayPart.lineSpacing
 $Backgroundtextgravity = "$($config.BackgroundOverlayPart.TextGravity)".ToLower()
 $Backgroundborderwidthsecond = $Backgroundborderwidth + 'x' + $Backgroundborderwidth
 $Backgroundboxsize = $BackgroundMaxWidth + 'x' + $BackgroundMaxHeight
+
+
+# Square Art Overlay Part
+$SquareArtfontAllCaps = "$($config.SquareArtOverlayPart.fontAllCaps)".ToLower()
+$AddSquareArtOverlay = "$($config.SquareArtOverlayPart.AddOverlay)".ToLower()
+$AddSquareArtBorder = "$($config.SquareArtOverlayPart.AddBorder)".ToLower()
+$AddSquareArtText = "$($config.SquareArtOverlayPart.AddText)".ToLower()
+$AddSquareArtTextStroke = "$($config.SquareArtOverlayPart.AddTextStroke)".ToLower()
+$SquareArtstrokecolor = $config.SquareArtOverlayPart.strokecolor
+$SquareArtstrokewidth = $config.SquareArtOverlayPart.strokewidth
+$SquareArtfontcolor = $config.SquareArtOverlayPart.fontcolor
+$SquareArtbordercolor = $config.SquareArtOverlayPart.bordercolor
+$SquareArtminPointSize = $config.SquareArtOverlayPart.minPointSize
+$SquareArtmaxPointSize = $config.SquareArtOverlayPart.maxPointSize
+$SquareArtborderwidth = $config.SquareArtOverlayPart.borderwidth
+$SquareArtMaxWidth = $config.SquareArtOverlayPart.MaxWidth
+$SquareArtMaxHeight = $config.SquareArtOverlayPart.MaxHeight
+$SquareArttext_offset = $config.SquareArtOverlayPart.text_offset
+$SquareArtlineSpacing = $config.SquareArtOverlayPart.lineSpacing
+$SquareArttextgravity = "$($config.SquareArtOverlayPart.TextGravity)".ToLower()
+$SquareArtborderwidthsecond = $SquareArtborderwidth + 'x' + $SquareArtborderwidth
+$SquareArtboxsize = $SquareArtMaxWidth + 'x' + $SquareArtMaxHeight
 
 # Title Card Overlay Part
 $AddTitleCardOverlay = "$($config.TitleCardOverlayPart.AddOverlay)".ToLower()

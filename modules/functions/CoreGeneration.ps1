@@ -6832,3 +6832,176 @@ function Invoke-TitleCardCreation {
         $global:errorCount = Increment-GlobalStat 'errorCount'
     }
 }
+
+function Invoke-SquareArtCreation {
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$entry,
+        [Parameter(Mandatory = $true)]
+        [string]$type
+    )
+
+    if ($global:EnableSquareArt -ne 'true') { return }
+    
+    $LibraryName = $entry.'Library Name'
+    $FolderName = $entry.RootFoldername
+    $Titletext = $entry.title
+    $SquareArtName = "square.jpg"
+
+    if ($LibraryFolders -eq 'true') {
+        $EntryDir = $entry.Path
+        $SquareArtoriginal = Join-Path -Path $EntryDir -ChildPath $SquareArtName
+    } else {
+        $EntryDir = Join-Path -Path $global:AssetPath -ChildPath $LibraryName
+        $SquareArtoriginal = Join-Path -Path $EntryDir -ChildPath "$($FolderName)_$SquareArtName"
+    }
+
+    $SquareArtTemp = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($entry.ratingKey)_square.jpg"
+
+    if (Test-Path $SquareArtoriginal) {
+        if ($global:ForceRunningDeletion -eq 'true') {
+            Remove-Item -Path $SquareArtoriginal -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-Entry -Subtext "SquareArt already exists, skipping." -Path $global:configLogging -Color Yellow -log Info
+            return
+        }
+    }
+
+    Write-Entry -Subtext "Starting Square Art creation for $Titletext" -Path $global:configLogging -Color Cyan -log Debug
+
+    $global:posterurl = $null
+    
+    # Download Logic
+    # Prioritize TVDB, Fanart, Plex, Jellyfin/Emby
+    $searchOrder = @('TVDB', 'FANART', 'PLEX', 'OTHER')
+    
+    foreach ($provider in $searchOrder) {
+        if ($global:posterurl) { break }
+        switch ($provider) {
+            'TVDB' {
+                if ($entry.tvdbid) {
+                    Write-Entry -Subtext "Fetching Square Art from TVDB" -Path $global:configLogging -Color Cyan -log Debug
+                    $tvdbType = if ($type -eq 'movie') { 'movies' } else { 'series' }
+                    try {
+                        $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/$tvdbType/$($entry.tvdbid)/extended" -Method GET -Headers $global:tvdbheader -ErrorAction Stop).content | ConvertFrom-Json
+                        if ($response.data.artworks) {
+                            $sqArtwork = $response.data.artworks | Where-Object { $_.type -in @(5, 25) } | Sort-Object Score -Descending | Select-Object -First 1
+                            if ($sqArtwork) { $global:posterurl = $sqArtwork.image }
+                        }
+                    } catch {}
+                }
+            }
+            'FANART' {
+                Write-Entry -Subtext "Fetching Square Art from Fanart" -Path $global:configLogging -Color Cyan -log Debug
+                $ids = @($entry.tmdbid, $entry.imdbid, $entry.tvdbid)
+                foreach ($id in $ids) {
+                    if ($id -and -not $global:posterurl) {
+                        try {
+                            if ($type -eq 'movie') {
+                                $faEntry = Get-FanartTvmovie -id $id -ErrorAction Stop
+                                if ($faEntry.cdart) { $global:posterurl = $faEntry.cdart[0].url }
+                            } else {
+                                $faEntry = Get-FanartTvshow -id $id -ErrorAction Stop
+                                if ($faEntry.hdtvlogo) { $global:posterurl = $faEntry.hdtvlogo[0].url }
+                            }
+                        } catch {}
+                    }
+                }
+            }
+            'PLEX' {
+                if ($entry.PlexPosterUrl -or $entry.PlexBackgroundUrl) {
+                    Write-Entry -Subtext "Fetching Square Art from Plex" -Path $global:configLogging -Color Cyan -log Debug
+                    
+                    # First, attempt to fetch native squareArt (in case it exists)
+                    $nativeSquare = "$plexurl/library/metadata/$($entry.ratingKey)/squareArt"
+                    try {
+                        $plexHeaders = @{ "X-Plex-Token" = $PlexToken }
+                        $resp = Invoke-WebRequest -Uri $nativeSquare -Method HEAD -Headers $plexHeaders -ErrorAction Stop
+                        if ($resp.StatusCode -eq 200) {
+                            $global:posterurl = $nativeSquare
+                            Write-Entry -Subtext "Found native Square Art on Plex" -Path $global:configLogging -Color Blue -log Info
+                        }
+                    } catch {}
+
+                    # Fallback to poster/background if native square art doesn't exist
+                    if (-not $global:posterurl) {
+                        Write-Entry -Subtext "No native Square Art, falling back to Poster/Background to crop..." -Path $global:configLogging -Color Cyan -log Debug
+                        $artUrl = if ($entry.PlexPosterUrl) { $entry.PlexPosterUrl } else { $entry.PlexBackgroundUrl }
+                        $global:posterurl = $plexurl + $artUrl
+                    }
+                }
+            }
+            'OTHER' {
+                if ($UseOtherMediaServer -eq 'true' -and $entry.TargetID) {
+                    Write-Entry -Subtext "Fetching Box/Square Art from Jellyfin/Emby" -Path $global:configLogging -Color Cyan -log Debug
+                    $jfHeaders = @{ "Authorization" = "MediaBrowser Token=`"$OtherMediaServerApiKey`"" }
+                    $url = "$OtherMediaServerUrl/Items/$($entry.TargetID)/Images/Box"
+                    try {
+                        $jfImg = Invoke-WebRequest -Uri $url -Headers $jfHeaders -Method HEAD -ErrorAction Stop
+                        if ($jfImg.StatusCode -eq 200) { $global:posterurl = $url }
+                    } catch {}
+                }
+            }
+        }
+        
+        if ($global:posterurl) {
+            $headers = @{}
+            if ($global:posterurl -like "$plexurl*") { $headers['X-Plex-Token'] = $PlexToken }
+            elseif ($global:posterurl -like "$OtherMediaServerUrl*") { $headers['Authorization'] = "MediaBrowser Token=`"$OtherMediaServerApiKey`"" }
+
+            try {
+                Invoke-WebRequest -Uri $global:posterurl -OutFile $SquareArtTemp -Headers $headers -ErrorAction Stop
+                
+                # Verify EXIF so we don't process an already generated image
+                if ($provider -in @('PLEX', 'OTHER')) {
+                    if (Test-IsPosterizarrAsset -Path $SquareArtTemp) {
+                        Write-Entry -Subtext "Image from $provider contains Posterizarr EXIF. Skipping..." -Path $global:configLogging -Color Yellow -log Warning
+                        Remove-Item -Path $SquareArtTemp -Force -ErrorAction SilentlyContinue
+                        $global:posterurl = $null
+                    }
+                }
+            } catch {
+                $global:posterurl = $null
+            }
+        }
+    }
+
+    if (-not $global:posterurl -and -not (Test-Path $SquareArtTemp)) {
+        Write-Entry -Subtext "Could not find Square Art from providers." -Path $global:configLogging -Color Yellow -log Warning
+        return
+    }
+
+    # Generate ImageMagick Arguments
+    $FinalImage = $SquareArtTemp
+    
+    if (Test-Path $SquareArtTemp) {
+        # Process the image to ensure it is 1000x1000 (especially for Plex/Jellyfin fallbacks)
+        if ($global:ImageProcessing -eq 'true') {
+            $magickArgs = @(
+                "`"$SquareArtTemp`"",
+                "-resize", "1000x1000^",
+                "-gravity", "center",
+                "-extent", "1000x1000",
+                "-quality", $global:outputQuality
+            )
+            # Add square art specific border/overlay processing if needed here
+            $magickArgs += "`"$SquareArtTemp`""
+            
+            Write-Entry -Subtext "Processing Square Art via ImageMagick" -Path $global:configLogging -Color Cyan -log Debug
+            $null = & $global:magickinstalllocation @magickArgs
+        } else {
+            # If ImageProcessing is false, we should at least ensure it's cropped to 1:1 if it was a fallback
+            $magickArgs = @(
+                "`"$SquareArtTemp`"",
+                "-resize", "1000x1000^",
+                "-gravity", "center",
+                "-extent", "1000x1000",
+                "`"$SquareArtTemp`""
+            )
+            $null = & $global:magickinstalllocation @magickArgs
+        }
+
+        Move-Item -Path $SquareArtTemp -Destination $SquareArtoriginal -Force
+        Write-Entry -Subtext "Square Art created and moved to: $SquareArtoriginal" -Path $global:configLogging -Color Green -log Info
+    }
+}

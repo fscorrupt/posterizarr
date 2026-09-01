@@ -618,6 +618,7 @@
             & $StateAssignerSb
 
         Invoke-MoviePosterCreation -entry $_
+        Invoke-SquareArtCreation -entry $_ -type "movie"
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
 
     Write-Entry -Message "Starting Show/Season Poster/Background Creation part..." -Path $global:configLogging -Color Green -log Info
@@ -638,6 +639,7 @@
             & $StateAssignerSb
 
         Invoke-ShowPosterCreation -entry $_
+        Invoke-SquareArtCreation -entry $_ -type "show"
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
 
     # TitleCard Part - separate parallel loop over episode season data

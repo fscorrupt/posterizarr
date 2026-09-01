@@ -15,6 +15,7 @@ param (
     [switch]$MoviePosterCard, # Required for Manual Trigger
     [switch]$ShowPosterCard, # Required for Manual Trigger
     [switch]$BackgroundCard, # Required for Manual Trigger
+    [switch]$SquareArt, # Required for Manual Trigger
     [switch]$LogoUpdater, # Required for LogoUpdater Mode
     [switch]$LogoRevert, # Required for LogoRevert Mode
     [switch]$ForceReplace, # Force replace existing logos

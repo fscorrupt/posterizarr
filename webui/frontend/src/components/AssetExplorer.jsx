@@ -15,14 +15,16 @@ import {
   Server,
   Loader2,
   X,
-  Menu
+  Menu,
+  Layers
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
-import CollectionLiveEditor from "./CollectionLiveEditor";
+import AssetLiveEditor from "./AssetLiveEditor";
 import CompactImageSizeSlider from "./CompactImageSizeSlider";
 import { buildResponsiveGridClass } from "../utils/gridClass";
 
 const API_URL = "/api";
+const assetCache = new Map();
 
 const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
   const { t } = useTranslation();
@@ -96,7 +98,7 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-const CollectionExplorer = () => {
+const AssetExplorer = () => {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
 
@@ -112,6 +114,7 @@ const CollectionExplorer = () => {
   // Filtering & Pagination State
   const [searchTerm, setSearchTerm] = useState("");
   const [showMissingOnly, setShowMissingOnly] = useState(false);
+  const [assetType, setAssetType] = useState('poster'); // 'collection', 'poster', 'season', 'background', 'titlecard', 'squareart'
   const [knownPlexLogos, setKnownPlexLogos] = useState({});
   const [checkingPlexLogos, setCheckingPlexLogos] = useState(false);
   const [plexLogosChecked, setPlexLogosChecked] = useState(false);
@@ -242,13 +245,24 @@ const CollectionExplorer = () => {
       setKnownPlexLogos({});
       fetchItems();
     }
-  }, [activeLibrary]);
+  }, [activeLibrary, assetType]);
 
   const fetchItems = async (preserveState = false) => {
-    setLoadingItems(true);
+    const cacheKey = `${activeServer?.id}-${activeLibrary?.name}-${assetType}`;
+    
     if (!preserveState) {
         setSearchTerm("");
         setCurrentPage(1);
+    }
+
+    // Load from cache instantly for snappy UI
+    if (assetCache.has(cacheKey)) {
+        setItems(assetCache.get(cacheKey));
+        // Still loading to indicate background refresh
+        setLoadingItems(true); 
+    } else {
+        setLoadingItems(true);
+        setItems([]); // clear if no cache
     }
     
     // Attempting to resolve the live library ID if it's not present (needed by backend)
@@ -273,7 +287,7 @@ const CollectionExplorer = () => {
     }
     
     try {
-      const res = await fetch(`${API_URL}/media-server/collections`, {
+      const res = await fetch(`${API_URL}/media-server/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -281,6 +295,7 @@ const CollectionExplorer = () => {
           url: activeServer.url,
           token: activeServer.token,
           library_id: libId || activeLibrary.name, // Fallback to name if key fails
+          asset_type: assetType,
           start: 0,
           limit: 99999 // Fetch all to allow local searching and sorting like Gallery.jsx
         })
@@ -288,6 +303,7 @@ const CollectionExplorer = () => {
       const data = await res.json();
       if (data.success) {
         setItems(data.items || []);
+        assetCache.set(cacheKey, data.items || []); // Update cache with fresh data (handling deletions)
       } else {
         showError(data.error || "Failed to load items");
       }
@@ -302,7 +318,7 @@ const CollectionExplorer = () => {
     setShowLiveEditor(false);
     fetchItems(true); // Refresh items to show new poster
   };
-  // Removing handleUploadLogo body since CollectionLiveEditor handles saving
+  // Removing handleUploadLogo body since AssetLiveEditor handles saving
 
   // Reset page to 1 when search or sort changes
   useEffect(() => {
@@ -343,6 +359,25 @@ const CollectionExplorer = () => {
       <div className={`w-full md:w-72 bg-theme-bg border-b md:border-b-0 md:border-r border-theme flex-col flex-shrink-0 md:h-full max-h-[45vh] md:max-h-none overflow-y-auto z-20 ${isSidebarOpen ? 'flex' : 'hidden md:flex'}`}>
         
         {/* Server Selector Top Block */}
+        <div className="p-4 border-b border-theme bg-theme-card">
+          <h2 className="text-lg font-bold flex items-center gap-2 text-theme-text mb-3">
+            <Layers className="w-5 h-5 text-theme-primary" />
+            Asset Type
+          </h2>
+          <select
+            value={assetType}
+            onChange={(e) => setAssetType(e.target.value)}
+            className="w-full bg-theme-bg border border-theme text-theme-text text-sm rounded-lg focus:ring-theme-primary focus:border-theme-primary block p-2.5"
+          >
+            <option value="collection">Collections</option>
+            <option value="poster">Posters (Movies/Shows)</option>
+            <option value="season">Seasons</option>
+            <option value="background">Backgrounds</option>
+            <option value="titlecard">Title Cards (Episodes)</option>
+            <option value="squareart">Square Art</option>
+          </select>
+        </div>
+        
         <div className="p-4 border-b border-theme bg-theme-card">
           <h2 className="text-lg font-bold flex items-center gap-2 text-theme-text mb-3">
             <Server className="w-5 h-5 text-theme-primary" />
@@ -592,7 +627,7 @@ const CollectionExplorer = () => {
                     key={item.ratingKey}
                     className="group bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all hover:shadow-lg hover:shadow-theme-primary/10 flex flex-col relative"
                   >
-                    <div className="aspect-[2/3] bg-theme-bg/50 relative flex items-center justify-center p-2">
+                    <div className={`${assetType === "background" || assetType === "titlecard" ? "aspect-video" : (assetType === "squareart" ? "aspect-square" : "aspect-[2/3]")} bg-theme-bg/50 relative flex items-center justify-center p-2`}>
                         {item.hasPoster && item.posterUrl && (
                             <img 
                                 src={updatedPosters[item.ratingKey] ? `${item.posterUrl}&t=${updatedPosters[item.ratingKey]}` : item.posterUrl} 
@@ -656,10 +691,11 @@ const CollectionExplorer = () => {
       </div>
 
       {showLiveEditor && selectedCollection && (
-        <CollectionLiveEditor
+        <AssetLiveEditor
+          assetType={assetType}
           isOpen={showLiveEditor}
           onClose={handleEditorClose}
-          collection={selectedCollection}
+          asset={selectedCollection}
           libraryName={activeLibrary?.name}
           activeServer={activeServer}
         />
@@ -668,4 +704,4 @@ const CollectionExplorer = () => {
   );
 };
 
-export default CollectionExplorer;
+export default AssetExplorer;

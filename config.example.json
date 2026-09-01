@@ -57,8 +57,7 @@
       "en",
       "de"
     ],
-    "TmdbLanguageMappings": {
-    },
+    "TmdbLanguageMappings": {},
     "LibraryLanguageOverrides": {
       "Beispiel-Bibliothek": {
         "PreferredLanguageOrder": [
@@ -213,7 +212,8 @@
     "TextlessPosterBypass": "false",
     "ConvertLogoColor": "false",
     "LogoFlatColor": "white",
-    "UseOriginalTitle": "false"
+    "UseOriginalTitle": "false",
+    "SquareArts": "false"
   },
   "OverlayPart": {
     "ImageProcessing": "true",
@@ -370,6 +370,25 @@
     "MaxWidth": "1000",
     "MaxHeight": "120",
     "text_offset": "+150",
+    "lineSpacing": "0",
+    "TextGravity": "south"
+  },
+  "SquareArtOverlayPart": {
+    "fontAllCaps": "true",
+    "AddBorder": "true",
+    "AddText": "true",
+    "AddTextStroke": "false",
+    "strokecolor": "black",
+    "strokewidth": "6",
+    "AddOverlay": "true",
+    "fontcolor": "white",
+    "bordercolor": "black",
+    "minPointSize": "45",
+    "maxPointSize": "300",
+    "borderwidth": "30",
+    "MaxWidth": "1000",
+    "MaxHeight": "300",
+    "text_offset": "+250",
     "lineSpacing": "0",
     "TextGravity": "south"
   }
