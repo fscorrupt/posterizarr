@@ -138,6 +138,7 @@
                     Start-Sleep -Milliseconds 1
                 }
                 $extractedFolder = $null
+                $Matchedpath = $null
                 $Seasondata = $null
                 $Metadata = $null
                 $needSeasonData = ($contentquery -eq 'Directory')
@@ -239,7 +240,8 @@
                     Write-Entry -Subtext "Plex Lib Paths before split: $($Library.path)" -Path $global:configLogging -Color Cyan -log Debug
                     Write-Entry -Subtext "Plex Lib Paths after split: $libpaths" -Path $global:configLogging -Color Cyan -log Debug
                     foreach ($libpath in $libpaths) {
-                        if ($location -like "$libpath/*" -or $location -like "$libpath\*") {
+                        $libpathClean = $libpath.TrimEnd('\','/')
+                        if ($location -like "$libpathClean/*" -or $location -like "$libpathClean\*") {
                             Write-Entry -Subtext "Location: $location" -Path $global:configLogging -Color Cyan -log Debug
                             Write-Entry -Subtext "Libpath: $libpath" -Path $global:configLogging -Color Cyan -log Debug
                             $Matchedpath = AddTrailingSlash $libpath
@@ -290,7 +292,8 @@
                     Write-Entry -Subtext "Plex Lib Paths before split: $($Library.path)" -Path $global:configLogging -Color Cyan -log Debug
                     Write-Entry -Subtext "Plex Lib Paths after split: $libpaths" -Path $global:configLogging -Color Cyan -log Debug
                     foreach ($libpath in $libpaths) {
-                        if ($location -like "$libpath/*" -or $location -like "$libpath\*") {
+                        $libpathClean = $libpath.TrimEnd('\','/')
+                        if ($location -like "$libpathClean/*" -or $location -like "$libpathClean\*") {
                             Write-Entry -Subtext "Location: $location" -Path $global:configLogging -Color Cyan -log Debug
                             Write-Entry -Subtext "Libpath: $libpath" -Path $global:configLogging -Color Cyan -log Debug
                             $Matchedpath = AddTrailingSlash $libpath
