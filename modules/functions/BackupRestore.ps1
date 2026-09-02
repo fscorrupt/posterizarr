@@ -1397,7 +1397,7 @@ function MassDownloadPlexArtwork {
     }
 
     $jsonOutput = $jsonObject | ConvertTo-Json
-    $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+    try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
 
     # Clear Running File
     if (Test-Path $CurrentlyRunning) {
@@ -1593,7 +1593,7 @@ function MassDownloadJellyEmbyArtwork {
     }
 
     $jsonOutput = $jsonObject | ConvertTo-Json
-    $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+    try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
 
     # Clear Running File
     if (Test-Path $CurrentlyRunning) {

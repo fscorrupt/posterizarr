@@ -52,6 +52,7 @@ if (Test-Path $CurrentlyRunning) {
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "down" -msg "Another instance running"
     }
+    $global:ExitRequested = $true
     Exit
 }
 Else {

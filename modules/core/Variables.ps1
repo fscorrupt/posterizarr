@@ -30,7 +30,7 @@ if ($GatherLogs) {
     if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) {
         Write-Host "[Posterizarr] Error: Python is not installed or not found in PATH." -ForegroundColor Red
         Write-Host "[Posterizarr] Python is required to sanitize the database for the support zip." -ForegroundColor Red
-        exit 1
+        $global:ExitRequested = $true; exit 1
     }
 
     # Run the function
@@ -43,7 +43,7 @@ if ($GatherLogs) {
     }
     catch {
         Write-Host "[Posterizarr] Failed to create support zip: $($_.Exception.Message)" -ForegroundColor Red
-        exit 1
+        $global:ExitRequested = $true; exit 1
     }
 }
 
@@ -778,3 +778,4 @@ else {
         $magick = Join-Path $magickinstalllocation 'magick.exe'
     }
 }
+

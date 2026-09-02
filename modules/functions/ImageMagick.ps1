@@ -6,7 +6,7 @@ function Write-MagickLog {
     $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrMagickLogMutex")
     try {
         $mutex.WaitOne() | Out-Null
-        $Message | Out-File $global:magickLog -Append
+        try { $Message | Out-File $global:magickLog -Append -ErrorAction Stop } catch {}
     } finally {
         $mutex.ReleaseMutex()
         $mutex.Dispose()
@@ -183,8 +183,8 @@ function Get-OptimalPointSize {
     $cmd = "& `"$magick`" -size ${box_width}x${box_height} -font `"$fontImagemagick`" -gravity center -fill black -interline-spacing ${lineSpacing} caption:`"$text`" -format `"%[caption:pointsize]`" info:"
 
     # Log the command for debugging purposes
-    $cmd | Out-File $magickLog -Append
-
+    try { $cmd | Out-File $magickLog -Append
+ -ErrorAction Stop } catch {}
     # [stats] start timing the ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“missÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â compute path
     $tsc_sw = [Diagnostics.Stopwatch]::StartNew()
 
@@ -242,7 +242,7 @@ function CheckImageMagick {
 
             Write-Entry -Message "ImageMagick missing, please manually install/copy portable Imagemagick from here: https://imagemagick.org/archive/binaries/$LatestRelease" -Path $global:configLogging -Color Red -log Error
             $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
-            Exit
+            $global:ExitRequested = $true; Exit
         }
     }
 }
@@ -433,3 +433,4 @@ function Write-TextSizeCacheSummary {
             $Label, $tsHits, $tsMiss, $rate, $tsRuns, $tsMs, $saved.Hours, $saved.Minutes, $saved.Seconds) `
         -Path $global:configLogging -Color Green -log Info
 }
+

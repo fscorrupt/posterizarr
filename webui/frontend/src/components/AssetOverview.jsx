@@ -2140,67 +2140,6 @@ const AssetOverview = () => {
                 ))}
               </div>
             )}
-          </div>
-          {/* Category Filter */}
-          <div className="relative" ref={categoryDropdownRef}>
-            <button
-              onClick={() => {
-                const shouldOpenUp =
-                  calculateDropdownPosition(categoryDropdownRef);
-                setCategoryDropdownUp(shouldOpenUp);
-                setCategoryDropdownOpen(!categoryDropdownOpen);
-              }}
-              className="w-full px-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text text-sm flex items-center justify-between hover:bg-theme-hover hover:border-theme-primary/50 transition-all shadow-sm"
-            >
-              <span className="font-medium">
-                {selectedCategory === "All Categories"
-                  ? t("assetOverview.allCategories")
-                  : selectedCategory}
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${
-                  categoryDropdownOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {categoryDropdownOpen && (
-              <div
-                className={`absolute z-50 w-full ${
-                  categoryDropdownUp ? "bottom-full mb-2" : "top-full mt-2"
-                } bg-theme-card border border-theme-primary rounded-lg shadow-xl max-h-60 overflow-y-auto`}
-              >
-                <button
-                  onClick={() => {
-                    setSelectedCategory("All Categories");
-                    setCategoryDropdownOpen(false);
-                  }}
-                  className={`w-full px-4 py-3 text-left text-sm transition-all ${
-                    selectedCategory === "All Categories"
-                      ? "bg-theme-primary text-white"
-                      : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
-                  }`}
-                >
-                  {t("assetOverview.allCategories")}
-                </button>
-                {categoryCards.map((card) => (
-                  <button
-                    key={card.key}
-                    onClick={() => {
-                      setSelectedCategory(card.label);
-                      setCategoryDropdownOpen(false);
-                    }}
-                    className={`w-full px-4 py-3 text-left text-sm transition-all ${
-                      selectedCategory === card.label
-                        ? "bg-theme-primary text-white"
-                        : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"
-                    }`}
-                  >
-                    {card.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
         {/* Search Bar */}
         <div className="relative">

@@ -1012,7 +1012,7 @@ function Write-Entry {
         $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrLogMutex")
         try {
             $mutex.WaitOne() | Out-Null
-            $Header | Out-File $Path -Append
+            try { $Header | Out-File $Path -Append -ErrorAction Stop } catch {}
         } finally {
             $mutex.ReleaseMutex()
             $mutex.Dispose()
@@ -1063,7 +1063,11 @@ function Write-Entry {
                 Write-Host $Message -ForegroundColor $Color
             }
 
-            $lineToWrite | Out-File $Path -Append
+            try {
+                $lineToWrite | Out-File $Path -Append -ErrorAction Stop
+            } catch {
+                # Silently continue if log file is locked by another process
+            }
         } finally {
             $mutex.ReleaseMutex()
             $mutex.Dispose()

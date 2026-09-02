@@ -171,7 +171,7 @@
                             $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                         }
                     }
-                    Exit
+                    $global:ExitRequested = $true; Exit
                 }
             }
             $PosterImageoriginal = "$AssetPath\$LibraryName\$FolderName\$global:seasontmp.jpg"
@@ -277,7 +277,7 @@
                             $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                         }
                     }
-                    Exit
+                    $global:ExitRequested = $true; Exit
                 }
             }
             $PosterImageoriginal = "$AssetPath\$($FolderName)_$global:seasontmp.jpg"
@@ -1217,7 +1217,7 @@
         }
 
         $jsonOutput = $jsonObject | ConvertTo-Json
-        $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+        try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
     }
 
     # Clear Running File
@@ -1234,3 +1234,5 @@
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "up" -ping $executionTime.TotalMilliseconds
     }
+
+

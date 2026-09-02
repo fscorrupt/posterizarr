@@ -806,6 +806,7 @@ function GetTMDBSeasonPoster {
     Write-Entry -Subtext "Searching on TMDB for Season '$global:SeasonNumber' poster - TMDBID: $global:tmdbid" -Path $global:configLogging -Color Cyan -log Info
     if (!$global:tmdbid) {
         Write-Entry -Subtext "Cannot search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
+        return
     }
     if ($global:SeasonPreferTextless -eq $true) {
         try {
@@ -2868,7 +2869,7 @@ function UploadOtherMediaServerArtwork {
                 $response = Invoke-WebRequest -Uri $ImageUrl -OutFile $tempFile -Headers $headers -ErrorAction Stop
 
                 $magickcommand = "& `"$magick`" identify -verbose `"$tempFile`""
-                $magickcommand | Out-File $magickLog -Append
+                try { $magickcommand | Out-File $magickLog -Append -ErrorAction Stop } catch {}
                 $value = Invoke-Expression $magickcommand | Select-String -Pattern 'overlay|titlecard|created with ppm|created with posterizarr'
 
                 Remove-Item $tempFile -Force -ErrorAction SilentlyContinue | out-null
@@ -3002,3 +3003,4 @@ function UploadOtherMediaServerArtwork {
         }
     }
 }
+

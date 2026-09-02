@@ -946,7 +946,7 @@
     }
 
     $jsonOutput = $jsonObject | ConvertTo-Json
-    $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+    try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
 
     # Clear Running File
     if (Test-Path $CurrentlyRunning) {
@@ -962,5 +962,6 @@
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "up" -ping $executionTime.TotalMilliseconds
     }
+
 
 

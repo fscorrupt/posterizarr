@@ -942,7 +942,7 @@
         }
 
         $jsonOutput = $jsonObject | ConvertTo-Json
-        $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+        try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
 
         # Clear Running File
         if (Test-Path $CurrentlyRunning) {
@@ -1363,7 +1363,7 @@
         }
 
         $jsonOutput = $jsonObject | ConvertTo-Json
-        $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+        try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
 
         # Clear Running File
         if (Test-Path $CurrentlyRunning) {
@@ -1382,7 +1382,7 @@
     }
     Else {
         Write-Entry -Message "No Media Server selected, please check your settings..." -Path $global:configLogging -Color Red -log Error
-        Exit
+        $global:ExitRequested = $true; Exit
     }
 
     Sync-GlobalStats
@@ -1410,5 +1410,7 @@
         }
         Send-AgregarrTrigger @agregarrTrigger
     }
+
+
 
 
