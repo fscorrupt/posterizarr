@@ -14318,6 +14318,35 @@ class ImageChoiceRecord(BaseModel):
     FavProviderLink: Optional[str] = None
     Manual: Optional[str] = None
 
+def _get_effective_provider(library_name: str, asset_type: str, api_part: dict) -> str:
+    library_overrides = api_part.get("LibraryLanguageOverrides", {}).get(library_name, {})
+    if str(library_overrides.get("EnableProviderOrderOverride", "false")).lower() == "true":
+        order = library_overrides.get("ProviderOrder", [])
+        if order and isinstance(order, list) and len(order) > 0:
+            return str(order[0]).lower()
+
+    if "movie" in asset_type.lower():
+        if str(api_part.get("EnableMovieProviderOrder", "false")).lower() == "true":
+            order = api_part.get("MovieProviderOrder", [])
+            if order and isinstance(order, list) and len(order) > 0:
+                return str(order[0]).lower()
+    else:
+        if str(api_part.get("EnableShowProviderOrder", "false")).lower() == "true":
+            order = api_part.get("ShowProviderOrder", [])
+            if order and isinstance(order, list) and len(order) > 0:
+                return str(order[0]).lower()
+
+    if str(api_part.get("OverrideProviderOrder", "false")).lower() == "true":
+        order = api_part.get("ProviderOrder", [])
+        if order and isinstance(order, list) and len(order) > 0:
+            return str(order[0]).lower()
+
+    order = api_part.get("DefaultProviderOrder", [])
+    if order and isinstance(order, list) and len(order) > 0:
+        return str(order[0]).lower()
+
+    return str(api_part.get("FavProvider", "")).lower()
+
 @app.get("/api/assets/overview")
 async def get_assets_overview():
     """
@@ -14439,6 +14468,9 @@ async def get_assets_overview():
 
             asset_filename = "poster.jpg" # Default
             asset_type_lower = (asset_type_from_db or "").lower()
+
+            asset_primary_provider = _get_effective_provider(library, asset_type_lower, api_part)
+            record_dict["PrimaryProvider"] = asset_primary_provider
 
             if "background" in asset_type_lower:
                 asset_filename = "background.jpg"
@@ -14564,14 +14596,14 @@ async def get_assets_overview():
 
             # Non-Primary Provider Logic
             if not is_download_missing and not is_provider_link_missing:
-                if primary_provider:
+                if asset_primary_provider:
                     provider_patterns = {
                         "tmdb": ["tmdb", "themoviedb"],
                         "tvdb": ["tvdb", "thetvdb"],
                         "fanart": ["fanart"],
                         "plex": ["plex"],
                     }
-                    patterns = provider_patterns.get(primary_provider, [primary_provider])
+                    patterns = provider_patterns.get(asset_primary_provider, [asset_primary_provider])
                     is_download_from_primary = any(pattern in download_source.lower() for pattern in patterns)
                     is_fav_link_from_primary = any(pattern in provider_link.lower() for pattern in patterns)
 

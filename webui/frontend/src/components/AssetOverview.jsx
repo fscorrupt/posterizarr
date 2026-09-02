@@ -1680,7 +1680,7 @@ const AssetOverview = () => {
     // --- Config Values ---
     // Safely access config values, handling potential snake_case from backend
     const logoLangOrder = data?.config?.logo_language_order || data?.config?.LogoLanguageOrder || [];
-    const primaryProvider = (data?.config?.primary_provider || data?.config?.FavProvider || "").toLowerCase();
+    const primaryProvider = (asset.PrimaryProvider || data?.config?.primary_provider || data?.config?.FavProvider || "").toLowerCase();
 
     // -------------------------------------------------------
     // 1. MISSING ASSET TAGS

@@ -2694,19 +2694,19 @@ function GetTVDBTitleCard {
                     Write-Entry -Subtext "Found Title Card on TVDB" -Path $global:configLogging -Color Blue -log Info
                     $global:TextlessPoster = $true
                     $global:PosterWithText = $null
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes.series.slug)/episodes/$($global:NoLangImageUrl.id)"
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes[0].series.slug)/episodes/$($global:NoLangImageUrl.id)"
 
                     return $global:NoLangImageUrl.image
                 }
                 Else {
                     Write-Entry -Subtext "No Title Card found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes.slug)/#artwork"
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes[0].series.slug)/#artwork"
 
                 }
             }
             Else {
                 Write-Entry -Subtext "No Title Card found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes.slug)/#artwork"
+                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes[0].series.slug)/#artwork"
 
             }
         }
