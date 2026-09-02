@@ -2140,6 +2140,7 @@ const AssetOverview = () => {
                 ))}
               </div>
             )}
+          </div>
         </div>
         {/* Search Bar */}
         <div className="relative">
