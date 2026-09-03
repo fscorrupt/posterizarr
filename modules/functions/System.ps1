@@ -726,7 +726,18 @@ function Set-LibraryLanguageOverride {
                 Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value ($global:ProviderPriorityMode -eq 'Global')
             }
         }
+
+
     }
+
+        # Calculate Effective Primary Provider
+        if ($global:UseCustomProviderOrder -and $global:ProviderOrder.Count -gt 0) {
+            Set-Variable -Name "EffectivePrimaryProvider" -Scope Global -Value $global:ProviderOrder[0]
+        } else {
+            Set-Variable -Name "EffectivePrimaryProvider" -Scope Global -Value $global:FavProvider
+            $legacyProviders = @("TMDB", "FANART", "TVDB", "PLEX", "IMDB")
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value (@($global:FavProvider) + ($legacyProviders -ne $global:FavProvider))
+        }
 
     Initialize-LanguageSettings -SettingName "PreferredLanguageOrder"           -Label "Poster"
     Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder"     -Label "Season"
@@ -1444,3 +1455,4 @@ function CheckCharLimit {
         return $false
     }
 }
+

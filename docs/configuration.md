@@ -30,12 +30,12 @@
         [Search order in script](searchorder.md)
 
     - `ProviderPriorityMode`: Select the strategy Posterizarr uses when searching for artwork. 
-        - `Simple`: Uses the `FavProvider` hardcoded fallback list (Legacy default).
+        - `Simple`: Starts with your `FavProvider`, followed by the remaining providers (Legacy default).
         - `Global`: Strictly follows the custom array you define in `ProviderOrder`.
         - `PerMediaType`: Strictly follows the `MovieProviderOrder` array for Movies and `ShowProviderOrder` for TV Shows.
         - **Note:** You can still override any of these strategies on a per-library basis using the `EnableProviderOrderOverride` and `ProviderOrder` fields within `PlexLibraries` or `JellyfinLibraries`.
     - `ProviderOrder`: A list specifying the exact sequential order for artwork when `ProviderPriorityMode` is `Global`.
-        - Possible values: `"TMDB"`, `"TVDB"`, `"Fanart"`, `"Plex"`
+        - Possible values: `"TMDB"`, `"TVDB"`, `"Fanart"`, `"Plex"` (Note: "Plex" refers to whichever media server you have connected, including Emby or Jellyfin).
         - Example: `["TMDB", "TVDB", "Fanart", "Plex"]`
     - `MovieProviderOrder`: A list specifying the exact sequential order for Movie artwork when `ProviderPriorityMode` is `PerMediaType`.
     - `ShowProviderOrder`: A list specifying the exact sequential order for TV Show artwork when `ProviderPriorityMode` is `PerMediaType`.
