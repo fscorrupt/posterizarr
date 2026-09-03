@@ -38,7 +38,6 @@ const Sidebar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAssetsExpanded, setIsAssetsExpanded] = useState(false);
   const [isMediaServerExpanded, setIsMediaServerExpanded] = useState(false);
-  const [isConfigExpanded, setIsConfigExpanded] = useState(false);
   const [isBuildersExpanded, setIsBuildersExpanded] = useState(false);
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [missingAssetsCount, setMissingAssetsCount] = useState(0);
@@ -152,16 +151,7 @@ const Sidebar = () => {
       ]
     },
 
-    {
-      id: "config",
-      path: "/config/system",
-      label: t("nav.config"),
-      icon: Settings,
-      hasSubItems: true,
-      subItems: [
-        { path: "/config/system", label: "Settings", icon: Settings }
-      ]
-    },
+    { id: "config", path: "/config/system", label: t("nav.config"), icon: Settings },
 
     { id: "runtimeHistory", path: "/runtime-history", label: t("nav.runtimeHistory"), icon: TrendingUp },
     { id: "logs", path: "/logs", label: t("nav.logs"), icon: FileText },
@@ -237,10 +227,6 @@ const Sidebar = () => {
                   isExpanded = isMediaServerExpanded;
                   isInSection = isInMediaServerSection;
                   toggleExpanded = () => setIsMediaServerExpanded(!isMediaServerExpanded);
-                } else if (item.id === "config") {
-                  isExpanded = isConfigExpanded;
-                  isInSection = isInConfigSection;
-                  toggleExpanded = () => setIsConfigExpanded(!isConfigExpanded);
                 } else if (item.id === "builders") {
                   isExpanded = isBuildersExpanded;
                   isInSection = isInBuildersSection;
@@ -399,9 +385,6 @@ const Sidebar = () => {
                     } else if (item.id === "mediaServerExport") {
                       isExpanded = isMediaServerExpanded;
                       toggleExpanded = () => setIsMediaServerExpanded(!isMediaServerExpanded);
-                    } else if (item.id === "config") {
-                      isExpanded = isConfigExpanded;
-                      toggleExpanded = () => setIsConfigExpanded(!isConfigExpanded);
                     } else if (item.id === "builders") {
                       isExpanded = isBuildersExpanded;
                       toggleExpanded = () => setIsBuildersExpanded(!isBuildersExpanded);
