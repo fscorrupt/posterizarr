@@ -14319,7 +14319,14 @@ class ImageChoiceRecord(BaseModel):
     Manual: Optional[str] = None
 
 def _get_effective_provider(library_name: str, asset_type: str, api_part: dict) -> str:
-    library_overrides = api_part.get("LibraryLanguageOverrides", {}).get(library_name, {})
+    library_overrides = {}
+    overrides_dict = api_part.get("LibraryLanguageOverrides", {})
+    if isinstance(overrides_dict, dict):
+        for k, v in overrides_dict.items():
+            if str(k).lower() == str(library_name).lower():
+                library_overrides = v
+                break
+                
     if str(library_overrides.get("EnableProviderOrderOverride", "false")).lower() == "true":
         order = library_overrides.get("ProviderOrder", [])
         if order and isinstance(order, list) and len(order) > 0:

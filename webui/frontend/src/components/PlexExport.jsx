@@ -420,7 +420,7 @@ function PlexExport() {
 
     if (activeTab === "library" && libraryTypeFilter !== "all") {
       filteredForLibraryNames = data.filter(
-        (item) => item.library_type === libraryTypeFilter
+        (item) => (item.library_type || "").toLowerCase() === libraryTypeFilter
       );
     }
 
@@ -435,7 +435,7 @@ function PlexExport() {
 
     // 0. Apply high-level Library Filters (Pills) first
     if (activeTab === "library" && libraryTypeFilter !== "all") {
-      data = data.filter((item) => item.library_type === libraryTypeFilter);
+      data = data.filter((item) => (item.library_type || "").toLowerCase() === libraryTypeFilter);
     }
     if (libraryNameFilter !== "all") {
       data = data.filter((item) => item.library_name === libraryNameFilter);
@@ -694,7 +694,7 @@ function PlexExport() {
                   libraryTypeFilter === "movie" ? "bg-theme-primary text-white" : "bg-theme-hover hover:bg-theme-primary/70 text-theme-text"
                 }`}
               >
-                Movies ({libraryData.filter((item) => item.library_type === "movie").length})
+                Movies ({libraryData.filter((item) => (item.library_type || "").toLowerCase() === "movie").length})
               </button>
               <button
                 onClick={() => { setLibraryTypeFilter("show"); setCurrentPage(0); }}
@@ -702,7 +702,7 @@ function PlexExport() {
                   libraryTypeFilter === "show" ? "bg-theme-primary text-white" : "bg-theme-hover hover:bg-theme-primary/70 text-theme-text"
                 }`}
               >
-                Shows ({libraryData.filter((item) => item.library_type === "show").length})
+                Shows ({libraryData.filter((item) => (item.library_type || "").toLowerCase() === "show").length})
               </button>
             </div>
           )}
@@ -722,7 +722,7 @@ function PlexExport() {
                 const count = (activeTab === "library" ? libraryData : episodeData).filter((item) => {
                   let match = item.library_name === libraryName;
                   if (activeTab === "library" && libraryTypeFilter !== "all") {
-                    match = match && item.library_type === libraryTypeFilter;
+                    match = match && (item.library_type || "").toLowerCase() === libraryTypeFilter;
                   }
                   return match;
                 }).length;
