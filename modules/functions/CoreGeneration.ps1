@@ -773,9 +773,9 @@ function Invoke-MoviePosterCreation {
                                         $movietemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $movietemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                         switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                            'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                            'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                            'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                            'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                            'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                            'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                             Default { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
 
@@ -807,9 +807,9 @@ function Invoke-MoviePosterCreation {
                                 $movietemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $movietemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                    'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                    'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                     Default { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -1571,9 +1571,9 @@ function Invoke-MoviePosterCreation {
                                         $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                         switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                            'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                            'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                            'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                            'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                            'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                            'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                             Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
                                         # Export the array to a CSV file
@@ -1604,9 +1604,9 @@ function Invoke-MoviePosterCreation {
                                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                     Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -1705,9 +1705,9 @@ function Invoke-MoviePosterCreation {
                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                     Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                 }
 
@@ -2482,9 +2482,9 @@ function Invoke-ShowPosterCreation {
                                     $showtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                     $showtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                     switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                        'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                        'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                        'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                        'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                        'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                        'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                         Default { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -2515,9 +2515,9 @@ function Invoke-ShowPosterCreation {
                             $showtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                             $showtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                             switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                 Default { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                             }
 
@@ -3282,9 +3282,9 @@ function Invoke-ShowPosterCreation {
                                     $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                     $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                     switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                        'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                        'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                        'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                        'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                        'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                        'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                         Default { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -3315,9 +3315,9 @@ function Invoke-ShowPosterCreation {
                             $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                             $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                             switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                 Default { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                             }
 
@@ -4328,9 +4328,9 @@ function Invoke-ShowPosterCreation {
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                         switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                            'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                            'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                            'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                            'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                            'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                            'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                             Default { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
                                         # Export the array to a CSV file
@@ -4361,9 +4361,9 @@ function Invoke-ShowPosterCreation {
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Elseif ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Elseif ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
+                                    'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
+                                    'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
                                     Default { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -6777,5 +6777,7 @@ function Invoke-TitleCardCreation {
         $global:errorCount = Increment-GlobalStat 'errorCount'
     }
 }
+
+
 
 
