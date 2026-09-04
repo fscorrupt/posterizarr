@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Calendar,
@@ -71,6 +71,123 @@ function ImagePreviewModal({
     `[ImagePreviewModal] Displaying ${selectedImage.name} with type: ${displayType}`
   );
 
+  const [fetchedTitle, setFetchedTitle] = useState(null);
+
+  useEffect(() => {
+    setFetchedTitle(null);
+
+    if (!selectedImage) return;
+    const type = getDisplayMediaType();
+    const isTitleCard =
+      type?.toLowerCase() === "episode" ||
+      type?.toLowerCase() === "titlecard" ||
+      type?.toLowerCase() === "title_card";
+    const isSeason = type?.toLowerCase() === "season";
+    const isBackground = type?.toLowerCase() === "background";
+
+    if (selectedImage.episode_title && isTitleCard) return;
+
+    const fetchTitle = async () => {
+      try {
+        const pathSegments = selectedImage.path ? selectedImage.path.split(/[\\/]/).filter(Boolean) : [];
+        let rootfolder = selectedImage.show_name;
+
+        if (!rootfolder && pathSegments.length > 0) {
+          if (isTitleCard || isSeason) {
+            let showFolderIndex = -1;
+            for (let i = pathSegments.length - 1; i >= 0; i--) {
+              if (pathSegments[i].match(/Season\d+/i) || pathSegments[i].match(/S\d+E\d+/i)) {
+                showFolderIndex = i - 1;
+                break;
+              }
+            }
+            if (showFolderIndex === -1) {
+              for (let i = 0; i < pathSegments.length; i++) {
+                if (pathSegments[i].match(/\{(tvdb|tmdb)-\d+\}/)) {
+                  showFolderIndex = i;
+                  break;
+                }
+              }
+            }
+            if (showFolderIndex >= 0 && pathSegments[showFolderIndex]) {
+              rootfolder = pathSegments[showFolderIndex];
+            } else if (pathSegments.length > 1) {
+              rootfolder = pathSegments[pathSegments.length - 2];
+            }
+          } else {
+            let showFolderIndex = -1;
+            for (let i = pathSegments.length - 1; i >= 0; i--) {
+              if (pathSegments[i].match(/\(\d{4}\)/)) {
+                showFolderIndex = i;
+                break;
+              }
+            }
+            if (showFolderIndex >= 0 && pathSegments[showFolderIndex]) {
+              rootfolder = pathSegments[showFolderIndex];
+            } else if (pathSegments.length > 1) {
+              const isFile = pathSegments[pathSegments.length - 1].match(/\.[^.]+$/);
+              rootfolder = isFile ? pathSegments[pathSegments.length - 2] : pathSegments[pathSegments.length - 1];
+            }
+          }
+        }
+
+        if (rootfolder) {
+          const findBestMatch = (records) => {
+            const rootFolderRecords = records.filter(r => (r.Rootfolder || r.root_foldername) === rootfolder);
+            if (rootFolderRecords.length === 0) return null;
+
+            if (isTitleCard) {
+              const pathLower = (selectedImage.path || selectedImage.name || "").toLowerCase();
+              const seasonMatch = pathLower.match(/s(\d+)e\d+/i) || pathLower.match(/season\s*(\d+)/i);
+              const episodeMatch = pathLower.match(/s\d+e(\d+)/i);
+              if (seasonMatch && episodeMatch) {
+                const targetSeason = parseInt(seasonMatch[1]);
+                const targetEpisode = parseInt(episodeMatch[1]);
+                const exact = rootFolderRecords.find(r => {
+                  const t = r.Title || r.title || "";
+                  const m = t.match(/S(\d+)E(\d+)/i);
+                  if (m) return parseInt(m[1]) === targetSeason && parseInt(m[2]) === targetEpisode;
+                  return false;
+                });
+                if (exact) return exact;
+              }
+            } else if (isSeason) {
+              return rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("season") && !(r.Type || r.library_type)?.toLowerCase().includes("episode")) || rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("show")) || rootFolderRecords[0];
+            } else if (isBackground) {
+              return rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("background")) || rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("show") || (r.Type || r.library_type)?.toLowerCase().includes("movie")) || rootFolderRecords[0];
+            }
+            return rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("show") || (r.Type || r.library_type)?.toLowerCase().includes("movie")) || rootFolderRecords[0];
+          };
+
+          let foundMatch = null;
+          const plexRes = await fetch("/api/plex-export/library");
+          if (plexRes.ok) {
+            const plexData = await plexRes.json();
+            if (plexData.success && plexData.data) {
+              foundMatch = findBestMatch(plexData.data);
+            }
+          }
+
+          if (!foundMatch) {
+            const choicesRes = await fetch("/api/imagechoices");
+            if (choicesRes.ok) {
+              const choicesData = await choicesRes.json();
+              foundMatch = findBestMatch(choicesData);
+            }
+          }
+
+          if (foundMatch) {
+            setFetchedTitle(foundMatch.Title || foundMatch.title);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching title for modal:", error);
+      }
+    };
+
+    fetchTitle();
+  }, [selectedImage]);
+
   return (
     <div
       className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
@@ -140,20 +257,28 @@ function ImagePreviewModal({
                 </div>
               )}
 
+              {/* Original path-based display for debugging/reference */}
               <div>
-                <label className="text-sm text-theme-muted">Show/Movie</label>
-                <p className="text-theme-text break-all mt-1">
+                <label className="text-sm text-theme-muted">Folder Path</label>
+                <p className="text-theme-text text-xs break-all mt-1 opacity-70">
                   {selectedImage.path
                     ? selectedImage.path.split(/[\\/]/).slice(-2, -1)[0] || "Unknown"
                     : (selectedImage.show_name || "Unknown")}
                 </p>
               </div>
 
-              {(displayType?.toLowerCase() === "episode" || displayType?.toLowerCase() === "titlecard" || displayType?.toLowerCase() === "title_card") && (
+              {(displayType?.toLowerCase() === "episode" || displayType?.toLowerCase() === "titlecard" || displayType?.toLowerCase() === "title_card") ? (
                 <div>
                   <label className="text-sm text-theme-muted">Episode Title</label>
                   <p className="text-theme-text break-all mt-1">
-                    {selectedImage.episode_title || selectedImage.title || "Unknown"}
+                    {selectedImage.episode_title || fetchedTitle || selectedImage.title || "Unknown"}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-sm text-theme-muted">Title</label>
+                  <p className="text-theme-text break-all mt-1">
+                    {fetchedTitle || selectedImage.title || "Unknown"}
                   </p>
                 </div>
               )}
