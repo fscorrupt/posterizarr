@@ -10015,6 +10015,7 @@ async def get_recent_assets():
                         "LogoTextFallback": asset_dict.get("LogoTextFallback", ""),
                         # Use data directly from the cache
                         "poster_url": poster_data["url"],
+                        "path": poster_data.get("path", relative_path_key),
                         "has_poster": True,
                         "created": poster_data["created"],
                         "modified": poster_data["modified"],

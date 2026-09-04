@@ -620,25 +620,10 @@ function RecentAssets({ refreshTrigger = 0 }) {
         <ImagePreviewModal
           selectedImage={{
             url: selectedAsset.poster_url,
-            name: (function() {
-              const title = selectedAsset.title || "";
-              const type = selectedAsset.type?.toLowerCase() || "";
-              if (type.includes("episode") || type.includes("titlecard") || type.includes("title_card")) {
-                const match = title.match(/(S\d+E\d+)/i);
-                if (match) return `${match[1].toUpperCase()}.jpg`;
-                return "Episode.jpg";
-              }
-              if (type.includes("season")) {
-                const match = title.match(/season\s*(\d+)/i);
-                if (match) return `Season${match[1].padStart(2, '0')}.jpg`;
-                return "Season.jpg";
-              }
-              if (type.includes("background")) return "background.jpg";
-              return "poster.jpg";
-            })(),
+            name: selectedAsset.path ? selectedAsset.path.split(/[\\/]/).pop() : "poster.jpg",
             title: selectedAsset.title,
             episode_title: selectedAsset.title,
-            path: selectedAsset.library && selectedAsset.rootfolder ? `${selectedAsset.library}/${selectedAsset.rootfolder}/poster.jpg` : "",
+            path: selectedAsset.path || "",
             show_name: selectedAsset.rootfolder,
             type: getMediaTypeLabel(selectedAsset),
             created: selectedAsset.created,
