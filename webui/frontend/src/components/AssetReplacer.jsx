@@ -891,6 +891,22 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
           }
         }
 
+        // Only check Other Media Export (Jellyfin/Emby) if we don't already have dbData
+        if (!dbData) {
+          console.log("Checking Other Media Export DB (/api/other-media-export/library)...");
+          response = await fetch(`${API_URL}/other-media-export/library`);
+          if (response.ok) {
+            const otherData = await response.json();
+            if (otherData.success && otherData.data) {
+              const matchingRecord = findMatch(otherData.data, libraryName, rootfolder);
+              if (matchingRecord) {
+                setDbData(normalizeMediaExportData(matchingRecord));
+                if (!isTitleCard) return;
+              }
+            }
+          }
+        }
+
         // --- Try ImageChoices (Posterizarr DB) ---
         console.log("Checking ImageChoices DB for Asset specific info...");
         response = await fetch(`${API_URL}/imagechoices`);

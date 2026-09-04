@@ -126,7 +126,7 @@ function ImagePreviewModal({
         }
 
         if (rootfolder) {
-          const findBestMatch = (records) => {
+          const findBestMatch = (records, isPlexDb) => {
             const rootFolderRecords = records.filter(r => (r.Rootfolder || r.root_foldername) === rootfolder);
             if (rootFolderRecords.length === 0) return null;
 
@@ -141,12 +141,26 @@ function ImagePreviewModal({
                   const t = r.Title || r.title || "";
                   const m = t.match(/S(\d+)E(\d+)/i);
                   if (m) return parseInt(m[1]) === targetSeason && parseInt(m[2]) === targetEpisode;
+                  
+                  // Handle PlexExport format if possible (though it lacks SXXEYY, it might match by other means if we had season_number)
+                  if (isPlexDb && r.library_type === "Episode") {
+                     if (r.season_number === targetSeason && r.episode_number === targetEpisode) {
+                        return true;
+                     }
+                  }
+                  
                   return false;
                 });
                 if (exact) return exact;
               }
+              // Do not fallback to show for an episode!
+              return null;
             } else if (isSeason) {
-              return rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("season") && !(r.Type || r.library_type)?.toLowerCase().includes("episode")) || rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("show")) || rootFolderRecords[0];
+              const exactSeason = rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("season") && !(r.Type || r.library_type)?.toLowerCase().includes("episode"));
+              if (exactSeason) return exactSeason;
+              
+              // Do not fallback to show for a season!
+              return null;
             } else if (isBackground) {
               return rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("background")) || rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("show") || (r.Type || r.library_type)?.toLowerCase().includes("movie")) || rootFolderRecords[0];
             }
@@ -154,19 +168,33 @@ function ImagePreviewModal({
           };
 
           let foundMatch = null;
-          const plexRes = await fetch("/api/plex-export/library");
-          if (plexRes.ok) {
-            const plexData = await plexRes.json();
-            if (plexData.success && plexData.data) {
-              foundMatch = findBestMatch(plexData.data);
+          
+          // Check ImageChoices DB FIRST because it has perfectly formatted Titles like 'S01E01 | Pilot' and actual 'Season' records
+          const choicesRes = await fetch("/api/imagechoices");
+          if (choicesRes.ok) {
+            const choicesData = await choicesRes.json();
+            foundMatch = findBestMatch(choicesData, false);
+          }
+
+          // Check Plex Export DB if not found in ImageChoices
+          if (!foundMatch) {
+            const plexRes = await fetch("/api/plex-export/library");
+            if (plexRes.ok) {
+              const plexData = await plexRes.json();
+              if (plexData.success && plexData.data) {
+                foundMatch = findBestMatch(plexData.data, true);
+              }
             }
           }
 
+          // Check Jellyfin/Emby Export DB if still not found
           if (!foundMatch) {
-            const choicesRes = await fetch("/api/imagechoices");
-            if (choicesRes.ok) {
-              const choicesData = await choicesRes.json();
-              foundMatch = findBestMatch(choicesData);
+            const otherRes = await fetch("/api/other-media-export/library");
+            if (otherRes.ok) {
+              const otherData = await otherRes.json();
+              if (otherData.success && otherData.data) {
+                foundMatch = findBestMatch(otherData.data, true);
+              }
             }
           }
 
