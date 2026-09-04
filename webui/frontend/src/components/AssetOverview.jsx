@@ -1716,8 +1716,11 @@ const AssetOverview = () => {
       const isFromPrimary = patterns.some((pattern) =>
         downloadSource.toLowerCase().includes(pattern)
       );
+      const isLinkFromPrimary = patterns.some((pattern) =>
+        (providerLink || "").toLowerCase().includes(pattern)
+      );
 
-      if (!isFromPrimary) {
+      if (!isFromPrimary || !isLinkFromPrimary) {
         tags.push({
           label: t("assetOverview.notPrimaryProvider"), // "Not Primary Provider"
           color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",

@@ -14332,25 +14332,22 @@ def _get_effective_provider(library_name: str, asset_type: str, api_part: dict) 
         if order and isinstance(order, list) and len(order) > 0:
             return str(order[0]).lower()
 
-    if "movie" in asset_type.lower():
-        if str(api_part.get("EnableMovieProviderOrder", "false")).lower() == "true":
+    provider_priority_mode = str(api_part.get("ProviderPriorityMode", "Simple")).lower()
+
+    if provider_priority_mode == "permediatype":
+        if "movie" in asset_type.lower():
             order = api_part.get("MovieProviderOrder", [])
             if order and isinstance(order, list) and len(order) > 0:
                 return str(order[0]).lower()
-    else:
-        if str(api_part.get("EnableShowProviderOrder", "false")).lower() == "true":
+        else:
             order = api_part.get("ShowProviderOrder", [])
             if order and isinstance(order, list) and len(order) > 0:
                 return str(order[0]).lower()
-
-    if str(api_part.get("OverrideProviderOrder", "false")).lower() == "true":
-        order = api_part.get("ProviderOrder", [])
+    elif provider_priority_mode == "global":
+        # Support both legacy ProviderOrder and any new keys if they exist, fallback to FavProvider happens at the end
+        order = api_part.get("ProviderOrder", []) or api_part.get("DefaultProviderOrder", [])
         if order and isinstance(order, list) and len(order) > 0:
             return str(order[0]).lower()
-
-    order = api_part.get("DefaultProviderOrder", [])
-    if order and isinstance(order, list) and len(order) > 0:
-        return str(order[0]).lower()
 
     return str(api_part.get("FavProvider", "")).lower()
 
