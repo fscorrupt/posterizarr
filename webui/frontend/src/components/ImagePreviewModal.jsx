@@ -41,8 +41,9 @@ function ImagePreviewModal({
 
   // Get the display media type - use type from backend if available, otherwise fallback
   const getDisplayMediaType = () => {
+    if (!selectedImage) return "Asset";
     // First priority: use the type field from backend (already determined by database lookup)
-    if (selectedImage?.type) {
+    if (selectedImage.type) {
       console.log(
         `[ImagePreviewModal] Using backend type for ${selectedImage.name}: ${selectedImage.type}`
       );
@@ -63,13 +64,6 @@ function ImagePreviewModal({
     );
     return "Asset";
   };
-
-  if (!selectedImage) return null;
-
-  const displayType = getDisplayMediaType();
-  console.log(
-    `[ImagePreviewModal] Displaying ${selectedImage.name} with type: ${displayType}`
-  );
 
   const [fetchedTitle, setFetchedTitle] = useState(null);
 
@@ -187,6 +181,13 @@ function ImagePreviewModal({
 
     fetchTitle();
   }, [selectedImage]);
+
+  if (!selectedImage) return null;
+
+  const displayType = getDisplayMediaType();
+  console.log(
+    `[ImagePreviewModal] Displaying ${selectedImage.name} with type: ${displayType}`
+  );
 
   return (
     <div
