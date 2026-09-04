@@ -66,9 +66,11 @@ function ImagePreviewModal({
   };
 
   const [fetchedTitle, setFetchedTitle] = useState(null);
+  const [fetchedShowName, setFetchedShowName] = useState(null);
 
   useEffect(() => {
     setFetchedTitle(null);
+    setFetchedShowName(null);
 
     if (!selectedImage) return;
     const type = getDisplayMediaType();
@@ -199,7 +201,10 @@ function ImagePreviewModal({
           }
 
           if (foundMatch) {
+            setFetchedShowName(rootfolder);
             setFetchedTitle(foundMatch.Title || foundMatch.title);
+          } else {
+            setFetchedShowName(rootfolder);
           }
         }
       } catch (error) {
@@ -286,21 +291,40 @@ function ImagePreviewModal({
                 </div>
               )}
 
-              {/* Original path-based display for debugging/reference */}
-              <div>
-                <label className="text-sm text-theme-muted">Folder Path</label>
-                <p className="text-theme-text text-xs break-all mt-1 opacity-70">
-                  {selectedImage.path
-                    ? selectedImage.path.split(/[\\/]/).slice(-2, -1)[0] || "Unknown"
-                    : (selectedImage.show_name || "Unknown")}
-                </p>
-              </div>
+              {/* Show Name */}
+              {fetchedShowName && (
+                <div>
+                  <label className="text-sm text-theme-muted">Show/Movie</label>
+                  <p className="text-theme-text font-medium mt-1">
+                    {fetchedShowName}
+                  </p>
+                </div>
+              )}
+
+              {/* Original path-based display as fallback if we couldn't parse the show name */}
+              {!fetchedShowName && (
+                <div>
+                  <label className="text-sm text-theme-muted">Folder Path</label>
+                  <p className="text-theme-text text-xs break-all mt-1 opacity-70">
+                    {selectedImage.path
+                      ? selectedImage.path.split(/[\\/]/).slice(-2, -1)[0] || "Unknown"
+                      : (selectedImage.show_name || "Unknown")}
+                  </p>
+                </div>
+              )}
 
               {(displayType?.toLowerCase() === "episode" || displayType?.toLowerCase() === "titlecard" || displayType?.toLowerCase() === "title_card") ? (
                 <div>
                   <label className="text-sm text-theme-muted">Episode Title</label>
                   <p className="text-theme-text break-all mt-1">
                     {selectedImage.episode_title || fetchedTitle || selectedImage.title || "Unknown"}
+                  </p>
+                </div>
+              ) : displayType?.toLowerCase() === "season" ? (
+                <div>
+                  <label className="text-sm text-theme-muted">Season</label>
+                  <p className="text-theme-text break-all mt-1">
+                    {(fetchedTitle || selectedImage.title || "Unknown").split("|").pop().trim()}
                   </p>
                 </div>
               ) : (
