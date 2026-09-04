@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { useDashboardLoading } from "../context/DashboardLoadingContext";
 import { useToast } from "../context/ToastContext";
 import CompactImageSizeSlider from "./CompactImageSizeSlider";
+import ImagePreviewModal from "./ImagePreviewModal";
 
 const API_URL = "/api";
 
@@ -610,214 +611,45 @@ function RecentAssets({ refreshTrigger = 0 }) {
 
       {/* Asset Details Modal */}
       {selectedAsset && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
-          onClick={() => setSelectedAsset(null)}
-        >
-          <div
-            className="relative max-w-6xl w-full max-h-[90vh] bg-theme-card rounded-2xl overflow-hidden shadow-2xl border border-theme"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setSelectedAsset(null)}
-              className="absolute top-4 right-4 z-20 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors backdrop-blur-md"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex flex-col md:flex-row h-full max-h-[90vh]">
-              {/* Image Side */}
-              <div className="flex-1 flex items-center justify-center bg-[#050505] p-6 relative">
-                {selectedAsset.has_poster ? (
-                  <img
-                    src={selectedAsset.poster_url}
-                    alt={selectedAsset.title}
-                    className="max-w-full max-h-[80vh] object-contain shadow-2xl rounded-lg"
-                    onError={(e) => {
-                      e.target.style.display = "none";
-                      e.target.nextSibling.style.display = "flex";
-                    }}
-                  />
-                ) : null}
-                <div
-                  className="text-center flex-col items-center justify-center"
-                  style={{
-                    display: selectedAsset.has_poster ? "none" : "flex",
-                  }}
-                >
-                  <div className="p-6 rounded-full bg-theme-hover mb-4">
-                    <ImageOff className="w-12 h-12 text-theme-muted" />
-                  </div>
-                  <p className="text-theme-text text-lg font-bold mb-1">
-                    Preview Unavailable
-                  </p>
-                  <p className="text-theme-muted text-sm">
-                    Image source could not be loaded
-                  </p>
-                </div>
-              </div>
-
-              {/* Info Side */}
-              <div className="md:w-[400px] bg-theme-card border-l border-theme flex flex-col h-full">
-                <div className="p-6 border-b border-theme bg-theme-hover/10">
-                  <h3 className="text-xl font-bold text-theme-text leading-tight">
-                    Asset Details
-                  </h3>
-                  <p className="text-xs text-theme-muted mt-1 uppercase tracking-wider font-semibold">
-                    Metadata & Properties
-                  </p>
-                </div>
-
-                <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                  <div>
-                    <label className="text-xs font-bold text-theme-muted uppercase tracking-wider block mb-2">
-                      {t("common.mediaType")}
-                    </label>
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold uppercase ${getTypeColor(
-                        selectedAsset.type
-                      )}`}
-                    >
-                      {getTypeLabel(selectedAsset.type)}
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-theme-muted uppercase tracking-wider block mb-1">
-                      {getMediaTypeLabel(selectedAsset) === "Episode"
-                        ? "Episode Title"
-                        : "Title"}
-                    </label>
-                    <p className="text-theme-text text-sm font-medium break-words leading-relaxed">
-                      {selectedAsset.title}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-bold text-theme-muted uppercase tracking-wider flex items-center gap-1.5 mb-1">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {t("common.created")}
-                      </label>
-                      <p className="text-theme-text text-sm">
-                        {selectedAsset.created
-                          ? new Date(selectedAsset.created * 1000)
-                              .toLocaleString("sv-SE")
-                              .replace("T", " ")
-                          : "Unknown"}
-                      </p>
-                    </div>
-
-                    {selectedAsset.modified && (
-                      <div>
-                        <label className="text-xs font-bold text-theme-muted uppercase tracking-wider flex items-center gap-1.5 mb-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {t("common.modified")}
-                        </label>
-                        <p className="text-theme-text text-sm">
-                          {selectedAsset.modified
-                            ? new Date(selectedAsset.modified * 1000)
-                                .toLocaleString("sv-SE")
-                                .replace("T", " ")
-                            : "Unknown"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-theme-muted uppercase tracking-wider flex items-center gap-1.5 mb-1">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {t("common.lastViewed")}
-                    </label>
-                    <p className="text-theme-text text-sm font-mono bg-theme-hover/50 px-2 py-1 rounded inline-block">
-                      {new Date().toLocaleString("sv-SE").replace("T", " ")}
-                    </p>
-                  </div>
-
-                  {selectedAsset.library && (
-                    <div>
-                      <label className="text-xs font-bold text-theme-muted uppercase tracking-wider flex items-center gap-1.5 mb-1">
-                        <Folder className="w-3.5 h-3.5" />
-                        Library
-                      </label>
-                      <p className="text-theme-text text-sm">
-                        {selectedAsset.library}
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="text-xs font-bold text-theme-muted uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                      <HardDrive className="w-3.5 h-3.5" />
-                      {t("common.path")}
-                    </label>
-                    <p className="text-theme-text text-xs break-all font-mono bg-theme-bg p-3 rounded-lg border border-theme leading-relaxed">
-                      {selectedAsset.rootfolder}
-                    </p>
-                  </div>
-
-                  {selectedAsset.language &&
-                    selectedAsset.language !== "N/A" && (
-                      <div>
-                        <label className="text-xs font-bold text-theme-muted uppercase tracking-wider block mb-2">
-                          Language
-                        </label>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded border text-xs font-bold ${getLanguageColor(
-                            selectedAsset.language
-                          )}`}
-                        >
-                          {selectedAsset.language}
-                        </span>
-                      </div>
-                    )}
-
-                  {(selectedAsset.is_manually_created ||
-                    selectedAsset.fallback ||
-                    selectedAsset.text_truncated) && (
-                    <div>
-                      <label className="text-xs font-bold text-theme-muted uppercase tracking-wider block mb-2">
-                        Properties
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedAsset.is_manually_created && (
-                          <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                            Manual
-                          </span>
-                        )}
-                        {selectedAsset.fallback && (
-                          <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                            Fallback
-                          </span>
-                        )}
-                        {selectedAsset.text_truncated && (
-                          <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-                            Truncated
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {selectedAsset.provider_link && (
-                  <div className="p-6 border-t border-theme bg-theme-hover/5 mt-auto">
-                    <a
-                      href={selectedAsset.provider_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-theme-primary hover:bg-theme-primary/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-theme-primary/20 hover:-translate-y-0.5"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      View on Provider
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <ImagePreviewModal
+          selectedImage={{
+            url: selectedAsset.poster_url,
+            name: (function() {
+              const title = selectedAsset.title || "";
+              const type = selectedAsset.type?.toLowerCase() || "";
+              if (type.includes("episode") || type.includes("titlecard") || type.includes("title_card")) {
+                const match = title.match(/(S\d+E\d+)/i);
+                if (match) return `${match[1].toUpperCase()}.jpg`;
+                return "Episode.jpg";
+              }
+              if (type.includes("season")) {
+                const match = title.match(/season\s*(\d+)/i);
+                if (match) return `Season${match[1].padStart(2, '0')}.jpg`;
+                return "Season.jpg";
+              }
+              if (type.includes("background")) return "background.jpg";
+              return "poster.jpg";
+            })(),
+            title: selectedAsset.title,
+            episode_title: selectedAsset.title,
+            path: selectedAsset.library && selectedAsset.rootfolder ? `${selectedAsset.library}/${selectedAsset.rootfolder}/poster.jpg` : undefined,
+            show_name: selectedAsset.rootfolder,
+            type: getMediaTypeLabel(selectedAsset),
+            created: selectedAsset.created,
+            modified: selectedAsset.modified,
+            library: selectedAsset.library,
+            language: selectedAsset.language,
+            is_manually_created: selectedAsset.is_manually_created,
+            fallback: selectedAsset.fallback,
+            text_truncated: selectedAsset.text_truncated,
+            provider_link: selectedAsset.provider_link
+          }}
+          onClose={() => setSelectedAsset(null)}
+          cacheBuster={Date.now()}
+          formatDisplayPath={(path) => selectedAsset.rootfolder}
+          formatTimestamp={() => "Unknown"}
+          getTypeColor={getTypeColor}
+        />
       )}
 
       {/* Grid CSS */}

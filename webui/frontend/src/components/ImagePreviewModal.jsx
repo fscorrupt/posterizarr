@@ -149,6 +149,15 @@ function ImagePreviewModal({
                 </p>
               </div>
 
+              {(displayType?.toLowerCase() === "episode" || displayType?.toLowerCase() === "titlecard" || displayType?.toLowerCase() === "title_card") && (
+                <div>
+                  <label className="text-sm text-theme-muted">Episode Title</label>
+                  <p className="text-theme-text break-all mt-1">
+                    {selectedImage.episode_title || selectedImage.title || "Unknown"}
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="text-sm text-theme-muted">
                   {t("common.filename")}
@@ -215,6 +224,43 @@ function ImagePreviewModal({
                 </div>
               )}
 
+              {/* Library */}
+              {selectedImage.library && (
+                <div>
+                  <label className="text-sm text-theme-muted">Library</label>
+                  <p className="text-theme-text mt-1">{selectedImage.library}</p>
+                </div>
+              )}
+
+              {/* Properties */}
+              {(selectedImage.is_manually_created || selectedImage.fallback || selectedImage.text_truncated || (selectedImage.language && selectedImage.language !== "N/A")) && (
+                <div>
+                  <label className="text-sm text-theme-muted">Properties</label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {selectedImage.is_manually_created && (
+                      <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                        Manual
+                      </span>
+                    )}
+                    {selectedImage.fallback && (
+                      <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                        Fallback
+                      </span>
+                    )}
+                    {selectedImage.text_truncated && (
+                      <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                        Truncated
+                      </span>
+                    )}
+                    {selectedImage.language && selectedImage.language !== "N/A" && (
+                      <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-green-500/10 text-green-400 border border-green-500/20">
+                        {selectedImage.language}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* File Size */}
               {selectedImage.size && (
                 <div>
@@ -229,6 +275,17 @@ function ImagePreviewModal({
 
               {/* Action Buttons */}
               <div className="pt-4 border-t border-theme space-y-2">
+                {selectedImage.provider_link && (
+                  <a
+                    href={selectedImage.provider_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 rounded-lg transition-all"
+                  >
+                    View on Provider
+                  </a>
+                )}
+
                 {onReplace && (
                   <button
                     onClick={() => {
