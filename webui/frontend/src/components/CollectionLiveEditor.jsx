@@ -49,6 +49,17 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     const [bgEffect, setBgEffect] = useState('none');
     const [effectOpacity, setEffectOpacity] = useState(50);
     const [effectBlend, setEffectBlend] = useState('normal'); // 'normal', 'overlay', 'screen', 'multiply'
+    
+    // New Gradient & Grain State
+    const [gradientStyle, setGradientStyle] = useState('none');
+    const [topMatteHeight, setTopMatteHeight] = useState(0);
+    const [topFadeHeight, setTopFadeHeight] = useState(0);
+    const [bottomMatteHeight, setBottomMatteHeight] = useState(0);
+    const [bottomFadeHeight, setBottomFadeHeight] = useState(0);
+    const [vignetteStrength, setVignetteStrength] = useState(0);
+    const [grainAmount, setGrainAmount] = useState(0);
+
+    // Advanced Wave State (Simposter Waves)
     const [waveCount, setWaveCount] = useState(2);
     const [waveDirection, setWaveDirection] = useState('horizontal'); // 'horizontal', 'vertical', 'diagonal-up', 'diagonal-down'
     const [waveAmplitude, setWaveAmplitude] = useState(50); // 0 (straight) to 100 (curvy)
@@ -106,6 +117,11 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     const [textSize, setTextSize] = useState(100);
     const [textOffset, setTextOffset] = useState(400);
     const [textUppercase, setTextUppercase] = useState(false);
+    const [textAlign, setTextAlign] = useState('center');
+    const [textShadowColor, setTextShadowColor] = useState('#000000');
+    const [textShadowBlur, setTextShadowBlur] = useState(10);
+    const [textShadowOffsetX, setTextShadowOffsetX] = useState(0);
+    const [textShadowOffsetY, setTextShadowOffsetY] = useState(5);
 
     // Sub-Text State
     const [subTextEnabled, setSubTextEnabled] = useState(false);
@@ -115,11 +131,17 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     const [subTextSize, setSubTextSize] = useState(50);
     const [subTextOffset, setSubTextOffset] = useState(500);
     const [subTextUppercase, setSubTextUppercase] = useState(false);
+    const [subTextAlign, setSubTextAlign] = useState('center');
+    const [subTextShadowColor, setSubTextShadowColor] = useState('#000000');
+    const [subTextShadowBlur, setSubTextShadowBlur] = useState(10);
+    const [subTextShadowOffsetX, setSubTextShadowOffsetX] = useState(0);
+    const [subTextShadowOffsetY, setSubTextShadowOffsetY] = useState(5);
 
     // Border State
     const [borderEnabled, setBorderEnabled] = useState(false);
     const [borderColor, setBorderColor] = useState('#FFFFFF');
     const [borderWidth, setBorderWidth] = useState(20);
+    const [borderRadius, setBorderRadius] = useState(0);
 
     // External Resources
     const [searchQuery, setSearchQuery] = useState(collection?.title || "");
@@ -205,16 +227,28 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
             return;
         }
         
+        let thumbnail = null;
+        if (previewCanvasRef.current) {
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = 150;
+            thumbCanvas.height = 225;
+            const thumbCtx = thumbCanvas.getContext('2d');
+            thumbCtx.drawImage(previewCanvasRef.current, 0, 0, 150, 225);
+            thumbnail = thumbCanvas.toDataURL("image/jpeg", 0.7);
+        }
+
         const newPreset = {
             id: Date.now().toString(),
             name: presetName.trim(),
+            thumbnail,
             bgType, bgColor, bgEffect, effectOpacity, effectBlend,
+            gradientStyle, topMatteHeight, topFadeHeight, bottomMatteHeight, bottomFadeHeight, vignetteStrength, grainAmount,
             waveCount, waveDirection, waveAmplitude, waveOffsetX, waveOffsetY, waveSeed,
             logoSrc, logoWhitewash, logoWidth, logoOffset, logoOffsetX,
             mediaLogoSrc, mediaLogoWidth, mediaLogoOffset, mediaLogoOffsetX, mediaLogoWhitewash,
-            textEnabled, textFont, textColor, textSize, textOffset, textOffsetX, textUppercase,
-            subTextEnabled, subTextContent, subTextFont, subTextColor, subTextSize, subTextOffset, subTextOffsetX, subTextUppercase,
-            borderEnabled, borderColor, borderWidth,
+            textEnabled, textFont, textColor, textSize, textOffset, textOffsetX, textUppercase, textAlign, textShadowColor, textShadowBlur, textShadowOffsetX, textShadowOffsetY,
+            subTextEnabled, subTextContent, subTextFont, subTextColor, subTextSize, subTextOffset, subTextOffsetX, subTextUppercase, subTextAlign, subTextShadowColor, subTextShadowBlur, subTextShadowOffsetX, subTextShadowOffsetY,
+            borderEnabled, borderColor, borderWidth, borderRadius,
             overlayImage,
             layerOrder
         };
@@ -245,6 +279,15 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
         setBgEffect(preset.bgEffect ?? 'none');
         setEffectOpacity(preset.effectOpacity ?? 50);
         setEffectBlend(preset.effectBlend ?? 'normal');
+        
+        setGradientStyle(preset.gradientStyle ?? 'none');
+        setTopMatteHeight(preset.topMatteHeight ?? 0);
+        setTopFadeHeight(preset.topFadeHeight ?? 0);
+        setBottomMatteHeight(preset.bottomMatteHeight ?? 0);
+        setBottomFadeHeight(preset.bottomFadeHeight ?? 0);
+        setVignetteStrength(preset.vignetteStrength ?? 0);
+        setGrainAmount(preset.grainAmount ?? 0);
+
         setWaveCount(preset.waveCount ?? 2);
         setWaveDirection(preset.waveDirection ?? 'horizontal');
         setWaveAmplitude(preset.waveAmplitude ?? 50);
@@ -271,6 +314,11 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
         setTextOffset(preset.textOffset ?? 400);
         setTextOffsetX(preset.textOffsetX ?? 0);
         setTextUppercase(preset.textUppercase ?? false);
+        setTextAlign(preset.textAlign ?? 'center');
+        setTextShadowColor(preset.textShadowColor ?? '#000000');
+        setTextShadowBlur(preset.textShadowBlur ?? 10);
+        setTextShadowOffsetX(preset.textShadowOffsetX ?? 0);
+        setTextShadowOffsetY(preset.textShadowOffsetY ?? 5);
         
         setSubTextEnabled(preset.subTextEnabled ?? false);
         setSubTextContent(preset.subTextContent ?? "Collection");
@@ -280,10 +328,16 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
         setSubTextOffset(preset.subTextOffset ?? 500);
         setSubTextOffsetX(preset.subTextOffsetX ?? 0);
         setSubTextUppercase(preset.subTextUppercase ?? false);
+        setSubTextAlign(preset.subTextAlign ?? 'center');
+        setSubTextShadowColor(preset.subTextShadowColor ?? '#000000');
+        setSubTextShadowBlur(preset.subTextShadowBlur ?? 10);
+        setSubTextShadowOffsetX(preset.subTextShadowOffsetX ?? 0);
+        setSubTextShadowOffsetY(preset.subTextShadowOffsetY ?? 5);
         
         setBorderEnabled(preset.borderEnabled ?? false);
         setBorderColor(preset.borderColor ?? '#FFFFFF');
         setBorderWidth(preset.borderWidth ?? 20);
+        setBorderRadius(preset.borderRadius ?? 0);
         setOverlayImage(preset.overlayImage ?? null);
         setLayerOrder(preset.layerOrder || defaultLayers);
         
@@ -515,7 +569,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                 } catch(e) {}
             }
                         // 1.5 Draw Effects
-            if (bgEffect !== 'none') {
+            if (bgEffect !== 'none' || gradientStyle !== 'none' || grainAmount > 0) {
                 ctx.save();
                 ctx.globalCompositeOperation = effectBlend === 'normal' ? 'source-over' : effectBlend;
                 ctx.globalAlpha = effectOpacity / 100;
@@ -612,6 +666,82 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                     
                     ctx.restore();
                 }
+
+                // Advanced Gradients
+                if (gradientStyle !== 'none' || topMatteHeight > 0 || topFadeHeight > 0 || bottomMatteHeight > 0 || bottomFadeHeight > 0 || vignetteStrength > 0) {
+                    ctx.globalAlpha = 1.0; // Gradients are usually fully opaque black fading to transparent
+                    
+                    // Top Gradient
+                    if (topMatteHeight > 0 || topFadeHeight > 0) {
+                        const mattePx = (topMatteHeight / 100) * CANVAS_HEIGHT;
+                        const fadePx = (topFadeHeight / 100) * CANVAS_HEIGHT;
+                        if (mattePx > 0 || fadePx > 0) {
+                            const grad = ctx.createLinearGradient(0, 0, 0, mattePx + fadePx);
+                            grad.addColorStop(0, 'rgba(0,0,0,1)');
+                            if (mattePx > 0) {
+                                grad.addColorStop(mattePx / (mattePx + fadePx), 'rgba(0,0,0,1)');
+                            }
+                            grad.addColorStop(1, 'rgba(0,0,0,0)');
+                            ctx.fillStyle = grad;
+                            ctx.fillRect(0, 0, CANVAS_WIDTH, mattePx + fadePx);
+                        }
+                    }
+
+                    // Bottom Gradient
+                    if (bottomMatteHeight > 0 || bottomFadeHeight > 0) {
+                        const mattePx = (bottomMatteHeight / 100) * CANVAS_HEIGHT;
+                        const fadePx = (bottomFadeHeight / 100) * CANVAS_HEIGHT;
+                        if (mattePx > 0 || fadePx > 0) {
+                            const grad = ctx.createLinearGradient(0, CANVAS_HEIGHT, 0, CANVAS_HEIGHT - (mattePx + fadePx));
+                            grad.addColorStop(0, 'rgba(0,0,0,1)');
+                            if (mattePx > 0) {
+                                grad.addColorStop(mattePx / (mattePx + fadePx), 'rgba(0,0,0,1)');
+                            }
+                            grad.addColorStop(1, 'rgba(0,0,0,0)');
+                            ctx.fillStyle = grad;
+                            ctx.fillRect(0, CANVAS_HEIGHT - (mattePx + fadePx), CANVAS_WIDTH, mattePx + fadePx);
+                        }
+                    }
+
+                    // Center Vignette
+                    if (vignetteStrength > 0) {
+                        const maxDist = Math.sqrt(Math.pow(CANVAS_WIDTH/2, 2) + Math.pow(CANVAS_HEIGHT/2, 2));
+                        const grad = ctx.createRadialGradient(CENTER_X, CENTER_Y, 0, CENTER_X, CENTER_Y, maxDist);
+                        grad.addColorStop(0, 'rgba(0,0,0,0)');
+                        // Scale strength so 100 is almost fully black at edges
+                        const stopPoint = Math.max(0.1, 1 - (vignetteStrength / 100));
+                        grad.addColorStop(stopPoint, `rgba(0,0,0,${vignetteStrength / 200})`);
+                        grad.addColorStop(1, `rgba(0,0,0,${vignetteStrength / 100})`);
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                    }
+                }
+
+                // Grain Effect
+                if (grainAmount > 0) {
+                    ctx.globalAlpha = grainAmount / 200; // Keep grain subtle (max 50% opacity)
+                    ctx.globalCompositeOperation = 'overlay';
+                    
+                    // Generate a small noise pattern and tile it for performance
+                    const noiseCanvas = document.createElement('canvas');
+                    noiseCanvas.width = 128;
+                    noiseCanvas.height = 128;
+                    const noiseCtx = noiseCanvas.getContext('2d');
+                    const imgData = noiseCtx.createImageData(128, 128);
+                    const data = imgData.data;
+                    
+                    for (let i = 0; i < data.length; i += 4) {
+                        const val = Math.random() * 255;
+                        data[i] = val;
+                        data[i+1] = val;
+                        data[i+2] = val;
+                        data[i+3] = 255;
+                    }
+                    noiseCtx.putImageData(imgData, 0, 0);
+                    
+                    ctx.fillStyle = ctx.createPattern(noiseCanvas, 'repeat');
+                    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                }
                 
                 ctx.restore();
             }
@@ -694,13 +824,13 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
             if (textEnabled && textContent) {
                 ctx.font = `${textSize}px "${textFont}", sans-serif`;
                 ctx.fillStyle = textColor;
-                ctx.textAlign = 'center';
+                ctx.textAlign = textAlign;
                 ctx.textBaseline = 'middle';
                 
-                ctx.shadowColor = 'rgba(0,0,0,0.7)';
-                ctx.shadowBlur = 10;
-                ctx.shadowOffsetX = 2;
-                ctx.shadowOffsetY = 2;
+                ctx.shadowColor = textShadowColor;
+                ctx.shadowBlur = textShadowBlur;
+                ctx.shadowOffsetX = textShadowOffsetX;
+                ctx.shadowOffsetY = textShadowOffsetY;
 
                 let textToDraw = textUppercase ? textContent.toUpperCase() : textContent;
                 
@@ -743,13 +873,19 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                     height: textBlockHeight 
                 };
 
+                let drawX = CENTER_X + textOffsetX;
+                if (textAlign === 'left') drawX -= maxWidth / 2;
+                if (textAlign === 'right') drawX += maxWidth / 2;
+
                 finalLines.forEach(line => {
-                    ctx.fillText(line.trim(), CENTER_X + textOffsetX, currentY);
+                    ctx.fillText(line.trim(), drawX, currentY);
                     currentY += lineHeight;
                 });
                 
                 ctx.shadowColor = 'transparent';
                 ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
             }
                         break;
                     case 'subText':
@@ -757,13 +893,13 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
             if (subTextEnabled && subTextContent) {
                 ctx.font = `${subTextSize}px "${subTextFont}", sans-serif`;
                 ctx.fillStyle = subTextColor;
-                ctx.textAlign = 'center';
+                ctx.textAlign = subTextAlign;
                 ctx.textBaseline = 'middle';
                 
-                ctx.shadowColor = 'rgba(0,0,0,0.7)';
-                ctx.shadowBlur = 10;
-                ctx.shadowOffsetX = 2;
-                ctx.shadowOffsetY = 2;
+                ctx.shadowColor = subTextShadowColor;
+                ctx.shadowBlur = subTextShadowBlur;
+                ctx.shadowOffsetX = subTextShadowOffsetX;
+                ctx.shadowOffsetY = subTextShadowOffsetY;
 
                 let textToDraw = subTextUppercase ? subTextContent.toUpperCase() : subTextContent;
                 
@@ -806,13 +942,19 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                     height: textBlockHeight 
                 };
 
+                let drawX = CENTER_X + subTextOffsetX;
+                if (subTextAlign === 'left') drawX -= maxWidth / 2;
+                if (subTextAlign === 'right') drawX += maxWidth / 2;
+
                 finalLines.forEach(line => {
-                    ctx.fillText(line.trim(), CENTER_X + subTextOffsetX, currentY);
+                    ctx.fillText(line.trim(), drawX, currentY);
                     currentY += lineHeight;
                 });
                 
                 ctx.shadowColor = 'transparent';
                 ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
             }
                         break;
                     case 'border':
@@ -820,7 +962,13 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
             if (borderEnabled && borderWidth > 0) {
                 ctx.strokeStyle = borderColor;
                 ctx.lineWidth = borderWidth;
-                ctx.strokeRect(borderWidth/2, borderWidth/2, CANVAS_WIDTH - borderWidth, CANVAS_HEIGHT - borderWidth);
+                if (borderRadius > 0 && ctx.roundRect) {
+                    ctx.beginPath();
+                    ctx.roundRect(borderWidth/2, borderWidth/2, CANVAS_WIDTH - borderWidth, CANVAS_HEIGHT - borderWidth, borderRadius);
+                    ctx.stroke();
+                } else {
+                    ctx.strokeRect(borderWidth/2, borderWidth/2, CANVAS_WIDTH - borderWidth, CANVAS_HEIGHT - borderWidth);
+                }
             }
                         break;
                 }
@@ -828,7 +976,7 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
         };
         drawPreview();
         return () => { isCancelled = true; };
-    }, [bgType, bgColor, bgImage, bgEffect, effectOpacity, effectBlend, waveCount, waveDirection, waveAmplitude, waveOffsetX, waveOffsetY, waveSeed, logoSrc, logoWhitewash, logoWidth, logoOffset, logoOffsetX, mediaLogoSrc, mediaLogoWidth, mediaLogoOffset, mediaLogoOffsetX, mediaLogoWhitewash, textEnabled, textContent, textFont, textColor, textSize, textOffset, textOffsetX, textUppercase, subTextEnabled, subTextContent, subTextFont, subTextColor, subTextSize, subTextOffset, subTextOffsetX, subTextUppercase, borderEnabled, borderColor, borderWidth, overlayImage, localFonts, layerOrder, manualRefresh]);
+    }, [bgType, bgColor, bgImage, bgEffect, effectOpacity, effectBlend, gradientStyle, topMatteHeight, topFadeHeight, bottomMatteHeight, bottomFadeHeight, vignetteStrength, grainAmount, waveCount, waveDirection, waveAmplitude, waveOffsetX, waveOffsetY, waveSeed, logoSrc, logoWhitewash, logoWidth, logoOffset, logoOffsetX, mediaLogoSrc, mediaLogoWidth, mediaLogoOffset, mediaLogoOffsetX, mediaLogoWhitewash, textEnabled, textContent, textFont, textColor, textSize, textOffset, textOffsetX, textUppercase, textAlign, textShadowColor, textShadowBlur, textShadowOffsetX, textShadowOffsetY, subTextEnabled, subTextContent, subTextFont, subTextColor, subTextSize, subTextOffset, subTextOffsetX, subTextUppercase, subTextAlign, subTextShadowColor, subTextShadowBlur, subTextShadowOffsetX, subTextShadowOffsetY, borderEnabled, borderColor, borderWidth, borderRadius, overlayImage, localFonts, layerOrder, manualRefresh]);
 
 
     
@@ -993,9 +1141,19 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                                 </div>
 
                                 {bgType === 'color' && (
-                                    <div className="flex items-center gap-3">
-                                        <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="w-10 h-10 rounded cursor-pointer p-0 border-0" />
-                                        <input type="text" value={bgColor} onChange={e => setBgColor(e.target.value)} className="flex-1 bg-theme-input border border-theme rounded-md px-3 py-2 text-sm focus:border-theme-primary" />
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="w-10 h-10 rounded cursor-pointer p-0 border-0" />
+                                            <input type="text" value={bgColor} onChange={e => setBgColor(e.target.value)} className="flex-1 bg-theme-input border border-theme rounded-md px-3 py-2 text-sm focus:border-theme-primary" />
+                                            <button onClick={() => setBgColor('#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'))} className="px-3 py-2 bg-theme-primary/10 text-theme-primary text-sm font-medium rounded-lg hover:bg-theme-primary/20 transition-colors">
+                                                🎲 Random
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-7 gap-1.5">
+                                            {['#0d0d0d', '#202020', '#1a2b3c', '#2b1a1a', '#1a2b1a', '#2b1a2b', '#3c2b1a'].map(swatch => (
+                                                <button key={swatch} onClick={() => setBgColor(swatch)} className={`h-8 rounded-md transition-transform hover:scale-110 ${bgColor === swatch ? 'ring-2 ring-theme-primary' : ''}`} style={{ backgroundColor: swatch }} title={swatch} />
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
 
@@ -1048,9 +1206,81 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                         <Accordion title="Effects & Texture" icon={Palette} isOpen={activeAccordion === 'effects'} onToggle={() => setActiveAccordion('effects')}>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs text-theme-muted mb-1 block">Effect Style</label>
-                                    <select value={bgEffect} onChange={e => setBgEffect(e.target.value)} className="w-full bg-theme-input border border-theme rounded-md px-2 py-1.5 text-sm">
+                                    <label className="text-xs text-theme-muted mb-1 block">Gradient Style</label>
+                                    <select value={gradientStyle} onChange={e => {
+                                        const style = e.target.value;
+                                        setGradientStyle(style);
+                                        // Auto-configure the granular sliders based on style
+                                        setTopMatteHeight(0); setTopFadeHeight(0); setBottomMatteHeight(0); setBottomFadeHeight(0); setVignetteStrength(0);
+                                        if (style === 'gradient-radial') setVignetteStrength(85);
+                                        else if (style === 'gradient-bottom') { setBottomMatteHeight(15); setBottomFadeHeight(35); }
+                                        else if (style === 'gradient-top') { setTopMatteHeight(15); setTopFadeHeight(35); }
+                                        else if (style === 'gradient-bottom-top') { setBottomMatteHeight(15); setBottomFadeHeight(30); setTopMatteHeight(15); setTopFadeHeight(30); }
+                                    }} className="w-full bg-theme-input border border-theme rounded-md px-2 py-1.5 text-sm mb-2">
                                         <option value="none">None</option>
+                                        <option value="gradient-radial">Center-Out Fade</option>
+                                        <option value="gradient-bottom">Bottom-Up Fade</option>
+                                        <option value="gradient-top">Top-Down Fade</option>
+                                        <option value="gradient-bottom-top">Bottom-Top Fade</option>
+                                    </select>
+                                </div>
+
+                                <details className="border border-theme rounded-lg bg-theme-bg/50">
+                                    <summary className="p-2 text-xs font-semibold text-theme-text cursor-pointer hover:text-theme-primary">Fine-Tune Gradient</summary>
+                                    <div className="p-3 space-y-3 border-t border-theme">
+                                        <div>
+                                            <div className="flex justify-between text-[11px] text-theme-muted mb-1"><span>Top Matte Height (%)</span></div>
+                                            <div className="flex gap-2 items-center">
+                                                <input type="range" min="0" max="50" value={topMatteHeight} onChange={e => setTopMatteHeight(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                <input type="number" min="0" max="50" value={topMatteHeight} onChange={e => setTopMatteHeight(parseInt(e.target.value))} className="w-16 bg-theme-input border border-theme rounded px-1 py-0.5 text-xs font-mono text-center" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between text-[11px] text-theme-muted mb-1"><span>Top Fade Height (%)</span></div>
+                                            <div className="flex gap-2 items-center">
+                                                <input type="range" min="0" max="100" value={topFadeHeight} onChange={e => setTopFadeHeight(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                <input type="number" min="0" max="100" value={topFadeHeight} onChange={e => setTopFadeHeight(parseInt(e.target.value))} className="w-16 bg-theme-input border border-theme rounded px-1 py-0.5 text-xs font-mono text-center" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between text-[11px] text-theme-muted mb-1"><span>Bottom Matte Height (%)</span></div>
+                                            <div className="flex gap-2 items-center">
+                                                <input type="range" min="0" max="50" value={bottomMatteHeight} onChange={e => setBottomMatteHeight(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                <input type="number" min="0" max="50" value={bottomMatteHeight} onChange={e => setBottomMatteHeight(parseInt(e.target.value))} className="w-16 bg-theme-input border border-theme rounded px-1 py-0.5 text-xs font-mono text-center" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between text-[11px] text-theme-muted mb-1"><span>Bottom Fade Height (%)</span></div>
+                                            <div className="flex gap-2 items-center">
+                                                <input type="range" min="0" max="100" value={bottomFadeHeight} onChange={e => setBottomFadeHeight(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                <input type="number" min="0" max="100" value={bottomFadeHeight} onChange={e => setBottomFadeHeight(parseInt(e.target.value))} className="w-16 bg-theme-input border border-theme rounded px-1 py-0.5 text-xs font-mono text-center" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between text-[11px] text-theme-muted mb-1"><span>Center Fade (Vignette) Strength</span></div>
+                                            <div className="flex gap-2 items-center">
+                                                <input type="range" min="0" max="100" value={vignetteStrength} onChange={e => setVignetteStrength(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                <input type="number" min="0" max="100" value={vignetteStrength} onChange={e => setVignetteStrength(parseInt(e.target.value))} className="w-16 bg-theme-input border border-theme rounded px-1 py-0.5 text-xs font-mono text-center" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </details>
+
+                                <div>
+                                    <div className="flex justify-between text-[11px] text-theme-muted mb-1"><span>Grain Intensity (%)</span></div>
+                                    <div className="flex gap-2 items-center">
+                                        <input type="range" min="0" max="100" value={grainAmount} onChange={e => setGrainAmount(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                        <input type="number" min="0" max="100" value={grainAmount} onChange={e => setGrainAmount(parseInt(e.target.value))} className="w-16 bg-theme-input border border-theme rounded px-1 py-0.5 text-xs font-mono text-center" />
+                                    </div>
+                                </div>
+
+                                <details className="border border-theme rounded-lg bg-theme-bg/50">
+                                    <summary className="p-2 text-xs font-semibold text-theme-text cursor-pointer hover:text-theme-primary">Advanced Overlays (Simposter)</summary>
+                                    <div className="p-3 space-y-4 border-t border-theme">
+                                        <div>
+                                            <label className="text-xs text-theme-muted mb-1 block">Effect Style</label>
+                                            <select value={bgEffect} onChange={e => setBgEffect(e.target.value)} className="w-full bg-theme-input border border-theme rounded-md px-2 py-1.5 text-sm">
+                                                <option value="none">None</option>
                                         <option value="gradient-radial">Center-Out Fade</option>
                                         <option value="gradient-bottom">Bottom-Up Fade</option>
                                         <option value="gradient-top">Top-Down Fade</option>
@@ -1139,6 +1369,8 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                                         )}
                                     </>
                                 )}
+                                    </div>
+                                </details>
                             </div>
                         </Accordion>
 
@@ -1268,6 +1500,17 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
 
                                         <div className="flex gap-2">
                                             <div className="flex-1">
+                                                <label className="text-xs text-theme-muted mb-1 block">Alignment</label>
+                                                <select value={textAlign} onChange={e => setTextAlign(e.target.value)} className="w-full bg-theme-input border border-theme rounded-md px-2 py-1.5 text-sm">
+                                                    <option value="left">Left</option>
+                                                    <option value="center">Center</option>
+                                                    <option value="right">Right</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
                                                 <label className="text-xs text-theme-muted mb-1 block">Font Color</label>
                                                 <div className="flex items-center gap-2">
                                                     <input type="color" value={textColor} onChange={e => setTextColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer p-0 border-0" />
@@ -1312,6 +1555,39 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                                             <input type="range" min="-750" max="750" value={textOffsetX} onChange={e => setTextOffsetX(parseInt(e.target.value))} className="w-full accent-theme-primary" />
                                         </div>
 
+                                        <details className="border border-theme rounded-lg bg-theme-bg/50">
+                                            <summary className="p-2 text-xs font-semibold text-theme-text cursor-pointer hover:text-theme-primary">Text Shadow / Glow</summary>
+                                            <div className="p-3 space-y-3 border-t border-theme">
+                                                <div>
+                                                    <label className="text-xs text-theme-muted mb-1 block">Shadow Color</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <input type="color" value={textShadowColor} onChange={e => setTextShadowColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer p-0 border-0" />
+                                                        <input type="text" value={textShadowColor} onChange={e => setTextShadowColor(e.target.value)} className="w-full bg-theme-input border border-theme rounded-md px-2 py-1.5 text-xs font-mono" />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="flex justify-between text-xs text-theme-muted mb-1">
+                                                        <span>Blur Intensity</span>
+                                                        <span className="font-mono">{textShadowBlur}</span>
+                                                    </div>
+                                                    <input type="range" min="0" max="100" value={textShadowBlur} onChange={e => setTextShadowBlur(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex justify-between text-xs text-theme-muted mb-1">
+                                                        <span>Offset X</span>
+                                                        <span className="font-mono">{textShadowOffsetX}</span>
+                                                    </div>
+                                                    <input type="range" min="-50" max="50" value={textShadowOffsetX} onChange={e => setTextShadowOffsetX(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex justify-between text-xs text-theme-muted mb-1">
+                                                        <span>Offset Y</span>
+                                                        <span className="font-mono">{textShadowOffsetY}</span>
+                                                    </div>
+                                                    <input type="range" min="-50" max="50" value={textShadowOffsetY} onChange={e => setTextShadowOffsetY(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                </div>
+                                            </div>
+                                        </details>
                                     </>
                                 )}
 
@@ -1333,6 +1609,17 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                                             <input type="checkbox" checked={subTextUppercase} onChange={e => setSubTextUppercase(e.target.checked)} className="rounded border-theme bg-theme-input text-theme-primary focus:ring-theme-primary" />
                                             Force Uppercase
                                         </label>
+
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <label className="text-xs text-theme-muted mb-1 block">Alignment</label>
+                                                <select value={subTextAlign} onChange={e => setSubTextAlign(e.target.value)} className="w-full bg-theme-input border border-theme rounded-md px-2 py-1.5 text-sm">
+                                                    <option value="left">Left</option>
+                                                    <option value="center">Center</option>
+                                                    <option value="right">Right</option>
+                                                </select>
+                                            </div>
+                                        </div>
 
                                         <div className="flex gap-2">
                                             <div className="flex-1">
@@ -1380,6 +1667,39 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                                             <input type="range" min="-750" max="750" value={subTextOffsetX} onChange={e => setSubTextOffsetX(parseInt(e.target.value))} className="w-full accent-theme-primary" />
                                         </div>
 
+                                        <details className="border border-theme rounded-lg bg-theme-bg/50">
+                                            <summary className="p-2 text-xs font-semibold text-theme-text cursor-pointer hover:text-theme-primary">Sub-Text Shadow / Glow</summary>
+                                            <div className="p-3 space-y-3 border-t border-theme">
+                                                <div>
+                                                    <label className="text-xs text-theme-muted mb-1 block">Shadow Color</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <input type="color" value={subTextShadowColor} onChange={e => setSubTextShadowColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer p-0 border-0" />
+                                                        <input type="text" value={subTextShadowColor} onChange={e => setSubTextShadowColor(e.target.value)} className="w-full bg-theme-input border border-theme rounded-md px-2 py-1.5 text-xs font-mono" />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="flex justify-between text-xs text-theme-muted mb-1">
+                                                        <span>Blur Intensity</span>
+                                                        <span className="font-mono">{subTextShadowBlur}</span>
+                                                    </div>
+                                                    <input type="range" min="0" max="100" value={subTextShadowBlur} onChange={e => setSubTextShadowBlur(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex justify-between text-xs text-theme-muted mb-1">
+                                                        <span>Offset X</span>
+                                                        <span className="font-mono">{subTextShadowOffsetX}</span>
+                                                    </div>
+                                                    <input type="range" min="-50" max="50" value={subTextShadowOffsetX} onChange={e => setSubTextShadowOffsetX(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex justify-between text-xs text-theme-muted mb-1">
+                                                        <span>Offset Y</span>
+                                                        <span className="font-mono">{subTextShadowOffsetY}</span>
+                                                    </div>
+                                                    <input type="range" min="-50" max="50" value={subTextShadowOffsetY} onChange={e => setSubTextShadowOffsetY(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                                </div>
+                                            </div>
+                                        </details>
                                     </>
                                 )}
                             </div>
@@ -1412,6 +1732,13 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                                             </div>
                                             <input type="range" min="1" max="100" value={borderWidth} onChange={e => setBorderWidth(parseInt(e.target.value))} className="w-full accent-theme-primary" />
                                         </div>
+                                        <div>
+                                            <div className="flex justify-between text-xs text-theme-muted mb-1">
+                                                <span>Border Radius</span>
+                                                <span className="font-mono">{borderRadius}</span>
+                                            </div>
+                                            <input type="range" min="0" max="100" value={borderRadius} onChange={e => setBorderRadius(parseInt(e.target.value))} className="w-full accent-theme-primary" />
+                                        </div>
                                     </>
                                 )}
                             </div>
@@ -1422,19 +1749,28 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                             <div className="space-y-4">
                                 <div className="border border-theme rounded-lg p-3 bg-theme-bg/50">
                                     <label className="text-xs text-theme-muted mb-2 block">Load Blueprint</label>
-                                    <div className="flex flex-col gap-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+                                    <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
                                         {presets.length === 0 ? (
                                             <div className="text-xs text-theme-muted text-center py-2">No blueprints saved yet.</div>
                                         ) : (
-                                            presets.map(preset => (
-                                                <div key={preset.id} className="flex items-center justify-between bg-theme-input border border-theme rounded px-2 py-1.5">
-                                                    <span className="text-sm font-medium truncate">{preset.name}</span>
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        <button onClick={() => handleLoadPreset(preset)} className="px-2 py-1 bg-theme-primary text-white text-xs rounded hover:bg-theme-primary-hover">Load</button>
-                                                        <button onClick={() => handleDeletePreset(preset.id)} className="px-2 py-1 bg-red-600/20 text-red-500 hover:bg-red-600/40 text-xs rounded"><X className="w-3 h-3" /></button>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {presets.map(preset => (
+                                                    <div key={preset.id} className="relative group bg-theme-input border border-theme rounded overflow-hidden aspect-[2/3] flex flex-col">
+                                                        {preset.thumbnail ? (
+                                                            <img src={preset.thumbnail} alt={preset.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="flex-1 flex items-center justify-center text-xs text-theme-muted p-2 text-center bg-theme-bg">No Preview</div>
+                                                        )}
+                                                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                                                            <span className="text-xs font-semibold text-white drop-shadow-md truncate">{preset.name}</span>
+                                                            <div className="flex gap-1">
+                                                                <button onClick={() => handleLoadPreset(preset)} className="flex-1 py-1 bg-theme-primary text-white text-xs rounded hover:bg-theme-primary-hover shadow-lg">Load</button>
+                                                                <button onClick={() => handleDeletePreset(preset.id)} className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-500 shadow-lg"><X className="w-3 h-3" /></button>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))
+                                                ))}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
