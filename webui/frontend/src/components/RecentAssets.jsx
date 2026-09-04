@@ -17,6 +17,7 @@ import { useDashboardLoading } from "../context/DashboardLoadingContext";
 import { useToast } from "../context/ToastContext";
 import CompactImageSizeSlider from "./CompactImageSizeSlider";
 import ImagePreviewModal from "./ImagePreviewModal";
+import AssetReplacer from "./AssetReplacer";
 
 const API_URL = "/api";
 
@@ -33,6 +34,11 @@ function RecentAssets({ refreshTrigger = 0 }) {
 
   const [refreshing, setRefreshing] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
+
+  // Asset replacer state
+  const [replacerOpen, setReplacerOpen] = useState(false);
+  const [assetToReplace, setAssetToReplace] = useState(null);
+  const [cacheBuster, setCacheBuster] = useState(Date.now());
 
   // Tab filter state
   const [activeTab, setActiveTab] = useState(() => {
@@ -632,7 +638,7 @@ function RecentAssets({ refreshTrigger = 0 }) {
             })(),
             title: selectedAsset.title,
             episode_title: selectedAsset.title,
-            path: selectedAsset.library && selectedAsset.rootfolder ? `${selectedAsset.library}/${selectedAsset.rootfolder}/poster.jpg` : undefined,
+            path: selectedAsset.library && selectedAsset.rootfolder ? `${selectedAsset.library}/${selectedAsset.rootfolder}/poster.jpg` : "",
             show_name: selectedAsset.rootfolder,
             type: getMediaTypeLabel(selectedAsset),
             created: selectedAsset.created,
@@ -645,10 +651,30 @@ function RecentAssets({ refreshTrigger = 0 }) {
             provider_link: selectedAsset.provider_link
           }}
           onClose={() => setSelectedAsset(null)}
-          cacheBuster={Date.now()}
+          onReplace={(image) => {
+            setAssetToReplace(image);
+            setReplacerOpen(true);
+          }}
+          cacheBuster={cacheBuster}
           formatDisplayPath={(path) => selectedAsset.rootfolder}
           formatTimestamp={() => "Unknown"}
           getTypeColor={getTypeColor}
+        />
+      )}
+
+      {/* Asset Replacer Modal */}
+      {replacerOpen && assetToReplace && (
+        <AssetReplacer
+          asset={assetToReplace}
+          onClose={() => {
+            setReplacerOpen(false);
+            setAssetToReplace(null);
+          }}
+          onSuccess={() => {
+            setCacheBuster(Date.now());
+            fetchRecentAssets(true);
+            showSuccess(t("gallery.assetReplaced"));
+          }}
         />
       )}
 

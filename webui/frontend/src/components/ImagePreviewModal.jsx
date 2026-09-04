@@ -143,14 +143,14 @@ function ImagePreviewModal({
                   const t = r.Title || r.title || "";
                   const m = t.match(/S(\d+)E(\d+)/i);
                   if (m) return parseInt(m[1]) === targetSeason && parseInt(m[2]) === targetEpisode;
-                  
+
                   // Handle PlexExport format if possible (though it lacks SXXEYY, it might match by other means if we had season_number)
                   if (isPlexDb && r.library_type === "Episode") {
                      if (r.season_number === targetSeason && r.episode_number === targetEpisode) {
                         return true;
                      }
                   }
-                  
+
                   return false;
                 });
                 if (exact) return exact;
@@ -160,7 +160,7 @@ function ImagePreviewModal({
             } else if (isSeason) {
               const exactSeason = rootFolderRecords.find(r => (r.Type || r.library_type)?.toLowerCase().includes("season") && !(r.Type || r.library_type)?.toLowerCase().includes("episode"));
               if (exactSeason) return exactSeason;
-              
+
               // Do not fallback to show for a season!
               return null;
             } else if (isBackground) {
@@ -170,7 +170,7 @@ function ImagePreviewModal({
           };
 
           let foundMatch = null;
-          
+
           // Check ImageChoices DB FIRST because it has perfectly formatted Titles like 'S01E01 | Pilot' and actual 'Season' records
           const choicesRes = await fetch("/api/imagechoices");
           if (choicesRes.ok) {

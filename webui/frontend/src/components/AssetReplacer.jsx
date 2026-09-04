@@ -1240,7 +1240,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
     try {
       let url = `${API_URL}/assets/upload-replacement?asset_path=${encodeURIComponent(
-        asset.path
+        asset.path || ""
       )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
@@ -1469,7 +1469,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
     try {
       let url = `${API_URL}/assets/replace-from-url?asset_path=${encodeURIComponent(
-        asset.path
+        asset.path || ""
       )}&image_url=${encodeURIComponent(
         preview.original_url
       )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
@@ -1591,10 +1591,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                 </span>
               </h2>
               <p className="text-sm sm:text-lg font-bold text-theme-text mt-0.5 sm:mt-1 break-words">
-                {asset.path.split(/[\\/]/).slice(-2, -1)[0] || "Unknown"}
+                {(asset.path || "").split(/[\\/]/).slice(-2, -1)[0] || "Unknown"}
               </p>
               <p className="text-xs text-theme-muted break-all mt-1">
-                {asset.path}
+                {asset.path || "Unknown path"}
               </p>
             </div>
             <button
