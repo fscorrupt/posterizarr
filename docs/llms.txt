@@ -1,0 +1,16 @@
+# Posterizarr
+
+> Automated artwork scraping, dynamic overlay generation, and media server synchronization for Plex, Jellyfin, and Emby.
+
+## LLM Architecture Guide
+- [LLM Master Architecture Guide](https://fscorrupt.github.io/posterizarr/llms/): Comprehensive system architecture, data models, Docker lifecycle, and conventions for AI agents.
+
+## Core Documentation
+- [Configuration Guide](https://fscorrupt.github.io/posterizarr/configuration/): Complete schema documentation for config.json.
+- [Search Order & Provider Priority](https://fscorrupt.github.io/posterizarr/searchorder/): Detailed logic for Simple, Global, and PerMediaType provider strategies.
+- [API Endpoints Reference](https://fscorrupt.github.io/posterizarr/endpoints/): Full documentation of FastAPI REST endpoints and WebSockets.
+- [Agregarr Integration](https://fscorrupt.github.io/posterizarr/agregarrintegration/): Setup and webhook callback specifications.
+- [PowerShell Automation Core](https://fscorrupt.github.io/posterizarr/powershell_scripts/): Modules, functions, and command pipelines.
+- [Backend Python](https://fscorrupt.github.io/posterizarr/backend_python/): Backend architecture and database management.
+- [Frontend Components](https://fscorrupt.github.io/posterizarr/frontend_components/): React and UI components reference.
+- [Action Center Guide](https://fscorrupt.github.io/posterizarr/action_center/): Artwork resolution and fallback workflows.

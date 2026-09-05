@@ -19,6 +19,10 @@ CONFIG_TOOLTIPS = {
     "EmbyAPIKey": "Your Emby API key. You can create an API key from inside Emby at Settings > Advanced > Api Keys.",
     "FavProvider": "Set your preferred provider (default is tmdb). Possible values are tmdb (recommended), fanart, tvdb, or plex (not recommended). Plex should act as a last resort, especially if you prefer textless artwork, as it cannot be queried for text.",
     "OverrideProviderOrder": "If true, Posterizarr will use the Provider Custom Order array to sequentially check providers for artwork instead of strictly adhering to FavProvider's single-provider logic.",
+    "EnableMovieProviderOrder": "If true, overrides the global Provider Custom Order for Movies.",
+    "MovieProviderOrder": "The sequential order in which Posterizarr searches for Movie artwork when Enable Movie Provider Order Override is true.",
+    "EnableShowProviderOrder": "If true, overrides the global Provider Custom Order for TV Shows.",
+    "ShowProviderOrder": "The sequential order in which Posterizarr searches for TV Show artwork when Enable Show Provider Order Override is true.",
     "ProviderOrder": "The sequential order in which Posterizarr searches for artwork when Override Provider Order is true. Valid values: TMDB, TVDB, Fanart, Plex.",
     "tmdb_vote_sorting": "Picture sorting via TMDB api, either by vote_average, vote_count or by primary (default tmdb view like on the website). Default is vote_average.",
     "PreferredLanguageOrder": "Specify language preferences. Default is xx,en,de (xx is Textless). Use 2-digit ISO 3166-1 language codes. If you set it to xx you tell the script it should only search for textless, posters with text will be skipped.",
@@ -31,7 +35,11 @@ CONFIG_TOOLTIPS = {
     "BgTcMinWidth": "Minimum background/titlecard width filter—greater than or equal to: 3840 (default value).",
     "BgTcMinHeight": "Minimum background/titlecard height filter—greater than or equal to: 2160 (default value).",
     "LogoLanguageOrder": "Specify language preferences for Logos. Default is en,de. Use 2-digit ISO 3166-1 language codes.",
-    "LibraryLanguageOverrides": "Override the language order on a per-library basis. Keyed by exact Plex/Jellyfin/Emby library name. Applies uniformly to that library's posters, season posters, and backgrounds.",
+    "TmdbLanguageMappings": "Map Posterizarr languages to specific TMDB locales. For example, map 'fr' to 'fr-FR' so TMDB queries return accurate regions without affecting other providers.",
+    "LibraryLanguageOverrides": "Override the language order on a per-library basis. Keyed by exact Plex/Jellyfin/Emby library name. You can configure whether it applies to posters, season posters, and backgrounds.",
+    "AgregarrTriggerEnabled": "After an Arr-triggered job uploads artwork to Plex, notify Agregarr so it can update matching collections and overlays.",
+    "AgregarrUrl": "The base URL Posterizarr can use to reach Agregarr, for example http://agregarr:7171.",
+    "AgregarrApiKey": "The API key configured in Agregarr. Posterizarr sends it in the X-Api-Key header.",
 
     # PlexPart
     "PlexLibstoExclude": "Libraries, by name, to exclude from processing on your Plex server.",

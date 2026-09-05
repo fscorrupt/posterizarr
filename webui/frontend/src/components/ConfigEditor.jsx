@@ -137,6 +137,7 @@ function ConfigEditor() {
   const initialAuthStatus = useRef(null);
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [hideProviderBanner, setHideProviderBanner] = useState(() => localStorage.getItem('hideProviderBanner') === 'true');
   const lastSavedConfigRef = useRef(null);
 
   const [useJellySync, setUseJellySync] = useState(false);
@@ -205,10 +206,11 @@ function ConfigEditor() {
 
     // APIs
     if (k.includes("provider") || k.includes("sorting")) return "Preferences";
-    if (k.includes("languageorder")) return "Lang Preferences";
+    if (k.includes("languageorder") || k.includes("tmdblanguagemappings")) return "Lang Preferences";
+
 
     // Notifications
-    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl"];
+    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl", "agregarrtriggerenabled", "agregarrurl", "agregarrapikey"];
     if (notificationKeys.includes(k)) return "Notifications";
 
     // Library Overrides
@@ -605,6 +607,7 @@ function ConfigEditor() {
     if (key === "SymbolsToKeepOnNewLine" && !getValue("NewLineOnSpecificSymbols")) return true;
     if (key === "NewLineSymbols" && !getValue("NewLineOnSpecificSymbols")) return true;
     if (key === "NewLineWords" && !getValue("NewLineOnSpecificWords")) return true;
+    if (key === "TmdbLanguageMappings") return false; // Show it unconditionally or based on TMDB provider
     if (key === "TitleCardSkipWords" && !getValue("SkipTBA")) return true;
 
     // Logo Logic
@@ -779,6 +782,16 @@ function ConfigEditor() {
 
                                 {isExpanded && (
                                     <div className="p-4 border-t border-theme bg-theme-bg/20 rounded-b-lg">
+                                        {groupName === "Provider Settings" && !hideProviderBanner && !searchQuery && (
+                                            <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg flex gap-4">
+                                                <AlertCircle className="w-6 h-6 text-blue-400 shrink-0" />
+                                                <div className="flex-1">
+                                                    <h3 className="text-sm font-semibold text-blue-400 mb-1">Provider Settings Overhauled</h3>
+                                                    <p className="text-sm text-theme-muted mb-2">Legacy provider override switches have been removed in favor of a single unified Priority Strategy. If you previously used overrides, they have been reset and you must select your preferred mode below.</p>
+                                                    <button onClick={() => { setHideProviderBanner(true); localStorage.setItem('hideProviderBanner', 'true'); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Dismiss</button>
+                                                </div>
+                                            </div>
+                                        )}
                                         {/* If Searching: Flat List */}
                                         {searchQuery ? (
                                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -873,6 +886,15 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     const fieldKey = usingFlatStructure ? settingKey : `${groupName}.${settingKey}`;
     const disabled = isFieldDisabled(settingKey, groupName);
     const stringValue = value === null || value === undefined ? "" : String(value);
+
+    const providerPriorityMode = usingFlatStructure ? config.ProviderPriorityMode : config.ApiPart?.ProviderPriorityMode;
+    const isSimple = !providerPriorityMode || providerPriorityMode === "Simple";
+    const isGlobal = providerPriorityMode === "Global";
+    const isPerMediaType = providerPriorityMode === "PerMediaType";
+
+    if (settingKey === "FavProvider" && !isSimple) return null;
+    if (settingKey === "ProviderOrder" && !isGlobal) return null;
+    if ((settingKey === "MovieProviderOrder" || settingKey === "ShowProviderOrder") && !isPerMediaType) return null;
 
     // Render Input Logic
     const renderInput = () => {
@@ -992,7 +1014,13 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
 
             const handleAddPair = () => {
-                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"] } };
+                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"], ApplyToPoster: true, ApplyToSeason: true, ApplyToBackground: true, ApplyToLogo: true } };
+                updateValue(fieldKey, newDict);
+            };
+
+            const handleToggleApplyTo = (key, type, value) => {
+                const newDict = { ...dictValue };
+                newDict[key] = { ...(dictValue[key] || {}), [`ApplyTo${type}`]: value };
                 updateValue(fieldKey, newDict);
             };
 
@@ -1020,13 +1048,60 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                                     <Trash2 className="w-5 h-5" />
                                 </button>
                             </div>
-                            
+
                             <div className="pt-3 border-t border-theme/50">
                                 <LanguageOrderSelector
                                     value={v?.PreferredLanguageOrder || []}
                                     onChange={(newOrder) => handleUpdateOrder(k, newOrder)}
-                                    helpText="Applies to posters, seasons and backgrounds for this library; title cards keep their textless-first preference automatically."
+                                    helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
                                 />
+                                <div className="flex gap-4 mt-3 pl-1">
+                                    {["Poster", "Season", "Background", "Logo"].map((type) => {
+                                        const isChecked = v?.[`ApplyTo${type}`] ?? true;
+                                        return (
+                                            <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={(e) => handleToggleApplyTo(k, type, e.target.checked)}
+                                                    disabled={disabled}
+                                                    className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                                />
+                                                {type}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                <div className="mt-4 pt-3 border-t border-theme/50">
+                                    <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={v?.EnableProviderOrderOverride ?? false}
+                                            onChange={(e) => {
+                                                const newDict = { ...dictValue };
+                                                newDict[k] = { ...(dictValue[k] || {}), EnableProviderOrderOverride: e.target.checked };
+                                                updateValue(fieldKey, newDict);
+                                            }}
+                                            disabled={disabled}
+                                            className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                        />
+                                        Enable Provider Order Override
+                                    </label>
+                                    
+                                    {(v?.EnableProviderOrderOverride) && (
+                                        <div className="pl-6">
+                                            <ProviderOrderSelector 
+                                                value={v?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]} 
+                                                onChange={(newOrder) => {
+                                                    const newDict = { ...dictValue };
+                                                    newDict[k] = { ...(dictValue[k] || {}), ProviderOrder: newOrder };
+                                                    updateValue(fieldKey, newDict);
+                                                }}
+                                                helpText="Select the specific provider priority for this library."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -1045,7 +1120,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                 </div>
             );
         }
-        if (settingKey === "NewLineWords") {
+        if (settingKey === "NewLineWords" || settingKey === "TmdbLanguageMappings") {
             const dictValue = value && typeof value === 'object' ? value : {};
 
             const handleUpdatePair = (oldKey, newKey, newVal) => {
@@ -1064,9 +1139,15 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
 
             const handleAddPair = () => {
-                const newDict = { ...dictValue, "NEW_WORD": "NEW-\\nWORD" };
+                const defaultKey = settingKey === "TmdbLanguageMappings" ? "fr" : "NEW_WORD";
+                const defaultValue = settingKey === "TmdbLanguageMappings" ? "fr-FR" : "NEW-\\nWORD";
+                const newDict = { ...dictValue, [defaultKey]: defaultValue };
                 updateValue(fieldKey, newDict);
             };
+
+            const placeholderKey = settingKey === "TmdbLanguageMappings" ? "fr" : "Word";
+            const placeholderValue = settingKey === "TmdbLanguageMappings" ? "fr-FR" : "Replacement";
+            const buttonText = settingKey === "TmdbLanguageMappings" ? "Add Language Mapping" : "Add Word Mapping";
 
             return (
                 <div className="space-y-2">
@@ -1075,7 +1156,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                             <input
                                 className={`${commonInputClass} font-mono text-xs`}
                                 value={k}
-                                placeholder="Word"
+                                placeholder={placeholderKey}
                                 onChange={(e) => handleUpdatePair(k, e.target.value, v)}
                                 disabled={disabled}
                             />
@@ -1083,7 +1164,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                             <textarea
                                 className={`${commonInputClass} font-mono text-xs h-[42px] min-h-[42px] resize-none`}
                                 value={v}
-                                placeholder="Replacement"
+                                placeholder={placeholderValue}
                                 onChange={(e) => handleUpdatePair(k, k, e.target.value)}
                                 disabled={disabled}
                             />
@@ -1101,20 +1182,20 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                         className="w-full py-2 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-theme-primary transition-all flex items-center justify-center gap-2 text-sm"
                         disabled={disabled}
                     >
-                        <Plus className="w-4 h-4" /> Add Word Mapping
+                        <Plus className="w-4 h-4" /> {buttonText}
                     </button>
                 </div>
             );
         }
 
         // Passwords & Other Secrets (No validate button, just PasswordInput)
-        if (settingKey.toLowerCase().includes("password") || settingKey.toLowerCase().includes("secret")) {
+        if (settingKey.toLowerCase().includes("password") || settingKey.toLowerCase().includes("secret") || settingKey.toLowerCase().endsWith("apikey")) {
              return <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder="Enter value" />;
         }
 
         // Webhooks (Standard Input + Validate Button, generally not masked but can be long)
-        if (["Discord", "AppriseUrl", "UptimeKumaUrl"].includes(settingKey)) {
-             const type = settingKey === "Discord" ? "discord" : settingKey === "AppriseUrl" ? "apprise" : "uptimekuma";
+        if (["Discord", "AppriseUrl", "UptimeKumaUrl", "AgregarrUrl"].includes(settingKey)) {
+             const type = settingKey === "Discord" ? "discord" : settingKey === "AppriseUrl" ? "apprise" : settingKey === "UptimeKumaUrl" ? "uptimekuma" : "agregarr";
              return (
                 <div className="flex gap-2">
                     <input type="text" value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={commonInputClass} placeholder="Enter URL" />
@@ -1167,13 +1248,14 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         }
 
         // Selectors
-        if (settingKey === "ProviderOrder") return <ProviderOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
+        if (settingKey.includes("ProviderOrder") && settingKey !== "OverrideProviderOrder") return <ProviderOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LanguageOrder")) return <LanguageOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LibstoExclude")) {
             const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : "emby";
             return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={tooltips[settingKey]} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
         }
         if (settingKey === "FavProvider") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none uppercase`}><option value="tmdb">TMDB</option><option value="tvdb">TVDB</option><option value="fanart">FANART</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
+        if (settingKey === "ProviderPriorityMode") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="Simple">Simple (Favorite Provider)</option><option value="Global">Global Custom Order</option><option value="PerMediaType">Per-Media Type Custom Order</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "tmdb_vote_sorting") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="vote_average">Vote Average</option><option value="vote_count">Vote Count</option><option value="primary">Primary (Default TMDB View)</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "logLevel") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="1">1 - Warning/Error</option><option value="2">2 - Info/Warning/Error (Default)</option><option value="3">3 - Debug/Info/Warning/Error</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey.toLowerCase().includes("gravity")) return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}>{["NorthWest", "North", "NorthEast", "West", "Center", "East", "SouthWest", "South", "SouthEast"].map(opt => (<option key={opt} value={opt.toLowerCase()}>{opt}</option>))}</select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);

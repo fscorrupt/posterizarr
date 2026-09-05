@@ -534,7 +534,7 @@ function Output-ConfigJson {
                 if ($parsedBlueprints) {
                     $bpCount = @($parsedBlueprints).Count
                     Write-Entry -Subtext "$indent$($prop.Name): <$bpCount custom blueprint(s) loaded>" -Path $global:configLogging -Color Cyan -log Info
-                    
+
                     foreach ($bp in $parsedBlueprints) {
                         $bpName = if ($bp.customTitle) { $bp.customTitle } else { $bp.id }
                         Write-Entry -Subtext "$indent  - Blueprint: $bpName" -Path $global:configLogging -Color Yellow -log Info
@@ -599,7 +599,24 @@ function Initialize-LanguageSettings {
     Set-Variable -Name $SettingName -Scope Global -Value $validLangs -Force
 
     # Derived variants
-    Set-Variable -Name "${SettingName}TMDB"   -Scope Global -Value $validLangs
+    $tmdbLangs = @()
+    foreach ($lang in $validLangs) {
+        $mappedLang = $null
+        if ($null -ne $global:TmdbLanguageMappings) {
+            if ($global:TmdbLanguageMappings -is [System.Collections.IDictionary]) {
+                $mappedLang = $global:TmdbLanguageMappings[$lang]
+            } else {
+                $mappedLang = $global:TmdbLanguageMappings.$lang
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($mappedLang)) {
+            $tmdbLangs += $mappedLang
+        } else {
+            $tmdbLangs += $lang
+        }
+    }
+    Set-Variable -Name "${SettingName}TMDB"   -Scope Global -Value $tmdbLangs
     Set-Variable -Name "${SettingName}Fanart" -Scope Global -Value ($validLangs -replace '^xx$', '00')
     Set-Variable -Name "${SettingName}TVDB"   -Scope Global -Value ($validLangs -replace '^xx$', 'null')
 
@@ -633,19 +650,21 @@ function Set-LibraryLanguageOverride {
     # Background inherit it directly; TC keeps its textless-first ("xx") lead
     # unless the override already starts with one, since TC language is about
     # base-image search, not the library's spoken language.
-    param([string]$LibraryName)
+    param(
+        [string]$LibraryName,
+        [string]$MediaType = 'None'
+    )
 
     # $global:LibraryLanguageOverrides is a PSCustomObject when read fresh from
     # config.json, but crossing into a -Parallel runspace via $using: deserializes
     # it as a Hashtable instead - handle both shapes rather than assuming one.
     $override = $null
-    if ($global:LibraryLanguageOverrides -is [System.Collections.IDictionary]) {
-        if ($global:LibraryLanguageOverrides.Contains($LibraryName)) {
+    if ($null -ne $global:LibraryLanguageOverrides) {
+        if ($global:LibraryLanguageOverrides -is [System.Collections.IDictionary]) {
             $override = $global:LibraryLanguageOverrides[$LibraryName]
+        } else {
+            $override = $global:LibraryLanguageOverrides.$LibraryName
         }
-    }
-    elseif ($global:LibraryLanguageOverrides -and ($global:LibraryLanguageOverrides.PSObject.Properties.Name -contains $LibraryName)) {
-        $override = $global:LibraryLanguageOverrides.$LibraryName
     }
 
     if (-not $override) {
@@ -654,22 +673,77 @@ function Set-LibraryLanguageOverride {
         Set-Variable -Name "PreferredTCLanguageOrder" -Scope Global -Value $global:DefaultPreferredTCLanguageOrder
         Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $global:DefaultPreferredBackgroundLanguageOrder
         Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $global:DefaultLogoLanguageOrder
+
+        # Reset provider order to MediaType specific or Global
+        if ($MediaType -eq 'Movie' -and $null -ne $global:MovieProviderOrder -and $global:MovieProviderOrder.Count -gt 0 -and $global:ProviderPriorityMode -eq 'PerMediaType') {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:MovieProviderOrder
+            Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value $true
+        } elseif ($MediaType -eq 'Show' -and $null -ne $global:ShowProviderOrder -and $global:ShowProviderOrder.Count -gt 0 -and $global:ProviderPriorityMode -eq 'PerMediaType') {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:ShowProviderOrder
+            Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value $true
+        } else {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:DefaultProviderOrder
+            Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value ($global:ProviderPriorityMode -eq 'Global')
+        }
     }
     else {
         $order = if ($override.PreferredLanguageOrder) { $override.PreferredLanguageOrder } else { $global:DefaultPreferredLanguageOrder }
+
+        $applyToPoster = if ($null -ne $override.ApplyToPoster) { [bool]$override.ApplyToPoster } else { $true }
+        $applyToSeason = if ($null -ne $override.ApplyToSeason) { [bool]$override.ApplyToSeason } else { $true }
+        $applyToBackground = if ($null -ne $override.ApplyToBackground) { [bool]$override.ApplyToBackground } else { $true }
+        $applyToLogo = if ($null -ne $override.ApplyToLogo) { [bool]$override.ApplyToLogo } else { $true }
+
+        $posterOrder = if ($applyToPoster) { $order } else { $global:DefaultPreferredLanguageOrder }
+        $seasonOrder = if ($applyToSeason) { $order } else { $global:DefaultPreferredSeasonLanguageOrder }
+        $backgroundOrder = if ($applyToBackground) { $order } else { $global:DefaultPreferredBackgroundLanguageOrder }
+        $logoOrder = if ($applyToLogo) { $order } else { $global:DefaultLogoLanguageOrder }
+
         $tcOrder = if ($order -and $order[0] -eq 'xx') { $order } else { @('xx') + $order }
 
-        Set-Variable -Name "PreferredLanguageOrder" -Scope Global -Value $order
-        Set-Variable -Name "PreferredSeasonLanguageOrder" -Scope Global -Value $order
+        Set-Variable -Name "PreferredLanguageOrder" -Scope Global -Value $posterOrder
+        Set-Variable -Name "PreferredSeasonLanguageOrder" -Scope Global -Value $seasonOrder
         Set-Variable -Name "PreferredTCLanguageOrder" -Scope Global -Value $tcOrder
-        Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $order
-        Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $order
+        Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $backgroundOrder
+        Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $logoOrder
+
+        # Provider overrides
+        $enableLibraryProviderOrder = if ($null -ne $override.EnableProviderOrderOverride) { [bool]$override.EnableProviderOrderOverride } else { $false }
+
+        if ($enableLibraryProviderOrder -and $null -ne $override.ProviderOrder -and $override.ProviderOrder.Count -gt 0) {
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value @($override.ProviderOrder | ForEach-Object { $_.ToUpper() })
+            Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value $true
+        } else {
+            if ($MediaType -eq 'Movie' -and $null -ne $global:MovieProviderOrder -and $global:MovieProviderOrder.Count -gt 0 -and $global:ProviderPriorityMode -eq 'PerMediaType') {
+                Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:MovieProviderOrder
+                Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value $true
+            } elseif ($MediaType -eq 'Show' -and $null -ne $global:ShowProviderOrder -and $global:ShowProviderOrder.Count -gt 0 -and $global:ProviderPriorityMode -eq 'PerMediaType') {
+                Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:ShowProviderOrder
+                Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value $true
+            } else {
+                Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:DefaultProviderOrder
+                # Fallback to the original global setting
+                Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value ($global:ProviderPriorityMode -eq 'Global')
+            }
+        }
+
+
     }
+
+        # Calculate Effective Primary Provider
+        if ($global:UseCustomProviderOrder -and $global:ProviderOrder.Count -gt 0) {
+            Set-Variable -Name "EffectivePrimaryProvider" -Scope Global -Value $global:ProviderOrder[0]
+        } else {
+            Set-Variable -Name "EffectivePrimaryProvider" -Scope Global -Value $global:FavProvider
+            $legacyProviders = @("TMDB", "FANART", "TVDB", "PLEX", "IMDB")
+            Set-Variable -Name "ProviderOrder" -Scope Global -Value (@($global:FavProvider) + ($legacyProviders -ne $global:FavProvider))
+        }
 
     Initialize-LanguageSettings -SettingName "PreferredLanguageOrder"           -Label "Poster"
     Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder"     -Label "Season"
     Initialize-LanguageSettings -SettingName "PreferredTCLanguageOrder"         -Label "TC"
     Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background"
+    Initialize-LanguageSettings -SettingName "LogoLanguageOrder"                -Label "Logo"
 }
 function Test-PathPermissions {
     param (
@@ -949,7 +1023,7 @@ function Write-Entry {
         $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrLogMutex")
         try {
             $mutex.WaitOne() | Out-Null
-            $Header | Out-File $Path -Append
+            try { $Header | Out-File $Path -Append -ErrorAction Stop } catch {}
         } finally {
             $mutex.ReleaseMutex()
             $mutex.Dispose()
@@ -1000,7 +1074,11 @@ function Write-Entry {
                 Write-Host $Message -ForegroundColor $Color
             }
 
-            $lineToWrite | Out-File $Path -Append
+            try {
+                $lineToWrite | Out-File $Path -Append -ErrorAction Stop
+            } catch {
+                # Silently continue if log file is locked by another process
+            }
         } finally {
             $mutex.ReleaseMutex()
             $mutex.Dispose()
@@ -1132,6 +1210,39 @@ function CheckJson {
             }
         }
 
+        # Check and add missing granular asset overrides to existing LibraryLanguageOverrides
+        if ($config.PSObject.Properties.Name.Contains("ApiPart") -and $config.ApiPart.PSObject.Properties.Name.Contains("LibraryLanguageOverrides")) {
+            $overrides = $config.ApiPart.LibraryLanguageOverrides
+            if ($overrides -is [System.Management.Automation.PSCustomObject]) {
+                foreach ($libName in $overrides.PSObject.Properties.Name) {
+                    $libConfig = $overrides.$libName
+                    if ($libConfig -is [System.Management.Automation.PSCustomObject]) {
+                        $modifiedLib = $false
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToPoster")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToPoster" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToSeason")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToSeason" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToBackground")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToBackground" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if (-not $libConfig.PSObject.Properties.Name.Contains("ApplyToLogo")) {
+                            $libConfig | Add-Member -MemberType NoteProperty -Name "ApplyToLogo" -Value $true
+                            $modifiedLib = $true
+                        }
+                        if ($modifiedLib) {
+                            Write-Entry -Message "Adding missing Granular Asset overrides to Library '$libName'" -Path $global:configLogging -Color Yellow -log Warning
+                            $AttributeChanged = $True
+                        }
+                    }
+                }
+            }
+        }
+
         if ($AttributeChanged -eq 'true') {
             # Convert the updated configuration object back to JSON and save it
             $configJson = $config | ConvertTo-Json -Depth 10
@@ -1141,13 +1252,11 @@ function CheckJson {
         }
     }
     catch [System.Net.WebException] {
-        Write-Entry -Message "Failed to download the default configuration JSON file from the URL." -Path $global:configLogging -Color Red -log Error
-        HandleScriptExit -Message "Config.json download failed."
+        Write-Entry -Message "Failed to download the default configuration JSON file from the URL. Config check skipped." -Path $global:configLogging -Color Yellow -log Warning
     }
     catch {
-        Write-Entry -Message "An unexpected error occurred: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-        # Clear Running File
-        HandleScriptExit -Message "$($_.Exception.Message)"
+        Write-Entry -Message "An unexpected error occurred during config check: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+        Write-Entry -Subtext "Proceeding with existing configuration..." -Path $global:configLogging -Color Yellow -log Info
     }
 }
 function CheckJsonPaths {
@@ -1346,3 +1455,4 @@ function CheckCharLimit {
         return $false
     }
 }
+

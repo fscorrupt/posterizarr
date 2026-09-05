@@ -891,6 +891,22 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
           }
         }
 
+        // Only check Other Media Export (Jellyfin/Emby) if we don't already have dbData
+        if (!dbData) {
+          console.log("Checking Other Media Export DB (/api/other-media-export/library)...");
+          response = await fetch(`${API_URL}/other-media-export/library`);
+          if (response.ok) {
+            const otherData = await response.json();
+            if (otherData.success && otherData.data) {
+              const matchingRecord = findMatch(otherData.data, libraryName, rootfolder);
+              if (matchingRecord) {
+                setDbData(normalizeMediaExportData(matchingRecord));
+                if (!isTitleCard) return;
+              }
+            }
+          }
+        }
+
         // --- Try ImageChoices (Posterizarr DB) ---
         console.log("Checking ImageChoices DB for Asset specific info...");
         response = await fetch(`${API_URL}/imagechoices`);
@@ -1224,7 +1240,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
     try {
       let url = `${API_URL}/assets/upload-replacement?asset_path=${encodeURIComponent(
-        asset.path
+        asset.path || ""
       )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
@@ -1453,7 +1469,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
     try {
       let url = `${API_URL}/assets/replace-from-url?asset_path=${encodeURIComponent(
-        asset.path
+        asset.path || ""
       )}&image_url=${encodeURIComponent(
         preview.original_url
       )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
@@ -1575,10 +1591,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                 </span>
               </h2>
               <p className="text-sm sm:text-lg font-bold text-theme-text mt-0.5 sm:mt-1 break-words">
-                {asset.path.split(/[\\/]/).slice(-2, -1)[0] || "Unknown"}
+                {(asset.path || "").split(/[\\/]/).slice(-2, -1)[0] || "Unknown"}
               </p>
               <p className="text-xs text-theme-muted break-all mt-1">
-                {asset.path}
+                {asset.path || "Unknown path"}
               </p>
             </div>
             <button

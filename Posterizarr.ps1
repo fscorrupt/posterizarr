@@ -75,7 +75,7 @@ for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
     }
 }
 
-$CurrentScriptVersion = "3.2.0"
+$CurrentScriptVersion = "3.3.0"
 $global:HeaderWritten = $false
 $ProgressPreference = 'SilentlyContinue'
 
@@ -163,14 +163,14 @@ elseif ($Restore) {
 elseif ($SyncJelly -or $SyncEmby) {
     . "$PSScriptRoot\modules\modes\SyncMode.ps1"
 }
-elseif ($OtherMediaServerUrl -and $OtherMediaServerApiKey -and $UseOtherMediaServer -eq 'true') {
-    . "$PSScriptRoot\modules\modes\EmbyJellyMode.ps1"
-}
 elseif ($PosterReset) {
     . "$PSScriptRoot\modules\modes\PosterresetMode.ps1"
 }
 elseif ($LogoUpdater -or $LogoRevert) {
     . "$PSScriptRoot\modules\modes\LogoUpdaterMode.ps1"
+}
+elseif ($OtherMediaServerUrl -and $OtherMediaServerApiKey -and $UseOtherMediaServer -eq 'true') {
+    . "$PSScriptRoot\modules\modes\EmbyJellyMode.ps1"
 }
 else {
     . "$PSScriptRoot\modules\modes\NormalMode.ps1"

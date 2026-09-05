@@ -587,3 +587,1460 @@ Endpoint for Tautulli notifications. Maps incoming JSON keys directly to script 
       "file": "/config/watcher/tautulli_trigger_20251125120000_x9y8z7.posterizarr"
     }
     ```
+---
+
+## ?? Authentication & Onboarding
+
+### `/api/onboarding/complete`
+Submits data or triggers an action at `/api/onboarding/complete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/auth/check`
+Retrieves data from `/api/auth/check`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/auth/keys`
+Retrieves data from `/api/auth/keys`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/auth/keys`
+Submits data or triggers an action at `/api/auth/keys`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/auth/keys/{key_id}`
+Deletes a resource at `/api/auth/keys/{key_id}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ?? Connection Validation
+
+### `/api/validate/plex`
+Submits data or triggers an action at `/api/validate/plex`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/jellyfin`
+Submits data or triggers an action at `/api/validate/jellyfin`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/emby`
+Submits data or triggers an action at `/api/validate/emby`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/tmdb`
+Submits data or triggers an action at `/api/validate/tmdb`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/tvdb`
+Submits data or triggers an action at `/api/validate/tvdb`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/fanart`
+Submits data or triggers an action at `/api/validate/fanart`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/discord`
+Submits data or triggers an action at `/api/validate/discord`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/apprise`
+Submits data or triggers an action at `/api/validate/apprise`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/uptimekuma`
+Submits data or triggers an action at `/api/validate/uptimekuma`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/validate/agregarr`
+Validates the Agregarr URL and API key against its read-only Posterizarr
+integration status endpoint.
+
+??? example "View Response"
+    ```json
+    {
+      "valid": true,
+      "message": "Agregarr connection and API key are valid.",
+      "details": {
+        "status_code": 200
+      }
+    }
+    ```
+
+
+---
+
+## ?? Library & Server Management
+
+### `/api/plex/action`
+Submits data or triggers an action at `/api/plex/action`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/jellyfin-emby/action`
+Submits data or triggers an action at `/api/jellyfin-emby/action`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/libraries/{server_type}/cached`
+Retrieves data from `/api/libraries/{server_type}/cached`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/libraries/{server_type}/exclusions`
+Submits data or triggers an action at `/api/libraries/{server_type}/exclusions`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/libraries/plex`
+Submits data or triggers an action at `/api/libraries/plex`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/libraries/jellyfin`
+Submits data or triggers an action at `/api/libraries/jellyfin`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/libraries/emby`
+Submits data or triggers an action at `/api/libraries/emby`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/libraries/plex/items`
+Submits data or triggers an action at `/api/libraries/plex/items`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ?? Script Execution & Control
+
+### `/api/run/{mode}`
+Submits data or triggers an action at `/api/run/{mode}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/run-manual`
+Submits data or triggers an action at `/api/run-manual`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/run-manual-upload`
+Submits data or triggers an action at `/api/run-manual-upload`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/run-logoupdater`
+Submits data or triggers an action at `/api/run-logoupdater`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/run-restore`
+Submits data or triggers an action at `/api/run-restore`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/reset-posters`
+Submits data or triggers an action at `/api/reset-posters`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/tmdb/search-posters`
+Submits data or triggers an action at `/api/tmdb/search-posters`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/stop`
+Submits data or triggers an action at `/api/stop`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/force-kill`
+Submits data or triggers an action at `/api/force-kill`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ??? Asset Galleries & Image Choices
+
+### `/api/assets/skip`
+Adds the `skip_posterizarr` tag/label to the specified asset in the active media server and removes it from the Action Center.
+
+**Payload**:
+```json
+{
+  "asset_id": 123
+}
+```
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "message": "Successfully skipped item in Plex"
+    }
+    ```
+
+### `/api/gallery`
+Retrieves data from `/api/gallery`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/gallery/{path:path}`
+Deletes a resource at `/api/gallery/{path:path}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/gallery/bulk-delete`
+Submits data or triggers an action at `/api/gallery/bulk-delete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/backgrounds-gallery`
+Retrieves data from `/api/backgrounds-gallery`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/backgrounds/{path:path}`
+Deletes a resource at `/api/backgrounds/{path:path}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/backgrounds/bulk-delete`
+Submits data or triggers an action at `/api/backgrounds/bulk-delete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/seasons-gallery`
+Retrieves data from `/api/seasons-gallery`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/seasons/{path:path}`
+Deletes a resource at `/api/seasons/{path:path}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/seasons/bulk-delete`
+Submits data or triggers an action at `/api/seasons/bulk-delete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/titlecards-gallery`
+Retrieves data from `/api/titlecards-gallery`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/titlecards/{path:path}`
+Deletes a resource at `/api/titlecards/{path:path}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/titlecards/bulk-delete`
+Submits data or triggers an action at `/api/titlecards/bulk-delete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/manual-assets/{path:path}`
+Deletes a resource at `/api/manual-assets/{path:path}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/manual-assets/bulk-delete`
+Submits data or triggers an action at `/api/manual-assets/bulk-delete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/backup-assets-gallery`
+Retrieves data from `/api/backup-assets-gallery`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/backup-assets/{path:path}`
+Deletes a resource at `/api/backup-assets/{path:path}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/backup-assets/bulk-delete`
+Submits data or triggers an action at `/api/backup-assets/bulk-delete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/thumbnail`
+Retrieves data from `/api/thumbnail`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/assets-folder-images/{image_type}/{folder_path:path}`
+Retrieves data from `/api/assets-folder-images/{image_type}/{folder_path:path}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/recent-assets`
+Retrieves data from `/api/recent-assets`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/asset-type-lookup`
+Retrieves data from `/api/asset-type-lookup`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/test-gallery`
+Retrieves data from `/api/test-gallery`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/imagechoices`
+Retrieves data from `/api/imagechoices`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/imagechoices`
+Submits data or triggers an action at `/api/imagechoices`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/imagechoices/{title}`
+Retrieves data from `/api/imagechoices/{title}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/imagechoices/{record_id}`
+Updates a resource at `/api/imagechoices/{record_id}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/imagechoices/{record_id}`
+Deletes a resource at `/api/imagechoices/{record_id}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/imagechoices/{record_id}/find-asset`
+Retrieves data from `/api/imagechoices/{record_id}/find-asset`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/imagechoices/import`
+Submits data or triggers an action at `/api/imagechoices/import`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ?? Assets Replacement & Operations
+
+### `/api/assets/fetch-replacements`
+Submits data or triggers an action at `/api/assets/fetch-replacements`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/assets/upload-replacement`
+Submits data or triggers an action at `/api/assets/upload-replacement`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/assets/replace-from-url`
+Submits data or triggers an action at `/api/assets/replace-from-url`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/assets/delete-asset/{record_id}`
+Deletes a resource at `/api/assets/delete-asset/{record_id}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/assets/bulk-delete-assets`
+Submits data or triggers an action at `/api/assets/bulk-delete-assets`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/refresh-cache`
+Submits data or triggers an action at `/api/refresh-cache`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/cache/status`
+Retrieves data from `/api/cache/status`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ?? Scheduler & Queue Management
+
+### `/api/scheduler/config`
+Retrieves data from `/api/scheduler/config`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/config`
+Submits data or triggers an action at `/api/scheduler/config`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/schedule`
+Submits data or triggers an action at `/api/scheduler/schedule`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/schedule/{time}`
+Deletes a resource at `/api/scheduler/schedule/{time}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/schedules`
+Deletes a resource at `/api/scheduler/schedules`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/enable`
+Submits data or triggers an action at `/api/scheduler/enable`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/disable`
+Submits data or triggers an action at `/api/scheduler/disable`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/restart`
+Submits data or triggers an action at `/api/scheduler/restart`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/scheduler/run-now`
+Submits data or triggers an action at `/api/scheduler/run-now`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/queue`
+Retrieves data from `/api/queue`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/queue/{item_id}`
+Deletes a resource at `/api/queue/{item_id}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/queue/clear`
+Submits data or triggers an action at `/api/queue/clear`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/queue/run`
+Submits data or triggers an action at `/api/queue/run`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/queue/delete`
+Submits data or triggers an action at `/api/queue/delete`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ??? Fonts & Overlay Creator
+
+### `/api/overlayfiles/upload`
+Submits data or triggers an action at `/api/overlayfiles/upload`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/overlayfiles/{filename}`
+Deletes a resource at `/api/overlayfiles/{filename}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/overlayfiles/preview/{filename}`
+Retrieves data from `/api/overlayfiles/preview/{filename}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/fonts`
+Retrieves data from `/api/fonts`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/fonts/upload`
+Submits data or triggers an action at `/api/fonts/upload`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/fonts/{filename}`
+Deletes a resource at `/api/fonts/{filename}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/fonts/download/{filename}`
+Retrieves data from `/api/fonts/download/{filename}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/fonts/preview/{filename}`
+Retrieves data from `/api/fonts/preview/{filename}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/overlay-creator/preview`
+Submits data or triggers an action at `/api/overlay-creator/preview`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/overlay-creator/save`
+Submits data or triggers an action at `/api/overlay-creator/save`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ?? Runtime History & Exports Additional
+
+### `/api/runtime-stats`
+Retrieves data from `/api/runtime-stats`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/runtime-summary`
+Retrieves data from `/api/runtime-summary`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/runtime-history/cleanup`
+Deletes a resource at `/api/runtime-history/cleanup`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/runtime-history/migrate`
+Submits data or triggers an action at `/api/runtime-history/migrate`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/runtime-history/migration-status`
+Retrieves data from `/api/runtime-history/migration-status`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/runtime-history/migrate-format`
+Submits data or triggers an action at `/api/runtime-history/migrate-format`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/runtime-history/import-json`
+Submits data or triggers an action at `/api/runtime-history/import-json`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/plex-export/library`
+Retrieves data from `/api/plex-export/library`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/plex-export/episodes`
+Retrieves data from `/api/plex-export/episodes`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/plex-export/import`
+Submits data or triggers an action at `/api/plex-export/import`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/other-media-export/library`
+Retrieves data from `/api/other-media-export/library`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/other-media-export/episodes`
+Retrieves data from `/api/other-media-export/episodes`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/other-media-export/import`
+Submits data or triggers an action at `/api/other-media-export/import`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ?? Additional Configuration & Database
+
+### `/api/config/backup`
+Submits data or triggers an action at `/api/config/backup`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/config/export`
+Retrieves data from `/api/config/export`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/config/import`
+Submits data or triggers an action at `/api/config/import`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/custom-blueprints`
+Retrieves data from `/api/custom-blueprints`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/custom-blueprints`
+Submits data or triggers an action at `/api/custom-blueprints`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/config-db/status`
+Retrieves data from `/api/config-db/status`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/config-db/section/{section}`
+Retrieves data from `/api/config-db/section/{section}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/config-db/value/{section}/{key}`
+Retrieves data from `/api/config-db/value/{section}/{key}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/config-db/sync`
+Submits data or triggers an action at `/api/config-db/sync`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/config-db/export`
+Retrieves data from `/api/config-db/export`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/webui-settings`
+Retrieves data from `/api/webui-settings`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/webui-settings`
+Submits data or triggers an action at `/api/webui-settings`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+
+---
+
+## ?? Logs, Diagnostics & Misc
+
+### `/api/logs/ui`
+Submits data or triggers an action at `/api/logs/ui`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/logs/ui/batch`
+Submits data or triggers an action at `/api/logs/ui/batch`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/logs/{log_name}`
+Retrieves data from `/api/logs/{log_name}`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/logs/{log_name}/exists`
+Retrieves data from `/api/logs/{log_name}/exists`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/logs/ui/unified`
+Retrieves data from `/api/logs/ui/unified`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/upload-diagnostics`
+Retrieves data from `/api/upload-diagnostics`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/admin/support-zip`
+Submits data or triggers an action at `/api/admin/support-zip`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/logs-watcher/status`
+Retrieves data from `/api/logs-watcher/status`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/analytics/providers`
+Retrieves data from `/api/analytics/providers`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/running-file`
+Deletes a resource at `/api/running-file`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+### `/api/version-ui`
+Retrieves data from `/api/version-ui`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true
+    }
+    ```
+
+---
+
+## 🎨 Creator Mode & Collections
+
+### `GET /api/collections/presets`
+Get collection presets from the configuration database.
+
+??? example "View Response"
+    ```json
+    [
+      {
+        "id": "1234567890",
+        "name": "My Custom Blue Preset",
+        "bgType": "texture",
+        "overlayImage": "data:image/png;base64,..."
+      }
+    ]
+    ```
+
+### `POST /api/collections/presets`
+Save collection presets to the configuration database.
+
+### `POST /api/collections/save`
+Save the generated collection poster locally in the Assets directory.
+
+### `POST /api/collections/upload-to-server`
+Upload a poster directly to the connected Media Server (Plex, Jellyfin, Emby).
+
+### `POST /api/media-server/collections`
+Fetch collections directly from the configured media server.
+
+### `GET /api/studio-logos`
+Get the list of available studio logos from the GitHub repository, caching them locally.
+
+### `GET /api/studio-logos/image/{filename}`
+Serve a specific studio logo image from the local cache.
+
+### `POST /api/collections/search`
+Search TMDB for collections by name or ID (e.g. `tmdb:12345`).
+
+### `POST /api/media/logos`
+Search TMDB for media (movies or TV shows) and retrieve their logos.
+
+### `GET /api/proxy-image`
+Proxy external images (like TMDB/Fanart) to avoid CORS issues on the frontend canvas.
+
+### `GET /api/assets/folders`
+Get folders from the assets directory. If `library_name` is provided, returns all media folders within that library; otherwise returns all top-level library directories.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "folders": [
+        {
+          "folderName": "Inception (2010) {tmdb-27205}",
+          "title": "Inception",
+          "year": "2010",
+          "path": "Movies/Inception (2010) {tmdb-27205}"
+        }
+      ],
+      "library": "Movies"
+    }
+    ```
+
+### `GET /api/assets/skipped`
+Retrieve all skipped items detected during runs, including item title, library, skip reason, and resolution status.
+
+### `POST /api/assets/skipped/refresh`
+Forces a re-scan of log files to refresh and update the list of skipped assets.
+
+### `POST /api/assets/unskip`
+Marks a skipped item as unskipped or resolved so it can be reprocessed on the next run.
+
+### `GET /api/proxy/poster`
+Proxies local or remote poster images to provide secure previews and avoid CORS restrictions.
+
+### `POST /api/media-server/items`
+Fetch paginated items from a connected media server (Plex, Jellyfin, Emby) with clearLogo presence detection and proxied image URLs.
+
+??? example "View Request"
+    ```json
+    {
+      "server_type": "plex",
+      "url": "http://192.168.1.50:32400",
+      "token": "plex-token-here",
+      "library_id": "1",
+      "start": 0,
+      "limit": 50
+    }
+    ```
+
+### `POST /api/media-server/check-logos`
+Batch checks a list of item IDs (`rating_keys`) against Plex to verify which items already have clearLogo artwork.
+
+### `GET /api/media-server/image`
+Securely proxies image streams directly from Plex, Jellyfin, or Emby servers without exposing authentication tokens in frontend image URLs.
+
+### `POST /api/media-server/upload-logo`
+Downloads a selected logo (from URL or data URI), applies Posterizarr metadata tags using Pillow/ImageMagick, and uploads it directly to the media server as a clearLogo.

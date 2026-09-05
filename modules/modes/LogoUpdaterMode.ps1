@@ -8,17 +8,43 @@
 
 
 
+    $isOtherServer = ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true')
+    $AllLibs = $null
+    if ($isOtherServer) {
+        $allLibsquery = "$($OtherMediaServerUrl.TrimEnd('/'))/Library/VirtualFolders"
+        try {
+            $AllLibs = Invoke-RestMethod -Method Get -Uri $allLibsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+        } catch {
+            Write-Entry -Message "Error querying JF/Emby libs" -Path $global:configLogging -Color Red -log Error
+        }
+    }
+
     if (-not $LibraryName) {
         # Prompt for library
-        Write-Entry -Message "Query plex libs..." -Path $global:configLogging -Color White -log Info
         $Libsoverview = [System.Collections.Generic.List[object]]::new()
-        foreach ($lib in $Libs.MediaContainer.Directory) {
-            if ($lib.title -notin $LibstoExclude -and ($lib.type -eq 'movie' -or $lib.type -eq 'show')) {
-                $libtemp = New-Object psobject
-                $libtemp | Add-Member -MemberType NoteProperty -Name "ID" -Value $lib.key
-                $libtemp | Add-Member -MemberType NoteProperty -Name "Name" -Value $lib.title
-                $libtemp | Add-Member -MemberType NoteProperty -Name "Type" -Value $lib.type
-                $Libsoverview.Add($libtemp)
+        if ($isOtherServer) {
+            Write-Entry -Message "Query JF/Emby libs..." -Path $global:configLogging -Color White -log Info
+            if ($AllLibs) {
+                foreach ($lib in $AllLibs) {
+                    if ($lib.Name -notin $LibstoExclude -and ($lib.CollectionType -eq 'movies' -or $lib.CollectionType -eq 'tvshows')) {
+                        $libtemp = New-Object psobject
+                        $libtemp | Add-Member -MemberType NoteProperty -Name "ID" -Value $lib.ItemId
+                        $libtemp | Add-Member -MemberType NoteProperty -Name "Name" -Value $lib.Name
+                        $libtemp | Add-Member -MemberType NoteProperty -Name "Type" -Value $lib.CollectionType
+                        $Libsoverview.Add($libtemp)
+                    }
+                }
+            }
+        } else {
+            Write-Entry -Message "Query plex libs..." -Path $global:configLogging -Color White -log Info
+            foreach ($lib in $Libs.MediaContainer.Directory) {
+                if ($lib.title -notin $LibstoExclude -and ($lib.type -eq 'movie' -or $lib.type -eq 'show')) {
+                    $libtemp = New-Object psobject
+                    $libtemp | Add-Member -MemberType NoteProperty -Name "ID" -Value $lib.key
+                    $libtemp | Add-Member -MemberType NoteProperty -Name "Name" -Value $lib.title
+                    $libtemp | Add-Member -MemberType NoteProperty -Name "Type" -Value $lib.type
+                    $Libsoverview.Add($libtemp)
+                }
             }
         }
 
@@ -51,16 +77,33 @@
 
     $LibrariesToProcess = @()
     if ($LibraryName -eq "all") {
-        foreach ($lib in $Libs.MediaContainer.Directory) {
-            if ($lib.title -notin $LibstoExclude -and ($lib.type -eq 'movie' -or $lib.type -eq 'show')) {
-                $LibrariesToProcess += $lib
+        if ($isOtherServer) {
+            if ($AllLibs) {
+                foreach ($lib in $AllLibs) {
+                    if ($lib.Name -notin $LibstoExclude -and ($lib.CollectionType -eq 'movies' -or $lib.CollectionType -eq 'tvshows')) {
+                        $LibrariesToProcess += $lib
+                    }
+                }
+            }
+        } else {
+            foreach ($lib in $Libs.MediaContainer.Directory) {
+                if ($lib.title -notin $LibstoExclude -and ($lib.type -eq 'movie' -or $lib.type -eq 'show')) {
+                    $LibrariesToProcess += $lib
+                }
             }
         }
     }
     else {
-        $SelectedLib = $Libs.MediaContainer.Directory | Where-Object { $_.title -eq $LibraryName }
-        if ($SelectedLib) {
-            $LibrariesToProcess += $SelectedLib
+        if ($isOtherServer) {
+            $SelectedLib = $AllLibs | Where-Object { $_.Name -eq $LibraryName }
+            if ($SelectedLib) {
+                $LibrariesToProcess += $SelectedLib
+            }
+        } else {
+            $SelectedLib = $Libs.MediaContainer.Directory | Where-Object { $_.title -eq $LibraryName }
+            if ($SelectedLib) {
+                $LibrariesToProcess += $SelectedLib
+            }
         }
     }
 
@@ -70,8 +113,115 @@
     }
 
     foreach ($SelectedLib in $LibrariesToProcess) {
-        $LibraryName = $SelectedLib.title
-        Write-Entry -Message "Processing library: $LibraryName ($($SelectedLib.type))" -Path $global:configLogging -Color Cyan -log Info
+        if ($isOtherServer) {
+            $LibraryName = $SelectedLib.Name
+            Set-LibraryLanguageOverride -LibraryName $LibraryName
+            Write-Entry -Message "Processing library: $LibraryName ($($SelectedLib.CollectionType))" -Path $global:configLogging -Color Cyan -log Info
+            
+            $allItems = [System.Collections.Generic.List[object]]::new()
+            $libId = $SelectedLib.ItemId
+            $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$libId&Recursive=true&Fields=ProviderIds,OriginalTitle,ImageTags,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie,Series"
+            try {
+                $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
+                if ($Querytemp.Items) {
+                    foreach ($item in $Querytemp.Items) {
+                        $allItems.Add($item)
+                    }
+                }
+            } catch {
+                Write-Entry -Subtext "Error fetching items for $LibraryName" -Path $global:configLogging -Color Red -log Error
+                continue
+            }
+            
+            Write-Entry -Subtext "Found $($allItems.Count) items. Checking for missing logos..." -Path $global:configLogging -Color Cyan -log Info
+            
+            foreach ($item in $allItems) {
+                $ratingKey = $item.Id
+                $title = $item.Name
+                $hasLogo = if ($item.ImageTags -and $item.ImageTags.Logo) { $true } else { $false }
+                
+                if ($hasLogo) {
+                    if ($LogoRevert) {
+                        Write-Entry -Message "[$title] Logo exists. Attempting Revert..." -Path $global:configLogging -Color Yellow -log Info
+                        $deleteUrl = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
+                        try {
+                            Invoke-RestMethod -Method Delete -Uri $deleteUrl -Headers $global:OtherMediaServerHeaders
+                            Write-Entry -Subtext "[$title] Successfully deleted via API." -Path $global:configLogging -Color Green -log Info
+                            $global:UploadCount = Increment-GlobalStat 'UploadCount'
+                        } catch {
+                            Write-Entry -Subtext "[$title] Unexpected error during deletion: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        }
+                        continue
+                    }
+                    if ($ForceReplace) {
+                        Write-Entry -Message "[$title] Logo exists but ForceReplace is enabled. Attempting to fetch..." -Path $global:configLogging -Color Yellow -log Info
+                    }
+                    else {
+                        Write-Entry -Subtext "[$title] Logo already exists. Skipping." -Path $global:configLogging -Color Cyan -log Debug
+                        continue
+                    }
+                } else {
+                    if ($LogoRevert) {
+                        continue
+                    }
+                    Write-Entry -Message "[$title] Missing Logo. Attempting to fetch..." -Path $global:configLogging -Color Yellow -log Info
+                }
+                
+                $global:tmdbid = $item.ProviderIds.Tmdb
+                $global:tvdbid = $item.ProviderIds.Tvdb
+                $global:imdbid = $item.ProviderIds.Imdb
+                $global:LogoUrl = $null
+                $global:UseClearlogo = 'true'
+                $global:UseClearart = 'false'
+                
+                if (-not $global:tmdbid -and -not $global:tvdbid -and -not $global:imdbid) {
+                    Write-Entry -Subtext "[$title] Could not extract any IDs." -Path $global:configLogging -Color Yellow -log Warning
+                    continue
+                }
+                
+                $mediaType = if ($item.Type -eq 'Movie') { 'movie' } else { 'tv' }
+                $tvdbType = if ($item.Type -eq 'Movie') { 'movies' } else { 'series' }
+                $fanartType = if ($item.Type -eq 'Movie') { 'movies' } else { 'tv' }
+                
+                GetTMDBLogo -Type $mediaType | Out-Null
+                if (-not $global:LogoUrl) { GetTVDBLogo -Type $tvdbType | Out-Null }
+                if (-not $global:LogoUrl) { GetFanartLogo -Type $fanartType | Out-Null }
+                
+                if ($global:LogoUrl) {
+                    Write-Entry -Subtext "[$title] Found Logo URL: $global:LogoUrl" -Path $global:configLogging -Color Green -log Info
+                    $global:matched++
+                    
+                    $tempLogo = Join-Path $global:ScriptRoot -ChildPath "temp\logo_$ratingKey.png"
+                    try {
+                        Invoke-WebRequest -Uri $global:LogoUrl -OutFile $tempLogo -ErrorAction Stop
+                        
+                        if ($magick) {
+                            $CommentArguments = "`"$tempLogo`" -set `"comment`" `"created with posterizarr`" `"$tempLogo`""
+                            InvokeMagickCommand -Command $magick -Arguments $CommentArguments
+                        }
+                        
+                        $uploadUri = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
+                        Write-Entry -Subtext "[$title] Uploading Logo to Jellyfin/Emby..." -Path $global:configLogging -Color DarkMagenta -log Info
+                        
+                        $base64Logo = [Convert]::ToBase64String([IO.File]::ReadAllBytes($tempLogo))
+                        Invoke-RestMethod -Method Post -Uri $uploadUri -Headers $global:OtherMediaServerHeaders -Body $base64Logo -ContentType "image/png"
+                        Write-Entry -Subtext "[$title] Logo uploaded successfully!" -Path $global:configLogging -Color Green -log Info
+                        $global:UploadCount = Increment-GlobalStat 'UploadCount'
+                        
+                    } catch {
+                        Write-Entry -Subtext "[$title] Processing failed: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        $global:errorCount = Increment-GlobalStat 'errorCount'
+                    } finally {
+                        if (Test-Path $tempLogo) { Remove-Item -LiteralPath $tempLogo -Force }
+                    }
+                } else {
+                    Write-Entry -Subtext "[$title] No Logo found online." -Path $global:configLogging -Color Yellow -log Warning
+                }
+            }
+        } else {
+            $LibraryName = $SelectedLib.title
+            Set-LibraryLanguageOverride -LibraryName $LibraryName
+            Write-Entry -Message "Processing library: $LibraryName ($($SelectedLib.type))" -Path $global:configLogging -Color Cyan -log Info
 
         $PlexHeaders = @{}
         if ($PlexToken) {
@@ -399,6 +549,7 @@
             else {
                 Write-Entry -Subtext "[$title] No Logo found online." -Path $global:configLogging -Color Yellow -log Warning
             }
+        }
         }
         Write-Entry -Message "Finished processing library: $LibraryName. Logos processed: $UploadCount" -Path $global:configLogging -Color Green -log Info
     }

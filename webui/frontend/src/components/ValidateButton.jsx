@@ -86,6 +86,13 @@ const ValidateButton = ({
           };
           break;
 
+        case "agregarr":
+          requestBody = {
+            url: config.AgregarrUrl?.trim(),
+            api_key: config.AgregarrApiKey?.trim(),
+          };
+          break;
+
         default:
           throw new Error(`Unknown validation type: ${type}`);
       }
@@ -103,10 +110,11 @@ const ValidateButton = ({
       setLastResult(result);
 
       // Callback notifications
+      const resultMessage = result.message || result.detail || `${label} failed`;
       if (result.valid) {
-        if (onSuccess) onSuccess(result.message);
+        if (onSuccess) onSuccess(resultMessage);
       } else {
-        if (onError) onError(result.message);
+        if (onError) onError(resultMessage);
       }
     } catch (error) {
       const errorMessage = `Validation failed: ${error.message}`;

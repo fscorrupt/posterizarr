@@ -104,16 +104,16 @@
       },
       "logoUpdater": {
         "title": "Logo Updater",
-        "description": "Auto-fetch Plex ClearLogos"
+        "description": "Auto-fetch Plex/Jellyfin/Emby ClearLogos"
       }
     },
     "logoUpdater": {
       "title": "Logo Updater Mode",
-      "info": "Plex ClearLogo Auto-Updater",
-      "subtitle": "This mode will scan the selected Plex library for items missing a ClearLogo, fetch them automatically, and upload them to Plex.",
+      "info": "Plex/Jellyfin/Emby ClearLogo Auto-Updater",
+      "subtitle": "This mode will scan the selected library for items missing a ClearLogo, fetch them automatically, and upload them to the server.",
       "selectLibrary": "Select Library",
       "forceReplace": "Force Replace Existing",
-      "forceReplaceDesc": "Overwrite logos even if they already exist in Plex",
+      "forceReplaceDesc": "Overwrite logos even if they already exist on the server",
       "start": "Start Logo Updater",
       "browse": "Browse"
     },
@@ -1714,7 +1714,24 @@
     "noAssetsToDelete": "No filtered assets to delete.",
     "bulkDeleteAllFilteredTitle": "Delete All Filtered Assets?",
     "bulkDeleteAllFilteredConfirm": "Are you sure you want to permanently delete all {{count}} filtered assets?\n\nThis will delete both the files and their database records. This action cannot be undone.",
-    "confirmDeleteAll": "Confirm & Delete ({{count}})"
+    "confirmDeleteAll": "Confirm & Delete ({{count}})",
+    "skipMediaServer": "Skip in Media Server",
+    "skipMediaServerTooltip": "Add 'skip_posterizarr' label to the Plex item so it is ignored in future runs",
+    "skipMediaServerSuccess": "Successfully added skip label in Plex for '{{title}}'",
+    "skipMediaServerFailed": "Failed to add skip label in Plex: {{error}}",
+    "skipMediaServerError": "Error skipping in Plex: {{error}}",
+    "skipPlexSuccess": "Successfully skipped \"{{title}}\" in media server.",
+    "skipPlexFailed": "Failed to skip in media server: {{error}}",
+    "skipPlexError": "Error skipping in media server: {{error}}",
+    "tabActive": "Active Actions",
+    "tabSkipped": "Skipped Items",
+    "unskipTooltip": "Remove skip label from media server and restore item",
+    "unskipSuccess": "Successfully unskipped \"{{title}}\"",
+    "unskipFailed": "Failed to unskip: {{error}}",
+    "unskipError": "Error unskipping item: {{error}}",
+    "noSkippedItems": "No skipped items found.",
+    "skippedInfoTitle": "About Skipped Items",
+    "skippedInfoDesc": "This view shows all assets that have the 'skip_posterizarr' label applied in your media server, as well as items manually skipped via the Posterizarr UI. Items listed here will be ignored by Posterizarr during background syncs."
   },
   "common": {
     "view": "View",

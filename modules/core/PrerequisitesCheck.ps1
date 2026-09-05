@@ -52,6 +52,7 @@ if (Test-Path $CurrentlyRunning) {
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "down" -msg "Another instance running"
     }
+    $global:ExitRequested = $true
     Exit
 }
 Else {
@@ -322,9 +323,9 @@ if (-not $module) {
 
 # Only connect if DisableOnlineAssetFetch is not set to false, and not running a mode that skips online search
 if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby -and !$Backup -and !$Manual -and !$PosterReset -and !$Restore) {
-    $checkFanart = (-not $global:OverrideProviderOrder) -or ($global:ProviderOrder -contains 'FANART')
-    $checkTMDB = (-not $global:OverrideProviderOrder) -or ($global:ProviderOrder -contains 'TMDB')
-    $checkTVDB = (-not $global:OverrideProviderOrder) -or ($global:ProviderOrder -contains 'TVDB')
+    $checkFanart = (-not $global:UseCustomProviderOrder) -or ($global:ProviderOrder -contains 'FANART')
+    $checkTMDB = (-not $global:UseCustomProviderOrder) -or ($global:ProviderOrder -contains 'TMDB')
+    $checkTVDB = (-not $global:UseCustomProviderOrder) -or ($global:ProviderOrder -contains 'TVDB')
 
     Write-Entry -Message "Starting Provider Validation..." -Path $global:configLogging -Color White -log Info
 

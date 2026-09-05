@@ -46,6 +46,8 @@ The frontend follows a component-based architecture located entirely within `web
 - **`GalleryHub.jsx`, `Gallery.jsx`, `SeasonGallery.jsx`, `TitleCardGallery.jsx`**: Interactive grids displaying generated artwork. They handle lazy loading, filtering, and detailed inspection.
 - **`ImagePreviewModal.jsx`**: A modal component to view full-resolution posters.
 - **`AssetReplacer.jsx`**: Interface for manually overriding or replacing specific assets.
+- **`LogoBrowser.jsx`**: A dedicated browser for exploring your media server libraries and checking for missing or existing clearlogos.
+- **`LogoSearchModal.jsx`**: A search interface to fetch replacement clearlogos from providers (TMDB, TVDB, Fanart) via text or ID and upload them directly to the media server.
 - **`BackgroundsGallery.jsx`**: Specialized gallery for viewing and selecting background source images.
 
 ### Monitoring & Status

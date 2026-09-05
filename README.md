@@ -37,6 +37,7 @@
 Posterizarr is a PowerShell script with a full Web UI that automates generating images for your media library. It fetches artwork from Fanart.tv, TMDB, TVDB, Plex, and IMDb, focusing on textless images and applying your own custom overlays and text.
 
 * **User-Friendly Web UI:** Manage settings, monitor activity, and trigger runs from a browser.
+* **Logo Management:** Search, preview, and manually replace clearlogos directly from the Web UI.
 * **Multiple Media Servers:** Supports Plex, Jellyfin, and Emby.
 * **Kometa Integration:** Organizes assets in a Kometa-compatible folder structure.
 * **Smart Integration:** Trigger runs from Tautulli, Sonarr, and Radarr.
@@ -114,7 +115,7 @@ I review and test every line before it’s committed.
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/chart?repos=fscorrupt/posterizarr&type=date&legend=top-left&sealed_token=1UsvpQqgCoNRgiO4GkQfI_O3kt_VzfvVnV3fw9yVylVKnT7NlXUTstMpw2laYigrhT9FAyMZGl1lVpBRxOjTeJGl4TdEoH_5Q-Vk-1sDriU_3YkA1u9yLg)](https://www.star-history.com/?repos=fscorrupt%2Fposterizarr&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=fscorrupt/posterizarr&type=date&legend=top-left&sealed_token=UnvtqA0-rM_NkgL8lgyAq-I_prozQwNYS1wh-4wh1wiIugXX349fyqJ530qGr22AVPY4GASP5PrS3s7GFpKqJ30IG8NpXMmHFqMa7F0cQghRjrCglFiErA)](https://www.star-history.com/?repos=fscorrupt%2Fposterizarr&type=date&legend=top-left)
 
 
 <br />

@@ -30,7 +30,7 @@ if ($GatherLogs) {
     if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) {
         Write-Host "[Posterizarr] Error: Python is not installed or not found in PATH." -ForegroundColor Red
         Write-Host "[Posterizarr] Python is required to sanitize the database for the support zip." -ForegroundColor Red
-        exit 1
+        $global:ExitRequested = $true; exit 1
     }
 
     # Run the function
@@ -43,7 +43,7 @@ if ($GatherLogs) {
     }
     catch {
         Write-Host "[Posterizarr] Failed to create support zip: $($_.Exception.Message)" -ForegroundColor Red
-        exit 1
+        $global:ExitRequested = $true; exit 1
     }
 }
 
@@ -112,6 +112,8 @@ $global:tsMissMsBag = [System.Collections.Concurrent.ConcurrentBag[long]]::new()
 $global:runspaceStats = [hashtable]::Synchronized(@{
     errorCount = 0
     posterCount = 0
+    PlexRootPosterUploads = 0
+    PlexChildArtworkUploads = 0
     FallbackCount = 0
     PosterUnknownCount = 0
     TruncatedCount = 0
@@ -216,6 +218,9 @@ Send-PosterizarrTelemetry
 $global:SendNotification = "$($config.Notification.SendNotification)".ToLower()
 $global:UseUptimeKuma = "$($config.Notification.UseUptimeKuma)".ToLower()
 $global:DiscordUserName = $config.Notification.DiscordUserName
+$global:AgregarrTriggerEnabled = "$($config.Notification.AgregarrTriggerEnabled)".ToLower()
+$global:AgregarrUrl = "$($config.Notification.AgregarrUrl)".TrimEnd('/')
+$global:AgregarrApiKey = "$($config.Notification.AgregarrApiKey)"
 if ($global:UseUptimeKuma -eq 'true') {
     $global:UptimeKumaUrl = $config.Notification.UptimeKumaUrl
 }
@@ -261,11 +266,24 @@ $global:PosterMinHeight = $config.ApiPart.PosterMinHeight
 $global:BgTcMinWidth = $config.ApiPart.BgTcMinWidth
 $global:BgTcMinHeight = $config.ApiPart.BgTcMinHeight
 $global:FavProvider = $config.ApiPart.FavProvider.ToUpper()
-$global:OverrideProviderOrder = if ($null -ne $config.ApiPart.OverrideProviderOrder) { $config.ApiPart.OverrideProviderOrder.ToString().ToLower() -eq 'true' } else { $false }
+$global:ProviderPriorityMode = if ($null -ne $config.ApiPart.ProviderPriorityMode) { $config.ApiPart.ProviderPriorityMode } else { "Simple" }
+
 $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.ApiPart.ProviderOrder } else { @("TMDB", "TVDB", "Fanart", "Plex") }
 if ($global:ProviderOrder) {
-    $global:ProviderOrder = $global:ProviderOrder | ForEach-Object { $_.ToUpper() }
+    $global:ProviderOrder = @($global:ProviderOrder | ForEach-Object { $_.ToUpper() })
 }
+$global:DefaultProviderOrder = $global:ProviderOrder
+
+$global:MovieProviderOrder = if ($null -ne $config.ApiPart.MovieProviderOrder) { $config.ApiPart.MovieProviderOrder } else { @() }
+if ($global:MovieProviderOrder) {
+    $global:MovieProviderOrder = @($global:MovieProviderOrder | ForEach-Object { $_.ToUpper() })
+}
+
+$global:ShowProviderOrder = if ($null -ne $config.ApiPart.ShowProviderOrder) { $config.ApiPart.ShowProviderOrder } else { @() }
+if ($global:ShowProviderOrder) {
+    $global:ShowProviderOrder = @($global:ShowProviderOrder | ForEach-Object { $_.ToUpper() })
+}
+
 $global:TMDBVoteSorting = "$($config.ApiPart.tmdb_vote_sorting)".ToLower()
 if (!$global:TMDBVoteSorting) {
     Write-Entry -Message "TMDB Sorting option not set in config, setting it to 'vote_average' for you" -Path $global:configLogging -Color Yellow -log Warning
@@ -278,6 +296,7 @@ $global:PreferredSeasonLanguageOrder = $config.ApiPart.PreferredSeasonLanguageOr
 $global:PreferredTCLanguageOrder = $config.ApiPart.PreferredTCLanguageOrder
 $global:PreferredBackgroundLanguageOrder = $config.ApiPart.PreferredBackgroundLanguageOrder
 $global:LogoLanguageOrder = $config.ApiPart.LogoLanguageOrder
+$global:TmdbLanguageMappings = $config.ApiPart.TmdbLanguageMappings
 
 # Special handling: inherit poster language if set to "PleaseFillMe"
 if ($global:PreferredBackgroundLanguageOrder -eq 'PleaseFillMe') {
@@ -291,6 +310,7 @@ Initialize-LanguageSettings -SettingName "PreferredLanguageOrder"           -Lab
 Initialize-LanguageSettings -SettingName "PreferredSeasonLanguageOrder"     -Label "Season"
 Initialize-LanguageSettings -SettingName "PreferredTCLanguageOrder"         -Label "TC"
 Initialize-LanguageSettings -SettingName "PreferredBackgroundLanguageOrder" -Label "Background"
+Initialize-LanguageSettings -SettingName "LogoLanguageOrder"                -Label "Logo"
 
 # Library-specific language override support
 $global:LibraryLanguageOverrides = $config.ApiPart.LibraryLanguageOverrides
@@ -758,3 +778,4 @@ else {
         $magick = Join-Path $magickinstalllocation 'magick.exe'
     }
 }
+

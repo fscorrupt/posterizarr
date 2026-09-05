@@ -5,7 +5,7 @@ function GetTMDBLogo {
     if ($global:tmdbid) {
         Write-Entry -Subtext "Searching on TMDB for a Logo - TMDBID: $global:tmdbid" -Path $global:configLogging -Color Cyan -log Info
         try {
-            $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/$Type/$($global:tmdbid)?append_to_response=images&language=$($global:LogoLanguageOrder[0])&include_image_language=$($global:LogoLanguageOrder -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+            $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/$Type/$($global:tmdbid)?append_to_response=images&language=$($global:LogoLanguageOrderTMDB[0])&include_image_language=$($global:LogoLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
             Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
@@ -13,10 +13,10 @@ function GetTMDBLogo {
         }
         if ($response) {
             if ($response.images.logos) {
-                foreach ($lang in $global:LogoLanguageOrder) {
+                foreach ($lang in $global:LogoLanguageOrderTMDB) {
                     if ($lang -ne 'null' -and $lang -ne 'xx') {
                         if ($global:UseClearlogo -eq 'true') {
-                            $FavPoster = ($response.images.logos | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.logos | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
 
@@ -70,7 +70,7 @@ function GetTVDBLogo {
         }
         if ($response) {
             if ($response.data) {
-                foreach ($lang in $global:LogoLanguageOrder) {
+                foreach ($lang in $global:LogoLanguageOrderTVDB) {
                     if ($lang -ne 'null') {
                         if ($global:UseClearart -eq 'true') {
                             if ($Type -eq 'series') {
@@ -147,7 +147,7 @@ function GetFanartLogo {
         }
 
         if ($field -and $entrytemp.$field) {
-            foreach ($lang in $global:LogoLanguageOrder) {
+            foreach ($lang in $global:LogoLanguageOrderFanart) {
                 $matchedLogos = $entrytemp.$field | Where-Object { $_.lang -eq $lang }
 
                 if ($matchedLogos) {
@@ -239,7 +239,7 @@ function GetTMDBMoviePoster {
                         }
                         if ($posterpath) {
                             $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                            if ($global:FavProvider -eq 'TMDB') {
+                            if ($global:EffectivePrimaryProvider -eq 'TMDB') {
                                 $global:Fallback = "fanart"
                                 $global:tmdbfallbackposterurl = $global:posterurl
                             }
@@ -341,10 +341,10 @@ function GetTMDBMoviePoster {
                     }
                     Else {
                         if ($global:WidthHeightFilter -eq 'true') {
-                            $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.images.posters | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -440,7 +440,7 @@ function GetTMDBMovieBackground {
                         }
                         if ($posterpath) {
                             $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                            if ($global:FavProvider -eq 'TMDB') {
+                            if ($global:EffectivePrimaryProvider -eq 'TMDB') {
                                 $global:Fallback = "fanart"
                                 $global:tmdbfallbackposterurl = $global:posterurl
                             }
@@ -507,7 +507,7 @@ function GetTMDBMovieBackground {
             Else {
                 Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
-                if ($global:FavProvider -eq 'TMDB') {
+                if ($global:EffectivePrimaryProvider -eq 'TMDB') {
                     $global:Fallback = "fanart"
                 }
             }
@@ -536,7 +536,7 @@ function GetTMDBMovieBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
+                            $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                     }
                     Else {
@@ -544,7 +544,7 @@ function GetTMDBMovieBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -572,13 +572,13 @@ function GetTMDBMovieBackground {
                 }
                 if (!$global:posterurl -and $global:WidthHeightFilter -eq 'false') {
                     Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
-                    if ($global:FavProvider -ne 'fanart') {
+                    if ($global:EffectivePrimaryProvider -ne 'fanart') {
                         $global:Fallback = "fanart"
                     }
                 }
                 if (!$global:posterurl -and $global:WidthHeightFilter -eq 'true') {
                     Write-Entry -Subtext "No Background found on TMDB with the specified dimensions." -Path $global:configLogging -Color Yellow -log Warning
-                    if ($global:FavProvider -ne 'fanart') {
+                    if ($global:EffectivePrimaryProvider -ne 'fanart') {
                         $global:Fallback = "fanart"
                     }
                 }
@@ -586,7 +586,7 @@ function GetTMDBMovieBackground {
             Else {
                 Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
-                if ($global:FavProvider -ne 'fanart') {
+                if ($global:EffectivePrimaryProvider -ne 'fanart') {
                     $global:Fallback = "fanart"
                 }
             }
@@ -665,7 +665,7 @@ function GetTMDBShowPoster {
                             }
                             if ($posterpath) {
                                 $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                                if ($global:FavProvider -ne 'fanart') {
+                                if ($global:EffectivePrimaryProvider -ne 'fanart') {
                                     $global:Fallback = "fanart"
                                     $global:tmdbfallbackposterurl = $global:posterurl
                                 }
@@ -757,7 +757,7 @@ function GetTMDBShowPoster {
                                 $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                             }
                             Else {
-                                $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                                $FavPoster = ($response.images.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                             }
                         }
                         Else {
@@ -765,7 +765,7 @@ function GetTMDBShowPoster {
                                 $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                             }
                             Else {
-                                $FavPoster = ($response.images.posters | Where-Object iso_639_1 -eq $lang)
+                                $FavPoster = ($response.images.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                             }
                         }
                         if ($FavPoster) {
@@ -806,6 +806,7 @@ function GetTMDBSeasonPoster {
     Write-Entry -Subtext "Searching on TMDB for Season '$global:SeasonNumber' poster - TMDBID: $global:tmdbid" -Path $global:configLogging -Color Cyan -log Info
     if (!$global:tmdbid) {
         Write-Entry -Subtext "Cannot search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
+        return
     }
     if ($global:SeasonPreferTextless -eq $true) {
         try {
@@ -966,7 +967,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($responseBackup.images.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($responseBackup.images.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                     }
                     Else {
@@ -974,7 +975,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($responseBackup.images.posters | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($responseBackup.images.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -1016,7 +1017,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($response.posters | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($response.posters | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                     }
                     Else {
@@ -1024,7 +1025,7 @@ function GetTMDBSeasonPoster {
                             $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.posters | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.posters | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -1129,7 +1130,7 @@ function GetTMDBShowBackground {
                         }
                         if ($posterpath) {
                             $global:posterurl = "https://image.tmdb.org/t/p/original$posterpath"
-                            if ($global:FavProvider -ne 'fanart') {
+                            if ($global:EffectivePrimaryProvider -ne 'fanart') {
 
                                 $global:Fallback = "fanart"
                                 $global:tmdbfallbackposterurl = $global:posterurl
@@ -1188,7 +1189,7 @@ function GetTMDBShowBackground {
                 }
                 if (!$global:posterurl) {
                     Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
-                    if ($global:FavProvider -ne 'fanart') {
+                    if ($global:EffectivePrimaryProvider -ne 'fanart') {
                         $global:Fallback = "fanart"
                     }
                 }
@@ -1196,7 +1197,7 @@ function GetTMDBShowBackground {
             Else {
                 Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
-                if ($global:FavProvider -ne 'fanart') {
+                if ($global:EffectivePrimaryProvider -ne 'fanart') {
                     $global:Fallback = "fanart"
                 }
             }
@@ -1225,7 +1226,7 @@ function GetTMDBShowBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
+                            $FavPoster = ($response.images.backdrops | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight })
                         }
                     }
                     Else {
@@ -1233,7 +1234,7 @@ function GetTMDBShowBackground {
                             $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.images.backdrops | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.images.backdrops | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -1262,7 +1263,7 @@ function GetTMDBShowBackground {
                 if (!$global:posterurl) {
                     Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
                     $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
-                    if ($global:FavProvider -ne 'fanart') {
+                    if ($global:EffectivePrimaryProvider -ne 'fanart') {
                         $global:Fallback = "fanart"
                     }
                 }
@@ -1270,7 +1271,7 @@ function GetTMDBShowBackground {
             Else {
                 Write-Entry -Subtext "No Background found on TMDB" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
-                if ($global:FavProvider -ne 'fanart') {
+                if ($global:EffectivePrimaryProvider -ne 'fanart') {
                     $global:Fallback = "fanart"
                 }
             }
@@ -1429,7 +1430,7 @@ function GetTMDBTitleCard {
                             $FavPoster = ($response.stills | Where-Object { ($_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                         Else {
-                            $FavPoster = ($response.stills | Where-Object { $_.iso_639_1 -eq $lang -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
+                            $FavPoster = ($response.stills | Where-Object { ($_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1)) -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight })
                         }
                     }
                     Else {
@@ -1437,7 +1438,7 @@ function GetTMDBTitleCard {
                             $FavPoster = ($response.stills | Where-Object { $_.iso_639_1 -eq 'xx' -or $_.iso_3166_1 -eq 'XX' -or $_.iso_3166_1 -eq $null -or $_.iso_639_1 -eq $null })
                         }
                         Else {
-                            $FavPoster = ($response.stills | Where-Object iso_639_1 -eq $lang)
+                            $FavPoster = ($response.stills | Where-Object { $_.iso_639_1 -eq $lang -or "$($_.iso_639_1)-$($_.iso_3166_1)" -eq $lang -or ($_.iso_639_1 -eq ($lang -split '-')[0] -and -not $_.iso_3166_1) })
                         }
                     }
                     if ($FavPoster) {
@@ -1504,7 +1505,7 @@ function GetFanartMoviePoster {
                             $global:FANARTAssetTextLang = ($entrytemp.movieposter)[0].lang
                             $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
 
-                            if ($global:FavProvider -eq 'FANART') {
+                            if ($global:EffectivePrimaryProvider -eq 'FANART') {
                                 $global:Fallback = "TMDB"
                                 $global:fanartfallbackposterurl = ($entrytemp.movieposter)[0].url
                             }
@@ -1606,7 +1607,7 @@ function GetFanartMovieBackground {
                         $global:FANARTAssetTextLang = ($entrytemp.moviebackground)[0].lang
                         $global:FANARTAssetChangeUrl = "https://fanart.tv/movie/$id"
 
-                        if ($global:FavProvider -eq 'FANART') {
+                        if ($global:EffectivePrimaryProvider -eq 'FANART') {
                             $global:Fallback = "TMDB"
                             $global:fanartfallbackposterurl = ($entrytemp.moviebackground)[0].url
                         }
@@ -1665,14 +1666,14 @@ function GetFanartShowPoster {
                         $global:FANARTAssetTextLang = ($entrytemp.tvposter)[0].lang
                         $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
 
-                        if ($global:FavProvider -eq 'FANART') {
+                        if ($global:EffectivePrimaryProvider -eq 'FANART') {
                             $global:Fallback = "TMDB"
                             $global:fanartfallbackposterurl = ($entrytemp.tvposter)[0].url
                         }
                     }
                     Else {
                         Write-Entry -Subtext "Found Poster with text on FANART, skipping because you only want textless..." -Path $global:configLogging -Color Yellow -log Info
-                        if ($global:FavProvider -eq 'FANART') {
+                        if ($global:EffectivePrimaryProvider -eq 'FANART') {
                             $global:Fallback = "TMDB"
                         }
                         $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
@@ -1693,13 +1694,13 @@ function GetFanartShowPoster {
         }
         Else {
             Write-Entry -Subtext "Cannot search on FANART, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
-            if ($global:FavProvider -eq 'FANART') {
+            if ($global:EffectivePrimaryProvider -eq 'FANART') {
                 $global:Fallback = "TMDB"
             }
         }
         if (!$global:posterurl) {
             Write-Entry -Subtext "No show match or poster found on Fanart.tv" -Path $global:configLogging -Color Yellow -log Warning
-            if ($global:FavProvider -eq 'FANART') {
+            if ($global:EffectivePrimaryProvider -eq 'FANART') {
                 $global:Fallback = "TMDB"
             }
         }
@@ -1743,7 +1744,7 @@ function GetFanartShowPoster {
         }
         if (!$global:posterurl) {
             Write-Entry -Subtext "No show match or poster found on Fanart.tv" -Path $global:configLogging -Color Yellow -log Warning
-            if ($global:FavProvider -eq 'FANART') {
+            if ($global:EffectivePrimaryProvider -eq 'FANART') {
                 $global:Fallback = "TMDB"
             }
         }
@@ -1775,7 +1776,7 @@ function GetFanartShowBackground {
                     $global:FANARTAssetTextLang = ($entrytemp.showbackground)[0].lang
                     $global:FANARTAssetChangeUrl = "https://fanart.tv/series/$id"
 
-                    if ($global:FavProvider -eq 'FANART') {
+                    if ($global:EffectivePrimaryProvider -eq 'FANART') {
                         $global:Fallback = "TMDB"
                         $global:fanartfallbackposterurl = ($entrytemp.showbackground)[0].url
                     }
@@ -2033,7 +2034,7 @@ function GetTVDBMoviePoster {
                                     if ($lang -ne 'null') {
                                         $global:PosterWithText = $true
                                         $global:TVDBAssetTextLang = $lang
-                                        if ($global:FavProvider -eq 'TVDB') {
+                                        if ($global:EffectivePrimaryProvider -eq 'TVDB') {
                                             $global:Fallback = "TMDB"
                                             $global:TVDBfallbackposterurl = $LangArtwork[0].image
                                         }
@@ -2071,6 +2072,11 @@ function GetTVDBMoviePoster {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/movie/$global:tvdbid"
+                }
                 if ($response.data.artworks) {
                     foreach ($lang in $global:PreferredLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
@@ -2140,6 +2146,11 @@ function GetTVDBMovieBackground {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/movie/$global:tvdbid"
+                }
                 if ($response.data.artworks) {
                     if ($global:WidthHeightFilter -eq 'true') {
                         $NoLangArtwork = $response.data.artworks | Where-Object { $null -eq $_.language -and $_.type -eq '15' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
@@ -2192,7 +2203,7 @@ function GetTVDBMovieBackground {
                                     if ($lang -ne 'null') {
                                         $global:PosterWithText = $true
                                         $global:TVDBAssetTextLang = $lang
-                                        if ($global:FavProvider -eq 'TVDB') {
+                                        if ($global:EffectivePrimaryProvider -eq 'TVDB') {
                                             $global:Fallback = "TMDB"
                                             $global:TVDBfallbackposterurl = $LangArtwork[0].image
                                         }
@@ -2209,18 +2220,18 @@ function GetTVDBMovieBackground {
                         }
                         Else {
                             Write-Entry -Subtext "Found background with text on TVDB, skipping because you only want textless..." -Path $global:configLogging -Color Yellow -log Info
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/#artwork"
+                            $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                         }
                     }
                 }
                 Else {
                     Write-Entry -Subtext "No Background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                    $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                 }
             }
             Else {
                 Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
             }
         }
         Else {
@@ -2234,6 +2245,11 @@ function GetTVDBMovieBackground {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/movie/$global:tvdbid"
+                }
                 if ($response.data.artworks) {
                     foreach ($lang in $global:PreferredBackgroundLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
@@ -2267,24 +2283,24 @@ function GetTVDBMovieBackground {
                                 $global:PosterWithText = $true
                                 $global:TVDBAssetTextLang = $lang
                             }
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                            $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                             return $global:posterurl
                             continue
                         }
                     }
                     if (!$global:posterurl) {
                         Write-Entry -Subtext "No background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                        $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                     }
                 }
                 Else {
                     Write-Entry -Subtext "No Background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                    $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                 }
             }
             Else {
                 Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
             }
         }
     }
@@ -2330,7 +2346,7 @@ function GetTVDBShowPoster {
                             $global:posterurl = $defaultImageurl
                             Write-Entry -Subtext "Found Poster with text on TVDB" -Path $global:configLogging -Color Blue -log Info
                             $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)#artwork"
-                            if ($global:FavProvider -ne 'TVDB') {
+                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                 if (!$global:tmdbsearched) {
                                     $global:Fallback = "TMDB"
                                 }
@@ -2364,6 +2380,11 @@ function GetTVDBShowPoster {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
+                }
                 if ($response.data) {
                     foreach ($lang in $global:PreferredLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
@@ -2432,6 +2453,11 @@ function GetTVDBSeasonPoster {
 
         }
         if ($response) {
+            if ($response.data.slug) {
+                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/official/$global:SeasonNumber#artwork"
+            } elseif ($global:tvdbid) {
+                $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
+            }
             if ($response.data.seasons) {
                 # Select season id from current Season number
                 $SeasonID = $response.data.seasons | Where-Object { $_.number -eq $global:SeasonNumber -and $_.type.type -eq 'official' }
@@ -2447,6 +2473,9 @@ function GetTVDBSeasonPoster {
 
                 }
                 if ($Seasonresponse) {
+                    if ($response.data.slug -and $Seasonresponse.data.type.type) {
+                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
+                    }
                     foreach ($lang in $global:PreferredSeasonLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
                             if ($lang -eq 'null') {
@@ -2500,7 +2529,7 @@ function GetTVDBSeasonPoster {
                             continue
                         }
                     }
-                    if (!$global:posterurl -and $global:PosterOnlyTextless -eq $true) {
+                    if (!$global:posterurl -and $global:SeasonOnlyTextless -eq $true) {
                         Write-Entry -Subtext "No Textless Poster found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
                     }
                     Else {
@@ -2511,12 +2540,12 @@ function GetTVDBSeasonPoster {
             }
             Else {
                 Write-Entry -Subtext "No Poster found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
+                $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/series/$($response.data.slug)/seasons/official/$global:SeasonNumber#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/series/$global:tvdbid" } Else { "false" }
             }
         }
         Else {
             Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
-            $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
+            $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/series/$global:tvdbid" } Else { "false" }
         }
     }
     Else {
@@ -2525,6 +2554,7 @@ function GetTVDBSeasonPoster {
 }
 function GetTVDBShowBackground {
     if ($global:tvdbid) {
+        $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
         Write-Entry -Subtext "Searching on TVDB for a background - TVDBID: $global:tvdbid" -Path $global:configLogging -Color Cyan -log Info
         if ($global:BackgroundPreferTextless -eq $true) {
             try {
@@ -2660,6 +2690,7 @@ function GetTVDBShowBackground {
 }
 function GetTVDBTitleCard {
     if ($global:tvdbid) {
+        $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
         Write-Entry -Subtext "Searching on TVDB for: $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card - TVDBID: $global:tvdbid" -Path $global:configLogging -Color Cyan -log Info
         $allEpisodes = [System.Collections.Generic.List[object]]::new()
         $page = 0
@@ -2693,19 +2724,19 @@ function GetTVDBTitleCard {
                     Write-Entry -Subtext "Found Title Card on TVDB" -Path $global:configLogging -Color Blue -log Info
                     $global:TextlessPoster = $true
                     $global:PosterWithText = $null
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes.series.slug)/episodes/$($global:NoLangImageUrl.id)"
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes[0].series.slug)/episodes/$($global:NoLangImageUrl.id)"
 
                     return $global:NoLangImageUrl.image
                 }
                 Else {
                     Write-Entry -Subtext "No Title Card found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes.slug)/#artwork"
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes[0].series.slug)/#artwork"
 
                 }
             }
             Else {
                 Write-Entry -Subtext "No Title Card found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes.slug)/#artwork"
+                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($allEpisodes[0].series.slug)/#artwork"
 
             }
         }
@@ -2868,7 +2899,7 @@ function UploadOtherMediaServerArtwork {
                 $response = Invoke-WebRequest -Uri $ImageUrl -OutFile $tempFile -Headers $headers -ErrorAction Stop
 
                 $magickcommand = "& `"$magick`" identify -verbose `"$tempFile`""
-                $magickcommand | Out-File $magickLog -Append
+                try { $magickcommand | Out-File $magickLog -Append -ErrorAction Stop } catch {}
                 $value = Invoke-Expression $magickcommand | Select-String -Pattern 'overlay|titlecard|created with ppm|created with posterizarr'
 
                 Remove-Item $tempFile -Force -ErrorAction SilentlyContinue | out-null
@@ -3002,3 +3033,98 @@ function UploadOtherMediaServerArtwork {
         }
     }
 }
+
+function Get-FavProviderUrl {
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$Provider = $global:EffectivePrimaryProvider,
+        [Parameter(Mandatory = $false)]
+        [string]$Type, # 'Movie', 'MovieBackground', 'Show', 'ShowBackground', 'Season', 'Episode'
+        [Parameter(Mandatory = $false)]
+        [string]$TmdbId,
+        [Parameter(Mandatory = $false)]
+        [string]$TvdbId,
+        [Parameter(Mandatory = $false)]
+        [string]$SeasonNumber = $global:SeasonNumber,
+        [Parameter(Mandatory = $false)]
+        [string]$EpisodeNumber = $global:episodenumber
+    )
+
+    # 1. First check if a specific change URL was populated during API lookup
+    $globalUrl = switch -Wildcard ($Provider) {
+        'TVDB*'   { $global:TVDBAssetChangeUrl }
+        'TMDB*'   { $global:TMDBAssetChangeUrl }
+        'FANART*' { $global:FANARTAssetChangeUrl }
+        Default   { $null }
+    }
+
+    # Reject null, empty, false, or malformed URLs (such as missing slugs like /series//#artwork or /movies/#artwork)
+    if ($globalUrl -and $globalUrl -ne 'false' -and $globalUrl -ne '' -and $globalUrl -notmatch 'thetvdb\.com/(series|movies)/#artwork' -and $globalUrl -notmatch 'thetvdb\.com/(series|movies)//') {
+        return $globalUrl
+    }
+
+    # Normalize IDs
+    $tmdb = if ($TmdbId -and $TmdbId -ne 'false') { $TmdbId } elseif ($global:tmdbid -and $global:tmdbid -ne 'false') { $global:tmdbid } else { $null }
+    $tvdb = if ($TvdbId -and $TvdbId -ne 'false') { $TvdbId } elseif ($global:tvdbid -and $global:tvdbid -ne 'false') { $global:tvdbid } else { $null }
+    $sNum = if ($SeasonNumber -ne $null -and $SeasonNumber -ne '' -and $SeasonNumber -ne 'false') { $SeasonNumber } else { $global:SeasonNumber }
+    $eNum = if ($EpisodeNumber -ne $null -and $EpisodeNumber -ne '' -and $EpisodeNumber -ne 'false') { $EpisodeNumber } else { $global:episodenumber }
+
+    # 2. Build canonical provider URL based on Provider and Type
+    switch -Wildcard ($Provider) {
+        'TVDB*' {
+            if ($tvdb) {
+                if ($Type -like 'Movie*') {
+                    return "https://thetvdb.com/dereferrer/movie/$tvdb"
+                }
+                else {
+                    return "https://thetvdb.com/dereferrer/series/$tvdb"
+                }
+            }
+        }
+        'TMDB*' {
+            if ($tmdb) {
+                if ($Type -like '*Season*') {
+                    if ($sNum -ne $null -and $sNum -ne '') {
+                        return "https://www.themoviedb.org/tv/$tmdb/season/$sNum/images/posters"
+                    }
+                    return "https://www.themoviedb.org/tv/$tmdb/images/posters"
+                }
+                elseif ($Type -eq 'ShowBackground') {
+                    return "https://www.themoviedb.org/tv/$tmdb/images/backdrops"
+                }
+                elseif ($Type -like 'Show*' -or $Type -like 'Series*') {
+                    return "https://www.themoviedb.org/tv/$tmdb/images/posters"
+                }
+                elseif ($Type -eq 'MovieBackground') {
+                    return "https://www.themoviedb.org/movie/$tmdb/images/backdrops"
+                }
+                elseif ($Type -like 'Movie*') {
+                    return "https://www.themoviedb.org/movie/$tmdb/images/posters"
+                }
+                elseif ($Type -like 'Episode*') {
+                    if ($sNum -ne $null -and $eNum -ne $null) {
+                        return "https://www.themoviedb.org/tv/$tmdb/season/$sNum/episode/$eNum"
+                    }
+                    return "https://www.themoviedb.org/tv/$tmdb"
+                }
+                else {
+                    return "https://www.themoviedb.org"
+                }
+            }
+        }
+        'FANART*' {
+            if ($Type -like 'Movie*') {
+                $fId = if ($tmdb) { $tmdb } else { $tvdb }
+                if ($fId) { return "https://fanart.tv/movie/$fId" }
+            }
+            else {
+                $fId = if ($tvdb) { $tvdb } else { $tmdb }
+                if ($fId) { return "https://fanart.tv/series/$fId" }
+            }
+        }
+    }
+
+    return 'false'
+}
+
+

@@ -3,7 +3,7 @@ function Invoke-MoviePosterCreation {
         $entry
     )
         if ($null -eq $entry) { return }
-        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name'
+        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name' -MediaType 'Movie'
         try {
             if ($($entry.RootFoldername)) {
                 # check if item has skip label
@@ -167,7 +167,7 @@ function Invoke-MoviePosterCreation {
                                 $tempLogoAvailable = $false
                                 if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
                                     $tempLogoUrl = $null
-                                    $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                    $searchOrder = $global:ProviderOrder
                                     foreach ($provider in $searchOrder) {
                                         if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
                                         switch ($provider) {
@@ -193,7 +193,9 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                                $global:IsFallback = $false
+                                $global:FallbackText = $null
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -223,7 +225,7 @@ function Invoke-MoviePosterCreation {
                                 }
                             }
                             Else {
-                                switch -Wildcard ($global:FavProvider) {
+                                switch -Wildcard ($global:EffectivePrimaryProvider) {
                                     'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBMoviePoster }Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartMoviePoster } }
                                     'FANART' { $global:posterurl = GetFanartMoviePoster }
                                     'TVDB' { if ($entry.tvdbid) { $global:posterurl = GetTVDBMoviePoster }Else { Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartMoviePoster } }
@@ -250,7 +252,7 @@ function Invoke-MoviePosterCreation {
                                         Write-Entry -Subtext "Took TVDB Fallback poster because it is your Fav Provider" -Path $global:configLogging -Color Cyan -log Info
                                         $global:IsFallback = $true
                                     }
-                                    if ($global:FavProvider -eq 'TVDB' -and !$global:posterurl) {
+                                    if ($global:EffectivePrimaryProvider -eq 'TVDB' -and !$global:posterurl) {
                                         if ($entry.tmdbid) {
                                             $global:posterurl = GetTMDBMoviePoster
                                             $global:IsFallback = $true
@@ -263,7 +265,7 @@ function Invoke-MoviePosterCreation {
                                 }
 
                                 if ($global:PosterOnlyTextless -and !$global:posterurl) {
-                                    if ($global:FavProvider -eq 'TVDB') {
+                                    if ($global:EffectivePrimaryProvider -eq 'TVDB') {
                                         if ($entry.tmdbid) {
                                             $global:posterurl = GetTMDBMoviePoster
                                             $global:IsFallback = $true
@@ -273,7 +275,7 @@ function Invoke-MoviePosterCreation {
                                             $global:IsFallback = $true
                                         }
                                     }
-                                    Elseif ($global:FavProvider -eq 'FANART') {
+                                    Elseif ($global:EffectivePrimaryProvider -eq 'FANART') {
                                         if ($entry.tmdbid) {
                                             $global:posterurl = GetTMDBMoviePoster
                                             $global:IsFallback = $true
@@ -285,7 +287,7 @@ function Invoke-MoviePosterCreation {
                                     }
                                     Else {
                                         $global:posterurl = GetFanartMoviePoster
-                                        if (!$global:FavProvider -eq 'FANART') {
+                                        if (!$global:EffectivePrimaryProvider -eq 'FANART') {
                                             $global:IsFallback = $true
                                         }
                                         if (!$global:posterurl) {
@@ -296,7 +298,7 @@ function Invoke-MoviePosterCreation {
                                 }
 
                                 if (!$global:posterurl) {
-                                    if ($global:FavProvider -ne 'TVDB' -and !$global:PosterOnlyTextless -and !$global:PosterPreferTextless) {
+                                    if ($global:EffectivePrimaryProvider -ne 'TVDB' -and !$global:PosterOnlyTextless -and !$global:PosterPreferTextless) {
                                         $global:posterurl = GetTVDBMoviePoster
                                         $global:IsFallback = $true
                                     }
@@ -363,7 +365,7 @@ function Invoke-MoviePosterCreation {
                                             Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TMDBAssetTextLang
                                         }
-                                        if ($global:FavProvider -ne 'TMDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -376,7 +378,7 @@ function Invoke-MoviePosterCreation {
                                             Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:FANARTAssetTextLang
                                         }
-                                        if ($global:FavProvider -ne 'FANART') {
+                                        if ($global:EffectivePrimaryProvider -ne 'FANART') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -389,13 +391,13 @@ function Invoke-MoviePosterCreation {
                                             Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TVDBAssetTextLang
                                         }
-                                        if ($global:FavProvider -ne 'TVDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     elseif ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                         Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
+                                        if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -499,7 +501,7 @@ function Invoke-MoviePosterCreation {
                                                 $global:LogoUrl = $null
                                                 $global:LogoLanguage = $null
                                                 $allProviders = @('TMDB', 'FANART', 'TVDB')
-                                                $searchOrder = @($global:FavProvider) + ($allProviders -ne $global:FavProvider)
+                                                $searchOrder = $global:ProviderOrder
 
                                                 foreach ($provider in $searchOrder) {
                                                     if (-not [string]::IsNullOrEmpty($global:LogoUrl)) { break }
@@ -511,7 +513,7 @@ function Invoke-MoviePosterCreation {
                                                 }
                                                 if (-not [string]::IsNullOrEmpty($global:LogoUrl)) {
                                                     $global:IsFallback = $false
-                                                    switch ($global:FavProvider) {
+                                                    switch ($global:EffectivePrimaryProvider) {
                                                         'TMDB' {
                                                             if (-not ($global:LogoUrl.StartsWith("https://image.tmdb.org"))) {
                                                                 $global:IsFallback = $true
@@ -529,7 +531,7 @@ function Invoke-MoviePosterCreation {
                                                         }
                                                     }
                                                     if ($global:IsFallback) {
-                                                        Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:FavProvider)" -Path $global:configLogging -Color Yellow -log Debug
+                                                        Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:EffectivePrimaryProvider)" -Path $global:configLogging -Color Yellow -log Debug
                                                     }
                                                 }
                                                 if ([string]::IsNullOrEmpty($global:LogoUrl)) {
@@ -720,6 +722,7 @@ function Invoke-MoviePosterCreation {
                                                     else {
                                                         Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                         Write-Entry -Subtext "$Titletext | Poster successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                        $null = Increment-GlobalStat 'PlexRootPosterUploads'
                                                     }
                                                 }
                                                 catch {
@@ -769,10 +772,10 @@ function Invoke-MoviePosterCreation {
                                         $movietemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                         $movietemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $movietemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                        switch -Wildcard ($global:FavProvider) {
-                                            'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                            'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                            'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                        switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                            'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                             Default { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
 
@@ -803,10 +806,10 @@ function Invoke-MoviePosterCreation {
                                 $movietemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                 $movietemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $movietemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                switch -Wildcard ($global:FavProvider) {
-                                    'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                    'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                    'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                    'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                     Default { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -848,6 +851,7 @@ function Invoke-MoviePosterCreation {
                                             else {
                                                 Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                 Write-Entry -Subtext "$Titletext | Poster successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                $null = Increment-GlobalStat 'PlexRootPosterUploads'
                                             }
                                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
                                         }
@@ -982,7 +986,7 @@ function Invoke-MoviePosterCreation {
                                 $tempLogoAvailable = $false
                                 if ($TextlessPosterBypass -eq 'true' -and $UseBGLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
                                     $tempLogoUrl = $null
-                                    $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                    $searchOrder = $global:ProviderOrder
                                     foreach ($provider in $searchOrder) {
                                         if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
                                         switch ($provider) {
@@ -1008,7 +1012,9 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                                $global:IsFallback = $false
+                                $global:FallbackText = $null
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -1038,7 +1044,7 @@ function Invoke-MoviePosterCreation {
                                 }
                             }
                             Else {
-                                switch -Wildcard ($global:FavProvider) {
+                                switch -Wildcard ($global:EffectivePrimaryProvider) {
                                     'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBMovieBackground }Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartMovieBackground } }
                                     'FANART' { $global:posterurl = GetFanartMovieBackground }
                                     'TVDB' { if ($entry.tvdbid) { $global:posterurl = GetTVDBMovieBackground }Else { Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartMovieBackground } }
@@ -1060,7 +1066,7 @@ function Invoke-MoviePosterCreation {
                                         Write-Entry -Subtext "Took TMDB Fallback background because it is your Fav Provider" -Path $global:configLogging -Color Cyan -log Info
                                         $global:IsFallback = $true
                                     }
-                                    if ($global:FavProvider -eq 'TVDB' -and !$global:posterurl) {
+                                    if ($global:EffectivePrimaryProvider -eq 'TVDB' -and !$global:posterurl) {
                                         if ($entry.tmdbid) {
                                             $global:posterurl = GetTMDBMovieBackground
                                             $global:IsFallback = $true
@@ -1072,7 +1078,7 @@ function Invoke-MoviePosterCreation {
                                     }
                                 }
                                 if ($global:BackgroundOnlyTextless -and !$global:posterurl) {
-                                    if ($global:FavProvider -eq 'TVDB') {
+                                    if ($global:EffectivePrimaryProvider -eq 'TVDB') {
                                         if ($entry.tmdbid) {
                                             $global:posterurl = GetTMDBMovieBackground
                                             $global:IsFallback = $true
@@ -1084,13 +1090,13 @@ function Invoke-MoviePosterCreation {
                                     }
                                     Else {
                                         $global:posterurl = GetFanartMovieBackground
-                                        if (!$global:FavProvider -eq 'FANART') {
+                                        if (!$global:EffectivePrimaryProvider -eq 'FANART') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                 }
                                 if (!$global:posterurl) {
-                                    if ($global:FavProvider -ne 'TVDB') {
+                                    if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                         $global:posterurl = GetTVDBMovieBackground
                                         if ($global:posterurl) {
                                             $global:IsFallback = $true
@@ -1157,7 +1163,7 @@ function Invoke-MoviePosterCreation {
                                             Write-Entry -Subtext "Downloading Textless background from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TMDBAssetTextLang
                                         }
-                                        if ($global:FavProvider -ne 'TMDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -1170,7 +1176,7 @@ function Invoke-MoviePosterCreation {
                                             Write-Entry -Subtext "Downloading Textless background from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:FANARTAssetTextLang
                                         }
-                                        if ($global:FavProvider -ne 'FANART') {
+                                        if ($global:EffectivePrimaryProvider -ne 'FANART') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -1183,13 +1189,13 @@ function Invoke-MoviePosterCreation {
                                             Write-Entry -Subtext "Downloading Textless background from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TVDBAssetTextLang
                                         }
-                                        if ($global:FavProvider -ne 'TVDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     elseif ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                         Write-Entry -Subtext "Downloading Background from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
+                                        if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -1293,7 +1299,7 @@ function Invoke-MoviePosterCreation {
                                                 $global:LogoUrl = $null
                                                 $global:LogoLanguage = $null
                                                 $allProviders = @('TMDB', 'FANART', 'TVDB')
-                                                $searchOrder = @($global:FavProvider) + ($allProviders -ne $global:FavProvider)
+                                                $searchOrder = $global:ProviderOrder
 
                                                 foreach ($provider in $searchOrder) {
                                                     if (-not [string]::IsNullOrEmpty($global:LogoUrl)) { break }
@@ -1305,7 +1311,7 @@ function Invoke-MoviePosterCreation {
                                                 }
                                                 if (-not [string]::IsNullOrEmpty($global:LogoUrl)) {
                                                     $global:IsFallback = $false
-                                                    switch ($global:FavProvider) {
+                                                    switch ($global:EffectivePrimaryProvider) {
                                                         'TMDB' {
                                                             if (-not ($global:LogoUrl.StartsWith("https://image.tmdb.org"))) {
                                                                 $global:IsFallback = $true
@@ -1323,7 +1329,7 @@ function Invoke-MoviePosterCreation {
                                                         }
                                                     }
                                                     if ($global:IsFallback) {
-                                                        Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:FavProvider)" -Path $global:configLogging -Color Yellow -log Debug
+                                                        Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:EffectivePrimaryProvider)" -Path $global:configLogging -Color Yellow -log Debug
                                                     }
                                                 }
                                                 if ([string]::IsNullOrEmpty($global:LogoUrl)) {
@@ -1564,10 +1570,10 @@ function Invoke-MoviePosterCreation {
                                         $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                         $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                        switch -Wildcard ($global:FavProvider) {
-                                            'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                            'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                            'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                        switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                            'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                             Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
                                         # Export the array to a CSV file
@@ -1597,10 +1603,10 @@ function Invoke-MoviePosterCreation {
                                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                switch -Wildcard ($global:FavProvider) {
-                                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                     Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -1698,10 +1704,10 @@ function Invoke-MoviePosterCreation {
                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                switch -Wildcard ($global:FavProvider) {
-                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                switch -Wildcard ($global:EffectivePrimaryProvider) {
+                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                     Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                 }
 
@@ -1718,7 +1724,7 @@ function Invoke-ShowPosterCreation {
         $entry
     )
         if ($null -eq $entry) { return }
-        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name'
+        Set-LibraryLanguageOverride -LibraryName $entry.'Library Name' -MediaType 'Show'
 
         if ($($entry.RootFoldername)) {
             # check if item has skip label
@@ -1884,7 +1890,7 @@ function Invoke-ShowPosterCreation {
                             $tempLogoAvailable = $false
                             if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
                                 $tempLogoUrl = $null
-                                $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                $searchOrder = $global:ProviderOrder
                                 foreach ($provider in $searchOrder) {
                                     if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
                                     switch ($provider) {
@@ -1910,7 +1916,9 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             Write-Entry -Message "Start Poster Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                            $global:IsFallback = $false
+                            $global:FallbackText = $null
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -1940,7 +1948,7 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             Else {
-                            switch -Wildcard ($global:FavProvider) {
+                            switch -Wildcard ($global:EffectivePrimaryProvider) {
                                 'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBShowPoster }Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowPoster } }
                                 'FANART' { $global:posterurl = GetFanartShowPoster }
                                 'TVDB' { if ($entry.tvdbid) { $global:posterurl = GetTVDBShowPoster }Else { Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowPoster } }
@@ -1948,7 +1956,7 @@ function Invoke-ShowPosterCreation {
                                 Default { $global:posterurl = GetFanartShowPoster }
                             }
                             if (!$global:posterurl) {
-                                Write-Entry -Subtext "Could not find a poster on: $global:FavProvider" -Path $global:configLogging -Color White -log Info
+                                Write-Entry -Subtext "Could not find a poster on: $global:EffectivePrimaryProvider" -Path $global:configLogging -Color White -log Info
                             }
                             switch -Wildcard ($global:Fallback) {
                                 'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBShowPoster } Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning } }
@@ -1971,12 +1979,12 @@ function Invoke-ShowPosterCreation {
                                     $global:IsFallback = $true
                                 }
                                 # try to find textless on TVDB
-                                if ($global:TextlessPoster -ne 'true' -and $entry.tvdbid -and $global:FavProvider -ne 'TVDB') {
+                                if ($global:TextlessPoster -ne 'true' -and $entry.tvdbid -and $global:EffectivePrimaryProvider -ne 'TVDB') {
                                     $global:posterurl = GetTVDBShowPoster
                                     $global:IsFallback = $true
                                     $global:tvdbalreadysearched = $true
                                 }
-                                if ($global:FavProvider -eq 'TVDB' -and $global:TextlessPoster -ne 'true') {
+                                if ($global:EffectivePrimaryProvider -eq 'TVDB' -and $global:TextlessPoster -ne 'true') {
                                     $global:posterurl = GetFanartMoviePoster
                                     $global:IsFallback = $true
                                 }
@@ -2066,7 +2074,7 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "Downloading Textless Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TMDBAssetTextLang
                                     }
-                                    if ($global:FavProvider -ne 'TMDB') {
+                                    if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                         $global:IsFallback = $true
                                     }
                                 }
@@ -2079,7 +2087,7 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "Downloading Textless Poster from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:FANARTAssetTextLang
                                     }
-                                    if ($global:FavProvider -ne 'Fanart') {
+                                    if ($global:EffectivePrimaryProvider -ne 'Fanart') {
                                         $global:IsFallback = $true
                                     }
                                 }
@@ -2092,13 +2100,13 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "Downloading Textless Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TVDBAssetTextLang
                                     }
-                                    if ($global:FavProvider -ne 'TVDB') {
+                                    if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                         $global:IsFallback = $true
                                     }
                                 }
                                 elseif ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                     Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                    if ($global:FavProvider -ne 'PLEX') {
+                                    if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                         $global:IsFallback = $true
                                     }
                                 }
@@ -2202,7 +2210,7 @@ function Invoke-ShowPosterCreation {
                                             $global:LogoUrl = $null
                                             $global:LogoLanguage = $null
                                             $allProviders = @('TMDB', 'FANART', 'TVDB')
-                                            $searchOrder = @($global:FavProvider) + ($allProviders -ne $global:FavProvider)
+                                            $searchOrder = $global:ProviderOrder
 
                                             foreach ($provider in $searchOrder) {
                                                 if (-not [string]::IsNullOrEmpty($global:LogoUrl)) { break }
@@ -2214,7 +2222,7 @@ function Invoke-ShowPosterCreation {
                                             }
                                             if (-not [string]::IsNullOrEmpty($global:LogoUrl)) {
                                                 $global:IsFallback = $false
-                                                switch ($global:FavProvider) {
+                                                switch ($global:EffectivePrimaryProvider) {
                                                     'TMDB' {
                                                         if (-not ($global:LogoUrl.StartsWith("https://image.tmdb.org"))) {
                                                             $global:IsFallback = $true
@@ -2232,7 +2240,7 @@ function Invoke-ShowPosterCreation {
                                                     }
                                                 }
                                                 if ($global:IsFallback) {
-                                                    Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:FavProvider)" -Path $global:configLogging -Color Yellow -log Debug
+                                                    Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:EffectivePrimaryProvider)" -Path $global:configLogging -Color Yellow -log Debug
                                                 }
                                             }
                                             if ([string]::IsNullOrEmpty($global:LogoUrl)) {
@@ -2423,6 +2431,7 @@ function Invoke-ShowPosterCreation {
                                                 else {
                                                     Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                     Write-Entry -Subtext "$Titletext | Poster successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                    $null = Increment-GlobalStat 'PlexRootPosterUploads'
                                                 }
                                             }
                                             catch {
@@ -2472,10 +2481,10 @@ function Invoke-ShowPosterCreation {
                                     $showtemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                     $showtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                     $showtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                    switch -Wildcard ($global:FavProvider) {
-                                        'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                        'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                        'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                    switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                        'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                         Default { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -2505,10 +2514,10 @@ function Invoke-ShowPosterCreation {
                             $showtemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                             $showtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                             $showtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                            switch -Wildcard ($global:FavProvider) {
-                                'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                            switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                 Default { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                             }
 
@@ -2550,6 +2559,7 @@ function Invoke-ShowPosterCreation {
                                         else {
                                             Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                             Write-Entry -Subtext "$Titletext | Poster successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                            $null = Increment-GlobalStat 'PlexRootPosterUploads'
                                         }
                                         $global:UploadCount = Increment-GlobalStat 'UploadCount'
                                     }
@@ -2693,7 +2703,7 @@ function Invoke-ShowPosterCreation {
                             $tempLogoAvailable = $false
                             if ($TextlessPosterBypass -eq 'true' -and $UseBGLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
                                 $tempLogoUrl = $null
-                                $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                $searchOrder = $global:ProviderOrder
                                 foreach ($provider in $searchOrder) {
                                     if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
                                     switch ($provider) {
@@ -2719,7 +2729,9 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             Write-Entry -Message "Start Background Search for: $Titletext" -Path $global:configLogging -Color White -log Info
-                            if ($global:OverrideProviderOrder) {
+                            $global:IsFallback = $false
+                            $global:FallbackText = $null
+                            if ($global:UseCustomProviderOrder) {
                                 $global:LoopFallbackPosterUrl = $null
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -2749,7 +2761,7 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             Else {
-                            switch -Wildcard ($global:FavProvider) {
+                            switch -Wildcard ($global:EffectivePrimaryProvider) {
                                 'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBShowBackground }Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowBackground } }
                                 'FANART' { $global:posterurl = GetFanartShowBackground }
                                 'TVDB' { if ($entry.tvdbid) { $global:posterurl = GetTVDBShowBackground }Else { Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowBackground } }
@@ -2771,7 +2783,7 @@ function Invoke-ShowPosterCreation {
                                     Write-Entry -Subtext "Took TMDB Fallback background because it is your Fav Provider" -Path $global:configLogging -Color Cyan -log Info
                                     $global:IsFallback = $true
                                 }
-                                if ($global:FavProvider -eq 'TVDB' -and !$global:posterurl) {
+                                if ($global:EffectivePrimaryProvider -eq 'TVDB' -and !$global:posterurl) {
                                     if ($entry.tmdbid) {
                                         $global:posterurl = GetTMDBShowBackground
                                         if ($global:posterurl) {
@@ -2789,7 +2801,7 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             if ($global:BackgroundOnlyTextless -and !$global:posterurl) {
-                                if ($global:FavProvider -eq 'TVDB') {
+                                if ($global:EffectivePrimaryProvider -eq 'TVDB') {
                                     if ($entry.tmdbid) {
                                         $global:posterurl = GetTMDBShowBackground
                                         $global:IsFallback = $true
@@ -2806,7 +2818,7 @@ function Invoke-ShowPosterCreation {
                                 }
                             }
                             if (!$global:posterurl) {
-                                if ($global:FavProvider -ne 'TVDB') {
+                                if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                     $global:posterurl = GetTVDBShowBackground
                                     if ($global:posterurl) {
                                         $global:IsFallback = $true
@@ -2874,7 +2886,7 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "Downloading Textless background from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TMDBAssetTextLang
                                     }
-                                    if ($global:FavProvider -ne 'TMDB') {
+                                    if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                         $global:IsFallback = $true
                                     }
                                 }
@@ -2887,7 +2899,7 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "Downloading Textless background from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:FANARTAssetTextLang
                                     }
-                                    if ($global:FavProvider -ne 'FANART') {
+                                    if ($global:EffectivePrimaryProvider -ne 'FANART') {
                                         $global:IsFallback = $true
                                     }
                                 }
@@ -2900,13 +2912,13 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "Downloading Textless background from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TVDBAssetTextLang
                                     }
-                                    if ($global:FavProvider -ne 'TVDB') {
+                                    if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                         $global:IsFallback = $true
                                     }
                                 }
                                 elseif ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                     Write-Entry -Subtext "Downloading Background from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                    if ($global:FavProvider -ne 'PLEX') {
+                                    if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                         $global:IsFallback = $true
                                     }
                                 }
@@ -2998,7 +3010,7 @@ function Invoke-ShowPosterCreation {
                                             $global:LogoUrl = $null
                                             $global:LogoLanguage = $null
                                             $allProviders = @('TMDB', 'FANART', 'TVDB')
-                                            $searchOrder = @($global:FavProvider) + ($allProviders -ne $global:FavProvider)
+                                            $searchOrder = $global:ProviderOrder
 
                                             foreach ($provider in $searchOrder) {
                                                 if (-not [string]::IsNullOrEmpty($global:LogoUrl)) { break }
@@ -3010,7 +3022,7 @@ function Invoke-ShowPosterCreation {
                                             }
                                             if (-not [string]::IsNullOrEmpty($global:LogoUrl)) {
                                                 $global:IsFallback = $false
-                                                switch ($global:FavProvider) {
+                                                switch ($global:EffectivePrimaryProvider) {
                                                     'TMDB' {
                                                         if (-not ($global:LogoUrl.StartsWith("https://image.tmdb.org"))) {
                                                             $global:IsFallback = $true
@@ -3028,7 +3040,7 @@ function Invoke-ShowPosterCreation {
                                                     }
                                                 }
                                                 if ($global:IsFallback) {
-                                                    Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:FavProvider)" -Path $global:configLogging -Color Yellow -log Debug
+                                                    Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:EffectivePrimaryProvider)" -Path $global:configLogging -Color Yellow -log Debug
                                                 }
                                             }
                                             if ([string]::IsNullOrEmpty($global:LogoUrl)) {
@@ -3269,10 +3281,10 @@ function Invoke-ShowPosterCreation {
                                     $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                     $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                     $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                    switch -Wildcard ($global:FavProvider) {
-                                        'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                        'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                        'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                    switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                        'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                         Default { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -3302,10 +3314,10 @@ function Invoke-ShowPosterCreation {
                             $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                             $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                             $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                            switch -Wildcard ($global:FavProvider) {
-                                'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                            switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                 Default { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                             }
 
@@ -3550,7 +3562,7 @@ function Invoke-ShowPosterCreation {
                                     $tempLogoAvailable = $false
                                     if ($TextlessPosterBypass -eq 'true' -and $UseLogo -eq 'true' -and ($global:UseClearlogo -eq 'true' -or $global:UseClearart -eq 'true')) {
                                         $tempLogoUrl = $null
-                                        $searchOrder = @($global:FavProvider) + (@('TMDB', 'FANART', 'TVDB') -ne $global:FavProvider)
+                                        $searchOrder = $global:ProviderOrder
                                         foreach ($provider in $searchOrder) {
                                             if (-not [string]::IsNullOrEmpty($tempLogoUrl)) { break }
                                             switch ($provider) {
@@ -3576,7 +3588,9 @@ function Invoke-ShowPosterCreation {
                                         }
                                     }
                                     Write-Entry -Message "Start Season Poster Search for: $Titletext | $global:seasonTitle" -Path $global:configLogging -Color White -log Info
-                                if ($global:OverrideProviderOrder) {
+                                    $global:IsFallback = $false
+                                    $global:FallbackText = $null
+                                if ($global:UseCustomProviderOrder) {
                                     $global:LoopFallbackPosterUrl = $null
                                     foreach ($provider in $global:ProviderOrder) {
                                         if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
@@ -3607,8 +3621,7 @@ function Invoke-ShowPosterCreation {
                                 }
                                 Else {
                                     $Seasonpostersearchtext = $true
-                                }
-                                switch -Wildcard ($global:FavProvider) {
+                                    switch -Wildcard ($global:EffectivePrimaryProvider) {
                                     'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBSeasonPoster }Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning } }
                                     'FANART' { $global:posterurl = GetFanartSeasonPoster }
                                     'TVDB' { if ($entry.tvdbid) { $global:posterurl = GetTVDBSeasonPoster }Else { Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning } }
@@ -3618,19 +3631,19 @@ function Invoke-ShowPosterCreation {
                                 # do a specific order
                                 if ($global:SeasonPreferTextless -eq $true) {
                                     if (!$global:posterurl -or !$global:TextlessPoster) {
-                                        if (!$entry.tmdbid -and $global:FavProvider -ne 'TMDB') {
+                                        if (!$entry.tmdbid -and $global:EffectivePrimaryProvider -ne 'TMDB') {
                                             Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
                                         }
-                                        if (!$entry.tvdbid -and $global:FavProvider -ne 'TVDB') {
+                                        if (!$entry.tvdbid -and $global:EffectivePrimaryProvider -ne 'TVDB') {
                                             Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
                                         }
-                                        if ($global:FavProvider -ne 'TMDB' -and $entry.tmdbid) {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB' -and $entry.tmdbid) {
                                             $global:posterurl = GetTMDBSeasonPoster
                                             $global:IsFallback = $true
                                             Write-Entry -Subtext "Function GetTMDBSeasonPoster called..." -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         if (!$global:posterurl -or !$global:TextlessPoster) {
-                                            if ($global:FavProvider -ne 'FANART') {
+                                            if ($global:EffectivePrimaryProvider -ne 'FANART') {
                                                 $global:posterurl = GetFanartSeasonPoster
                                                 Write-Entry -Subtext "Function GetFanartSeasonPoster called..." -Path $global:configLogging -Color Cyan -log Debug
                                                 if ($global:posterurl) {
@@ -3640,7 +3653,7 @@ function Invoke-ShowPosterCreation {
                                             }
                                         }
                                         if ((!$global:posterurl -or !$global:TextlessPoster) -and $entry.tvdbid) {
-                                            if ($global:FavProvider -ne 'TVDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                                 $global:posterurl = GetTVDBSeasonPoster
                                                 if ($global:posterurl) {
                                                     $global:IsFallback = $true
@@ -3656,7 +3669,7 @@ function Invoke-ShowPosterCreation {
                                     if (!$global:TextlessPoster -and $ShowFallback -eq 'true') {
                                         # Lets just try to grab a show poster.
                                         Write-Entry -Subtext "Fallback to Show Poster..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                        switch -Wildcard ($global:FavProvider) {
+                                        switch -Wildcard ($global:EffectivePrimaryProvider) {
                                             'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBShowPoster }Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowPoster } }
                                             'FANART' { $global:posterurl = GetFanartShowPoster }
                                             'TVDB' { if ($entry.tvdbid) { $global:posterurl = GetTVDBShowPoster }Else { Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowPoster } }
@@ -3669,7 +3682,7 @@ function Invoke-ShowPosterCreation {
                                             $global:FallbackText = 'True-Show'
                                         }
                                         Else {
-                                            if ($global:FavProvider -ne 'TMDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                                 $global:posterurl = GetTMDBShowPoster
                                                 if ($global:posterurl) {
                                                     Write-Entry -Subtext "Using the Show Poster as Season Fallback..." -Path $global:configLogging -Color Yellow -log Warning
@@ -3677,7 +3690,7 @@ function Invoke-ShowPosterCreation {
                                                     $global:FallbackText = 'True-Show'
                                                 }
                                             }
-                                            if ($global:FavProvider -ne 'TVDB' -and !$global:posterurl) {
+                                            if ($global:EffectivePrimaryProvider -ne 'TVDB' -and !$global:posterurl) {
                                                 $global:posterurl = GetTVDBShowPoster
                                                 if ($global:posterurl) {
                                                     Write-Entry -Subtext "Using the Show Poster as Season Fallback..." -Path $global:configLogging -Color Yellow -log Warning
@@ -3685,7 +3698,7 @@ function Invoke-ShowPosterCreation {
                                                     $global:FallbackText = 'True-Show'
                                                 }
                                             }
-                                            if ($global:FavProvider -ne 'FANART' -and !$global:posterurl) {
+                                            if ($global:EffectivePrimaryProvider -ne 'FANART' -and !$global:posterurl) {
                                                 $global:posterurl = GetFanartShowPoster
                                                 if ($global:posterurl) {
                                                     Write-Entry -Subtext "Using the Show Poster as Season Fallback..." -Path $global:configLogging -Color Yellow -log Warning
@@ -3698,7 +3711,7 @@ function Invoke-ShowPosterCreation {
                                 }
                                 Else {
                                     if (!$global:posterurl) {
-                                        if ($global:FavProvider -ne 'TMDB' -and $entry.tmdbid) {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB' -and $entry.tmdbid) {
                                             $global:posterurl = GetTMDBSeasonPoster
                                             if ($global:posterurl) {
                                                 $global:IsFallback = $true
@@ -3706,7 +3719,7 @@ function Invoke-ShowPosterCreation {
                                             Write-Entry -Subtext "Function GetTMDBSeasonPoster called..." -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         if (!$global:posterurl) {
-                                            if ($global:FavProvider -ne 'FANART') {
+                                            if ($global:EffectivePrimaryProvider -ne 'FANART') {
                                                 $global:posterurl = GetFanartSeasonPoster
                                                 Write-Entry -Subtext "Function GetFanartSeasonPoster called..." -Path $global:configLogging -Color Cyan -log Debug
                                                 if ($global:posterurl) {
@@ -3716,7 +3729,7 @@ function Invoke-ShowPosterCreation {
                                             }
                                         }
                                         if (!$global:posterurl -and $entry.tvdbid) {
-                                            if ($global:FavProvider -ne 'TVDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                                 $global:posterurl = GetTVDBSeasonPoster
                                                 if ($global:posterurl) {
                                                     $global:IsFallback = $true
@@ -3726,7 +3739,7 @@ function Invoke-ShowPosterCreation {
                                             }
                                         }
                                         if ($ArtUrl) {
-                                            if ($global:FavProvider -ne 'PLEX') {
+                                            if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                                 GetPlexArtwork -Type ' a Season Poster' -ArtUrl $Arturl -TempImage $SeasonImage
                                                 if ($global:posterurl) {
                                                     $global:IsFallback = $true
@@ -3743,10 +3756,11 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "Could not find a season poster on any site" -Path $global:configLogging -Color Red -log Error
                                     }
                                 }
+                                }
                                 if (!$global:posterurl -and $ShowFallback -eq 'true') {
                                     # Lets just try to grab a show poster.
                                     Write-Entry -Subtext "Fallback to Show Poster..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                    switch -Wildcard ($global:FavProvider) {
+                                    switch -Wildcard ($global:EffectivePrimaryProvider) {
                                         'TMDB' { if ($entry.tmdbid) { $global:posterurl = GetTMDBShowPoster }Else { Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowPoster } }
                                         'FANART' { $global:posterurl = GetFanartShowPoster }
                                         'TVDB' { if ($entry.tvdbid) { $global:posterurl = GetTVDBShowPoster }Else { Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning; $global:posterurl = GetFanartShowPoster } }
@@ -3759,7 +3773,7 @@ function Invoke-ShowPosterCreation {
                                         $global:FallbackText = 'True-Show'
                                     }
                                     Else {
-                                        if ($global:FavProvider -ne 'TMDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                             $global:posterurl = GetTMDBShowPoster
                                             if ($global:posterurl) {
                                                 Write-Entry -Subtext "Using the Show Poster as Season Fallback..." -Path $global:configLogging -Color Yellow -log Warning
@@ -3767,7 +3781,7 @@ function Invoke-ShowPosterCreation {
                                                 $global:FallbackText = 'True-Show'
                                             }
                                         }
-                                        if ($global:FavProvider -ne 'TVDB' -and !$global:posterurl) {
+                                        if ($global:EffectivePrimaryProvider -ne 'TVDB' -and !$global:posterurl) {
                                             $global:posterurl = GetTVDBShowPoster
                                             if ($global:posterurl) {
                                                 Write-Entry -Subtext "Using the Show Poster as Season Fallback..." -Path $global:configLogging -Color Yellow -log Warning
@@ -3775,7 +3789,7 @@ function Invoke-ShowPosterCreation {
                                                 $global:FallbackText = 'True-Show'
                                             }
                                         }
-                                        if ($global:FavProvider -ne 'FANART' -and !$global:posterurl) {
+                                        if ($global:EffectivePrimaryProvider -ne 'FANART' -and !$global:posterurl) {
                                             $global:posterurl = GetFanartShowPoster
                                             if ($global:posterurl) {
                                                 Write-Entry -Subtext "Using the Show Poster as Season Fallback..." -Path $global:configLogging -Color Yellow -log Warning
@@ -3785,17 +3799,17 @@ function Invoke-ShowPosterCreation {
                                         }
                                     }
                                 }
-                                if ($global:TMDBSeasonFallback -and $global:PosterWithText -and $global:FavProvider -eq 'TMDB') {
+                                if ($global:TMDBSeasonFallback -and $global:PosterWithText -and $global:EffectivePrimaryProvider -eq 'TMDB') {
                                     $global:posterurl = $global:TMDBSeasonFallback
                                     Write-Entry -Subtext "Taking Season Poster with text as fallback from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                     $global:IsFallback = $true
                                 }
-                                if ($global:FANARTSeasonFallback -and $global:PosterWithText -and $global:FavProvider -eq 'FANART') {
+                                if ($global:FANARTSeasonFallback -and $global:PosterWithText -and $global:EffectivePrimaryProvider -eq 'FANART') {
                                     $global:posterurl = $global:FANARTSeasonFallback
                                     Write-Entry -Subtext "Taking Season Poster with text as fallback from 'FANART'" -Path $global:configLogging -Color DarkMagenta -log Info
                                     $global:IsFallback = $true
                                 }
-                                if ($global:TVDBSeasonFallback -and $global:PosterWithText -and $global:FavProvider -eq 'TVDB') {
+                                if ($global:TVDBSeasonFallback -and $global:PosterWithText -and $global:EffectivePrimaryProvider -eq 'TVDB') {
                                     $global:posterurl = $global:TVDBSeasonFallback
                                     Write-Entry -Subtext "Taking Season Poster with text as fallback from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                     $global:IsFallback = $true
@@ -3864,27 +3878,27 @@ function Invoke-ShowPosterCreation {
                                         if ($global:posterurl -like 'https://image.tmdb.org*') {
                                             Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                                 $global:IsFallback = $true
                                             }
                                         }
                                         elseif ($global:posterurl -like 'https://assets.fanart.tv*') {
                                             Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:FANARTAssetTextLang
-                                            if ($global:FavProvider -ne 'FANART') {
+                                            if ($global:EffectivePrimaryProvider -ne 'FANART') {
                                                 $global:IsFallback = $true
                                             }
                                         }
                                         elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                             Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                                 $global:IsFallback = $true
                                             }
                                         }
                                         elseif ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                             Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
+                                            if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                                 $global:IsFallback = $true
                                             }
                                         }
@@ -4035,7 +4049,7 @@ function Invoke-ShowPosterCreation {
                                                             $global:LogoUrl = $null
                                                             $global:LogoLanguage = $null
                                                             $allProviders = @('TMDB', 'FANART', 'TVDB')
-                                                            $searchOrder = @($global:FavProvider) + ($allProviders -ne $global:FavProvider)
+                                                            $searchOrder = $global:ProviderOrder
 
                                                             foreach ($provider in $searchOrder) {
                                                                 if (-not [string]::IsNullOrEmpty($global:LogoUrl)) { break }
@@ -4048,13 +4062,13 @@ function Invoke-ShowPosterCreation {
 
                                                             if (-not [string]::IsNullOrEmpty($global:LogoUrl)) {
                                                                 $global:IsFallback = $false
-                                                                switch ($global:FavProvider) {
+                                                                switch ($global:EffectivePrimaryProvider) {
                                                                     'TMDB' { if (-not ($global:LogoUrl.StartsWith("https://image.tmdb.org"))) { $global:IsFallback = $true } }
                                                                     'TVDB' { if (-not ($global:LogoUrl.StartsWith("https://artworks.thetvdb.com"))) { $global:IsFallback = $true } }
                                                                     'FANART' { if (-not ($global:LogoUrl.StartsWith("https://assets.fanart.tv"))) { $global:IsFallback = $true } }
                                                                 }
                                                                 if ($global:IsFallback) {
-                                                                    Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:FavProvider)" -Path $global:configLogging -Color Yellow -log Debug
+                                                                    Write-Entry -Subtext "Logo Source: Fallback (URL did not match $global:EffectivePrimaryProvider)" -Path $global:configLogging -Color Yellow -log Debug
                                                                 }
                                                             }
 
@@ -4187,7 +4201,7 @@ function Invoke-ShowPosterCreation {
                                         if ($global:posterurl -like 'https://image.tmdb.org*') {
                                             Write-Entry -Subtext "Downloading Poster from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                                 $global:IsFallback = $true
                                             }
                                         }
@@ -4195,20 +4209,20 @@ function Invoke-ShowPosterCreation {
                                             Write-Entry -Subtext "Downloading Poster from 'Fanart.tv'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:FANARTAssetTextLang
                                             $PosterUnknownCount++
-                                            if ($global:FavProvider -ne 'FANART') {
+                                            if ($global:EffectivePrimaryProvider -ne 'FANART') {
                                                 $global:IsFallback = $true
                                             }
                                         }
                                         elseif ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                             Write-Entry -Subtext "Downloading Poster from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                                 $global:IsFallback = $true
                                             }
                                         }
                                         elseif ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                             Write-Entry -Subtext "Downloading Poster from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
+                                            if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                                 $global:IsFallback = $true
                                             }
                                         }
@@ -4262,6 +4276,7 @@ function Invoke-ShowPosterCreation {
                                                     else {
                                                         Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                         Write-Entry -Subtext "$Titletext | Season Poster successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                        $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                                     }
                                                 }
                                                 catch {
@@ -4312,10 +4327,10 @@ function Invoke-ShowPosterCreation {
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                        switch -Wildcard ($global:FavProvider) {
-                                            'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                            'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                            'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                        switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                            'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                            'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                            'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
                                             Default { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
                                         # Export the array to a CSV file
@@ -4345,10 +4360,10 @@ function Invoke-ShowPosterCreation {
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($entry.tmdbid) { $entry.tmdbid } Else { "false" })
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
-                                switch -Wildcard ($global:FavProvider) {
-                                    'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                    'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                    'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                    'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                    'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                    'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
                                     Default { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -4390,6 +4405,7 @@ function Invoke-ShowPosterCreation {
                                             else {
                                                 Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                 Write-Entry -Subtext "$Titletext | Season Poster successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                             }
                                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
                                         }
@@ -4435,7 +4451,7 @@ function Invoke-TitleCardCreation {
         $episode
     )
         if ($null -eq $episode) { return }
-        Set-LibraryLanguageOverride -LibraryName $episode.'Library Name'
+        Set-LibraryLanguageOverride -LibraryName $episode.'Library Name' -MediaType 'Show'
 
     try {
         $SkippingText = 'false'
@@ -4671,11 +4687,15 @@ function Invoke-TitleCardCreation {
                         Else {
                             if (!$Episodepostersearchtext) {
                                 Write-Entry -Message "Start Title Card Search for: $global:show_name - $global:SeasonEPNumber" -Path $global:configLogging -Color White -log Info
+                                $global:IsFallback = $false
+                                $global:FallbackText = $null
                                 $Episodepostersearchtext = $true
                             }
                             if ($global:TempImagecopied -ne 'true') {
+                                $global:IsFallback = $false
+                                $global:FallbackText = $null
                                 # now search for TitleCards
-                            if ($global:OverrideProviderOrder) {
+                            if ($global:UseCustomProviderOrder) {
                                 foreach ($provider in $global:ProviderOrder) {
                                     if ($global:posterurl -or $global:PlexartworkDownloaded) { break }
                                     switch -Wildcard ($provider) {
@@ -4692,7 +4712,7 @@ function Invoke-TitleCardCreation {
                                 }
                             }
                             Else {
-                                if ($global:FavProvider -eq 'TMDB') {
+                                if ($global:EffectivePrimaryProvider -eq 'TMDB') {
                                     if ($episode.tmdbid) {
                                         $global:posterurl = GetTMDBShowBackground
                                         if (!$global:posterurl) {
@@ -4851,20 +4871,20 @@ function Invoke-TitleCardCreation {
                                         if ($global:posterurl -like 'https://image.tmdb.org*') {
                                             Write-Entry -Subtext "Downloading Title Card from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TMDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TMDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                                 $global:IsFallback = $true
                                             }
                                         }
                                         if ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                             Write-Entry -Subtext "Downloading Title Card from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                             $global:AssetTextLang = $global:TVDBAssetTextLang
-                                            if ($global:FavProvider -ne 'TVDB') {
+                                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                                 $global:IsFallback = $true
                                             }
                                         }
                                         if ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                             Write-Entry -Subtext "Downloading Title Card from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                            if ($global:FavProvider -ne 'PLEX') {
+                                            if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                                 $global:IsFallback = $true
                                             }
                                         }
@@ -5052,20 +5072,20 @@ function Invoke-TitleCardCreation {
                                     if ($global:posterurl -like 'https://image.tmdb.org*') {
                                         Write-Entry -Subtext "Downloading Title Card from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        if ($global:FavProvider -ne 'TMDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     if ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                         Write-Entry -Subtext "Downloading Title Card from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        if ($global:FavProvider -ne 'TVDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     if ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                         Write-Entry -Subtext "Downloading Title Card from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
+                                        if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -5114,6 +5134,7 @@ function Invoke-TitleCardCreation {
                                                 else {
                                                     Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                     Write-Entry -Subtext "$Titletext | TitleCard successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                    $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                                 }
                                             }
                                             catch {
@@ -5164,10 +5185,10 @@ function Invoke-TitleCardCreation {
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($episode.tmdbid) { $episode.tmdbid } Else { "false" })
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
-                                    switch -Wildcard ($global:FavProvider) {
-                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                    switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                         Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -5196,10 +5217,10 @@ function Invoke-TitleCardCreation {
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($episode.tmdbid) { $episode.tmdbid } Else { "false" })
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
-                                switch -Wildcard ($global:FavProvider) {
-                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                     Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -5244,6 +5265,7 @@ function Invoke-TitleCardCreation {
                                         else {
                                             Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                             Write-Entry -Subtext "$Titletext | TitleCard successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                            $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                         }
                                         $global:UploadCount = Increment-GlobalStat 'UploadCount'
                                     }
@@ -5429,148 +5451,75 @@ function Invoke-TitleCardCreation {
                             $LocalAssetMissing = 'true'
                         }
                         Else {
+                            $global:IsFallback = $false
+                            $global:FallbackText = $null
+                            $global:posterurl = $null
                             if (!$Episodepostersearchtext) {
                                 Write-Entry -Message "Start Title Card Search for: $global:show_name - $global:SeasonEPNumber" -Path $global:configLogging -Color White -log Info
                                 $Episodepostersearchtext = $true
                             }
                             # now search for TitleCards
-                            if ($global:FavProvider -eq 'TMDB') {
-                                if ($episode.tmdbid) {
-                                    $global:posterurl = GetTMDBTitleCard
-                                    if (!$global:posterurl) {
-                                        $global:IsFallback = $true
-                                        $global:posterurl = GetTVDBTitleCard
-                                        if ($global:posterurl) {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    if (!$global:posterurl) {
-                                        $global:IsFallback = $true
-                                        if ($ArtUrl) {
-                                            GetPlexArtwork -Type ": $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card" -ArtUrl $ArtUrl -TempImage $EpisodeImage
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Plex TitleCard Url empty, cannot search on plex, likely there is no artwork on plex..." -Path $global:configLogging -Color Yellow -log Warning
-                                        }
-                                        if (!$global:posterurl) {
-                                            Write-Entry -Subtext "Could not find a TitleCard on any site" -Path $global:configLogging -Color Red -log Error
-                                        }
-                                    }
-                                    if (!$global:posterurl -and $BackgroundFallback -eq 'true') {
-                                        # Lets just try to grab a background poster.
-                                        Write-Entry -Subtext "Fallback to Show Background..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:posterurl = GetTMDBShowBackground
-                                        if ($global:posterurl) {
-                                            Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
-                                            $global:IsFallback = $true
-                                            $global:FallbackText = 'True-Background'
-                                        }
-                                        Else {
-                                            # Lets just try to grab a background poster.
-                                            $global:posterurl = GetTVDBShowBackground
-                                            if ($global:posterurl) {
-                                                Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
+                            foreach ($provider in $global:ProviderOrder) {
+                                switch ($provider) {
+                                    'TMDB' {
+                                        if ($episode.tmdbid -and !$global:posterurl -and !$global:PlexartworkDownloaded) {
+                                            $global:posterurl = GetTMDBTitleCard
+                                            if ($global:posterurl -and $global:EffectivePrimaryProvider -ne 'TMDB') {
                                                 $global:IsFallback = $true
-                                                $global:FallbackText = 'True-Background'
+                                            }
+                                        }
+                                    }
+                                    'TVDB' {
+                                        if ($episode.tvdbid -and !$global:posterurl -and !$global:PlexartworkDownloaded) {
+                                            $global:posterurl = GetTVDBTitleCard
+                                            if ($global:posterurl -and $global:EffectivePrimaryProvider -ne 'TVDB') {
+                                                $global:IsFallback = $true
+                                            }
+                                        }
+                                    }
+                                    'PLEX' {
+                                        if ($ArtUrl -and !$global:posterurl -and !$global:PlexartworkDownloaded) {
+                                            GetPlexArtwork -Type ": $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card" -ArtUrl $ArtUrl -TempImage $EpisodeImage
+                                            if ($global:PlexartworkDownloaded -eq $true -and $global:EffectivePrimaryProvider -ne 'PLEX') {
+                                                $global:IsFallback = $true
                                             }
                                         }
                                     }
                                 }
-                                else {
-                                    Write-Entry -Subtext "Can't search on TMDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
-                                    $global:posterurl = GetTVDBTitleCard
-                                    if (!$global:posterurl) {
-                                        $global:IsFallback = $true
-                                        if ($ArtUrl) {
-                                            GetPlexArtwork -Type ": $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card" -ArtUrl $ArtUrl -TempImage $EpisodeImage
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Plex TitleCard Url empty, cannot search on plex, likely there is no artwork on plex..." -Path $global:configLogging -Color Yellow -log Warning
-                                        }
-                                        if (!$global:posterurl) {
-                                            Write-Entry -Subtext "Could not find a TitleCard on any site" -Path $global:configLogging -Color Red -log Error
-                                        }
-                                    }
-                                    if (!$global:posterurl -and $BackgroundFallback -eq 'true') {
-                                        Write-Entry -Subtext "No Title Cards for this Episode on TVDB or TMDB..." -Path $global:configLogging -Color Red -log Error
-                                        # Lets just try to grab a background poster.
-                                        Write-Entry -Subtext "Fallback to Show Background..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:posterurl = GetTVDBShowBackground
-                                        if ($global:posterurl) {
-                                            Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
-                                            $global:IsFallback = $true
-                                            $global:FallbackText = 'True-Background'
-                                        }
-                                    }
+                                if ($global:posterurl -or $global:PlexartworkDownloaded) {
+                                    break
                                 }
                             }
-                            Else {
-                                if ($episode.tvdbid) {
-                                    $global:posterurl = GetTVDBTitleCard
-                                    if (!$global:posterurl -or $global:Fallback -eq "TMDB") {
-                                        $global:posterurl = GetTMDBTitleCard
-                                        if ($global:FavProvider -ne 'TMDB' -and $global:posterurl) {
-                                            $global:IsFallback = $true
-                                        }
-                                    }
-                                    if (!$global:posterurl) {
-                                        $global:IsFallback = $true
-                                        if ($ArtUrl) {
-                                            GetPlexArtwork -Type ": $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card" -ArtUrl $ArtUrl -TempImage $EpisodeImage
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Plex TitleCard Url empty, cannot search on plex, likely there is no artwork on plex..." -Path $global:configLogging -Color Yellow -log Warning
-                                        }
-                                        if (!$global:posterurl) {
-                                            Write-Entry -Subtext "Could not find a TitleCard on any site" -Path $global:configLogging -Color Red -log Error
-                                        }
-                                    }
-                                    if (!$global:posterurl -and $BackgroundFallback -eq 'true') {
-                                        # Lets just try to grab a background poster.
-                                        Write-Entry -Subtext "Fallback to Show Background..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:posterurl = GetTVDBShowBackground
-                                        if ($global:posterurl) {
-                                            Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
-                                            $global:IsFallback = $true
-                                            $global:FallbackText = 'True-Background'
-                                        }
-                                        Else {
-                                            # Lets just try to grab a background poster.
-                                            $global:posterurl = GetTMDBShowBackground
-                                            if ($global:posterurl) {
-                                                Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
-                                                $global:IsFallback = $true
-                                                $global:FallbackText = 'True-Background'
+
+                            if (!$global:posterurl -and !$global:PlexartworkDownloaded) {
+                                Write-Entry -Subtext "Could not find a TitleCard on any site" -Path $global:configLogging -Color Red -log Error
+                                if ($BackgroundFallback -eq 'true') {
+                                    Write-Entry -Subtext "Fallback to Show Background..." -Path $global:configLogging -Color DarkMagenta -log Info
+                                    foreach ($provider in $global:ProviderOrder) {
+                                        switch ($provider) {
+                                            'TMDB' {
+                                                if ($episode.tmdbid -and !$global:posterurl) {
+                                                    $global:posterurl = GetTMDBShowBackground
+                                                    if ($global:posterurl) {
+                                                        Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
+                                                        $global:IsFallback = $true
+                                                        $global:FallbackText = 'True-Background'
+                                                    }
+                                                }
+                                            }
+                                            'TVDB' {
+                                                if ($episode.tvdbid -and !$global:posterurl) {
+                                                    $global:posterurl = GetTVDBShowBackground
+                                                    if ($global:posterurl) {
+                                                        Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
+                                                        $global:IsFallback = $true
+                                                        $global:FallbackText = 'True-Background'
+                                                    }
+                                                }
                                             }
                                         }
-                                    }
-                                }
-                                else {
-                                    Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
-                                    $global:posterurl = GetTMDBTitleCard
-                                    if ($global:FavProvider -ne 'TMDB' -and $global:posterurl) {
-                                        $global:IsFallback = $true
-                                    }
-                                    if (!$global:posterurl) {
-                                        $global:IsFallback = $true
-                                        if ($ArtUrl) {
-                                            GetPlexArtwork -Type ": $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card" -ArtUrl $ArtUrl -TempImage $EpisodeImage
-                                        }
-                                        Else {
-                                            Write-Entry -Subtext "Plex TitleCard Url empty, cannot search on plex, likely there is no artwork on plex..." -Path $global:configLogging -Color Yellow -log Warning
-                                        }
-                                        if (!$global:posterurl) {
-                                            Write-Entry -Subtext "Could not find a TitleCard on any site" -Path $global:configLogging -Color Red -log Error
-                                        }
-                                    }
-                                    if (!$global:posterurl -and $BackgroundFallback -eq 'true') {
-                                        # Lets just try to grab a background poster.
-                                        Write-Entry -Subtext "Fallback to Show Background..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                        $global:posterurl = GetTMDBShowBackground
                                         if ($global:posterurl) {
-                                            Write-Entry -Subtext "Using the Show Background Poster as TitleCard Fallback..." -Path $global:configLogging -Color Yellow -log Warning
-                                            $global:IsFallback = $true
-                                            $global:FallbackText = 'True-Background'
+                                            break
                                         }
                                     }
                                 }
@@ -5637,20 +5586,20 @@ function Invoke-TitleCardCreation {
                                     if ($global:posterurl -like 'https://image.tmdb.org*') {
                                         Write-Entry -Subtext "Downloading Title Card from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        if ($global:FavProvider -ne 'TMDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     if ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                         Write-Entry -Subtext "Downloading Title Card from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        if ($global:FavProvider -ne 'TVDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     if ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                         Write-Entry -Subtext "Downloading Title Card from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
+                                        if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -5824,20 +5773,20 @@ function Invoke-TitleCardCreation {
                                     if ($global:posterurl -like 'https://image.tmdb.org*') {
                                         Write-Entry -Subtext "Downloading Title Card from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TMDBAssetTextLang
-                                        if ($global:FavProvider -ne 'TMDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     if ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                         Write-Entry -Subtext "Downloading Title Card from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                         $global:AssetTextLang = $global:TVDBAssetTextLang
-                                        if ($global:FavProvider -ne 'TVDB') {
+                                        if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                             $global:IsFallback = $true
                                         }
                                     }
                                     if ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                         Write-Entry -Subtext "Downloading Title Card from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                        if ($global:FavProvider -ne 'PLEX') {
+                                        if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                             $global:IsFallback = $true
                                         }
                                     }
@@ -5886,6 +5835,7 @@ function Invoke-TitleCardCreation {
                                                 else {
                                                     Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                     Write-Entry -Subtext "$Titletext | TitleCard successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                    $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                                 }
                                             }
                                             catch {
@@ -5936,10 +5886,10 @@ function Invoke-TitleCardCreation {
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($episode.tmdbid) { $episode.tmdbid } Else { "false" })
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
-                                    switch -Wildcard ($global:FavProvider) {
-                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                    switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                         Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -5968,10 +5918,10 @@ function Invoke-TitleCardCreation {
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($episode.tmdbid) { $episode.tmdbid } Else { "false" })
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
-                                switch -Wildcard ($global:FavProvider) {
-                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                     Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -6015,6 +5965,7 @@ function Invoke-TitleCardCreation {
                                         else {
                                             Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                             Write-Entry -Subtext "$Titletext | TitleCard successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                            $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                         }
                                         $global:UploadCount = Increment-GlobalStat 'UploadCount'
                                     }
@@ -6200,10 +6151,14 @@ function Invoke-TitleCardCreation {
                                             Else {
                                                 if (!$Episodepostersearchtext) {
                                                     Write-Entry -Message "Start Title Card Search for: $global:show_name - $global:SeasonEPNumber" -Path $global:configLogging -Color White -log Info
+                                                    $global:IsFallback = $false
+                                                    $global:FallbackText = $null
                                                     $Episodepostersearchtext = $true
                                                 }
+                                                $global:IsFallback = $false
+                                                $global:FallbackText = $null
                                                 # now search for TitleCards
-                                                if ($global:FavProvider -eq 'TMDB') {
+                                                if ($global:EffectivePrimaryProvider -eq 'TMDB') {
                                                     if ($episode.tmdbid) {
                                                         $global:posterurl = GetTMDBTitleCard
                                                         if (!$global:posterurl) {
@@ -6278,7 +6233,7 @@ function Invoke-TitleCardCreation {
                                                         $global:posterurl = GetTVDBTitleCard
                                                         if (!$global:posterurl -or $global:Fallback -eq "TMDB") {
                                                             $global:posterurl = GetTMDBTitleCard
-                                                            if ($global:FavProvider -ne 'TMDB' -and $global:posterurl) {
+                                                            if ($global:EffectivePrimaryProvider -ne 'TMDB' -and $global:posterurl) {
                                                                 $global:IsFallback = $true
                                                             }
                                                         }
@@ -6317,7 +6272,7 @@ function Invoke-TitleCardCreation {
                                                     else {
                                                         Write-Entry -Subtext "Can't search on TVDB, missing ID..." -Path $global:configLogging -Color Yellow -log Warning
                                                         $global:posterurl = GetTMDBTitleCard
-                                                        if ($global:FavProvider -ne 'TMDB' -and $global:posterurl) {
+                                                        if ($global:EffectivePrimaryProvider -ne 'TMDB' -and $global:posterurl) {
                                                             $global:IsFallback = $true
                                                         }
                                                         if (!$global:posterurl) {
@@ -6406,20 +6361,20 @@ function Invoke-TitleCardCreation {
                                                         if ($global:posterurl -like 'https://image.tmdb.org*') {
                                                             Write-Entry -Subtext "Downloading Title Card from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                                             $global:AssetTextLang = $global:TMDBAssetTextLang
-                                                            if ($global:FavProvider -ne 'TMDB') {
+                                                            if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                                                 $global:IsFallback = $true
                                                             }
                                                         }
                                                         if ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                                             Write-Entry -Subtext "Downloading Title Card from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                                             $global:AssetTextLang = $global:TVDBAssetTextLang
-                                                            if ($global:FavProvider -ne 'TVDB') {
+                                                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                                                 $global:IsFallback = $true
                                                             }
                                                         }
                                                         if ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                                             Write-Entry -Subtext "Downloading Title Card from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                            if ($global:FavProvider -ne 'PLEX') {
+                                                            if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                                                 $global:IsFallback = $true
                                                             }
                                                         }
@@ -6593,20 +6548,20 @@ function Invoke-TitleCardCreation {
                                                         if ($global:posterurl -like 'https://image.tmdb.org*') {
                                                             Write-Entry -Subtext "Downloading Title Card from 'TMDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                                             $global:AssetTextLang = $global:TMDBAssetTextLang
-                                                            if ($global:FavProvider -ne 'TMDB') {
+                                                            if ($global:EffectivePrimaryProvider -ne 'TMDB') {
                                                                 $global:IsFallback = $true
                                                             }
                                                         }
                                                         if ($global:posterurl -like 'https://artworks.thetvdb.com*') {
                                                             Write-Entry -Subtext "Downloading Title Card from 'TVDB'" -Path $global:configLogging -Color DarkMagenta -log Info
                                                             $global:AssetTextLang = $global:TVDBAssetTextLang
-                                                            if ($global:FavProvider -ne 'TVDB') {
+                                                            if ($global:EffectivePrimaryProvider -ne 'TVDB') {
                                                                 $global:IsFallback = $true
                                                             }
                                                         }
                                                         if ($PlexUrl -and $global:posterurl -like "$PlexUrl*") {
                                                             Write-Entry -Subtext "Downloading Title Card from 'Plex'" -Path $global:configLogging -Color DarkMagenta -log Info
-                                                            if ($global:FavProvider -ne 'PLEX') {
+                                                            if ($global:EffectivePrimaryProvider -ne 'PLEX') {
                                                                 $global:IsFallback = $true
                                                             }
                                                         }
@@ -6655,6 +6610,7 @@ function Invoke-TitleCardCreation {
                                                                     else {
                                                                         Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                                         Write-Entry -Subtext "$Titletext | TitleCard successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                                        $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                                                     }
                                                                 }
                                                                 catch {
@@ -6705,10 +6661,10 @@ function Invoke-TitleCardCreation {
                                                         $episodetemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($episode.tmdbid) { $episode.tmdbid } Else { "false" })
                                                         $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                                         $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
-                                                        switch -Wildcard ($global:FavProvider) {
-                                                            'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                                            'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                                            'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                                        switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                                            'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                            'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                            'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                                             Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                                         }
                                                         # Export the array to a CSV file
@@ -6737,10 +6693,10 @@ function Invoke-TitleCardCreation {
                                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tmdbid" -Value $(if ($episode.tmdbid) { $episode.tmdbid } Else { "false" })
                                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
-                                                    switch -Wildcard ($global:FavProvider) {
-                                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl }Else { "false" }) }
-                                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl }Else { "false" }) }
-                                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl }Else { "false" }) }
+                                                    switch -Wildcard ($global:EffectivePrimaryProvider) {
+                                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                                         Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                                     }
 
@@ -6784,6 +6740,7 @@ function Invoke-TitleCardCreation {
                                                             else {
                                                                 Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
                                                                 Write-Entry -Subtext "$Titletext | TitleCard successfully uploaded..." -Path $global:configLogging -Color Green -log Info
+                                                                $null = Increment-GlobalStat 'PlexChildArtworkUploads'
                                                             }
                                                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
                                                         }
@@ -6820,5 +6777,7 @@ function Invoke-TitleCardCreation {
         $global:errorCount = Increment-GlobalStat 'errorCount'
     }
 }
+
+
 
 

@@ -69,7 +69,7 @@ function Get-AssetHashtable {
 
         if ($global:logLevel -eq '3') {
             Write-Entry -Message "Output hashtable..." -Path $global:configLogging -Color White -log Info
-            $directoryHashtable.keys | Out-File "$global:ScriptRoot\Logs\hashtable.log" -Force
+            try { $directoryHashtable.keys | Out-File "$global:ScriptRoot\Logs\hashtable.log" -Force -ErrorAction Stop } catch {}
         }
 
         return $directoryHashtable
@@ -78,3 +78,4 @@ function Get-AssetHashtable {
         HandleScriptExit -Message "Hashtable creation failed"
     }
 }
+

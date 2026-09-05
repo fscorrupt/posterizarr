@@ -35,7 +35,8 @@
     ],
     "LogoLanguageOrder": [
       "en",
-      "de"
+      "de",
+      "ja"
     ],
     "OverrideProviderOrder": "false",
     "ProviderOrder": [
@@ -49,9 +50,14 @@
         "PreferredLanguageOrder": [
           "de",
           "en"
-        ]
+        ],
+        "ApplyToPoster": true,
+        "ApplyToSeason": true,
+        "ApplyToBackground": true,
+        "ApplyToLogo": true
       }
-    }
+    },
+    "TmdbLanguageMappings": {}
   },
   "PlexPart": {
     "LibstoExclude": [
@@ -78,7 +84,8 @@
     "JellyfinUrl": "http://jellyfin:8096",
     "UseJellyfin": "false",
     "UploadExistingAssets": "false",
-    "ReplaceThumbwithBackdrop": "false"
+    "ReplaceThumbwithBackdrop": "false",
+    "ReplaceThumbwithBackdropExclusively": "false"
   },
   "EmbyPart": {
     "LibstoExclude": [
@@ -92,7 +99,8 @@
     "EmbyUrl": "http://192.168.1.20:8096/emby",
     "UseEmby": "false",
     "UploadExistingAssets": "false",
-    "ReplaceThumbwithBackdrop": "false"
+    "ReplaceThumbwithBackdrop": "false",
+    "ReplaceThumbwithBackdropExclusively": "false"
   },
   "Notification": {
     "SendNotification": "true",
@@ -171,7 +179,6 @@
     "UseClearlogo": "false",
     "UseClearart": "false",
     "LogoTextFallback": "false",
-    "TextlessPosterBypass": "false",
     "UseBGLogo": "false",
     "ConvertLogoColor": "false",
     "LogoFlatColor": "white",
@@ -191,7 +198,8 @@
     "DisableOnlineTitleCardFetch": "false",
     "DisableOnlinePosterFetch": "false",
     "DisableOnlineBackgroundFetch": "false",
-    "DisableOnlineSeasonFetch": "false"
+    "DisableOnlineSeasonFetch": "false",
+    "TextlessPosterBypass": "false"
   },
   "OverlayPart": {
     "ImageProcessing": "true",

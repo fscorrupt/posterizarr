@@ -1,6 +1,8 @@
 #region Arr Mode
     $global:posterCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['posterCount'] = 0 }
+    if ($global:runspaceStats) { $global:runspaceStats['PlexRootPosterUploads'] = 0 }
+    if ($global:runspaceStats) { $global:runspaceStats['PlexChildArtworkUploads'] = 0 }
     $arrplatform = $arrTriggers['arr_platform']
     $Mode = "arr"
     Write-Entry -Message "ArrTrigger Mode Started..." -Path $global:configLogging -Color White -log Info
@@ -940,7 +942,7 @@
         }
 
         $jsonOutput = $jsonObject | ConvertTo-Json
-        $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+        try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
 
         # Clear Running File
         if (Test-Path $CurrentlyRunning) {
@@ -1361,7 +1363,7 @@
         }
 
         $jsonOutput = $jsonObject | ConvertTo-Json
-        $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8
+        try { $jsonOutput | Out-File -FilePath "$global:ScriptRoot\Logs\$Mode.json" -Encoding utf8 -ErrorAction Stop } catch {}
 
         # Clear Running File
         if (Test-Path $CurrentlyRunning) {
@@ -1380,9 +1382,34 @@
     }
     Else {
         Write-Entry -Message "No Media Server selected, please check your settings..." -Path $global:configLogging -Color Red -log Error
-        Exit
+        $global:ExitRequested = $true; Exit
     }
 
+    Sync-GlobalStats
+    if (
+        $UsePlex -eq 'true' -and
+        $queryKey -and
+        ($global:PlexRootPosterUploads -gt 0 -or $global:PlexChildArtworkUploads -gt 0)
+    ) {
+        $agregarrMediaType = if ($arrplatform -eq 'Sonarr') { 'show' } else { 'movie' }
+        $agregarrTitle = if ($arrplatform -eq 'Sonarr') { $seriesTitle } else { $movieTitle }
+        $agregarrTrigger = @{
+            RatingKey = $queryKey
+            MediaType = $agregarrMediaType
+            Title = $agregarrTitle
+        }
+        if ($arrplatform -eq 'Sonarr') {
+            $parsedSeason = 0
+            $parsedEpisode = 0
+            if ([int]::TryParse([string]$seasonIndex, [ref]$parsedSeason)) {
+                $agregarrTrigger['SeasonNumber'] = $parsedSeason
+            }
+            if ([int]::TryParse([string]$episodeIndex, [ref]$parsedEpisode)) {
+                $agregarrTrigger['EpisodeNumber'] = $parsedEpisode
+            }
+        }
+        Send-AgregarrTrigger @agregarrTrigger
+    }
 
 
 

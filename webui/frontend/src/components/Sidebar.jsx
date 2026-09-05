@@ -5,7 +5,7 @@ import {
   Activity, Play, Image, Settings, Clock, FileText, Info, Menu, X,
   ChevronDown, ChevronRight, Film, Layers, Tv, Database, Server,
   Palette, Bell, Lock, User, FileImage, Lightbulb, AlertTriangle,
-  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe
+  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer
 } from "lucide-react";
 import VersionBadge from "./VersionBadge";
 import { useSidebar } from "../context/SidebarContext";
@@ -38,7 +38,7 @@ const Sidebar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAssetsExpanded, setIsAssetsExpanded] = useState(false);
   const [isMediaServerExpanded, setIsMediaServerExpanded] = useState(false);
-  const [isConfigExpanded, setIsConfigExpanded] = useState(false);
+  const [isBuildersExpanded, setIsBuildersExpanded] = useState(false);
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [missingAssetsCount, setMissingAssetsCount] = useState(0);
   const [manualAssetsCount, setManualAssetsCount] = useState(0);
@@ -123,7 +123,6 @@ const Sidebar = () => {
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
-          { path: "/assets-manager", label: t("nav.assetsManager", "Assets Manager"), icon: Layers },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ]
         : [
@@ -134,23 +133,25 @@ const Sidebar = () => {
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
-          { path: "/assets-manager", label: t("nav.assetsManager", "Assets Manager"), icon: Layers },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ],
     },
     { id: "autoTriggers", path: "/auto-triggers", label: t("nav.autoTriggers"), icon: Zap },
-
     {
-      id: "config",
-      path: "/config/system",
-      label: t("nav.config"),
-      icon: Settings,
+      id: "builders",
+      path: "/media-server-collections",
+      label: "Builders",
+      icon: Hammer,
       hasSubItems: true,
       subItems: [
-        { path: "/config/system", label: "Settings", icon: Settings },
-        { path: "/blueprints", label: "Blueprints", icon: Layers }
+        { path: "/media-server-collections", label: "Collection Builder", icon: Layers },
+        { path: "/media-server-logos", label: "Logo Builder", icon: Image },
+        { path: "/assets-manager", label: "Overlay Builder", icon: Layers },
+        { path: "/blueprints", label: "Blueprint Builder", icon: Layers }
       ]
     },
+
+    { id: "config", path: "/config/system", label: t("nav.config"), icon: Settings },
 
     { id: "runtimeHistory", path: "/runtime-history", label: t("nav.runtimeHistory"), icon: TrendingUp },
     { id: "logs", path: "/logs", label: t("nav.logs"), icon: FileText },
@@ -179,9 +180,10 @@ const Sidebar = () => {
   const handleDragOver = (e, index) => { e.preventDefault(); if (draggedItem === null || draggedItem === index) return; const newOrder = [...navOrder]; const draggedId = newOrder[draggedItem]; newOrder.splice(draggedItem, 1); newOrder.splice(index, 0, draggedId); setDraggedItem(index); setNavOrder(newOrder); };
   const handleDragEnd = () => { if (draggedItem !== null) saveNavOrder(navOrder); setDraggedItem(null); };
 
-  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
+  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
   const isInMediaServerSection = location.pathname.startsWith("/media-server-export");
-  const isInConfigSection = location.pathname.startsWith("/config") || location.pathname.startsWith("/blueprints");
+  const isInConfigSection = location.pathname.startsWith("/config");
+  const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/blueprints");
 
   return (
     <>
@@ -225,10 +227,10 @@ const Sidebar = () => {
                   isExpanded = isMediaServerExpanded;
                   isInSection = isInMediaServerSection;
                   toggleExpanded = () => setIsMediaServerExpanded(!isMediaServerExpanded);
-                } else if (item.id === "config") {
-                  isExpanded = isConfigExpanded;
-                  isInSection = isInConfigSection;
-                  toggleExpanded = () => setIsConfigExpanded(!isConfigExpanded);
+                } else if (item.id === "builders") {
+                  isExpanded = isBuildersExpanded;
+                  isInSection = isInBuildersSection;
+                  toggleExpanded = () => setIsBuildersExpanded(!isBuildersExpanded);
                 }
                 const isGroupActive = isInSection;
 
@@ -383,9 +385,9 @@ const Sidebar = () => {
                     } else if (item.id === "mediaServerExport") {
                       isExpanded = isMediaServerExpanded;
                       toggleExpanded = () => setIsMediaServerExpanded(!isMediaServerExpanded);
-                    } else if (item.id === "config") {
-                      isExpanded = isConfigExpanded;
-                      toggleExpanded = () => setIsConfigExpanded(!isConfigExpanded);
+                    } else if (item.id === "builders") {
+                      isExpanded = isBuildersExpanded;
+                      toggleExpanded = () => setIsBuildersExpanded(!isBuildersExpanded);
                     }
                     return (<div key={item.id}><button onClick={toggleExpanded} className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-theme-muted hover:bg-theme-hover/50"><div className="flex items-center"><Icon className="w-5 h-5 mr-3" /><span>{item.label}</span></div>{isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</button>{isExpanded && (<div className="ml-4 mt-1 space-y-1 border-l border-theme/30 pl-3">{item.subItems.map(sub => (<Link key={sub.path} to={sub.path} onClick={() => setIsMobileMenuOpen(false)} className="flex items-center px-4 py-3 rounded-xl text-sm font-medium text-theme-muted hover:bg-theme-hover"><sub.icon className="w-4 h-4 mr-3" />{sub.label}</Link>))}</div>)}</div>)
                   }

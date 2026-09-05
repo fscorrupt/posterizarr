@@ -12,10 +12,22 @@
     "JellyfinAPIKey": "JELLYFINAPIKEY",
     "EmbyAPIKey": "EMBYAPIKEY",
     "FavProvider": "tmdb",
-    "OverrideProviderOrder": false,
+    "ProviderPriorityMode": "Simple",
     "ProviderOrder": [
       "TMDB",
       "TVDB",
+      "Fanart",
+      "Plex"
+    ],
+    "MovieProviderOrder": [
+      "TMDB",
+      "TVDB",
+      "Fanart",
+      "Plex"
+    ],
+    "ShowProviderOrder": [
+      "TVDB",
+      "TMDB",
       "Fanart",
       "Plex"
     ],
@@ -45,11 +57,23 @@
       "en",
       "de"
     ],
+    "TmdbLanguageMappings": {
+    },
     "LibraryLanguageOverrides": {
       "Beispiel-Bibliothek": {
         "PreferredLanguageOrder": [
           "de",
           "en"
+        ],
+        "ApplyToPoster": true,
+        "ApplyToSeason": true,
+        "ApplyToBackground": true,
+        "EnableProviderOrderOverride": false,
+        "ProviderOrder": [
+          "TMDB",
+          "TVDB",
+          "Fanart",
+          "Plex"
         ]
       }
     }
@@ -97,7 +121,10 @@
     "UseUptimeKuma": "false",
     "AppriseUrl": "discord://{WebhookID}/{WebhookToken}/",
     "Discord": "https://discordapp.com/api/webhooks/{WebhookID}/{WebhookToken}",
-    "UptimeKumaUrl": "https://uptime-kuma.domain.com/api/push/qXpb7Mf1vW"
+    "UptimeKumaUrl": "https://uptime-kuma.domain.com/api/push/qXpb7Mf1vW",
+    "AgregarrTriggerEnabled": "false",
+    "AgregarrUrl": "",
+    "AgregarrApiKey": ""
   },
   "PrerequisitePart": {
     "ParallelJobs": "5",

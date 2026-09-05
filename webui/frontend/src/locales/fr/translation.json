@@ -104,16 +104,16 @@
       },
       "logoUpdater": {
         "title": "Mise à jour des logos",
-        "description": "Récupérer automatiquement les ClearLogos Plex"
+        "description": "Récupérer automatiquement les ClearLogos Plex/Jellyfin/Emby"
       }
     },
     "logoUpdater": {
       "title": "Mode Mise à jour des logos",
-      "info": "Mise à jour automatique ClearLogo Plex",
-      "subtitle": "Ce mode analyse la bibliothèque Plex sélectionnée pour trouver les éléments sans ClearLogo, les récupère automatiquement et les télécharge dans Plex.",
+      "info": "Mise à jour automatique ClearLogo Plex/Jellyfin/Emby",
+      "subtitle": "Ce mode analyse la bibliothèque sélectionnée pour trouver les éléments sans ClearLogo, les récupère automatiquement et les télécharge sur le serveur.",
       "selectLibrary": "Sélectionner la bibliothèque",
       "forceReplace": "Forcer le remplacement",
-      "forceReplaceDesc": "Remplacer les logos même s'ils sont déjà présents dans Plex",
+      "forceReplaceDesc": "Remplacer les logos même s'ils sont déjà présents sur le serveur",
       "start": "Lancer la mise à jour des logos",
       "browse": "Parcourir"
     },
@@ -1706,7 +1706,24 @@
     "noAssetsToDelete": "Aucun actif filtré à supprimer.",
     "bulkDeleteAllFilteredTitle": "Supprimer tous les actifs filtrés ?",
     "bulkDeleteAllFilteredConfirm": "Êtes-vous sûr de vouloir supprimer définitivement les {{count}} actifs filtrés ?\n\nCela supprimera à la fois les fichiers et leurs enregistrements dans la base de données. Cette action ne peut pas être annulée.",
-    "confirmDeleteAll": "Confirmer & Supprimer ({{count}})"
+    "confirmDeleteAll": "Confirmer et Supprimer ({{count}})",
+    "skipMediaServer": "Ignorer dans le serveur multimédia",
+    "skipMediaServerTooltip": "Ajoute l'étiquette 'skip_posterizarr' à l'élément Plex afin qu'il soit ignoré lors des prochaines exécutions",
+    "skipMediaServerSuccess": "L'étiquette pour ignorer a été ajoutée avec succès dans Plex pour '{{title}}'",
+    "skipMediaServerFailed": "Échec de l'ajout de l'étiquette pour ignorer dans Plex : {{error}}",
+    "skipMediaServerError": "Erreur lors de la tentative d'ignorer dans Plex : {{error}}",
+    "skipPlexSuccess": "Ignoré avec succès \"{{title}}\" dans le serveur multimédia.",
+    "skipPlexFailed": "Échec de l'ignorance dans le serveur multimédia : {{error}}",
+    "skipPlexError": "Erreur lors de l'ignorance dans le serveur multimédia : {{error}}",
+    "tabActive": "Actions Actives",
+    "tabSkipped": "Éléments Ignorés",
+    "unskipTooltip": "Supprimer l'étiquette d'ignorance du serveur multimédia et restaurer l'élément",
+    "unskipSuccess": "Élément \"{{title}}\" restauré avec succès",
+    "unskipFailed": "Échec de la restauration : {{error}}",
+    "unskipError": "Erreur lors de la restauration de l'élément : {{error}}",
+    "noSkippedItems": "Aucun élément ignoré trouvé.",
+    "skippedInfoTitle": "À propos des éléments ignorés",
+    "skippedInfoDesc": "Cette vue montre tous les actifs qui ont l'étiquette 'skip_posterizarr' appliquée dans votre serveur multimédia, ainsi que les éléments ignorés manuellement via l'interface utilisateur de Posterizarr. Les éléments listés ici seront ignorés par Posterizarr lors des synchronisations en arrière-plan."
   },
   "common": {
     "view": "Voir",
