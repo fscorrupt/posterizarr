@@ -8,6 +8,13 @@
     "category": "Metadata",
     "versions": [
       {
+        "version": "3.3.0",
+        "changelog": "Official Release 3.3.0\n\n- **Accurate Title Card Matching**: Title cards are now resolved by their true episode number rather than list order, eliminating mismatched artwork when shows have episode gaps or irregular numbering.\n- **Improved Season & Arc Matching**: Shows with named story arcs or custom season titles (such as anime like *One Piece*) now group seasons correctly, fixing missing season artwork and eliminating sync errors.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.3.0/Posterizarr.Plugin_v3.3.0.zip",
+        "checksum": "9D41245DAF660AA19C610B08924F1649"
+      },
+      {
         "version": "3.2.0",
         "changelog": "Official Release 3.2.0\n\n- Added granular image type toggles: Poster, Season, Titlecard, Backdrop, Thumbnail (configurable per-type from plugin settings)\n- Scheduled sync task now uses the same image type configuration as the image provider\n- Added `ReplaceThumbwithBackdropExclusively` - upload backdrop to Thumbnail slot only, skip actual Backdrop upload\n- Fixed `ILoggerFactory` injection in `PosterizarrSyncTask` (was incorrectly using `new LoggerFactory()`)\n- Thumbnail toggle defaults to OFF to avoid accidental overwrites",
         "targetAbi": "10.11.0.0",
