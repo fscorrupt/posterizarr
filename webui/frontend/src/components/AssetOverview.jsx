@@ -229,10 +229,17 @@ const AssetRow = React.memo(
       [asset.DownloadSource]
     );
 
-    // Memoize badge for FavProviderLink
+    // Memoize badge for PrimaryProvider / FavProviderLink
+    const providerKey =
+      asset.PrimaryProvider ||
+      (asset.FavProviderLink &&
+      asset.FavProviderLink !== "false" &&
+      asset.FavProviderLink !== false
+        ? asset.FavProviderLink
+        : null);
     const favProviderBadge = useMemo(
-      () => getProviderBadge(asset.FavProviderLink),
-      [asset.FavProviderLink]
+      () => getProviderBadge(providerKey),
+      [providerKey]
     );
 
     // Check if asset is resolved (Manual = "Yes" or "true" for legacy)
@@ -420,7 +427,9 @@ const AssetRow = React.memo(
                       >
                         {favProviderBadge.name}
                       </span>
-                    ) : (
+                    ) : asset.FavProviderLink &&
+                      asset.FavProviderLink !== "false" &&
+                      asset.FavProviderLink !== false ? (
                       <a
                         href={asset.FavProviderLink}
                         target="_blank"
@@ -444,6 +453,26 @@ const AssetRow = React.memo(
                         )}
                         <ExternalLink className="w-3 h-3 opacity-60" />
                       </a>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1"
+                        title={t("assetOverview.missingLink", { defaultValue: "Missing Link" })}
+                      >
+                        {favProviderBadge.logo && !favLogoError ? (
+                          <img
+                            src={favProviderBadge.logo}
+                            alt={favProviderBadge.name}
+                            className="h-[35px] object-contain opacity-90"
+                            onError={() => setFavLogoError(true)}
+                          />
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${favProviderBadge.color}`}
+                          >
+                            {favProviderBadge.name}
+                          </span>
+                        )}
+                      </span>
                     )}
                   </>
                 )}
@@ -1716,11 +1745,8 @@ const AssetOverview = () => {
       const isFromPrimary = patterns.some((pattern) =>
         downloadSource.toLowerCase().includes(pattern)
       );
-      const isLinkFromPrimary = patterns.some((pattern) =>
-        (providerLink || "").toLowerCase().includes(pattern)
-      );
 
-      if (!isFromPrimary || !isLinkFromPrimary) {
+      if (!isFromPrimary) {
         tags.push({
           label: t("assetOverview.notPrimaryProvider"), // "Not Primary Provider"
           color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",

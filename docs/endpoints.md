@@ -1989,3 +1989,58 @@ Search TMDB for media (movies or TV shows) and retrieve their logos.
 
 ### `GET /api/proxy-image`
 Proxy external images (like TMDB/Fanart) to avoid CORS issues on the frontend canvas.
+
+### `GET /api/assets/folders`
+Get folders from the assets directory. If `library_name` is provided, returns all media folders within that library; otherwise returns all top-level library directories.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "folders": [
+        {
+          "folderName": "Inception (2010) {tmdb-27205}",
+          "title": "Inception",
+          "year": "2010",
+          "path": "Movies/Inception (2010) {tmdb-27205}"
+        }
+      ],
+      "library": "Movies"
+    }
+    ```
+
+### `GET /api/assets/skipped`
+Retrieve all skipped items detected during runs, including item title, library, skip reason, and resolution status.
+
+### `POST /api/assets/skipped/refresh`
+Forces a re-scan of log files to refresh and update the list of skipped assets.
+
+### `POST /api/assets/unskip`
+Marks a skipped item as unskipped or resolved so it can be reprocessed on the next run.
+
+### `GET /api/proxy/poster`
+Proxies local or remote poster images to provide secure previews and avoid CORS restrictions.
+
+### `POST /api/media-server/items`
+Fetch paginated items from a connected media server (Plex, Jellyfin, Emby) with clearLogo presence detection and proxied image URLs.
+
+??? example "View Request"
+    ```json
+    {
+      "server_type": "plex",
+      "url": "http://192.168.1.50:32400",
+      "token": "plex-token-here",
+      "library_id": "1",
+      "start": 0,
+      "limit": 50
+    }
+    ```
+
+### `POST /api/media-server/check-logos`
+Batch checks a list of item IDs (`rating_keys`) against Plex to verify which items already have clearLogo artwork.
+
+### `GET /api/media-server/image`
+Securely proxies image streams directly from Plex, Jellyfin, or Emby servers without exposing authentication tokens in frontend image URLs.
+
+### `POST /api/media-server/upload-logo`
+Downloads a selected logo (from URL or data URI), applies Posterizarr metadata tags using Pillow/ImageMagick, and uploads it directly to the media server as a clearLogo.

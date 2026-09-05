@@ -2072,6 +2072,11 @@ function GetTVDBMoviePoster {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/movie/$global:tvdbid"
+                }
                 if ($response.data.artworks) {
                     foreach ($lang in $global:PreferredLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
@@ -2141,6 +2146,11 @@ function GetTVDBMovieBackground {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/movie/$global:tvdbid"
+                }
                 if ($response.data.artworks) {
                     if ($global:WidthHeightFilter -eq 'true') {
                         $NoLangArtwork = $response.data.artworks | Where-Object { $null -eq $_.language -and $_.type -eq '15' -and $_.width -ge $global:BgTcMinWidth -and $_.height -ge $global:BgTcMinHeight }
@@ -2210,18 +2220,18 @@ function GetTVDBMovieBackground {
                         }
                         Else {
                             Write-Entry -Subtext "Found background with text on TVDB, skipping because you only want textless..." -Path $global:configLogging -Color Yellow -log Info
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/#artwork"
+                            $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                         }
                     }
                 }
                 Else {
                     Write-Entry -Subtext "No Background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                    $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                 }
             }
             Else {
                 Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
             }
         }
         Else {
@@ -2235,6 +2245,11 @@ function GetTVDBMovieBackground {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/movie/$global:tvdbid"
+                }
                 if ($response.data.artworks) {
                     foreach ($lang in $global:PreferredBackgroundLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
@@ -2268,24 +2283,24 @@ function GetTVDBMovieBackground {
                                 $global:PosterWithText = $true
                                 $global:TVDBAssetTextLang = $lang
                             }
-                            $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                            $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                             return $global:posterurl
                             continue
                         }
                     }
                     if (!$global:posterurl) {
                         Write-Entry -Subtext "No background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                        $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                     }
                 }
                 Else {
                     Write-Entry -Subtext "No Background found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                    $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/movies/$($response.data.slug)#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
                 }
             }
             Else {
                 Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
+                $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
             }
         }
     }
@@ -2365,6 +2380,11 @@ function GetTVDBShowPoster {
 
             }
             if ($response) {
+                if ($response.data.slug) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)#artwork"
+                } elseif ($global:tvdbid) {
+                    $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
+                }
                 if ($response.data) {
                     foreach ($lang in $global:PreferredLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
@@ -2433,6 +2453,11 @@ function GetTVDBSeasonPoster {
 
         }
         if ($response) {
+            if ($response.data.slug) {
+                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/official/$global:SeasonNumber#artwork"
+            } elseif ($global:tvdbid) {
+                $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
+            }
             if ($response.data.seasons) {
                 # Select season id from current Season number
                 $SeasonID = $response.data.seasons | Where-Object { $_.number -eq $global:SeasonNumber -and $_.type.type -eq 'official' }
@@ -2448,6 +2473,9 @@ function GetTVDBSeasonPoster {
 
                 }
                 if ($Seasonresponse) {
+                    if ($response.data.slug -and $Seasonresponse.data.type.type) {
+                        $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
+                    }
                     foreach ($lang in $global:PreferredSeasonLanguageOrderTVDB) {
                         if ($global:WidthHeightFilter -eq 'true') {
                             if ($lang -eq 'null') {
@@ -2501,7 +2529,7 @@ function GetTVDBSeasonPoster {
                             continue
                         }
                     }
-                    if (!$global:posterurl -and $global:PosterOnlyTextless -eq $true) {
+                    if (!$global:posterurl -and $global:SeasonOnlyTextless -eq $true) {
                         Write-Entry -Subtext "No Textless Poster found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
                     }
                     Else {
@@ -2512,12 +2540,12 @@ function GetTVDBSeasonPoster {
             }
             Else {
                 Write-Entry -Subtext "No Poster found on TVDB" -Path $global:configLogging -Color Yellow -log Warning
-                $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
+                $global:TVDBAssetChangeUrl = if ($response.data.slug) { "https://thetvdb.com/series/$($response.data.slug)/seasons/official/$global:SeasonNumber#artwork" } elseif ($global:tvdbid) { "https://thetvdb.com/dereferrer/series/$global:tvdbid" } Else { "false" }
             }
         }
         Else {
             Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
-            $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/seasons/$($Seasonresponse.data.type.type)/$global:SeasonNumber#artwork"
+            $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/series/$global:tvdbid" } Else { "false" }
         }
     }
     Else {
@@ -2526,6 +2554,7 @@ function GetTVDBSeasonPoster {
 }
 function GetTVDBShowBackground {
     if ($global:tvdbid) {
+        $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
         Write-Entry -Subtext "Searching on TVDB for a background - TVDBID: $global:tvdbid" -Path $global:configLogging -Color Cyan -log Info
         if ($global:BackgroundPreferTextless -eq $true) {
             try {
@@ -2661,6 +2690,7 @@ function GetTVDBShowBackground {
 }
 function GetTVDBTitleCard {
     if ($global:tvdbid) {
+        $global:TVDBAssetChangeUrl = "https://thetvdb.com/dereferrer/series/$global:tvdbid"
         Write-Entry -Subtext "Searching on TVDB for: $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card - TVDBID: $global:tvdbid" -Path $global:configLogging -Color Cyan -log Info
         $allEpisodes = [System.Collections.Generic.List[object]]::new()
         $page = 0
@@ -3003,4 +3033,98 @@ function UploadOtherMediaServerArtwork {
         }
     }
 }
+
+function Get-FavProviderUrl {
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$Provider = $global:EffectivePrimaryProvider,
+        [Parameter(Mandatory = $false)]
+        [string]$Type, # 'Movie', 'MovieBackground', 'Show', 'ShowBackground', 'Season', 'Episode'
+        [Parameter(Mandatory = $false)]
+        [string]$TmdbId,
+        [Parameter(Mandatory = $false)]
+        [string]$TvdbId,
+        [Parameter(Mandatory = $false)]
+        [string]$SeasonNumber = $global:SeasonNumber,
+        [Parameter(Mandatory = $false)]
+        [string]$EpisodeNumber = $global:episodenumber
+    )
+
+    # 1. First check if a specific change URL was populated during API lookup
+    $globalUrl = switch -Wildcard ($Provider) {
+        'TVDB*'   { $global:TVDBAssetChangeUrl }
+        'TMDB*'   { $global:TMDBAssetChangeUrl }
+        'FANART*' { $global:FANARTAssetChangeUrl }
+        Default   { $null }
+    }
+
+    # Reject null, empty, false, or malformed URLs (such as missing slugs like /series//#artwork or /movies/#artwork)
+    if ($globalUrl -and $globalUrl -ne 'false' -and $globalUrl -ne '' -and $globalUrl -notmatch 'thetvdb\.com/(series|movies)/#artwork' -and $globalUrl -notmatch 'thetvdb\.com/(series|movies)//') {
+        return $globalUrl
+    }
+
+    # Normalize IDs
+    $tmdb = if ($TmdbId -and $TmdbId -ne 'false') { $TmdbId } elseif ($global:tmdbid -and $global:tmdbid -ne 'false') { $global:tmdbid } else { $null }
+    $tvdb = if ($TvdbId -and $TvdbId -ne 'false') { $TvdbId } elseif ($global:tvdbid -and $global:tvdbid -ne 'false') { $global:tvdbid } else { $null }
+    $sNum = if ($SeasonNumber -ne $null -and $SeasonNumber -ne '' -and $SeasonNumber -ne 'false') { $SeasonNumber } else { $global:SeasonNumber }
+    $eNum = if ($EpisodeNumber -ne $null -and $EpisodeNumber -ne '' -and $EpisodeNumber -ne 'false') { $EpisodeNumber } else { $global:episodenumber }
+
+    # 2. Build canonical provider URL based on Provider and Type
+    switch -Wildcard ($Provider) {
+        'TVDB*' {
+            if ($tvdb) {
+                if ($Type -like 'Movie*') {
+                    return "https://thetvdb.com/dereferrer/movie/$tvdb"
+                }
+                else {
+                    return "https://thetvdb.com/dereferrer/series/$tvdb"
+                }
+            }
+        }
+        'TMDB*' {
+            if ($tmdb) {
+                if ($Type -like '*Season*') {
+                    if ($sNum -ne $null -and $sNum -ne '') {
+                        return "https://www.themoviedb.org/tv/$tmdb/season/$sNum/images/posters"
+                    }
+                    return "https://www.themoviedb.org/tv/$tmdb/images/posters"
+                }
+                elseif ($Type -eq 'ShowBackground') {
+                    return "https://www.themoviedb.org/tv/$tmdb/images/backdrops"
+                }
+                elseif ($Type -like 'Show*' -or $Type -like 'Series*') {
+                    return "https://www.themoviedb.org/tv/$tmdb/images/posters"
+                }
+                elseif ($Type -eq 'MovieBackground') {
+                    return "https://www.themoviedb.org/movie/$tmdb/images/backdrops"
+                }
+                elseif ($Type -like 'Movie*') {
+                    return "https://www.themoviedb.org/movie/$tmdb/images/posters"
+                }
+                elseif ($Type -like 'Episode*') {
+                    if ($sNum -ne $null -and $eNum -ne $null) {
+                        return "https://www.themoviedb.org/tv/$tmdb/season/$sNum/episode/$eNum"
+                    }
+                    return "https://www.themoviedb.org/tv/$tmdb"
+                }
+                else {
+                    return "https://www.themoviedb.org"
+                }
+            }
+        }
+        'FANART*' {
+            if ($Type -like 'Movie*') {
+                $fId = if ($tmdb) { $tmdb } else { $tvdb }
+                if ($fId) { return "https://fanart.tv/movie/$fId" }
+            }
+            else {
+                $fId = if ($tvdb) { $tvdb } else { $tmdb }
+                if ($fId) { return "https://fanart.tv/series/$fId" }
+            }
+        }
+    }
+
+    return 'false'
+}
+
 

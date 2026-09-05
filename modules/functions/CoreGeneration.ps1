@@ -773,9 +773,9 @@ function Invoke-MoviePosterCreation {
                                         $movietemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $movietemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                         switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                            'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                            'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                            'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                            'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                             Default { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
 
@@ -807,9 +807,9 @@ function Invoke-MoviePosterCreation {
                                 $movietemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $movietemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'FANART' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'TVDB' { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Movie' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                     Default { $movietemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -1571,9 +1571,9 @@ function Invoke-MoviePosterCreation {
                                         $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                         switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                            'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                            'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                            'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                            'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                            'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                             Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
                                         # Export the array to a CSV file
@@ -1604,9 +1604,9 @@ function Invoke-MoviePosterCreation {
                                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                     Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -1705,9 +1705,9 @@ function Invoke-MoviePosterCreation {
                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                 $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                    'TMDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                    'FANART' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                    'TVDB' { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'MovieBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                     Default { $moviebackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                 }
 
@@ -2482,9 +2482,9 @@ function Invoke-ShowPosterCreation {
                                     $showtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                     $showtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                     switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                        'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                        'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                        'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                        'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                         Default { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -2515,9 +2515,9 @@ function Invoke-ShowPosterCreation {
                             $showtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                             $showtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                             switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                'TMDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'FANART' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'TVDB' { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Show' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                 Default { $showtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                             }
 
@@ -3282,9 +3282,9 @@ function Invoke-ShowPosterCreation {
                                     $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                     $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                     switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                        'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                        'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                        'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                        'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                        'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                         Default { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -3315,9 +3315,9 @@ function Invoke-ShowPosterCreation {
                             $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                             $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                             switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                'TMDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'FANART' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
+                                'TVDB' { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'ShowBackground' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid) }
                                 Default { $showbackgroundtemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                             }
 
@@ -4328,9 +4328,9 @@ function Invoke-ShowPosterCreation {
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                         switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                            'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                            'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                            'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                            'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                            'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                            'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
                                             Default { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                         }
                                         # Export the array to a CSV file
@@ -4361,9 +4361,9 @@ function Invoke-ShowPosterCreation {
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($entry.tvdbid) { $entry.tvdbid } Else { "false" })
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($entry.imdbid) { $entry.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                    'FANART' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
+                                    'TVDB' { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Season' -TmdbId $entry.tmdbid -TvdbId $entry.tvdbid -SeasonNumber $global:SeasonNumber) }
                                     Default { $seasontemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -5186,9 +5186,9 @@ function Invoke-TitleCardCreation {
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
                                     switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                         Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -5218,9 +5218,9 @@ function Invoke-TitleCardCreation {
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                     Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -5887,9 +5887,9 @@ function Invoke-TitleCardCreation {
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
                                     switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                         Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                     }
                                     # Export the array to a CSV file
@@ -5919,9 +5919,9 @@ function Invoke-TitleCardCreation {
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                 $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
                                 switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                    'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                    'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                     Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                 }
 
@@ -6662,9 +6662,9 @@ function Invoke-TitleCardCreation {
                                                         $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                                         $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
                                                         switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                                            'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                                            'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                                            'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                                            'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                            'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                            'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                                             Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                                         }
                                                         # Export the array to a CSV file
@@ -6694,9 +6694,9 @@ function Invoke-TitleCardCreation {
                                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "tvdbid" -Value $(if ($episode.tvdbid) { $episode.tvdbid } Else { "false" })
                                                     $episodetemp | Add-Member -MemberType NoteProperty -Name "imdbid" -Value $(if ($episode.imdbid) { $episode.imdbid } Else { "false" })
                                                     switch -Wildcard ($global:EffectivePrimaryProvider) {
-                                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TMDBAssetChangeUrl) { $global:TMDBAssetChangeUrl } Else { "false" }) }
-                                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:FANARTAssetChangeUrl) { $global:FANARTAssetChangeUrl } Else { "false" }) }
-                                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value $(if ($global:TVDBAssetChangeUrl) { $global:TVDBAssetChangeUrl } Else { "false" }) }
+                                                        'TMDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TMDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                        'FANART' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'FANART' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
+                                                        'TVDB' { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value (Get-FavProviderUrl -Provider 'TVDB' -Type 'Episode' -TmdbId $episode.tmdbid -TvdbId $episode.tvdbid -SeasonNumber $global:season_number -EpisodeNumber $global:episodenumber) }
                                                         Default { $episodetemp | Add-Member -MemberType NoteProperty -Name "Fav Provider Link" -Value 'false' }
                                                     }
 

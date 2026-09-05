@@ -73,6 +73,7 @@ nav:
     - 'PowerShell Scripts': 'powershell_scripts.md'
     - 'Backend Python': 'backend_python.md'
     - 'Frontend Components': 'frontend_components.md'
+    - 'LLM Architecture Guide': 'llms.md'
 
 
 # Extensions

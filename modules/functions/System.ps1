@@ -673,7 +673,7 @@ function Set-LibraryLanguageOverride {
         Set-Variable -Name "PreferredTCLanguageOrder" -Scope Global -Value $global:DefaultPreferredTCLanguageOrder
         Set-Variable -Name "PreferredBackgroundLanguageOrder" -Scope Global -Value $global:DefaultPreferredBackgroundLanguageOrder
         Set-Variable -Name "LogoLanguageOrder" -Scope Global -Value $global:DefaultLogoLanguageOrder
-        
+
         # Reset provider order to MediaType specific or Global
         if ($MediaType -eq 'Movie' -and $null -ne $global:MovieProviderOrder -and $global:MovieProviderOrder.Count -gt 0 -and $global:ProviderPriorityMode -eq 'PerMediaType') {
             Set-Variable -Name "ProviderOrder" -Scope Global -Value $global:MovieProviderOrder
@@ -709,7 +709,7 @@ function Set-LibraryLanguageOverride {
 
         # Provider overrides
         $enableLibraryProviderOrder = if ($null -ne $override.EnableProviderOrderOverride) { [bool]$override.EnableProviderOrderOverride } else { $false }
-        
+
         if ($enableLibraryProviderOrder -and $null -ne $override.ProviderOrder -and $override.ProviderOrder.Count -gt 0) {
             Set-Variable -Name "ProviderOrder" -Scope Global -Value @($override.ProviderOrder | ForEach-Object { $_.ToUpper() })
             Set-Variable -Name "UseCustomProviderOrder" -Scope Global -Value $true

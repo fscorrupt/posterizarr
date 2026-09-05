@@ -15,7 +15,21 @@ In `Global` mode, Posterizarr bypasses the legacy order entirely and checks prov
 Example: `["FANART", "TMDB", "TVDB", "PLEX"]`
 
 #### 3. PerMediaType
-In `PerMediaType` mode, Posterizarr allows you to define a specific provider array for each media type (Movies, Shows, Seasons, Episodes) independently.
+In `PerMediaType` mode, Posterizarr evaluates separate provider orders depending on the type of media:
+- **Movies**: Evaluated using the `MovieProviderOrder` array (e.g. `["TMDB", "TVDB", "Fanart", "Plex"]`).
+- **TV Shows & Seasons**: Evaluated using the `ShowProviderOrder` array (e.g. `["TVDB", "TMDB", "Fanart", "Plex"]`).
+
+#### 4. Library-Level Overrides
+Regardless of the global `ProviderPriorityMode`, any library defined in `LibraryLanguageOverrides` can enforce its own custom provider sequence by setting:
+```json
+"LibraryLanguageOverrides": {
+  "Anime": {
+    "EnableProviderOrderOverride": true,
+    "ProviderOrder": ["TVDB", "TMDB", "Fanart", "Plex"]
+  }
+}
+```
+When `EnableProviderOrderOverride` is `true`, the specified `ProviderOrder` takes top precedence for all items processed in that library.
 
 ### Asset Specifics and Limitations
 
