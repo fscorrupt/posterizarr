@@ -4495,7 +4495,7 @@ async def validate_agregarr(request: AgregarrValidationRequest):
     logger.info("=" * 60)
     logger.info("AGREGARR VALIDATION STARTED")
     logger.info(f"[URL] URL: {base_url}")
-    logger.info(f"[KEY] API Key: {mask_secret(api_key)}")
+    logger.info(f"[KEY] API Key provided: {'yes' if api_key else 'no'}")
 
     if not base_url or not api_key:
         return {
@@ -15852,7 +15852,7 @@ async def get_media_server_items(request: MediaServerItemsRequest):
         return {"success": True, "items": items, "total": total}
     except Exception as e:
         logger.error(f"Error fetching media server items: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to fetch media server items. Check server logs."}
 
 class CheckLogosRequest(BaseModel):
     server_type: str
@@ -15897,6 +15897,9 @@ import urllib.parse
 @app.get("/api/media-server/image")
 async def proxy_media_server_image(server_type: str, url: str):
     """Proxies images from the media server to hide API keys/tokens from the frontend URL"""
+    if not is_safe_url(url, allow_private=True):
+        raise HTTPException(status_code=403, detail="Unsafe or invalid media server URL")
+
     config = {}
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -15912,9 +15915,19 @@ async def proxy_media_server_image(server_type: str, url: str):
             config.get("JellyfinPart", {}).get("JellyfinUrl"),
             config.get("EmbyPart", {}).get("EmbyUrl")
         ]
-    valid_urls = [u for u in valid_urls if u]
+    valid_urls = [u.rstrip('/') for u in valid_urls if u]
 
-    if not any(url.startswith(v) for v in valid_urls):
+    # Validate that target URL hostname matches one of the configured server URLs
+    parsed_target = urllib.parse.urlparse(url)
+    matched_base = None
+    for v in valid_urls:
+        parsed_v = urllib.parse.urlparse(v)
+        if parsed_target.scheme in ["http", "https"] and parsed_target.netloc == parsed_v.netloc:
+            if parsed_target.path.startswith(parsed_v.path):
+                matched_base = parsed_v
+                break
+
+    if not matched_base:
         raise HTTPException(status_code=403, detail="Proxy URL not allowed")
 
     headers = {}
@@ -15927,9 +15940,17 @@ async def proxy_media_server_image(server_type: str, url: str):
     elif server_type == "emby":
         headers["Authorization"] = f'MediaBrowser Token="{api_part.get("EmbyAPIKey", "")}"'
 
+    safe_target_url = urllib.parse.urlunsplit((
+        matched_base.scheme,
+        matched_base.netloc,
+        parsed_target.path,
+        parsed_target.query,
+        ""
+    ))
+
     async def stream_image():
         async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("GET", url, headers=headers) as resp:
+            async with client.stream("GET", safe_target_url, headers=headers) as resp:
                 async for chunk in resp.aiter_bytes():
                     yield chunk
 
@@ -15940,8 +15961,13 @@ async def proxy_media_server_image(server_type: str, url: str):
 @app.get("/api/proxy-image")
 async def proxy_image(url: str):
     """Proxy external images (like TMDB/Fanart) to avoid CORS issues on frontend canvas."""
-    if not url.startswith("http"):
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ["http", "https"] or not parsed.hostname:
         raise HTTPException(status_code=400, detail="Invalid URL")
+
+    # Block localhost, private IPs, and cloud metadata (only allow public internet hosts)
+    if not is_safe_url(url, allow_private=False):
+        raise HTTPException(status_code=403, detail="Forbidden URL target")
 
     async def stream_image():
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -16004,9 +16030,12 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 with open(temp_logo, "wb") as f:
                     f.write(image_data)
             except Exception as e:
-                return {"success": False, "error": f"Failed to decode base64 image: {e}"}
+                logger.error(f"Failed to decode base64 image: {e}")
+                return {"success": False, "error": "Failed to decode base64 image."}
         elif request.logo_url.startswith(("http://", "https://")):
-            # Download via HTTP
+            # Download via HTTP with SSRF check (prevent hitting internal/private IPs or metadata endpoints)
+            if not is_safe_url(request.logo_url, allow_private=False):
+                return {"success": False, "error": "Invalid or forbidden logo URL."}
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.get(request.logo_url)
                 if resp.status_code != 200:
@@ -16058,11 +16087,11 @@ async def upload_media_server_logo(request: UploadLogoRequest):
 
         if upload_resp.status_code in [200, 201, 204]:
             return {"success": True}
-        return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}, Body: {upload_resp.text}"}
+        return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}"}
 
     except Exception as e:
         logger.error(f"Error uploading logo: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to upload logo. Check server logs."}
 
 
 
@@ -16247,7 +16276,7 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
         return {"success": True, "items": items, "total": total}
     except Exception as e:
         logger.error(f"Error fetching media server collections: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to fetch media server collections. Check server logs."}
 
 
 @app.get("/api/studio-logos")
@@ -16258,15 +16287,22 @@ async def api_get_studio_logos():
         return {"success": True, "logos": logos}
     except Exception as e:
         logger.error(f"Error getting studio logos: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to get studio logos. Check server logs."}
 
 
 @app.get("/api/studio-logos/image/{filename}")
 async def api_get_studio_logo_image(filename: str):
-    # Prevent path traversal by extracting only the filename
-    safe_filename = Path(filename).name
-    file_path = IMAGES_DIR / "studio_logos" / safe_filename
-    if not file_path.exists():
+    # Strictly validate filename to prevent any path traversal
+    clean_filename = os.path.basename(filename)
+    if not clean_filename or clean_filename != filename or ".." in filename or clean_filename.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    base_dir = (IMAGES_DIR / "studio_logos").resolve()
+    file_path = (base_dir / clean_filename).resolve()
+    if not str(file_path).startswith(str(base_dir)):
+        raise HTTPException(status_code=403, detail="Path traversal detected")
+
+    if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Logo not found")
     return FileResponse(file_path)
 
@@ -16315,7 +16351,7 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
         return {"success": True, "message": "Uploaded successfully to Media Server"}
     except Exception as e:
         logger.error(f"Error uploading to media server: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to upload to media server. Check server logs."}
 
 class CollectionSaveRequest(BaseModel):
     collection_name: str
@@ -16327,15 +16363,23 @@ async def api_save_collection_poster(request: CollectionSaveRequest):
     try:
         # Decode base64
         import base64
+        import re
         header, encoded = request.image_data.split(",", 1) if "," in request.image_data else ("", request.image_data)
         data = base64.b64decode(encoded)
 
-        # Sanitize to prevent path traversal
-        safe_library_name = Path(request.library_name).name
-        safe_collection_name = Path(request.collection_name).name
+        # Sanitize to prevent path traversal and invalid filename characters
+        safe_library_name = re.sub(r'[\\/*?:"<>|]', "", request.library_name).strip(" .")
+        safe_collection_name = re.sub(r'[\\/*?:"<>|]', "", request.collection_name).strip(" .")
 
-        # Save path: ASSETS_DIR / "Collections" / library_name / collection_name / "poster.png"
-        save_dir = ASSETS_DIR / "Collections" / safe_library_name / safe_collection_name
+        if not safe_library_name or not safe_collection_name:
+            return {"success": False, "error": "Invalid library or collection name."}
+
+        collections_base = (ASSETS_DIR / "Collections").resolve()
+        save_dir = (collections_base / safe_library_name / safe_collection_name).resolve()
+
+        if not str(save_dir).startswith(str(collections_base)):
+            return {"success": False, "error": "Path traversal detected."}
+
         save_dir.mkdir(parents=True, exist_ok=True)
 
         save_path = save_dir / "poster.png"
@@ -16345,7 +16389,7 @@ async def api_save_collection_poster(request: CollectionSaveRequest):
         return {"success": True, "message": "Saved successfully", "path": str(save_path)}
     except Exception as e:
         logger.error(f"Error saving collection poster: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to save collection poster. Check server logs."}
 
 class TMDBCollectionSearchRequest(BaseModel):
     query: str
@@ -16374,7 +16418,7 @@ async def api_search_tmdb_collections(request: TMDBCollectionSearchRequest):
                 return {"success": False, "error": f"Search failed: {resp.status_code}"}
     except Exception as e:
         logger.error(f"Error searching TMDB collections: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to search TMDB collections."}
 
 @app.post("/api/media/logos")
 async def api_search_media_logos(request: TMDBCollectionSearchRequest):
@@ -16411,7 +16455,7 @@ async def api_search_media_logos(request: TMDBCollectionSearchRequest):
             return {"success": True, "media": first_media, "logos": logos}
     except Exception as e:
         logger.error(f"Error searching media logos: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to search media logos."}
 
 
 if FRONTEND_DIR.exists():
