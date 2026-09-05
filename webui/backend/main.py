@@ -2750,11 +2750,17 @@ async def export_blueprint():
         logger.error(f"Error exporting blueprint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+MAX_IMPORT_BODY_BYTES = 5 * 1024 * 1024  # 5 MB
+MAX_IMPORT_JSON_DEPTH = 32
+
 @app.post("/api/config/import")
 async def import_blueprint(request: Request):
     """Import a grouped config.json (blueprint), create backup, and deep merge"""
     try:
-        imported_config = await request.json()
+        raw_body = await request.body()
+        if len(raw_body) > MAX_IMPORT_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="Import payload too large")
+        imported_config = json.loads(raw_body)
 
         # 1. Create backup
         if CONFIG_PATH.exists():
@@ -2769,11 +2775,13 @@ async def import_blueprint(request: Request):
                 current_config = json.load(f)
 
         # 3. Deep merge
-        def deep_merge(source, destination):
+        def deep_merge(source, destination, depth=0):
+            if depth > MAX_IMPORT_JSON_DEPTH:
+                raise HTTPException(status_code=400, detail="Import payload nested too deeply")
             for key, value in source.items():
                 if isinstance(value, dict):
                     node = destination.setdefault(key, {})
-                    deep_merge(value, node)
+                    deep_merge(value, node, depth + 1)
                 else:
                     destination[key] = value
             return destination
