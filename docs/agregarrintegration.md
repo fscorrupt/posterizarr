@@ -12,6 +12,7 @@ UI and configure:
 - **Enable Agregarr Callback**
 - **Agregarr URL**
 - **Agregarr API Key**
+- **Agregarr Retry Timeout**
 
 Use **Test** beside the URL to verify that Posterizarr can reach Agregarr
 and authenticate. The test reads Agregarr's integration status and does not
@@ -24,7 +25,8 @@ also be edited directly under the existing `Notification` section:
 "Notification": {
   "AgregarrTriggerEnabled": "true",
   "AgregarrUrl": "http://agregarr:7171",
-  "AgregarrApiKey": "replace-with-the-agregarr-api-key"
+  "AgregarrApiKey": "replace-with-the-agregarr-api-key",
+  "AgregarrRetryTimeout": "60"
 }
 ```
 
@@ -51,10 +53,17 @@ The callback is sent only when all of these conditions are met:
 Posterizarr sends at most one callback at the end of each completed Arr job,
 even when that job uploaded a root poster, season poster, and title card. For a
 large Sonarr import, jobs remain individual so every successfully finished
-episode has its own retryable callback; Agregarr serializes those callbacks.
+episode has its own callback; Agregarr serializes those callbacks.
 The callback carries Sonarr's season and episode numbers.
 When Sonarr sends a multi-episode file in one webhook, Posterizarr expands its
 `episodes` array into one queued job per episode before processing begins.
+
+If Agregarr is busy with a full sync or its bounded callback queue is full, it
+returns a retry delay. Posterizarr honors that delay and retries for up to the
+configured `AgregarrRetryTimeout` window (default: 60 seconds). Set to `0` to
+disable retries. Authentication and configuration errors are not retried. Artwork that
+was already uploaded remains successful even if the downstream callback
+eventually fails, and the failure is recorded in Posterizarr's log.
 In Agregarr, tag overlay templates with the desired artwork targets in the
 template editor: **Main poster**, **Season poster**, and/or **Episode card**.
 Existing templates default to Main poster. Episode templates should normally

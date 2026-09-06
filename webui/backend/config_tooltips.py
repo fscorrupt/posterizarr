@@ -40,6 +40,7 @@ CONFIG_TOOLTIPS = {
     "AgregarrTriggerEnabled": "After an Arr-triggered job uploads artwork to Plex, notify Agregarr so it can update matching collections and overlays.",
     "AgregarrUrl": "The base URL Posterizarr can use to reach Agregarr, for example http://agregarr:7171.",
     "AgregarrApiKey": "The API key configured in Agregarr. Posterizarr sends it in the X-Api-Key header.",
+    "AgregarrRetryTimeout": "Maximum time in seconds to retry sending the callback to Agregarr when Agregarr is busy (HTTP 408, 409, 429, 5xx). Set to 0 to disable retries. Default is 60 seconds.",
 
     # PlexPart
     "PlexLibstoExclude": "Libraries, by name, to exclude from processing on your Plex server.",

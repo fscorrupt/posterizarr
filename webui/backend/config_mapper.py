@@ -314,6 +314,7 @@ CONFIG_GROUPS = {
     "AgregarrTriggerEnabled": "Notification",
     "AgregarrUrl": "Notification",
     "AgregarrApiKey": "Notification",
+    "AgregarrRetryTimeout": "Notification",
     # PrerequisitePart
     "AssetPath": "PrerequisitePart",
     "FileTestOnTrigger": "PrerequisitePart",
@@ -622,6 +623,7 @@ UI_GROUPS = {
         "AgregarrTriggerEnabled",
         "AgregarrUrl",
         "AgregarrApiKey",
+        "AgregarrRetryTimeout",
     ],
     "Global Visuals": [
         "ImageProcessing",
@@ -1047,6 +1049,7 @@ DISPLAY_NAMES = {
     "AgregarrTriggerEnabled": "Enable Agregarr Callback",
     "AgregarrUrl": "Agregarr URL",
     "AgregarrApiKey": "Agregarr API Key",
+    "AgregarrRetryTimeout": "Agregarr Retry Timeout (Seconds)",
     # Language & Preferences
     "PreferredLanguageOrder": "Preferred Language Order",
     "PreferredSeasonLanguageOrder": "Season Language Order",

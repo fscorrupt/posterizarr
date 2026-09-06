@@ -221,6 +221,10 @@ $global:DiscordUserName = $config.Notification.DiscordUserName
 $global:AgregarrTriggerEnabled = "$($config.Notification.AgregarrTriggerEnabled)".ToLower()
 $global:AgregarrUrl = "$($config.Notification.AgregarrUrl)".TrimEnd('/')
 $global:AgregarrApiKey = "$($config.Notification.AgregarrApiKey)"
+$global:AgregarrRetryTimeout = 60
+if ($null -ne $config.Notification.AgregarrRetryTimeout -and [int]::TryParse("$($config.Notification.AgregarrRetryTimeout)", [ref]$null)) {
+    $global:AgregarrRetryTimeout = [int]$config.Notification.AgregarrRetryTimeout
+}
 if ($global:UseUptimeKuma -eq 'true') {
     $global:UptimeKumaUrl = $config.Notification.UptimeKumaUrl
 }

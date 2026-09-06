@@ -38,10 +38,22 @@
       "de",
       "ja"
     ],
-    "OverrideProviderOrder": "false",
+    "ProviderPriorityMode": "Simple",
     "ProviderOrder": [
       "TMDB",
       "TVDB",
+      "Fanart",
+      "Plex"
+    ],
+    "MovieProviderOrder": [
+      "TMDB",
+      "TVDB",
+      "Fanart",
+      "Plex"
+    ],
+    "ShowProviderOrder": [
+      "TVDB",
+      "TMDB",
       "Fanart",
       "Plex"
     ],
@@ -108,7 +120,11 @@
     "AppriseUrl": "discord://xxxxxxxxxxxxx/xxxxxxxxxxxxx",
     "Discord": "",
     "UptimeKumaUrl": "https://uptime-kuma.domain.com/api/push/xxxxxxxxxxxxx",
-    "DiscordUserName": "Posterizarr"
+    "DiscordUserName": "Posterizarr",
+    "AgregarrTriggerEnabled": "false",
+    "AgregarrUrl": "",
+    "AgregarrApiKey": "",
+    "AgregarrRetryTimeout": "60"
   },
   "PrerequisitePart": {
     "AssetPath": "/assets",
