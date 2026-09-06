@@ -124,7 +124,8 @@
     "UptimeKumaUrl": "https://uptime-kuma.domain.com/api/push/qXpb7Mf1vW",
     "AgregarrTriggerEnabled": "false",
     "AgregarrUrl": "",
-    "AgregarrApiKey": ""
+    "AgregarrApiKey": "",
+    "AgregarrRetryTimeout": "60"
   },
   "PrerequisitePart": {
     "ParallelJobs": "5",

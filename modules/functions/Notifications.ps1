@@ -485,7 +485,10 @@ function Send-AgregarrTrigger {
 
     $startedAt = [DateTime]::UtcNow
     $attempt = 0
-    $maximumRetryWindowSeconds = 900
+    $maximumRetryWindowSeconds = 60
+    if ($null -ne $global:AgregarrRetryTimeout -and [int]::TryParse([string]$global:AgregarrRetryTimeout, [ref]$null)) {
+        $maximumRetryWindowSeconds = [int]$global:AgregarrRetryTimeout
+    }
 
     while ($true) {
         $attempt++

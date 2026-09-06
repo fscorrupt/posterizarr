@@ -12,6 +12,11 @@ UI and configure:
 - **Enable Agregarr Callback**
 - **Agregarr URL**
 - **Agregarr API Key**
+- **Agregarr Retry Timeout**
+
+Use **Test** beside the URL to verify that Posterizarr can reach Agregarr
+and authenticate. The test reads Agregarr's integration status and does not
+queue collection or overlay work.
 
 These settings use Posterizarr's central `config.json` configuration. They can
 also be edited directly under the existing `Notification` section:
@@ -20,7 +25,8 @@ also be edited directly under the existing `Notification` section:
 "Notification": {
   "AgregarrTriggerEnabled": "true",
   "AgregarrUrl": "http://agregarr:7171",
-  "AgregarrApiKey": "replace-with-the-agregarr-api-key"
+  "AgregarrApiKey": "replace-with-the-agregarr-api-key",
+  "AgregarrRetryTimeout": "60"
 }
 ```
 
@@ -53,8 +59,9 @@ When Sonarr sends a multi-episode file in one webhook, Posterizarr expands its
 `episodes` array into one queued job per episode before processing begins.
 
 If Agregarr is busy with a full sync or its bounded callback queue is full, it
-returns a retry delay. Posterizarr honors that delay and retries for up to 15
-minutes. Authentication and configuration errors are not retried. Artwork that
+returns a retry delay. Posterizarr honors that delay and retries for up to the
+configured `AgregarrRetryTimeout` window (default: 60 seconds). Set to `0` to
+disable retries. Authentication and configuration errors are not retried. Artwork that
 was already uploaded remains successful even if the downstream callback
 eventually fails, and the failure is recorded in Posterizarr's log.
 In Agregarr, tag overlay templates with the desired artwork targets in the

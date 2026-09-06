@@ -210,7 +210,7 @@ function ConfigEditor() {
 
 
     // Notifications
-    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl", "agregarrtriggerenabled", "agregarrurl", "agregarrapikey"];
+    const notificationKeys = ["sendnotification", "discord", "appriseurl", "discordusername", "useuptimekuma", "uptimekumaurl", "agregarrtriggerenabled", "agregarrurl", "agregarrapikey", "agregarrretrytimeout"];
     if (notificationKeys.includes(k)) return "Notifications";
 
     // Library Overrides
