@@ -1,0 +1,21 @@
+name: Integration tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  agregarr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Test callback retry behavior
+        shell: pwsh
+        run: ./tests/AgregarrCallback.Tests.ps1

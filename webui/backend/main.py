@@ -4530,6 +4530,22 @@ async def validate_agregarr(request: AgregarrValidationRequest):
                 "message": "Agregarr connection and API key are valid.",
                 "details": {"status_code": 200},
             }
+        if response.status_code == 403:
+            try:
+                response_payload = response.json()
+            except ValueError:
+                response_payload = {}
+            if "integration is disabled" in str(
+                response_payload.get("error", "")
+            ).lower():
+                return {
+                    "valid": False,
+                    "message": "Agregarr is reachable, but its Posterizarr integration is disabled. Enable it in Agregarr's Overlay Settings.",
+                    "details": {
+                        "status_code": 403,
+                        "error": "integration_disabled",
+                    },
+                }
         if response.status_code in (401, 403):
             return {
                 "valid": False,
@@ -15343,6 +15359,8 @@ async def arr_webhook(request: Request):
             "queued": len(created_files),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error processing Arr webhook: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

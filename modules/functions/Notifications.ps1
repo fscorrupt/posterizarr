@@ -426,6 +426,36 @@ function Send-SummaryNotification {
     }
 }
 
+function Get-AgregarrHttpStatusCode {
+    param ([System.Management.Automation.ErrorRecord]$ErrorRecord)
+
+    try {
+        if ($null -ne $ErrorRecord.Exception.Response.StatusCode) {
+            return [int]$ErrorRecord.Exception.Response.StatusCode
+        }
+    }
+    catch {}
+
+    return $null
+}
+
+function Get-AgregarrRetryDelaySeconds {
+    param (
+        [System.Management.Automation.ErrorRecord]$ErrorRecord,
+        [int]$Attempt
+    )
+
+    try {
+        $retryAfter = $ErrorRecord.Exception.Response.Headers.RetryAfter
+        if ($null -ne $retryAfter -and $null -ne $retryAfter.Delta) {
+            return [Math]::Max(1, [Math]::Ceiling($retryAfter.Delta.TotalSeconds))
+        }
+    }
+    catch {}
+
+    return [Math]::Min(60, 5 * [Math]::Pow(2, [Math]::Min($Attempt - 1, 4)))
+}
+
 function Send-AgregarrTrigger {
     param (
         [Parameter(Mandatory = $true)][string]$RatingKey,
@@ -453,14 +483,37 @@ function Send-AgregarrTrigger {
     if ($null -ne $EpisodeNumber) { $bodyObject['episodeNumber'] = $EpisodeNumber }
     $body = $bodyObject | ConvertTo-Json -Compress
 
-    try {
-        $response = Invoke-RestMethod -Method Post -Uri $triggerUrl -Headers $headers -Body $body -ContentType 'application/json' -TimeoutSec 15 -ErrorAction Stop
-        Write-Entry -Message "Agregarr trigger accepted for '$Title' (Plex rating key $RatingKey)." -Path $global:configLogging -Color Green -log Info
-        Write-Entry -Subtext "Queued: $($response.queued) | Deduplicated: $($response.deduplicated)" -Path $global:configLogging -Color Cyan -log Debug
-    }
-    catch {
-        # Artwork creation already succeeded. A downstream automation outage must
-        # be visible, but it must not turn the Posterizarr run into a failure.
-        Write-Entry -Message "Agregarr trigger failed for '$Title': $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+    $startedAt = [DateTime]::UtcNow
+    $attempt = 0
+    $maximumRetryWindowSeconds = 900
+
+    while ($true) {
+        $attempt++
+        try {
+            $response = Invoke-RestMethod -Method Post -Uri $triggerUrl -Headers $headers -Body $body -ContentType 'application/json' -TimeoutSec 15 -ErrorAction Stop
+            Write-Entry -Message "Agregarr trigger accepted for '$Title' (Plex rating key $RatingKey)." -Path $global:configLogging -Color Green -log Info
+            Write-Entry -Subtext "Queued: $($response.queued) | Deduplicated: $($response.deduplicated) | Attempts: $attempt" -Path $global:configLogging -Color Cyan -log Debug
+            return
+        }
+        catch {
+            $statusCode = Get-AgregarrHttpStatusCode -ErrorRecord $_
+            $retryable = $statusCode -in @(408, 409, 429) -or ($statusCode -ge 500 -and $statusCode -le 599)
+            $elapsedSeconds = ([DateTime]::UtcNow - $startedAt).TotalSeconds
+            $retryDelaySeconds = [int](Get-AgregarrRetryDelaySeconds -ErrorRecord $_ -Attempt $attempt)
+
+            if (
+                -not $retryable -or
+                ($elapsedSeconds + $retryDelaySeconds) -gt $maximumRetryWindowSeconds
+            ) {
+                # Artwork creation already succeeded. A downstream automation
+                # outage is visible, but does not fail the Posterizarr run.
+                $statusText = if ($null -ne $statusCode) { "HTTP $statusCode" } else { "connection error" }
+                Write-Entry -Message "Agregarr trigger failed for '$Title' after $attempt attempt(s) ($statusText): $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                return
+            }
+
+            Write-Entry -Message "Agregarr asked Posterizarr to retry '$Title' (HTTP $statusCode). Retrying in $retryDelaySeconds second(s)." -Path $global:configLogging -Color Yellow -log Warning
+            Start-Sleep -Seconds $retryDelaySeconds
+        }
     }
 }
