@@ -8525,7 +8525,9 @@ async def check_log_exists(log_name: str):
 
 @app.websocket("/ws/logs")
 async def websocket_logs(
-    websocket: WebSocket, log_file: Optional[str] = Query("Scriptlog.log")
+    websocket: WebSocket,
+    log_file: Optional[str] = Query("Scriptlog.log"),
+    reconnect: Optional[bool] = Query(False),
 ):
     """
     WebSocket endpoint for REAL-TIME log streaming
@@ -8536,7 +8538,7 @@ async def websocket_logs(
     - Only auto-switches if user is watching the "active" log for current mode
     """
     await websocket.accept()
-    logger.info(f"WebSocket connection established for log: {log_file}")
+    logger.info(f"WebSocket connection established for log: {log_file} (reconnect={reconnect})")
 
     # Determine which log file to monitor - check both directories
     log_path = LOGS_DIR / log_file
@@ -8583,8 +8585,8 @@ async def websocket_logs(
     reader_task = asyncio.create_task(client_reader())
 
     try:
-        # Send initial logs (increased to 100 lines)
-        if log_path.exists():
+        # Send initial logs (100 lines) only on fresh connect, not on reconnect
+        if not reconnect and log_path.exists():
             with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()[-100:]
                 for line in lines:
@@ -8603,9 +8605,9 @@ async def websocket_logs(
                 # FASTER POLLING: 0.3s instead of 1s
                 await asyncio.sleep(0.3)
 
-                # Send ping every ~15 seconds to prevent proxy idle timeouts
+                # Send ping every ~3 seconds to prevent proxy idle timeouts (10 * 0.3s)
                 loop_count += 1
-                if loop_count >= 50:
+                if loop_count >= 10:
                     await websocket.send_json({"type": "ping"})
                     loop_count = 0
             except asyncio.CancelledError:

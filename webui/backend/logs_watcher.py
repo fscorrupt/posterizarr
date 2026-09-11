@@ -130,11 +130,12 @@ class LogsWatcher:
             except Exception as e:
                 logger.warning(f"Could not list directory contents: {e}")
 
-        try:
-            logger.debug("Creating LogsFileHandler instance...")
-            self.handler = LogsFileHandler(self)
-            logger.debug(f"[OK] Handler created: {self.handler}")
+        logger.debug("Creating LogsFileHandler instance...")
+        self.handler = LogsFileHandler(self)
+        logger.debug(f"[OK] Handler created: {self.handler}")
 
+        # Attempt to start inotify Observer; fall back gracefully if inotify limit reached
+        try:
             logger.debug("Creating Observer instance...")
             self.observer = Observer()
             logger.debug(f"[OK] Observer created: {type(self.observer).__name__}")
@@ -148,8 +149,31 @@ class LogsWatcher:
             logger.debug(
                 f"[OK] Observer thread started (alive: {self.observer.is_alive()})"
             )
+        except OSError as os_err:
+            logger.warning(
+                f"[WARN] Inotify observer failed ({os_err}). Attempting fallback to PollingObserver..."
+            )
+            try:
+                from watchdog.observers.polling import PollingObserver
 
-            self.is_running = True
+                self.observer = PollingObserver()
+                self.observer.schedule(self.handler, str(self.logs_dir), recursive=False)
+                self.observer.start()
+                logger.info("[OK] Fallback PollingObserver started successfully.")
+            except Exception as fallback_err:
+                logger.warning(
+                    f"[WARN] PollingObserver unavailable ({fallback_err}). Monitoring will continue via internal polling thread."
+                )
+                self.observer = None
+        except Exception as e:
+            logger.warning(
+                f"[WARN] Could not initialize filesystem event observer ({e}). Monitoring will continue via internal polling thread."
+            )
+            self.observer = None
+
+        self.is_running = True
+
+        try:
 
             # Record baseline ImageChoices.csv row count (only rows appended after startup will be broadcast)
             csv_path = self.logs_dir / "ImageChoices.csv"

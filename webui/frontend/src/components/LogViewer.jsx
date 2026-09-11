@@ -26,7 +26,7 @@ import { useToast } from "../context/ToastContext";
 const API_URL = "/api";
 const isDev = import.meta.env.DEV;
 
-const getWebSocketURL = (logFile) => {
+const getWebSocketURL = (logFile, isReconnect = false) => {
   // Check if the page is loaded via HTTPS or HTTP
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
@@ -34,8 +34,9 @@ const getWebSocketURL = (logFile) => {
     ? `ws://localhost:3000/ws/logs`
     : `${protocol}//${window.location.host}/ws/logs`; // Use the correct protocol
 
-  // Add log_file as query parameter
-  return `${baseURL}?log_file=${encodeURIComponent(logFile)}`;
+  // Add log_file as query parameter, and reconnect flag if reconnecting
+  const reconnectParam = isReconnect ? '&reconnect=true' : '';
+  return `${baseURL}?log_file=${encodeURIComponent(logFile)}${reconnectParam}`;
 };
 
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -142,6 +143,7 @@ function LogViewer() {
   const wsRef = useRef(null);
   const dropdownRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const heartbeatIntervalRef = useRef(null);
   const currentLogFileRef = useRef(null); // Set to null initially
   const isInitialLoad = useRef(true); // Prevent useEffect [selectedLog] from firing on init
   const logBufferRef = useRef([]);
@@ -386,6 +388,10 @@ function LogViewer() {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
     if (wsRef.current) {
       wsRef.current.onopen = null;
       wsRef.current.onclose = null;
@@ -403,7 +409,7 @@ function LogViewer() {
     setIsReconnecting(false);
   };
 
-  const connectWebSocket = (logFile) => {
+  const connectWebSocket = (logFile, isReconnect = false) => {
     if (!logFile) {
       console.warn("WebSocket connection skipped: no log file selected.");
       return;
@@ -414,7 +420,7 @@ function LogViewer() {
       (wsRef.current.readyState === WebSocket.OPEN ||
         wsRef.current.readyState === WebSocket.CONNECTING)
     ) {
-      if (currentLogFileRef.current === logFile) {
+      if (currentLogFileRef.current === logFile && !isReconnect) {
         console.log(`Already connected to ${logFile}`);
         return;
       }
@@ -423,16 +429,31 @@ function LogViewer() {
     disconnectWebSocket();
 
     try {
-      const wsURL = getWebSocketURL(logFile);
+      const wsURL = getWebSocketURL(logFile, isReconnect);
       console.log(`Connecting to WebSocket: ${wsURL}`);
       const ws = new WebSocket(wsURL);
       currentLogFileRef.current = logFile;
 
       ws.onopen = () => {
-        console.log(`WebSocket connected to ${logFile}`);
-        setLogs([]); // <-- FIX: Clear logs on new connection
+        console.log(`WebSocket connected to ${logFile} (reconnect=${isReconnect})`);
+        // Only clear logs if switching to a new/different log file, NEVER on reconnect
+        if (!isReconnect) {
+          setLogs([]);
+        }
         setConnected(true);
         setIsReconnecting(false);
+
+        // Start active client heartbeat to prevent proxy idle timeouts
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
+        }
+        heartbeatIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            try {
+              ws.send(JSON.stringify({ type: "ping" }));
+            } catch (e) {}
+          }
+        }, 3000);
       };
 
       ws.onmessage = (event) => {
@@ -478,12 +499,16 @@ function LogViewer() {
       ws.onclose = (event) => {
         console.log(" WebSocket closed:", event.code);
         setConnected(false);
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = null;
+        }
         if (!event.wasClean) {
           setIsReconnecting(true);
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log(`Reconnecting to ${currentLogFileRef.current}...`);
-            connectWebSocket(currentLogFileRef.current);
-          }, 2000);
+            connectWebSocket(currentLogFileRef.current, true);
+          }, 1500);
         }
       };
 
@@ -492,9 +517,13 @@ function LogViewer() {
       console.error("Failed to create WebSocket:", error);
       setConnected(false);
       setIsReconnecting(true);
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
       reconnectTimeoutRef.current = setTimeout(() => {
-        connectWebSocket(logFile);
-      }, 3000);
+        connectWebSocket(logFile, true);
+      }, 2000);
     }
   };
 
