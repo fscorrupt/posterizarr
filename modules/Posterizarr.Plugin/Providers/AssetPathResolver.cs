@@ -28,22 +28,8 @@ public class AssetPathResolver
     private static DateTime _rootDirectoriesExpiry = DateTime.MinValue;
     private static readonly object RootDirLock = new();
 
-    private sealed class FolderCacheEntry
-    {
-        public IReadOnlyDictionary<string, FileInfo>? Files { get; }
-        public DateTime ExpiryUtc { get; }
-
-        public FolderCacheEntry(IReadOnlyDictionary<string, FileInfo>? files, TimeSpan ttl)
-        {
-            Files = files;
-            ExpiryUtc = DateTime.UtcNow.Add(ttl);
-        }
-
-        public bool IsExpired => DateTime.UtcNow >= ExpiryUtc;
-    }
-
     // Cache of files inside each media folder (e.g. "/assets/TV Shows/Ted Lasso" -> { "poster.jpg": FileInfo, "s01e01.jpg": FileInfo })
-    private static readonly ConcurrentDictionary<string, FolderCacheEntry> FolderFilesCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, FileInfo>?> _folderFilesCache = new(StringComparer.OrdinalIgnoreCase);
 
     public AssetPathResolver(ILibraryManager libraryManager, ILogger logger)
     {
@@ -60,31 +46,11 @@ public class AssetPathResolver
     }
 
     /// <summary>
-    /// Evicts a specific folder from the in-memory cache.
-    /// </summary>
-    public static void InvalidateFolder(string folderPath)
-    {
-        FolderFilesCache.TryRemove(folderPath, out _);
-    }
-
-    /// <summary>
-    /// Evicts the parent folder of a file from the in-memory cache.
-    /// </summary>
-    public static void InvalidateFile(string filePath)
-    {
-        var dir = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            FolderFilesCache.TryRemove(dir, out _);
-        }
-    }
-
-    /// <summary>
     /// Clears transient directory and folder caches to free memory after large sync runs.
     /// </summary>
     public void ClearCache()
     {
-        FolderFilesCache.Clear();
+        _folderFilesCache.Clear();
         LibraryFolderCache.Clear();
         lock (RootDirLock)
         {
@@ -164,11 +130,24 @@ public class AssetPathResolver
         // 6. Fast O(1) dictionary lookup by file extension
         var supportedExtensions = config.SupportedExtensions ?? new[] { ".jpg", ".jpeg", ".png", ".webp", ".bmp" };
 
-        var match = MatchFile(folderFiles, fileNameBase, supportedExtensions, type);
-        if (match != null)
+        foreach (var ext in supportedExtensions)
         {
-            LogDebug("SUCCESS: Found {0} at '{1}'", type, match.FullName);
-            return match;
+            var targetFile = fileNameBase + ext;
+            if (folderFiles.TryGetValue(targetFile, out var match))
+            {
+                LogDebug("SUCCESS: Found {0} at '{1}'", type, match.FullName);
+                return match;
+            }
+
+            if (type == ImageType.Backdrop || type == ImageType.Thumb)
+            {
+                var fanartTarget = "fanart" + ext;
+                if (folderFiles.TryGetValue(fanartTarget, out var fanartMatch))
+                {
+                    LogDebug("Found fallback: {0}", fanartMatch.FullName);
+                    return fanartMatch;
+                }
+            }
         }
 
         LogDebug("No file matched '{0}' with extensions: {1}", fileNameBase, string.Join(", ", supportedExtensions));
@@ -260,33 +239,11 @@ public class AssetPathResolver
         }
     }
 
-    private static FileInfo? MatchFile(IReadOnlyDictionary<string, FileInfo> folderFiles, string fileNameBase, string[] supportedExtensions, ImageType type)
-    {
-        foreach (var ext in supportedExtensions)
-        {
-            var targetFile = fileNameBase + ext;
-            if (folderFiles.TryGetValue(targetFile, out var match))
-            {
-                return match;
-            }
-
-            if (type == ImageType.Backdrop || type == ImageType.Thumb)
-            {
-                var fanartTarget = "fanart" + ext;
-                if (folderFiles.TryGetValue(fanartTarget, out var fanartMatch))
-                {
-                    return fanartMatch;
-                }
-            }
-        }
-        return null;
-    }
-
     private IReadOnlyDictionary<string, FileInfo>? GetFolderFiles(string folderPath)
     {
-        if (FolderFilesCache.TryGetValue(folderPath, out var cached) && !cached.IsExpired)
+        if (_folderFilesCache.TryGetValue(folderPath, out var cachedFiles))
         {
-            return cached.Files;
+            return cachedFiles;
         }
 
         try
@@ -294,7 +251,7 @@ public class AssetPathResolver
             var dirInfo = new DirectoryInfo(folderPath);
             if (!dirInfo.Exists)
             {
-                FolderFilesCache[folderPath] = new FolderCacheEntry(null, TimeSpan.FromSeconds(5));
+                _folderFilesCache[folderPath] = null;
                 return null;
             }
 
@@ -307,14 +264,13 @@ public class AssetPathResolver
                 dict[fi.Name] = fi;
             }
 
-            // Cache for 60 seconds (fast for batch sync, short enough to expire stale states)
-            FolderFilesCache[folderPath] = new FolderCacheEntry(dict, TimeSpan.FromSeconds(60));
+            _folderFilesCache[folderPath] = dict;
             return dict;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "[Posterizarr] Failed to list folder: {0}", folderPath);
-            FolderFilesCache[folderPath] = new FolderCacheEntry(null, TimeSpan.FromSeconds(5));
+            _folderFilesCache[folderPath] = null;
             return null;
         }
     }

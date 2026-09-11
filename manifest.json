@@ -9,6 +9,20 @@
     "imageUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/main/docs/images/Plugin_logo.png",
     "versions": [
       {
+        "version": "3.3.4",
+        "changelog": "Official Release 3.3.4\n\n- **WebSocket Real-Time Sync**: Added background listener service connecting to `/ws/events` for instant image updates.\n- **Direct Image Application**: Streams and persists image updates directly using internal provider APIs upon receiving events.\n- **Enhanced Configuration Page**: Added Real-Time Sync toggle, Posterizarr URL input, and API key configuration with live connection test diagnostics.\n- **Volume Latency Tolerance**: Added 2-second retry loop for newly created image files.\n- **Catalog Image**: Configured `imageUrl` in repository manifests.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.3.4/Posterizarr.Plugin_v3.3.4-jf12.zip",
+        "checksum": "1C68143ED8EBC073E6A22D3BD9349EFE"
+      },
+      {
+        "version": "3.3.4",
+        "changelog": "Official Release 3.3.4\n\n- **WebSocket Real-Time Sync**: Added background listener service connecting to `/ws/events` for instant image updates.\n- **Direct Image Application**: Streams and persists image updates directly using internal provider APIs upon receiving events.\n- **Enhanced Configuration Page**: Added Real-Time Sync toggle, Posterizarr URL input, and API key configuration with live connection test diagnostics.\n- **Volume Latency Tolerance**: Added 2-second retry loop for newly created image files.\n- **Catalog Image**: Configured `imageUrl` in repository manifests.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.3.4/Posterizarr.Plugin_v3.3.4.zip",
+        "checksum": "D228B75A6E754D5D8B9D8F2BE39EBF1F"
+      },
+      {
         "version": "3.3.3",
         "changelog": "Official Release 3.3.3\n\n- **Persistent State Caching**: Added `posterizarr_sync_cache.json` in the plugin data directory to track file sizes, timestamps, and image metadata. Unchanged assets are skipped instantly in memory with zero network I/O.\n- **Directory & File Caching**: Added `AssetPathResolver` to cache root library shares and folder file listings. Reduces tens of thousands of remote SMB/NFS round-trips to a single query per media folder.\n- **Parallel Async Sync Task**: Upgraded `PosterizarrSyncTask` to use `Parallel.ForEachAsync` with adaptive concurrency, replacing single-threaded sequential processing.\n- **Tiered Image Verification**: Added 4KB header and file-length pre-checks to eliminate continuous ~30 MB/s full-file MD5 hash calculations across the network.\n- **Debug Mode Toggle**: Debug messages (`[Posterizarr DEBUG]`) are now directly controlled by the plugin's `EnableDebugMode` setting and visible in the Jellyfin log viewer without changing server logging configurations.\n- **Emby Optimization**: Added same-path timestamp comparison to prevent double-hashing identical local files in Emby.\n- **Performance Benchmark**: Successfully verified on a 39,000-item library, reducing task runtime from **32m 51s to 13 seconds (~151x faster)** with near-zero network and disk utilization.",
         "targetAbi": "12.0.0.0",

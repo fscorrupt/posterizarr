@@ -469,123 +469,98 @@ namespace Posterizarr.Plugin.Services
                 };
 
                 var items = _libraryManager.GetItemList(query);
-                var candidates = items.Where(i =>
+                var matchedItem = items.FirstOrDefault(i =>
                     !string.IsNullOrEmpty(i.Path) &&
                     (string.Equals(Path.GetFileName(i.Path), payload.FolderName, StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(Path.GetFileName(Path.GetDirectoryName(i.Path)), payload.FolderName, StringComparison.OrdinalIgnoreCase)))
-                    .ToList();
+                     string.Equals(Path.GetFileName(Path.GetDirectoryName(i.Path)), payload.FolderName, StringComparison.OrdinalIgnoreCase)));
 
-                if (candidates.Count == 0)
+                if (matchedItem == null)
                 {
                     _logger.Info("[Posterizarr WS] No matching Movie or Series found in Emby for folder '{0}'.", payload.FolderName);
                     return;
                 }
 
-                // Disambiguate by LibraryName if provided in the event payload
-                var targetCandidates = candidates;
-                if (candidates.Count > 1 && !string.IsNullOrWhiteSpace(payload.LibraryName))
-                {
-                    var libraryFiltered = candidates.Where(i =>
-                    {
-                        var collectionFolders = _libraryManager.GetCollectionFolders(i);
-                        return collectionFolders != null && collectionFolders.Any(cf =>
-                            string.Equals(cf.Name, payload.LibraryName, StringComparison.OrdinalIgnoreCase));
-                    }).ToList();
+                BaseItem targetItem = matchedItem;
+                var assetTypeLower = (payload.AssetType ?? "poster").ToLowerInvariant();
+                ImageType imageType = ImageType.Primary;
 
-                    if (libraryFiltered.Count > 0)
+                // Handle TV Show Seasons
+                if (assetTypeLower.Contains("season") && targetItem is Series series)
+                {
+                    int seasonNum = payload.GetSeasonNumber() ?? 0;
+                    var seasonQuery = new InternalItemsQuery
                     {
-                        targetCandidates = libraryFiltered;
+                        Parent = series,
+                        IncludeItemTypes = new[] { typeof(Season).Name },
+                        Recursive = false
+                    };
+
+                    var seasonItem = _libraryManager.GetItemList(seasonQuery)
+                        .OfType<Season>()
+                        .FirstOrDefault(s => (s.IndexNumber ?? 0) == seasonNum);
+
+                    if (seasonItem != null)
+                    {
+                        targetItem = seasonItem;
+                        imageType = ImageType.Primary;
                     }
                     else
                     {
-                        _logger.Debug("[Posterizarr WS] No candidate matched LibraryName '{0}', using all {1} candidate(s)", payload.LibraryName, candidates.Count);
+                        _logger.Warn("[Posterizarr WS] Could not find Season {0} for series '{1}'", seasonNum, series.Name);
+                        return;
                     }
                 }
-
-                foreach (var candidate in targetCandidates)
+                // Handle TV Show Episode Title Cards
+                else if ((assetTypeLower.Contains("titlecard") || assetTypeLower.Contains("episode")) && targetItem is Series showSeries)
                 {
-                    BaseItem targetItem = candidate;
-                    var assetTypeLower = (payload.AssetType ?? "poster").ToLowerInvariant();
-                    ImageType imageType = ImageType.Primary;
+                    int sNum = payload.GetSeasonNumber() ?? 1;
+                    int eNum = payload.GetEpisodeNumber() ?? 1;
 
-                    // Handle TV Show Seasons
-                    if (assetTypeLower.Contains("season") && targetItem is Series series)
+                    var epQuery = new InternalItemsQuery
                     {
-                        int seasonNum = payload.GetSeasonNumber() ?? 0;
-                        var seasonQuery = new InternalItemsQuery
-                        {
-                            Parent = series,
-                            IncludeItemTypes = new[] { typeof(Season).Name },
-                            Recursive = false
-                        };
+                        Parent = showSeries,
+                        IncludeItemTypes = new[] { typeof(Episode).Name },
+                        Recursive = true
+                    };
 
-                        var seasonItem = _libraryManager.GetItemList(seasonQuery)
-                            .OfType<Season>()
-                            .FirstOrDefault(s => (s.IndexNumber ?? 0) == seasonNum);
+                    var epItem = _libraryManager.GetItemList(epQuery)
+                        .OfType<Episode>()
+                        .FirstOrDefault(e => (e.ParentIndexNumber ?? 0) == sNum && (e.IndexNumber ?? 0) == eNum);
 
-                        if (seasonItem != null)
-                        {
-                            targetItem = seasonItem;
-                            imageType = ImageType.Primary;
-                        }
-                        else
-                        {
-                            _logger.Warn("[Posterizarr WS] Could not find Season {0} for series '{1}'", seasonNum, series.Name);
-                            continue;
-                        }
+                    if (epItem != null)
+                    {
+                        targetItem = epItem;
+                        imageType = ImageType.Primary;
                     }
-                    // Handle TV Show Episode Title Cards
-                    else if ((assetTypeLower.Contains("titlecard") || assetTypeLower.Contains("episode")) && targetItem is Series showSeries)
+                    else
                     {
-                        int sNum = payload.GetSeasonNumber() ?? 1;
-                        int eNum = payload.GetEpisodeNumber() ?? 1;
-
-                        var epQuery = new InternalItemsQuery
-                        {
-                            Parent = showSeries,
-                            IncludeItemTypes = new[] { typeof(Episode).Name },
-                            Recursive = true
-                        };
-
-                        var epItem = _libraryManager.GetItemList(epQuery)
-                            .OfType<Episode>()
-                            .FirstOrDefault(e => (e.ParentIndexNumber ?? 0) == sNum && (e.IndexNumber ?? 0) == eNum);
-
-                        if (epItem != null)
-                        {
-                            targetItem = epItem;
-                            imageType = ImageType.Primary;
-                        }
-                        else
-                        {
-                            _logger.Warn("[Posterizarr WS] Could not find Episode S{0:02}E{1:02} for series '{2}'", sNum, eNum, showSeries.Name);
-                            continue;
-                        }
+                        _logger.Warn("[Posterizarr WS] Could not find Episode S{0:02}E{1:02} for series '{2}'", sNum, eNum, showSeries.Name);
+                        return;
                     }
-                    // Handle Backdrops / Backgrounds
-                    else if (assetTypeLower.Contains("background") || assetTypeLower.Contains("backdrop"))
-                    {
-                        imageType = ImageType.Backdrop;
-                    }
-                    // Handle Thumbnails
-                    else if (assetTypeLower.Contains("thumbnail") || assetTypeLower.Contains("thumb"))
-                    {
-                        imageType = ImageType.Thumb;
-                    }
-
-                    // Apply updated image in Emby
-                    targetItem.SetImage(new ItemImageInfo
-                    {
-                        Path = fullTargetFile,
-                        Type = imageType,
-                        DateModified = File.GetLastWriteTimeUtc(fullTargetFile)
-                    }, 0);
-
-                    _libraryManager.UpdateItem(targetItem, targetItem.GetParent(), ItemUpdateType.ImageUpdate);
-
-                    _logger.Info("[Posterizarr WS] SUCCESS: Real-time image update applied to '{0}' ({1}) in Emby!",
-                        targetItem.Name, imageType);
                 }
+                // Handle Backdrops / Backgrounds
+                else if (assetTypeLower.Contains("background") || assetTypeLower.Contains("backdrop"))
+                {
+                    imageType = ImageType.Backdrop;
+                }
+                // Handle Thumbnails
+                else if (assetTypeLower.Contains("thumbnail") || assetTypeLower.Contains("thumb"))
+                {
+                    imageType = ImageType.Thumb;
+                }
+
+                // Apply updated image in Emby
+                targetItem.SetImage(new ItemImageInfo
+                {
+                    Path = fullTargetFile,
+                    Type = imageType,
+                    DateModified = File.GetLastWriteTimeUtc(fullTargetFile)
+                }, 0);
+
+                _libraryManager.UpdateItem(targetItem, targetItem.GetParent(), ItemUpdateType.ImageUpdate);
+
+                _logger.Info("[Posterizarr WS] SUCCESS: Real-time image update applied to '{0}' ({1}) in Emby!",
+                    targetItem.Name, imageType);
             }
             catch (Exception ex)
             {
