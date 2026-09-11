@@ -505,7 +505,7 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
 
             // Disambiguate by LibraryName if provided in the event payload
             var targetCandidates = candidates;
-            if (!string.IsNullOrWhiteSpace(payload.LibraryName))
+            if (candidates.Count > 1 && !string.IsNullOrWhiteSpace(payload.LibraryName))
             {
                 var libraryFiltered = candidates.Where(i =>
                 {

@@ -8666,23 +8666,41 @@ async def websocket_logs(
         if close_code in [1000, 1001, 1005]:
             logger.info(f"WebSocket disconnected normally (code: {close_code})")
         else:
-            logger.warning(f"WebSocket disconnected unexpectedly (code: {close_code})")
+            logger.debug(f"WebSocket disconnected (code: {close_code})")
 
     except asyncio.CancelledError:
         logger.debug("WebSocket task cancelled during shutdown")
 
-    except Exception as e:
-        error_msg = str(e)
+    except (ConnectionResetError, BrokenPipeError) as e:
+        logger.debug(f"WebSocket client connection reset: {e}")
 
-        if "1001" in error_msg or "1005" in error_msg or "going away" in error_msg:
-            logger.info(f"WebSocket closed normally: {error_msg}")
+    except Exception as e:
+        error_msg = str(e).lower()
+        is_client_disconnect = any(
+            phrase in error_msg
+            for phrase in [
+                "1000",
+                "1001",
+                "1005",
+                "1006",
+                "going away",
+                "no close frame",
+                "connection closed",
+                "connection reset",
+                "broken pipe",
+                "closed abnormally",
+            ]
+        )
+
+        if is_client_disconnect:
+            logger.debug(f"WebSocket client closed connection: {e}")
         else:
             logger.error(f"WebSocket error: {e}")
             try:
                 await websocket.send_json(
                     {"type": "error", "message": f"WebSocket error: {str(e)}"}
                 )
-            except:
+            except Exception:
                 pass
     finally:
         logger.debug("WebSocket connection closed")

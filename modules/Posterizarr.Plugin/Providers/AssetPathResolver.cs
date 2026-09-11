@@ -142,19 +142,11 @@ public class AssetPathResolver
         LogDebug("Full target path to check: {0}", actualFolder);
 
         // 4. Retrieve cached file dictionary for this folder
-        var folderFiles = GetFolderFiles(actualFolder, out bool fromCache);
+        var folderFiles = GetFolderFiles(actualFolder);
         if (folderFiles == null || folderFiles.Count == 0)
         {
-            if (fromCache)
-            {
-                folderFiles = GetFolderFiles(actualFolder, out fromCache, forceRefresh: true);
-            }
-
-            if (folderFiles == null || folderFiles.Count == 0)
-            {
-                LogDebug("Folder '{0}' does not exist or contains no files.", actualFolder);
-                return null;
-            }
+            LogDebug("Folder '{0}' does not exist or contains no files.", actualFolder);
+            return null;
         }
 
         // 5. Determine base file name
@@ -177,23 +169,6 @@ public class AssetPathResolver
         {
             LogDebug("SUCCESS: Found {0} at '{1}'", type, match.FullName);
             return match;
-        }
-
-        // 7. Cache miss fallback: If not found in cached folder, refresh directory from disk once
-        // This handles cases where assets were rendered after the folder was first read or cached.
-        if (fromCache)
-        {
-            LogDebug("Base name '{0}' not in cached files for '{1}'. Refreshing folder from disk...", fileNameBase, actualFolder);
-            folderFiles = GetFolderFiles(actualFolder, out _, forceRefresh: true);
-            if (folderFiles != null && folderFiles.Count > 0)
-            {
-                match = MatchFile(folderFiles, fileNameBase, supportedExtensions, type);
-                if (match != null)
-                {
-                    LogDebug("SUCCESS (after disk refresh): Found {0} at '{1}'", type, match.FullName);
-                    return match;
-                }
-            }
         }
 
         LogDebug("No file matched '{0}' with extensions: {1}", fileNameBase, string.Join(", ", supportedExtensions));
@@ -307,12 +282,10 @@ public class AssetPathResolver
         return null;
     }
 
-    private IReadOnlyDictionary<string, FileInfo>? GetFolderFiles(string folderPath, out bool fromCache, bool forceRefresh = false)
+    private IReadOnlyDictionary<string, FileInfo>? GetFolderFiles(string folderPath)
     {
-        fromCache = false;
-        if (!forceRefresh && FolderFilesCache.TryGetValue(folderPath, out var cached) && !cached.IsExpired)
+        if (FolderFilesCache.TryGetValue(folderPath, out var cached) && !cached.IsExpired)
         {
-            fromCache = true;
             return cached.Files;
         }
 

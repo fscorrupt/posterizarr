@@ -67,7 +67,7 @@ class LogsWatcher:
         self.csv_broadcast_lock = threading.Lock()
         self.last_csv_row_count = 0
         self.last_first_row_sig = ""
-        self.last_csv_file_id: Optional[Tuple[Any, ...]] = None
+        self.last_csv_inode: Optional[int] = None
 
         self.observer: Any = None  # watchdog.observers.Observer instance
         self.handler: Any = None  # LogsFileHandler instance
@@ -156,7 +156,7 @@ class LogsWatcher:
             if csv_path.exists():
                 try:
                     stat = csv_path.stat()
-                    self.last_csv_file_id = (stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None, getattr(stat, "st_ctime_ns", stat.st_ctime))
+                    self.last_csv_inode = stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                         reader = csv.DictReader(f, delimiter=";")
                         rows = [
@@ -172,11 +172,11 @@ class LogsWatcher:
                     logger.warning(f"[WS-Events] Could not read baseline ImageChoices.csv: {e}")
                     self.last_csv_row_count = 0
                     self.last_first_row_sig = ""
-                    self.last_csv_file_id = None
+                    self.last_csv_inode = None
             else:
                 self.last_csv_row_count = 0
                 self.last_first_row_sig = ""
-                self.last_csv_file_id = None
+                self.last_csv_inode = None
 
             # Record which files exist at startup (to prevent restart duplicates)
             logger.debug("Recording existing files at startup...")
@@ -558,7 +558,7 @@ class LogsWatcher:
             logger.info("[WS-Events] Resetting ImageChoices baseline row count to 0")
             self.last_csv_row_count = 0
             self.last_first_row_sig = ""
-            self.last_csv_file_id = None
+            self.last_csv_inode = None
 
     def on_csv_modified(self):
         """Handle ImageChoices.csv modification"""
@@ -960,10 +960,7 @@ class LogsWatcher:
         with self.csv_broadcast_lock:
             try:
                 stat = csv_path.stat()
-                file_id = (
-                    stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None,
-                    getattr(stat, "st_ctime_ns", stat.st_ctime),
-                )
+                current_inode = stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None
 
                 with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                     reader = csv.DictReader(f, delimiter=";")
@@ -977,27 +974,27 @@ class LogsWatcher:
                 if total_rows == 0:
                     self.last_csv_row_count = 0
                     self.last_first_row_sig = ""
-                    self.last_csv_file_id = file_id
+                    self.last_csv_inode = current_inode
                     return
 
                 first_sig = self._row_signature(all_rows[0])
 
                 # Reset baseline if:
                 # 1. The file was rotated/shortened (fewer rows than before)
-                # 2. File identity (inode or creation time) changed (new file created)
+                # 2. Inode changed and was previously known (different physical file created)
                 # 3. The first row's signature changed (file rewritten/replaced with new content)
-                file_id_changed = self.last_csv_file_id is not None and self.last_csv_file_id != file_id
+                inode_changed = bool(self.last_csv_inode is not None and current_inode is not None and self.last_csv_inode != current_inode)
                 first_row_changed = bool(self.last_first_row_sig and first_sig != self.last_first_row_sig)
                 shortened = total_rows < self.last_csv_row_count
 
-                if shortened or file_id_changed or first_row_changed:
+                if shortened or inode_changed or first_row_changed:
                     logger.info(
                         f"[WS-Events] ImageChoices.csv replaced or rotated (total: {total_rows}, prev: {self.last_csv_row_count}, "
-                        f"file_changed: {file_id_changed}, content_changed: {first_row_changed}). Resetting baseline."
+                        f"inode_changed: {inode_changed}, content_changed: {first_row_changed}). Resetting baseline."
                     )
                     self.last_csv_row_count = 0
 
-                self.last_csv_file_id = file_id
+                self.last_csv_inode = current_inode
 
                 if total_rows <= self.last_csv_row_count:
                     return
@@ -1202,18 +1199,10 @@ class LogsFileHandler(FileSystemEventHandler):
             if filename == self.CSV_FILE:
                 logger.info(f"[OK] File matches monitored CSV: {filename}")
                 self.watcher.reset_csv_baseline()
-                logger.debug("Waiting 0.5s for file to be fully written...")
-                # Give the file a moment to be fully written
-                time.sleep(0.5)
-                logger.debug("File write buffer complete, triggering import")
                 self.watcher.on_csv_modified()
 
             elif filename in (self.PLEX_LIBRARY_CSV, self.PLEX_EPISODE_CSV):
                 logger.info(f"[OK] File matches monitored Plex CSV: {filename}")
-                logger.debug("Waiting 0.5s for file to be fully written...")
-                # Give the file a moment to be fully written
-                time.sleep(0.5)
-                logger.debug("File write buffer complete, triggering import")
                 self.watcher.on_plex_csv_modified()
 
             elif filename in (
@@ -1221,18 +1210,10 @@ class LogsFileHandler(FileSystemEventHandler):
                 self.OTHER_MEDIA_EPISODE_CSV,
             ):
                 logger.info(f"[OK] File matches monitored OtherMedia CSV: {filename}")
-                logger.debug("Waiting 0.5s for file to be fully written...")
-                # Give the file a moment to be fully written
-                time.sleep(0.5)
-                logger.debug("File write buffer complete, triggering import")
                 self.watcher.on_other_media_csv_modified()
 
             elif filename.lower() in self.RUNTIME_JSON_FILES:
                 logger.info(f"[OK] File matches monitored JSON: {filename}")
-                logger.debug("Waiting 0.5s for file to be fully written...")
-                # Give the file a moment to be fully written
-                time.sleep(0.5)
-                logger.debug("File write buffer complete, triggering import")
                 self.watcher.on_runtime_json_modified(filename)
 
             else:
