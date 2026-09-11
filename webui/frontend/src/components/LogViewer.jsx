@@ -455,6 +455,12 @@ function LogViewer() {
                 `Ignoring backend log switch - user manually selected ${selectedLog}`
               );
             }
+          } else if (data.type === "ping") {
+            try {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "pong" }));
+              }
+            } catch (e) {}
           } else if (data.type === "error") {
             console.error("WebSocket error message:", data.message);
             showError(data.message);
@@ -474,7 +480,6 @@ function LogViewer() {
         setConnected(false);
         if (!event.wasClean) {
           setIsReconnecting(true);
-          showError(t("logViewer.disconnected"));
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log(`Reconnecting to ${currentLogFileRef.current}...`);
             connectWebSocket(currentLogFileRef.current);

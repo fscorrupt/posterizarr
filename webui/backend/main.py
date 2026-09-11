@@ -8558,6 +8558,30 @@ async def websocket_logs(
         "scheduled": "Scriptlog.log",
     }
 
+    disconnect_event = asyncio.Event()
+
+    async def client_reader():
+        """Continuously reads incoming client messages, servicing ASGI receive queue."""
+        try:
+            while not disconnect_event.is_set():
+                data = await websocket.receive_text()
+                if data:
+                    try:
+                        parsed = json.loads(data)
+                        if isinstance(parsed, dict) and parsed.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                    except json.JSONDecodeError:
+                        if data.strip().lower() == "ping":
+                            await websocket.send_json({"type": "pong"})
+        except (WebSocketDisconnect, asyncio.CancelledError):
+            pass
+        except Exception as ex:
+            logger.debug(f"WebSocket client reader terminated: {ex}")
+        finally:
+            disconnect_event.set()
+
+    reader_task = asyncio.create_task(client_reader())
+
     try:
         # Send initial logs (increased to 100 lines)
         if log_path.exists():
@@ -8574,7 +8598,7 @@ async def websocket_logs(
         current_log_file = log_file  # Track current log file being watched
 
         loop_count = 0
-        while True:
+        while not disconnect_event.is_set():
             try:
                 # FASTER POLLING: 0.3s instead of 1s
                 await asyncio.sleep(0.3)
@@ -8585,7 +8609,10 @@ async def websocket_logs(
                     await websocket.send_json({"type": "ping"})
                     loop_count = 0
             except asyncio.CancelledError:
-                logger.info("WebSocket log streaming cancelled (connection closed)")
+                logger.debug("WebSocket log streaming cancelled (connection closed)")
+                break
+
+            if disconnect_event.is_set():
                 break
 
             # Only auto-switch if user didn't manually request a specific log
@@ -8660,31 +8687,45 @@ async def websocket_logs(
                     await asyncio.sleep(1)  # Wait longer on file errors
 
     except WebSocketDisconnect as e:
-        # Normal disconnect - check close code
-        close_code = e.code if hasattr(e, "code") else None
-
-        if close_code in [1000, 1001, 1005]:
-            logger.info(f"WebSocket disconnected normally (code: {close_code})")
-        else:
-            logger.warning(f"WebSocket disconnected unexpectedly (code: {close_code})")
+        close_code = getattr(e, "code", None)
+        logger.debug(f"WebSocket client disconnected (code: {close_code})")
 
     except asyncio.CancelledError:
         logger.debug("WebSocket task cancelled during shutdown")
 
-    except Exception as e:
-        error_msg = str(e)
+    except (ConnectionResetError, BrokenPipeError) as e:
+        logger.debug(f"WebSocket client connection reset: {e}")
 
-        if "1001" in error_msg or "1005" in error_msg or "going away" in error_msg:
-            logger.info(f"WebSocket closed normally: {error_msg}")
+    except Exception as e:
+        error_msg = str(e).lower()
+        is_client_disconnect = any(
+            phrase in error_msg
+            for phrase in [
+                "1000",
+                "1001",
+                "1005",
+                "1006",
+                "going away",
+                "no close frame",
+                "connection closed",
+                "connection reset",
+                "broken pipe",
+                "closed abnormally",
+                "not connected",
+            ]
+        )
+
+        if is_client_disconnect:
+            logger.debug(f"WebSocket client closed connection: {e}")
         else:
-            logger.error(f"WebSocket error: {e}")
-            try:
-                await websocket.send_json(
-                    {"type": "error", "message": f"WebSocket error: {str(e)}"}
-                )
-            except:
-                pass
+            logger.warning(f"WebSocket streaming error: {e}")
     finally:
+        disconnect_event.set()
+        reader_task.cancel()
+        try:
+            await reader_task
+        except (asyncio.CancelledError, Exception):
+            pass
         logger.debug("WebSocket connection closed")
 
 
