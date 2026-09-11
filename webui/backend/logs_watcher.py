@@ -66,6 +66,8 @@ class LogsWatcher:
         self.assets_dir = Path(assets_dir) if assets_dir else None
         self.csv_broadcast_lock = threading.Lock()
         self.last_csv_row_count = 0
+        self.last_first_row_sig = ""
+        self.last_csv_file_id: Optional[Tuple[Any, ...]] = None
 
         self.observer: Any = None  # watchdog.observers.Observer instance
         self.handler: Any = None  # LogsFileHandler instance
@@ -153,15 +155,28 @@ class LogsWatcher:
             csv_path = self.logs_dir / "ImageChoices.csv"
             if csv_path.exists():
                 try:
+                    stat = csv_path.stat()
+                    self.last_csv_file_id = (stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None, getattr(stat, "st_ctime_ns", stat.st_ctime))
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                         reader = csv.DictReader(f, delimiter=";")
-                        self.last_csv_row_count = sum(1 for row in reader if row.get("Title") or row.get("Rootfolder"))
+                        rows = [
+                            {k.strip('"').strip(): v.strip('"').strip() for k, v in row.items() if k}
+                            for row in reader
+                        ]
+                        rows = [r for r in rows if r.get("Title") or r.get("Rootfolder")]
+                        self.last_csv_row_count = len(rows)
+                        if rows:
+                            self.last_first_row_sig = self._row_signature(rows[0])
                     logger.info(f"[WS-Events] Baseline ImageChoices.csv row count initialized to {self.last_csv_row_count}")
                 except Exception as e:
                     logger.warning(f"[WS-Events] Could not read baseline ImageChoices.csv: {e}")
                     self.last_csv_row_count = 0
+                    self.last_first_row_sig = ""
+                    self.last_csv_file_id = None
             else:
                 self.last_csv_row_count = 0
+                self.last_first_row_sig = ""
+                self.last_csv_file_id = None
 
             # Record which files exist at startup (to prevent restart duplicates)
             logger.debug("Recording existing files at startup...")
@@ -536,6 +551,14 @@ class LogsWatcher:
                 time.sleep(self.poll_interval)
 
         logger.info("Polling thread stopped")
+
+    def reset_csv_baseline(self):
+        """Reset ImageChoices baseline tracking (called when file is created, rotated, or deleted)."""
+        with self.csv_broadcast_lock:
+            logger.info("[WS-Events] Resetting ImageChoices baseline row count to 0")
+            self.last_csv_row_count = 0
+            self.last_first_row_sig = ""
+            self.last_csv_file_id = None
 
     def on_csv_modified(self):
         """Handle ImageChoices.csv modification"""
@@ -921,6 +944,10 @@ class LogsWatcher:
         finally:
             logger.debug(f"[Thread {thread_id}] Runtime import thread finishing")
 
+    def _row_signature(self, row: dict) -> str:
+        """Create a compact fingerprint string for an ImageChoices row."""
+        return f"{row.get('Title', '')}|{row.get('Rootfolder', '')}|{row.get('LibraryName', '')}|{row.get('Type', '')}|{row.get('Download Source', '')}"
+
     def _process_new_imagechoices_and_broadcast(self):
         """Check ImageChoices.csv for new rows and broadcast real-time update events."""
         if not self.broadcast_callback or not self.loop:
@@ -932,6 +959,12 @@ class LogsWatcher:
 
         with self.csv_broadcast_lock:
             try:
+                stat = csv_path.stat()
+                file_id = (
+                    stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None,
+                    getattr(stat, "st_ctime_ns", stat.st_ctime),
+                )
+
                 with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                     reader = csv.DictReader(f, delimiter=";")
                     all_rows = [
@@ -941,17 +974,37 @@ class LogsWatcher:
                     all_rows = [r for r in all_rows if r.get("Title") or r.get("Rootfolder")]
 
                 total_rows = len(all_rows)
-                if total_rows < self.last_csv_row_count:
+                if total_rows == 0:
+                    self.last_csv_row_count = 0
+                    self.last_first_row_sig = ""
+                    self.last_csv_file_id = file_id
+                    return
+
+                first_sig = self._row_signature(all_rows[0])
+
+                # Reset baseline if:
+                # 1. The file was rotated/shortened (fewer rows than before)
+                # 2. File identity (inode or creation time) changed (new file created)
+                # 3. The first row's signature changed (file rewritten/replaced with new content)
+                file_id_changed = self.last_csv_file_id is not None and self.last_csv_file_id != file_id
+                first_row_changed = bool(self.last_first_row_sig and first_sig != self.last_first_row_sig)
+                shortened = total_rows < self.last_csv_row_count
+
+                if shortened or file_id_changed or first_row_changed:
                     logger.info(
-                        f"[WS-Events] ImageChoices.csv rotated/shortened ({total_rows} < {self.last_csv_row_count}). Resetting baseline."
+                        f"[WS-Events] ImageChoices.csv replaced or rotated (total: {total_rows}, prev: {self.last_csv_row_count}, "
+                        f"file_changed: {file_id_changed}, content_changed: {first_row_changed}). Resetting baseline."
                     )
                     self.last_csv_row_count = 0
+
+                self.last_csv_file_id = file_id
 
                 if total_rows <= self.last_csv_row_count:
                     return
 
                 new_rows = all_rows[self.last_csv_row_count:]
                 self.last_csv_row_count = total_rows
+                self.last_first_row_sig = first_sig
                 logger.info(f"[WS-Events] Detected {len(new_rows)} new entries in ImageChoices.csv to broadcast")
 
                 for row in new_rows:
@@ -1117,6 +1170,18 @@ class LogsFileHandler(FileSystemEventHandler):
         except Exception as e:
             logger.error(f"[ERROR] Error processing modification event for {event.src_path}: {e}", exc_info=True)
 
+    def on_deleted(self, event):
+        """Handle file deletion events (e.g. log rotation)"""
+        if event.is_directory:
+            return
+        try:
+            filename = Path(event.src_path).name
+            if filename == self.CSV_FILE:
+                logger.info(f"[EVENT] File DELETED: {filename} - resetting CSV baseline")
+                self.watcher.reset_csv_baseline()
+        except Exception as e:
+            logger.error(f"[ERROR] Error processing deletion event for {event.src_path}: {e}", exc_info=True)
+
     def on_created(self, event):
         """Handle file creation events (treat as modification)"""
         if event.is_directory:
@@ -1136,6 +1201,7 @@ class LogsFileHandler(FileSystemEventHandler):
             # Check if it's a file we're interested in
             if filename == self.CSV_FILE:
                 logger.info(f"[OK] File matches monitored CSV: {filename}")
+                self.watcher.reset_csv_baseline()
                 logger.debug("Waiting 0.5s for file to be fully written...")
                 # Give the file a moment to be fully written
                 time.sleep(0.5)

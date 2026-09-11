@@ -28,8 +28,22 @@ public class AssetPathResolver
     private static DateTime _rootDirectoriesExpiry = DateTime.MinValue;
     private static readonly object RootDirLock = new();
 
+    private sealed class FolderCacheEntry
+    {
+        public IReadOnlyDictionary<string, FileInfo>? Files { get; }
+        public DateTime ExpiryUtc { get; }
+
+        public FolderCacheEntry(IReadOnlyDictionary<string, FileInfo>? files, TimeSpan ttl)
+        {
+            Files = files;
+            ExpiryUtc = DateTime.UtcNow.Add(ttl);
+        }
+
+        public bool IsExpired => DateTime.UtcNow >= ExpiryUtc;
+    }
+
     // Cache of files inside each media folder (e.g. "/assets/TV Shows/Ted Lasso" -> { "poster.jpg": FileInfo, "s01e01.jpg": FileInfo })
-    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, FileInfo>?> _folderFilesCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, FolderCacheEntry> FolderFilesCache = new(StringComparer.OrdinalIgnoreCase);
 
     public AssetPathResolver(ILibraryManager libraryManager, ILogger logger)
     {
@@ -46,11 +60,31 @@ public class AssetPathResolver
     }
 
     /// <summary>
+    /// Evicts a specific folder from the in-memory cache.
+    /// </summary>
+    public static void InvalidateFolder(string folderPath)
+    {
+        FolderFilesCache.TryRemove(folderPath, out _);
+    }
+
+    /// <summary>
+    /// Evicts the parent folder of a file from the in-memory cache.
+    /// </summary>
+    public static void InvalidateFile(string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            FolderFilesCache.TryRemove(dir, out _);
+        }
+    }
+
+    /// <summary>
     /// Clears transient directory and folder caches to free memory after large sync runs.
     /// </summary>
     public void ClearCache()
     {
-        _folderFilesCache.Clear();
+        FolderFilesCache.Clear();
         LibraryFolderCache.Clear();
         lock (RootDirLock)
         {
@@ -108,11 +142,19 @@ public class AssetPathResolver
         LogDebug("Full target path to check: {0}", actualFolder);
 
         // 4. Retrieve cached file dictionary for this folder
-        var folderFiles = GetFolderFiles(actualFolder);
+        var folderFiles = GetFolderFiles(actualFolder, out bool fromCache);
         if (folderFiles == null || folderFiles.Count == 0)
         {
-            LogDebug("Folder '{0}' does not exist or contains no files.", actualFolder);
-            return null;
+            if (fromCache)
+            {
+                folderFiles = GetFolderFiles(actualFolder, out fromCache, forceRefresh: true);
+            }
+
+            if (folderFiles == null || folderFiles.Count == 0)
+            {
+                LogDebug("Folder '{0}' does not exist or contains no files.", actualFolder);
+                return null;
+            }
         }
 
         // 5. Determine base file name
@@ -130,22 +172,26 @@ public class AssetPathResolver
         // 6. Fast O(1) dictionary lookup by file extension
         var supportedExtensions = config.SupportedExtensions ?? new[] { ".jpg", ".jpeg", ".png", ".webp", ".bmp" };
 
-        foreach (var ext in supportedExtensions)
+        var match = MatchFile(folderFiles, fileNameBase, supportedExtensions, type);
+        if (match != null)
         {
-            var targetFile = fileNameBase + ext;
-            if (folderFiles.TryGetValue(targetFile, out var match))
-            {
-                LogDebug("SUCCESS: Found {0} at '{1}'", type, match.FullName);
-                return match;
-            }
+            LogDebug("SUCCESS: Found {0} at '{1}'", type, match.FullName);
+            return match;
+        }
 
-            if (type == ImageType.Backdrop || type == ImageType.Thumb)
+        // 7. Cache miss fallback: If not found in cached folder, refresh directory from disk once
+        // This handles cases where assets were rendered after the folder was first read or cached.
+        if (fromCache)
+        {
+            LogDebug("Base name '{0}' not in cached files for '{1}'. Refreshing folder from disk...", fileNameBase, actualFolder);
+            folderFiles = GetFolderFiles(actualFolder, out _, forceRefresh: true);
+            if (folderFiles != null && folderFiles.Count > 0)
             {
-                var fanartTarget = "fanart" + ext;
-                if (folderFiles.TryGetValue(fanartTarget, out var fanartMatch))
+                match = MatchFile(folderFiles, fileNameBase, supportedExtensions, type);
+                if (match != null)
                 {
-                    LogDebug("Found fallback: {0}", fanartMatch.FullName);
-                    return fanartMatch;
+                    LogDebug("SUCCESS (after disk refresh): Found {0} at '{1}'", type, match.FullName);
+                    return match;
                 }
             }
         }
@@ -239,11 +285,35 @@ public class AssetPathResolver
         }
     }
 
-    private IReadOnlyDictionary<string, FileInfo>? GetFolderFiles(string folderPath)
+    private static FileInfo? MatchFile(IReadOnlyDictionary<string, FileInfo> folderFiles, string fileNameBase, string[] supportedExtensions, ImageType type)
     {
-        if (_folderFilesCache.TryGetValue(folderPath, out var cachedFiles))
+        foreach (var ext in supportedExtensions)
         {
-            return cachedFiles;
+            var targetFile = fileNameBase + ext;
+            if (folderFiles.TryGetValue(targetFile, out var match))
+            {
+                return match;
+            }
+
+            if (type == ImageType.Backdrop || type == ImageType.Thumb)
+            {
+                var fanartTarget = "fanart" + ext;
+                if (folderFiles.TryGetValue(fanartTarget, out var fanartMatch))
+                {
+                    return fanartMatch;
+                }
+            }
+        }
+        return null;
+    }
+
+    private IReadOnlyDictionary<string, FileInfo>? GetFolderFiles(string folderPath, out bool fromCache, bool forceRefresh = false)
+    {
+        fromCache = false;
+        if (!forceRefresh && FolderFilesCache.TryGetValue(folderPath, out var cached) && !cached.IsExpired)
+        {
+            fromCache = true;
+            return cached.Files;
         }
 
         try
@@ -251,7 +321,7 @@ public class AssetPathResolver
             var dirInfo = new DirectoryInfo(folderPath);
             if (!dirInfo.Exists)
             {
-                _folderFilesCache[folderPath] = null;
+                FolderFilesCache[folderPath] = new FolderCacheEntry(null, TimeSpan.FromSeconds(5));
                 return null;
             }
 
@@ -264,13 +334,14 @@ public class AssetPathResolver
                 dict[fi.Name] = fi;
             }
 
-            _folderFilesCache[folderPath] = dict;
+            // Cache for 60 seconds (fast for batch sync, short enough to expire stale states)
+            FolderFilesCache[folderPath] = new FolderCacheEntry(dict, TimeSpan.FromSeconds(60));
             return dict;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "[Posterizarr] Failed to list folder: {0}", folderPath);
-            _folderFilesCache[folderPath] = null;
+            FolderFilesCache[folderPath] = new FolderCacheEntry(null, TimeSpan.FromSeconds(5));
             return null;
         }
     }
