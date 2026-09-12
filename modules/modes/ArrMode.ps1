@@ -24,7 +24,7 @@
                 $ServerType = if ($UseJellyfin -eq 'true') { "Jellyfin" } else { "Emby" }
                 Write-Entry -Message "Using $ServerType media server" -Path $global:configLogging -Color Green -log Info
                 # Search for all matching series
-                $seriesSearch = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?IncludeItemTypes=Series&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$seriesTitle" -Headers $global:OtherMediaServerHeaders
+                $seriesSearch = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?IncludeItemTypes=Series&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$seriesTitle&CollapseBoxSetItems=false" -Headers $global:OtherMediaServerHeaders
                 $seriesMatches = $seriesSearch.Items | Where-Object { ([string]::IsNullOrWhiteSpace($seriesYear)) -or ($_.ProductionYear -eq $seriesYear) }
 
                 if (-not $seriesMatches) {
@@ -154,7 +154,7 @@
                 Write-Entry -Message "Using $ServerType media server" -Path $global:configLogging -Color Green -log Info
 
                 # 1. Search for matching movies
-                $movieSearch = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&SearchTerm=$movieTitle" -Headers $global:OtherMediaServerHeaders
+                $movieSearch = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&SearchTerm=$movieTitle&CollapseBoxSetItems=false" -Headers $global:OtherMediaServerHeaders
                 $movieMatches = $movieSearch.Items | Where-Object { ([string]::IsNullOrWhiteSpace($movieYear)) -or ($_.ProductionYear -eq $movieYear) }
 
                 if (-not $movieMatches) {

@@ -16223,6 +16223,7 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                     "Recursive": "true",
                     "IncludeItemTypes": "Movie,Series",
                     "Fields": "ProviderIds,ImageTags",
+                    "CollapseBoxSetItems": "false",
                 }
                 headers = {auth_header: request.token}
                 response = await client.get(api_url, params=params, headers=headers)

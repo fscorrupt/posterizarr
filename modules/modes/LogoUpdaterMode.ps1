@@ -120,7 +120,7 @@
             
             $allItems = [System.Collections.Generic.List[object]]::new()
             $libId = $SelectedLib.ItemId
-            $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$libId&Recursive=true&Fields=ProviderIds,OriginalTitle,ImageTags,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie,Series"
+            $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$libId&Recursive=true&Fields=ProviderIds,OriginalTitle,ImageTags,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie,Series&CollapseBoxSetItems=false"
             try {
                 $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
                 if ($Querytemp.Items) {
