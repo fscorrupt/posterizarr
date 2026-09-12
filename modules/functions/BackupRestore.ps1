@@ -1447,7 +1447,7 @@ function MassDownloadJellyEmbyArtwork {
 
         Write-Entry -Message "--- Processing Library: $($lib.Name) ---" -Path $global:configLogging -Color Cyan -log Info
 
-        $itemsUrl = "$OtherMediaServerUrl/Items?ParentId=$($lib.ItemId)&Recursive=true&IncludeItemTypes=Movie,Series&fields=Path,Id,Name,Type,ProductionYear,OriginalTitle"
+        $itemsUrl = "$OtherMediaServerUrl/Items?ParentId=$($lib.ItemId)&Recursive=true&IncludeItemTypes=Movie,Series&fields=Path,Id,Name,Type,ProductionYear,OriginalTitle&CollapseBoxSetItems=false"
         $items = (Invoke-RestMethod -Uri $itemsUrl -Headers $global:OtherMediaServerHeaders).Items
 
         foreach ($item in $items) {
@@ -2152,7 +2152,7 @@ function MassRestoreJellyEmbyArtwork {
 
         Write-Entry -Message "--- Processing Library: $($lib.Name) ---" -Path $global:configLogging -Color Cyan -log Info
 
-        $itemsUrl = "$OtherMediaServerUrl/Items?ParentId=$($lib.ItemId)&Recursive=true&IncludeItemTypes=Movie,Series&fields=Path,Id,Name,Type,ProductionYear,OriginalTitle"
+        $itemsUrl = "$OtherMediaServerUrl/Items?ParentId=$($lib.ItemId)&Recursive=true&IncludeItemTypes=Movie,Series&fields=Path,Id,Name,Type,ProductionYear,OriginalTitle&CollapseBoxSetItems=false"
         $items = (Invoke-RestMethod -Uri $itemsUrl -Headers $global:OtherMediaServerHeaders).Items
 
 
