@@ -98,7 +98,7 @@
             elseif ($UsePlex -eq 'true') {
                 Write-Entry -Message "Using Plex media server" -Path $global:configLogging -Color Green -log Info
                 $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($seriesTitle))"
-                [xml]$searchXml = (Invoke-WebRequest $searchUrl -Headers $extraPlexHeaders).content
+                [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
                 $shows = $searchXml.MediaContainer.directory | Where-Object { $_.type -eq 'show' }
 
                 if ($null -eq $shows -or $shows.Count -eq 0) {
@@ -136,9 +136,9 @@
 
                 $metadataUrl = "$PlexUrl/library/metadata/$($queryKey)"
                 $seasonUrl = "$PlexUrl/library/metadata/$($queryKey)/children?"
-                [xml]$Metadata = (Invoke-WebRequest $metadataUrl -Headers $extraPlexHeaders).content
+                [xml]$Metadata = (Invoke-PlexWebRequest -Uri $metadataUrl -Headers $extraPlexHeaders).content
                 if ($contentquery -eq 'Directory') {
-                    [xml]$Seasondata = (Invoke-WebRequest $seasonUrl -Headers $extraPlexHeaders).content
+                    [xml]$Seasondata = (Invoke-PlexWebRequest -Uri $seasonUrl -Headers $extraPlexHeaders).content
                 }
             }
         }
@@ -211,7 +211,7 @@
             elseif ($UsePlex -eq 'true') {
                 Write-Entry -Message "Using Plex media server" -Path $global:configLogging -Color Green -log Info
                 $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($movieTitle))"
-                [xml]$searchXml = (Invoke-WebRequest $searchUrl -Headers $extraPlexHeaders).content
+                [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
                 $movies = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' }
 
                 if ($null -eq $movies -or $movies.Count -eq 0) {
@@ -246,7 +246,7 @@
                     HandleScriptExit -Message "No movies found matching '$movieTitle'"
                 }
                 $metadataUrl = "$PlexUrl/library/metadata/$($queryKey)"
-                [xml]$Metadata = (Invoke-WebRequest $metadataUrl -Headers $extraPlexHeaders).content
+                [xml]$Metadata = (Invoke-PlexWebRequest -Uri $metadataUrl -Headers $extraPlexHeaders).content
             }
         }
         default { Write-Entry -Message "Unknown platform: $arrplatform" -Path $global:configLogging -Color Red -log Error }
@@ -1124,7 +1124,7 @@
                 # Getting child entries for each season
                 $splittedkeys = $showentry.SeasonRatingKeys.split(',')
                 foreach ($key in $splittedkeys) {
-                    [xml]$Seasondata = (Invoke-WebRequest $PlexUrl/library/metadata/$key/children? -Headers $extraPlexHeaders).content
+                    [xml]$Seasondata = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$key/children?" -Headers $extraPlexHeaders).content
                     $FileMetadata = $Seasondata.MediaContainer.video.media
                     $Resolution = $null
                     # Get Resolution

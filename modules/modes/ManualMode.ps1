@@ -1009,7 +1009,7 @@
 
                 Write-Entry -Subtext "Plex Search URI: $(RedactMediaServerUrl -url $searchUrl)" -Path $global:configLogging -Color Cyan -log Debug
 
-                [xml]$searchXml = (Invoke-WebRequest $searchUrl -Headers $extraPlexHeaders -ErrorAction SilentlyContinue).content
+                [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
 
                 if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) {
                     $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
@@ -1070,7 +1070,7 @@
                     Write-Entry -Subtext "Drilling down to Season $global:SeasonNumber" -Path $global:configLogging -Color Cyan -log Debug
                     if ($UsePlex -eq 'true') {
                         $drillUri = "$PlexUrl/library/metadata/$FinalTargetID/children"
-                        [xml]$children = (Invoke-WebRequest $drillUri -Headers $extraPlexHeaders).content
+                        [xml]$children = (Invoke-PlexWebRequest -Uri $drillUri -Headers $extraPlexHeaders).content
                         $FinalTargetID = ($children.MediaContainer.Directory | Where-Object { [int]$_.index -eq [int]$global:SeasonNumber }).ratingKey
                     }
                     else {
@@ -1083,10 +1083,10 @@
                 elseif ($TitleCard) {
                     Write-Entry -Subtext "Drilling down to Episode S$($global:SeasonNumber)E$($global:EpisodeNumber)" -Path $global:configLogging -Color Cyan -log Debug
                     if ($UsePlex -eq 'true') {
-                        [xml]$seasonsXml = (Invoke-WebRequest "$PlexUrl/library/metadata/$FinalTargetID/children" -Headers $extraPlexHeaders).content
+                        [xml]$seasonsXml = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$FinalTargetID/children" -Headers $extraPlexHeaders).content
                         $seasonKey = ($seasonsXml.MediaContainer.Directory | Where-Object { [int]$_.index -eq [int]$global:SeasonNumber }).ratingKey
 
-                        [xml]$epsXml = (Invoke-WebRequest "$PlexUrl/library/metadata/$seasonKey/children" -Headers $extraPlexHeaders).content
+                        [xml]$epsXml = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$seasonKey/children" -Headers $extraPlexHeaders).content
                         $FinalTargetID = ($epsXml.MediaContainer.video | Where-Object { [int]$_.index -eq [int]$global:EpisodeNumber }).ratingKey
                     }
                     else {

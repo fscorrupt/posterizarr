@@ -238,7 +238,7 @@
             $PlexHeaders['X-Plex-Container-Start'] = $searchsize
             $PlexHeaders['X-Plex-Container-Size'] = '1000'
 
-            $response = Invoke-WebRequest -Uri "$PlexUrl/library/sections/$($SelectedLib.key)/all" -Headers $PlexHeaders
+            $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($SelectedLib.key)/all" -Headers $PlexHeaders
             [xml]$additionalContent = $response.Content
 
             if ($totalContentSize -eq 1) {
@@ -260,7 +260,7 @@
             $title = $item.title
 
             # Check if item already has a clearLogo
-            $metadataResponse = Invoke-WebRequest -Uri "$PlexUrl/library/metadata/$ratingKey" -Headers $PlexHeaders
+            $metadataResponse = Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$ratingKey" -Headers $PlexHeaders
             [xml]$metadataXml = $metadataResponse.Content
 
             $hasLogo = $false
@@ -312,7 +312,7 @@
                                 }
 
                                 try {
-                                    Invoke-WebRequest -Uri $logoDownloadUrl -Headers $PlexHeaders -OutFile $checkLogoPath -ErrorAction Stop
+                                    Invoke-PlexWebRequest -Uri $logoDownloadUrl -Headers $PlexHeaders -OutFile $checkLogoPath
                                     if (Test-IsPosterizarrAsset -Path $checkLogoPath) {
                                         $posterizarrLogo = $logo
                                     }

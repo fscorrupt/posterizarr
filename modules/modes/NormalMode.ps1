@@ -51,7 +51,7 @@
             Write-Entry -Subtext "0 libraries were found. Retrying in 10 seconds... (Attempt $retryCount/$maxRetries)" -Path $global:configLogging -Color Yellow -log Warning
             Start-Sleep -Seconds 10
             try {
-                $result = Invoke-WebRequest -Uri "$PlexUrl/library/sections" -ErrorAction SilentlyContinue -Headers $extraPlexHeaders
+                $result = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections" -Headers $extraPlexHeaders -MaxRetries 1
                 if ($result -and $result.StatusCode -eq 200) {
                     [XML]$Libs = $result.Content
                 }
@@ -95,7 +95,7 @@
                 Write-Entry -Subtext "Fetching Library ID: $($Library.ID) | Start: $searchsize | Total: $totalContentSize" -Path $global:configLogging -Color Cyan -log Debug
 
                 # Fetch content from Plex server
-                $response = Invoke-WebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all" -Headers $PlexHeaders
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -167,12 +167,16 @@
 
                 if ($needFullMetadata) {
                     try {
-                        [xml]$Metadata = (Invoke-WebRequest $PlexUrl/library/metadata/$($item.ratingKey) -Headers $extraPlexHeaders).content
+                        [xml]$Metadata = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$($item.ratingKey)" -Headers $extraPlexHeaders).content
                     }
                     catch {
+                        $exMsg = $_.Exception.Message
+                        if ($_.Exception.InnerException) {
+                            $exMsg += " (Inner: $($_.Exception.InnerException.Message))"
+                        }
                         Write-Entry -Subtext "Current Metadata Plex Query: $($PlexUrl[0..10] -join '')****/library/metadata/$($item.ratingKey)" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "An error occurred during Plex query: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                        $isConnRefused = $_.Exception.Message -match "(Connection refused|Name or service not known)"
+                        Write-Entry -Subtext "An error occurred during Plex query: $exMsg" -Path $global:configLogging -Color Red -log Error
+                        $isConnRefused = $exMsg -match "(Connection refused|Name or service not known)"
                         if ($isConnRefused) {
                             $global:ConnRefusedCount = Increment-GlobalStat 'ConnRefusedCount'
                         }
@@ -186,12 +190,16 @@
 
                 if ($needSeasonData) {
                     try {
-                        [xml]$Seasondata = (Invoke-WebRequest $PlexUrl/library/metadata/$($item.ratingKey)/children? -Headers $extraPlexHeaders).content
+                        [xml]$Seasondata = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$($item.ratingKey)/children?" -Headers $extraPlexHeaders).content
                     }
                     catch {
+                        $exMsg = $_.Exception.Message
+                        if ($_.Exception.InnerException) {
+                            $exMsg += " (Inner: $($_.Exception.InnerException.Message))"
+                        }
                         Write-Entry -Subtext "Current Seasondata Plex Query: $($PlexUrl[0..10] -join '')****/library/metadata/$($item.ratingKey)/children?" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "An error occurred during Plex query: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                        $isConnRefused = $_.Exception.Message -match "(Connection refused|Name or service not known)"
+                        Write-Entry -Subtext "An error occurred during Plex query: $exMsg" -Path $global:configLogging -Color Red -log Error
+                        $isConnRefused = $exMsg -match "(Connection refused|Name or service not known)"
                         if ($isConnRefused) {
                             $global:ConnRefusedCount = Increment-GlobalStat 'ConnRefusedCount'
                         }
@@ -451,7 +459,7 @@
                 Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging -Color Cyan -log Debug
                 Write-Entry -Subtext "Requesting metadata for Key: $key | URL: $(RedactMediaServerUrl -url $requestUrl)" -Path $global:configLogging -Color Cyan -log Debug
                 try {
-                    $response = Invoke-WebRequest $requestUrl -Headers $extraPlexHeaders -ErrorAction Stop
+                    $response = Invoke-PlexWebRequest -Uri $requestUrl -Headers $extraPlexHeaders
                     [xml]$Seasondata = $response.Content
 
                     if (-not $Seasondata.MediaContainer) {
@@ -460,8 +468,12 @@
                     }
                 }
                 catch {
+                    $exMsg = $_.Exception.Message
+                    if ($_.Exception.InnerException) {
+                        $exMsg += " (Inner: $($_.Exception.InnerException.Message))"
+                    }
                     Write-Entry -Subtext "  Failed to query Key: $key" -Path $global:configLogging -Color Red -log Error
-                    Write-Entry -Subtext "  Error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Error
+                    Write-Entry -Subtext "  Error: $exMsg" -Path $global:configLogging -Color Yellow -log Error
                     continue
                 }
                 if ($global:logLevel -eq '3') {
