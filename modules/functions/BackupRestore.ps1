@@ -1942,7 +1942,7 @@ function MassRestorePlexArtwork {
             # Getting child entries for each season
             $splittedkeys = $showentry.SeasonRatingKeys.split(',')
             foreach ($key in $splittedkeys) {
-                [xml]$Seasondata = (Invoke-WebRequest $PlexUrl/library/metadata/$key/children? -Headers $extraPlexHeaders).content
+                [xml]$Seasondata = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$key/children?" -Headers $extraPlexHeaders).content
                 $FileMetadata = $Seasondata.MediaContainer.video.media
                 $Resolution = $null
                 # Get Resolution
@@ -2112,7 +2112,7 @@ function MassRestorePlexArtwork {
                 $seasonKeys = $entry.SeasonRatingKeys -split ','
                 foreach ($skey in $seasonKeys) {
                     try {
-                        [xml]$Seasondata = (Invoke-WebRequest "$PlexUrl/library/metadata/$skey/children?" -Headers $extraPlexHeaders).content
+                        [xml]$Seasondata = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$skey/children?" -Headers $extraPlexHeaders).content
                         foreach ($ep in $Seasondata.MediaContainer.video) {
                             $epNum = $ep.index
                             $epTitle = $ep.title
