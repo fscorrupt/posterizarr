@@ -21,6 +21,7 @@
                     $libtemp | Add-Member -MemberType NoteProperty -Name "ID" -Value $lib.key
                     $libtemp | Add-Member -MemberType NoteProperty -Name "Name" -Value $lib.title
                     $libtemp | Add-Member -MemberType NoteProperty -Name "Language" -Value $lib.language
+                    $libtemp | Add-Member -MemberType NoteProperty -Name "Type" -Value $lib.type
 
                     # Check if $lib.location.path is an array
                     if ($lib.location.path -is [array]) {
@@ -469,16 +470,25 @@
             $RootNode = $MasterXml.CreateElement("PlexEpisodeExport")
             $MasterXml.AppendChild($RootNode) | Out-Null
         }
-        $bulkEpisodesBySeason = @{}
-        $showLibIds = [System.Collections.Generic.HashSet[string]]::new()
-        foreach ($Library in $Libsoverview) {
-            if ($Library.Name -notin $LibstoExclude -and ($Library.type -eq 'show' -or $AllShows.count -gt 0)) {
-                [void]$showLibIds.Add([string]$Library.ID)
+        $showLibNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($show in $AllShows) {
+            if ($show.'Library Name') {
+                [void]$showLibNames.Add([string]$show.'Library Name')
             }
         }
-        foreach ($libId in $showLibIds) {
-            Write-Entry -Subtext "Bulk fetching episode metadata for Library ID: $libId..." -Path $global:configLogging -Color Cyan -log Info
-            $epMap = Get-PlexSectionEpisodesBulk -PlexUrl $PlexUrl -SectionId $libId -Headers $extraPlexHeaders
+        $bulkEpisodesBySeason = @{}
+        $showLibraries = [System.Collections.Generic.List[object]]::new()
+        $seenLibIds = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($Library in $Libsoverview) {
+            if ($Library.Name -notin $LibstoExclude -and ($Library.Type -eq 'show' -or $showLibNames.Contains($Library.Name))) {
+                if ($seenLibIds.Add([string]$Library.ID)) {
+                    $showLibraries.Add($Library)
+                }
+            }
+        }
+        foreach ($Library in $showLibraries) {
+            Write-Entry -Subtext "Bulk fetching episode metadata for Library: $($Library.Name)..." -Path $global:configLogging -Color Cyan -log Info
+            $epMap = Get-PlexSectionEpisodesBulk -PlexUrl $PlexUrl -SectionId $Library.ID -Headers $extraPlexHeaders
             if ($epMap) {
                 foreach ($sKey in $epMap.Keys) {
                     $bulkEpisodesBySeason[$sKey] = $epMap[$sKey]
