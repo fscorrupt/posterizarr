@@ -418,7 +418,9 @@
             Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging -Color Cyan -log Debug
         }
     }
-    Write-Entry -Subtext "Found '$($Libraries.count)' Items..." -Path $global:configLogging -Color Cyan -log Info
+    $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'Series' }
+    $AllMovies = $Libraries | Where-Object { $_.'Library Type' -eq 'Movie' }
+    Write-Entry -Subtext "Found '$($Libraries.count)' Items ($($AllMovies.Count) Movies, $($AllShows.Count) Shows)..." -Path $global:configLogging -Color Cyan -log Info
     $Libraries | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\OtherMediaServerLibExport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
     Write-Entry -Message "Export everything to a csv: $global:ScriptRoot\Logs\OtherMediaServerLibExport.csv" -Path $global:configLogging -Color White -log Info
 
@@ -636,7 +638,7 @@
     $FormattedData | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\OtherMediaServerEpisodeExport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
     $Episodedata = $FormattedData
     if ($AllEpisodes) {
-        Write-Entry -Subtext "Found '$($AllEpisodes.Items.count)' Episodes..." -Path $global:configLogging -Color Cyan -log Info
+        Write-Entry -Subtext "Found '$($AllEpisodes.Items.count)' Episodes across $($Episodedata.Count) seasons..." -Path $global:configLogging -Color Cyan -log Info
     }
 
     $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'Series' }

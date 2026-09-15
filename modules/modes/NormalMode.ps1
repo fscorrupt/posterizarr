@@ -430,7 +430,9 @@
             }
         }
     }
-    Write-Entry -Subtext "Found '$($Libraries.count)' Items..." -Path $global:configLogging -Color Cyan -log Info
+    $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'show' }
+    $AllMovies = $Libraries | Where-Object { $_.'Library Type' -eq 'movie' }
+    Write-Entry -Subtext "Found '$($Libraries.count)' Items ($($AllMovies.Count) Movies, $($AllShows.Count) Shows)..." -Path $global:configLogging -Color Cyan -log Info
     $Libraries | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\PlexLibexport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
     Write-Entry -Message "Export everything to a csv: $global:ScriptRoot\Logs\PlexLibexport.csv" -Path $global:configLogging -Color White -log Info
 
@@ -455,9 +457,6 @@
     $TextlessCount = $null
     $TextTruncatedCount = $null
     $TextCount = $null
-
-    $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'show' }
-    $AllMovies = $Libraries | Where-Object { $_.'Library Type' -eq 'movie' }
 
     # Getting information of all Episodes
     if ($global:TitleCards -eq 'true') {

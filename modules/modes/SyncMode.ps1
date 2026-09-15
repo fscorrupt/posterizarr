@@ -403,10 +403,9 @@
             }
         }
     }
-    Write-Entry -Subtext "Found '$($Libraries.count)' Items..." -Path $global:configLogging -Color Cyan -log Info
-
     $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'show' }
     $AllMovies = $Libraries | Where-Object { $_.'Library Type' -eq 'movie' }
+    Write-Entry -Subtext "Found '$($Libraries.count)' Items ($($AllMovies.Count) Movies, $($AllShows.Count) Shows)..." -Path $global:configLogging -Color Cyan -log Info
 
     # Getting information of all Episodes
     if ($global:TitleCards -eq 'true') {
