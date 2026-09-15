@@ -154,3 +154,125 @@ function GetPlexArtworkUrl {
         $global:posterurl = $ArtUrl
     }
 }
+
+function Get-PlexSectionSeasonsBulk {
+    <#
+    .SYNOPSIS
+        Fetches all seasons for a given TV show library in bulk and groups them by parent show ratingKey.
+    .DESCRIPTION
+        Calls GET /library/sections/{SectionId}/all?type=3 with pagination.
+        Returns a hashtable @{ [string]$parentRatingKey = [System.Collections.Generic.List[object]]::new() }.
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$PlexUrl,
+        [Parameter(Mandatory = $true)]
+        [string]$SectionId,
+        [hashtable]$Headers = $null
+    )
+
+    $seasonsByShow = @{}
+    $searchsize = 0
+    $totalContentSize = 1
+    $pageSize = 2000
+    $reqHeaders = if ($Headers) { $Headers.Clone() } else { @{} }
+
+    try {
+        do {
+            $reqHeaders['X-Plex-Container-Start'] = $searchsize
+            $reqHeaders['X-Plex-Container-Size'] = [string]$pageSize
+
+            $uri = "$PlexUrl/library/sections/$SectionId/all?type=3"
+            $resp = Invoke-PlexWebRequest -Uri $uri -Headers $reqHeaders -MaxRetries 3 -RetryDelaySeconds 2
+            [xml]$xml = $resp.Content
+
+            if ($totalContentSize -eq 1 -and $xml.MediaContainer.totalSize) {
+                $totalContentSize = [int]$xml.MediaContainer.totalSize
+            }
+
+            if ($xml.MediaContainer.Directory) {
+                foreach ($sNode in $xml.MediaContainer.Directory) {
+                    $pKey = [string]$sNode.parentRatingKey
+                    if (-not [string]::IsNullOrEmpty($pKey)) {
+                        if (-not $seasonsByShow.ContainsKey($pKey)) {
+                            $seasonsByShow[$pKey] = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $seasonsByShow[$pKey].Add($sNode)
+                    }
+                }
+            }
+
+            $batchCount = if ($xml.MediaContainer.size) { [int]$xml.MediaContainer.size } else { 0 }
+            if ($batchCount -le 0) { break }
+            $searchsize += $batchCount
+        } until ($searchsize -ge $totalContentSize)
+    }
+    catch {
+        $exMsg = $_.Exception.Message
+        if ($_.Exception.InnerException) { $exMsg += " (Inner: $($_.Exception.InnerException.Message))" }
+        Write-Entry -Subtext "Failed to fetch bulk seasons for Library ID $SectionId : $exMsg" -Path $global:configLogging -Color Yellow -log Warning
+    }
+
+    return $seasonsByShow
+}
+
+function Get-PlexSectionEpisodesBulk {
+    <#
+    .SYNOPSIS
+        Fetches all episodes for a given TV show library in bulk and groups them by season ratingKey (parentRatingKey).
+    .DESCRIPTION
+        Calls GET /library/sections/{SectionId}/all?type=4 with pagination.
+        Returns a hashtable @{ [string]$seasonRatingKey = [System.Collections.Generic.List[object]]::new() }.
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$PlexUrl,
+        [Parameter(Mandatory = $true)]
+        [string]$SectionId,
+        [hashtable]$Headers = $null
+    )
+
+    $episodesBySeason = @{}
+    $searchsize = 0
+    $totalContentSize = 1
+    $pageSize = 2000
+    $reqHeaders = if ($Headers) { $Headers.Clone() } else { @{} }
+
+    try {
+        do {
+            $reqHeaders['X-Plex-Container-Start'] = $searchsize
+            $reqHeaders['X-Plex-Container-Size'] = [string]$pageSize
+
+            $uri = "$PlexUrl/library/sections/$SectionId/all?type=4"
+            $resp = Invoke-PlexWebRequest -Uri $uri -Headers $reqHeaders -MaxRetries 3 -RetryDelaySeconds 2
+            [xml]$xml = $resp.Content
+
+            if ($totalContentSize -eq 1 -and $xml.MediaContainer.totalSize) {
+                $totalContentSize = [int]$xml.MediaContainer.totalSize
+            }
+
+            if ($xml.MediaContainer.Video) {
+                foreach ($epNode in $xml.MediaContainer.Video) {
+                    $sKey = [string]$epNode.parentRatingKey
+                    if (-not [string]::IsNullOrEmpty($sKey)) {
+                        if (-not $episodesBySeason.ContainsKey($sKey)) {
+                            $episodesBySeason[$sKey] = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $episodesBySeason[$sKey].Add($epNode)
+                    }
+                }
+            }
+
+            $batchCount = if ($xml.MediaContainer.size) { [int]$xml.MediaContainer.size } else { 0 }
+            if ($batchCount -le 0) { break }
+            $searchsize += $batchCount
+        } until ($searchsize -ge $totalContentSize)
+    }
+    catch {
+        $exMsg = $_.Exception.Message
+        if ($_.Exception.InnerException) { $exMsg += " (Inner: $($_.Exception.InnerException.Message))" }
+        Write-Entry -Subtext "Failed to fetch bulk episodes for Library ID $SectionId : $exMsg" -Path $global:configLogging -Color Yellow -log Warning
+    }
+
+    return $episodesBySeason
+}
