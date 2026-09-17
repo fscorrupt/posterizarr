@@ -37,8 +37,8 @@ CONFIG_TOOLTIPS = {
     "LogoLanguageOrder": "Specify language preferences for Logos. Default is en,de. Use 2-digit ISO 3166-1 language codes.",
     "TmdbLanguageMappings": "Map Posterizarr languages to specific TMDB locales. For example, map 'fr' to 'fr-FR' so TMDB queries return accurate regions without affecting other providers.",
     "LibraryLanguageOverrides": "Override the language order on a per-library basis. Keyed by exact Plex/Jellyfin/Emby library name. You can configure whether it applies to posters, season posters, and backgrounds.",
-    "AgregarrTriggerEnabled": "After an Arr-triggered job uploads artwork to Plex, notify Agregarr so it can update matching collections and overlays. (Note: Requires the bitr8 Agregarr fork with PR #103, e.g. Docker image bitr8/agregarr:develop; testing fails on standard agregarr/agregarr).",
-    "AgregarrUrl": "The base URL Posterizarr can use to reach Agregarr, for example http://agregarr:7171. Requires the bitr8/agregarr fork supporting PR #103.",
+    "AgregarrTriggerEnabled": "After an Arr-triggered job uploads artwork to Plex, notify Agregarr so it can update matching collections and overlays. (Note: Requires the bitr8 Agregarr fork, e.g. Docker image bitr8/agregarr:develop; testing fails on standard agregarr/agregarr).",
+    "AgregarrUrl": "The base URL Posterizarr can use to reach Agregarr, for example http://agregarr:7171. Requires the bitr8/agregarr fork (develop).",
     "AgregarrApiKey": "The API key configured in Agregarr. Posterizarr sends it in the X-Api-Key header.",
     "AgregarrRetryTimeout": "Maximum time in seconds to retry sending the callback to Agregarr when Agregarr is busy (HTTP 408, 409, 429, 5xx). Set to 0 to disable retries. Default is 60 seconds.",
 

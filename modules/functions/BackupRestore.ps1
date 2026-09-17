@@ -556,7 +556,7 @@ function MassDownloadPlexArtwork {
                     $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                 }
                 else {
-                    $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                    $fullTestPath = Resolve-Path -LiteralPath $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                     if ($fullTestPath) {
                         $hashtestpath = ($fullTestPath.ProviderPath + "\" + $Testfile).Replace('/', '\')
                     }
@@ -684,7 +684,7 @@ function MassDownloadPlexArtwork {
                         $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                     }
                     else {
-                        $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                        $fullTestPath = Resolve-Path -LiteralPath $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                         if ($fullTestPath) {
                             $hashtestpath = ($fullTestPath.ProviderPath + "\" + $Testfile).Replace('/', '\')
                         }
@@ -878,7 +878,7 @@ function MassDownloadPlexArtwork {
                 $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
             }
             else {
-                $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                $fullTestPath = Resolve-Path -LiteralPath $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                 if ($fullTestPath) {
                     $hashtestpath = ($fullTestPath.ProviderPath + "\" + $Testfile).Replace('/', '\')
                 }
@@ -994,7 +994,7 @@ function MassDownloadPlexArtwork {
                     $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                 }
                 else {
-                    $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                    $fullTestPath = Resolve-Path -LiteralPath $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                     if ($fullTestPath) {
                         $hashtestpath = ($fullTestPath.ProviderPath + "\" + $Testfile).Replace('/', '\')
                     }
@@ -1162,7 +1162,7 @@ function MassDownloadPlexArtwork {
                         $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                     }
                     else {
-                        $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                        $fullTestPath = Resolve-Path -LiteralPath $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                         if ($fullTestPath) {
                             $hashtestpath = ($fullTestPath.ProviderPath + "\" + $Testfile).Replace('/', '\')
                         }
@@ -1322,7 +1322,7 @@ function MassDownloadPlexArtwork {
                                 $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                             }
                             else {
-                                $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                                $fullTestPath = Resolve-Path -LiteralPath $TestPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                                 if ($fullTestPath) {
                                     $hashtestpath = ($fullTestPath.ProviderPath + "\" + $Testfile).Replace('/', '\')
                                 }
