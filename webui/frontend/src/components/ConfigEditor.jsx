@@ -603,6 +603,9 @@ function ConfigEditor() {
     if (["EmbyUploadExistingAssets", "EmbyReplaceThumbwithBackdrop"].includes(key) && !embyEnabled) return true;
     if (key === "EmbyReplaceThumbwithBackdropExclusively" && (!embyEnabled || !getValue("EmbyReplaceThumbwithBackdrop"))) return true;
 
+    // Season Template Dependencies
+    if (key === "AutoUpdateExistingSeasonPosters" && !getValue("AutoCreateSeasonTemplate")) return true;
+
     // Text Formatting & Skip Logic
     if (key === "SymbolsToKeepOnNewLine" && !getValue("NewLineOnSpecificSymbols")) return true;
     if (key === "NewLineSymbols" && !getValue("NewLineOnSpecificSymbols")) return true;
