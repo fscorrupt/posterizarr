@@ -345,6 +345,20 @@
     Else {
         Move-Item -LiteralPath $PicturePath -destination $PosterImage -Force -ErrorAction SilentlyContinue
     }
+    if ($global:AutoCreateSeasonTemplate -eq 'true' -and ($PosterType -eq 'Show' -or ($PosterType -eq 'Poster' -and -not $MoviePosterCard -and -not $SeasonPoster -and -not $TitleCard -and -not $CollectionCard -and -not $BackgroundCard))) {
+        $manualTemplateDir = if ($LibraryFolders -eq 'true') { Join-Path -Path $ManualAssetPath -ChildPath "$LibraryName\$FolderName" } else { $ManualAssetPath }
+        $manualTemplateFile = if ($LibraryFolders -eq 'true') { Join-Path -Path $manualTemplateDir -ChildPath "SeasonTemplate.jpg" } else { Join-Path -Path $manualTemplateDir -ChildPath "$($FolderName)_SeasonTemplate.jpg" }
+        try {
+            if (-not (Test-Path -LiteralPath $manualTemplateDir)) {
+                New-Item -ItemType Directory -Path $manualTemplateDir -Force | Out-Null
+            }
+            Copy-Item -LiteralPath $PosterImage -Destination $manualTemplateFile -Force -ErrorAction Stop
+            Write-Entry -Subtext "Auto-updated Season Template in ManualAssets: $manualTemplateFile" -Path $global:configLogging -Color Cyan -log Info
+        }
+        catch {
+            Write-Entry -Subtext "Failed to update Season Template in ManualAssets: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+        }
+    }
     if ($global:ImageProcessing -eq 'true') {
         if ($SeasonPoster) {
             if ($AddShowTitletoSeason -eq 'true') {

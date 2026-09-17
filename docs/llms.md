@@ -506,6 +506,8 @@ The configuration file `config.json` (modeled by `config.example.json`) contains
 - `AssetCleanup` (bool): Clean up local assets when corresponding media is removed from server.
 - `DisableHashValidation` (bool): Skip hash checks and force re-upload.
 - `DisableOnlineAssetFetch` / `DisableOnlineTitleCardFetch` / `DisableOnlinePosterFetch` / `DisableOnlineBackgroundFetch` / `DisableOnlineSeasonFetch` (bool): Restrict generation exclusively to local files.
+- `AutoCreateSeasonTemplate` (bool): Automatically create and update `SeasonTemplate` in ManualAssets from TV show posters.
+- `AutoUpdateExistingSeasonPosters` (bool): When AutoCreateSeasonTemplate is enabled, also automatically update/re-render already created season posters.
 - `UseLogo` / `UseBGLogo`: Apply clearlogo instead of title text to posters or backgrounds.
 - `UseClearlogo` / `UseClearart`: Scrape transparent clearlogo or clearart PNGs.
 - `LogoTextFallback` (bool): Fall back to typography if no logo is available.

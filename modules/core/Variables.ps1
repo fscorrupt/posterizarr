@@ -440,6 +440,8 @@ $global:DisableOnlineTitleCardFetch = "$($config.PrerequisitePart.DisableOnlineT
 $global:DisableOnlinePosterFetch = "$($config.PrerequisitePart.DisableOnlinePosterFetch)".ToLower()
 $global:DisableOnlineBackgroundFetch = "$($config.PrerequisitePart.DisableOnlineBackgroundFetch)".ToLower()
 $global:DisableOnlineSeasonFetch = "$($config.PrerequisitePart.DisableOnlineSeasonFetch)".ToLower()
+$global:AutoCreateSeasonTemplate = if ($config.PrerequisitePart.AutoCreateSeasonTemplate) { "$($config.PrerequisitePart.AutoCreateSeasonTemplate)".ToLower() } elseif ($config.SeasonPosterOverlayPart.AutoCreateSeasonTemplate) { "$($config.SeasonPosterOverlayPart.AutoCreateSeasonTemplate)".ToLower() } else { "false" }
+$global:AutoUpdateExistingSeasonPosters = if ($config.PrerequisitePart.AutoUpdateExistingSeasonPosters) { "$($config.PrerequisitePart.AutoUpdateExistingSeasonPosters)".ToLower() } elseif ($config.SeasonPosterOverlayPart.AutoUpdateExistingSeasonPosters) { "$($config.SeasonPosterOverlayPart.AutoUpdateExistingSeasonPosters)".ToLower() } else { "false" }
 $UseLogo = "$($config.PrerequisitePart.UseLogo)".ToLower()
 $ConvertLogoColor = "$($config.PrerequisitePart.ConvertLogoColor)".ToLower()
 $LogoFlatColor = "$($config.PrerequisitePart.LogoFlatColor)".ToLower()
@@ -466,6 +468,7 @@ if ($ManualAssetPath.StartsWith("\")) {
         $ManualAssetPath = "\" + $ManualAssetPath
     }
 }
+$ManualPath = $ManualAssetPath
 
 # Check if its a Network Share
 if ($BackupPath.StartsWith("\")) {

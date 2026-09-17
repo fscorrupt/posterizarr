@@ -2099,6 +2099,27 @@ function Invoke-ShowPosterCreation {
                                     $global:IsFallback = $true
                                 }
                             }
+                            if ($global:AutoCreateSeasonTemplate -eq 'true') {
+                                $targetTemplateDir = if ($LibraryFolders -eq 'true') { $ManualEntryDir } else { if ($ManualTestPath) { $ManualTestPath } else { $ManualAssetPath } }
+                                $targetTemplateFile = if ($LibraryFolders -eq 'true') {
+                                    Join-Path -Path $targetTemplateDir -ChildPath "SeasonTemplate.jpg"
+                                } else {
+                                    Join-Path -Path $targetTemplateDir -ChildPath "$($entry.RootFoldername)_SeasonTemplate.jpg"
+                                }
+
+                                if (-not (Test-Path -LiteralPath $targetTemplateFile)) {
+                                    try {
+                                        if (-not (Test-Path -LiteralPath $targetTemplateDir)) {
+                                            New-Item -ItemType Directory -Path $targetTemplateDir -Force | Out-Null
+                                        }
+                                        Copy-Item -LiteralPath $PosterImage -Destination $targetTemplateFile -Force -ErrorAction Stop
+                                        Write-Entry -Subtext "Auto-created Season Template: $targetTemplateFile" -Path $global:configLogging -Color Cyan -log Info
+                                    }
+                                    catch {
+                                        Write-Entry -Subtext "Failed to auto-create Season Template: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                                    }
+                                }
+                            }
                             $global:IsTruncated = $null
                             if ($global:ForceTextAssetRestoration -ne $null) {
                                 if ($global:ForceTextAssetRestoration -eq '$global:PosterPreferTextless') {
@@ -2560,6 +2581,43 @@ function Invoke-ShowPosterCreation {
                         Else {
                             if ($show_skipped -eq 'true' ) {
                                 Write-Entry -Subtext "Already exists: $PosterImageoriginal" -Path $global:configLogging -Color Cyan -log Info
+                            }
+                            if ($global:AutoCreateSeasonTemplate -eq 'true') {
+                                $targetTemplateDir = if ($LibraryFolders -eq 'true') { $ManualEntryDir } else { if ($ManualTestPath) { $ManualTestPath } else { $ManualAssetPath } }
+                                $targetTemplateFile = if ($LibraryFolders -eq 'true') {
+                                    Join-Path -Path $targetTemplateDir -ChildPath "SeasonTemplate.jpg"
+                                } else {
+                                    Join-Path -Path $targetTemplateDir -ChildPath "$($entry.RootFoldername)_SeasonTemplate.jpg"
+                                }
+                                if (-not (Test-Path -LiteralPath $targetTemplateFile)) {
+                                    $sourcePoster = $null
+                                    foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp')) {
+                                        $candidate = if ($LibraryFolders -eq 'true') {
+                                            Join-Path -Path $targetTemplateDir -ChildPath "poster$ext"
+                                        } else {
+                                            Join-Path -Path $targetTemplateDir -ChildPath "$($entry.RootFoldername)$ext"
+                                        }
+                                        if (Test-Path -LiteralPath $candidate) {
+                                            $sourcePoster = $candidate
+                                            break
+                                        }
+                                    }
+                                    if (-not $sourcePoster -and (Test-Path -LiteralPath $PosterImageoriginal)) {
+                                        $sourcePoster = $PosterImageoriginal
+                                    }
+                                    if ($sourcePoster) {
+                                        try {
+                                            if (-not (Test-Path -LiteralPath $targetTemplateDir)) {
+                                                New-Item -ItemType Directory -Path $targetTemplateDir -Force | Out-Null
+                                            }
+                                            Copy-Item -LiteralPath $sourcePoster -Destination $targetTemplateFile -Force -ErrorAction Stop
+                                            Write-Entry -Subtext "Auto-created Season Template from existing poster: $targetTemplateFile" -Path $global:configLogging -Color Cyan -log Info
+                                        }
+                                        catch {
+                                            Write-Entry -Subtext "Failed to auto-create Season Template from existing poster: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -3457,7 +3515,7 @@ function Invoke-ShowPosterCreation {
                             $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                             $SeasonImageoriginal = ($SeasonImageoriginal).Replace('\', '/').Replace('./', '/')
                             $manualtestpath = ($ManualTestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
-                            $Templatetestpath = ($ManualEntryDir + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
+                            $Templatetestpath = ($ManualTestPath + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
                         }
                         else {
                             $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue
@@ -3470,7 +3528,7 @@ function Invoke-ShowPosterCreation {
                             Else {
                                 $hashtestpath = ($TestPath + "\" + $Testfile).Replace('/', '\')
                                 $Manualtestpath = ($ManualTestPath + "\" + $Testfile).Replace('/', '\')
-                                $Templatetestpath = ($ManualEntryDir + "\" + $TestfileTemplate).Replace('/', '\')
+                                $Templatetestpath = ($ManualTestPath + "\" + $TestfileTemplate).Replace('/', '\')
                             }
                         }
 
@@ -3486,7 +3544,28 @@ function Invoke-ShowPosterCreation {
                         $SeasonImage = $SeasonImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                         $checkedItems.Add($hashtestpath)
 
-                        if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                        $needsRegen = $false
+                        if ($global:AutoCreateSeasonTemplate -eq 'true' -and $global:AutoUpdateExistingSeasonPosters -eq 'true') {
+                            foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
+                                $checkTemplate = "$Templatetestpath$ext"
+                                if (Test-Path -LiteralPath $checkTemplate) {
+                                    if (Test-Path -LiteralPath $SeasonImageoriginal) {
+                                        try {
+                                            $templateTime = (Get-Item -LiteralPath $checkTemplate).LastWriteTime
+                                            $seasonTime = (Get-Item -LiteralPath $SeasonImageoriginal).LastWriteTime
+                                            if ($templateTime -gt $seasonTime) {
+                                                $needsRegen = $true
+                                                Write-Entry -Message "Season Template is newer than existing Season Poster ($($checkTemplate) > $($SeasonImageoriginal)). Triggering regeneration." -Path $global:configLogging -Color Cyan -log Info
+                                                break
+                                            }
+                                        }
+                                        catch {}
+                                    }
+                                }
+                            }
+                        }
+
+                        if ($needsRegen -or -not $directoryHashtable.ContainsKey("$hashtestpath")) {
                             $Arturl = $null
                             if ($global:PlexSeasonUrl -like "/library/*") {
                                 $Arturl = $plexurl + $global:PlexSeasonUrl
@@ -3521,7 +3600,7 @@ function Invoke-ShowPosterCreation {
                                 $ManualTestPath = $Templatetestpath
                                 $TakeLocal = $true
                             }
-                            Elseif ($global:DisableOnlineAssetFetch -eq 'true' -or $global:DisableOnlinePosterFetch -eq 'true') {
+                            Elseif ($global:DisableOnlineAssetFetch -eq 'true' -or $global:DisableOnlineSeasonFetch -eq 'true') {
                                 $LocalAssetMissing = 'true'
                             }
                             Else {
@@ -4540,7 +4619,7 @@ function Invoke-TitleCardCreation {
                     $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                     $EpisodeImageoriginal = ($EpisodeImageoriginal).Replace('\', '/').Replace('./', '/')
                     $manualtestpath = ($ManualTestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
-                    $Templatetestpath = ($ManualEntryDir + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
+                    $Templatetestpath = ($ManualTestPath + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
                 }
                 else {
                     $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue
@@ -4553,7 +4632,7 @@ function Invoke-TitleCardCreation {
                     Else {
                         $hashtestpath = ($TestPath + "\" + $Testfile).Replace('/', '\')
                         $Manualtestpath = ($ManualTestPath + "\" + $Testfile).Replace('/', '\')
-                        $Templatetestpath = ($ManualEntryDir + "\" + $TestfileTemplate).Replace('/', '\')
+                        $Templatetestpath = ($ManualTestPath + "\" + $TestfileTemplate).Replace('/', '\')
                     }
                 }
 
@@ -4637,7 +4716,7 @@ function Invoke-TitleCardCreation {
                             $ManualTestPath = $Templatetestpath
                             $TakeLocal = $true
                         }
-                        Elseif ($global:DisableOnlineAssetFetch -eq 'true' -or $global:DisableOnlineSeasonFetch -eq 'true') {
+                        Elseif ($global:DisableOnlineAssetFetch -eq 'true' -or $global:DisableOnlineTitleCardFetch -eq 'true') {
                             $LocalAssetMissing = 'true'
                         }
                         Else {
@@ -5318,7 +5397,7 @@ function Invoke-TitleCardCreation {
                     $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                     $EpisodeImageoriginal = ($EpisodeImageoriginal).Replace('\', '/').Replace('./', '/')
                     $manualtestpath = ($ManualTestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
-                    $Templatetestpath = ($ManualEntryDir + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
+                    $Templatetestpath = ($ManualTestPath + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
                 }
                 else {
                     $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue
@@ -5331,7 +5410,7 @@ function Invoke-TitleCardCreation {
                     Else {
                         $hashtestpath = ($TestPath + "\" + $Testfile).Replace('/', '\')
                         $Manualtestpath = ($ManualTestPath + "\" + $Testfile).Replace('/', '\')
-                        $Templatetestpath = ($ManualEntryDir + "\" + $TestfileTemplate).Replace('/', '\')
+                        $Templatetestpath = ($ManualTestPath + "\" + $TestfileTemplate).Replace('/', '\')
                     }
                 }
 
@@ -6021,7 +6100,7 @@ function Invoke-TitleCardCreation {
                                         $hashtestpath = ($TestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
                                         $EpisodeImageoriginal = ($EpisodeImageoriginal).Replace('\', '/').Replace('./', '/')
                                         $manualtestpath = ($ManualTestPath + "/" + $Testfile).Replace('\', '/').Replace('./', '/')
-                                        $Templatetestpath = ($ManualEntryDir + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
+                                        $Templatetestpath = ($ManualTestPath + "/" + $TestfileTemplate).Replace('\', '/').Replace('./', '/')
                                     }
                                     else {
                                         $fullTestPath = Resolve-Path -Path $TestPath -ErrorAction SilentlyContinue
@@ -6034,7 +6113,7 @@ function Invoke-TitleCardCreation {
                                         Else {
                                             $hashtestpath = ($TestPath + "\" + $Testfile).Replace('/', '\')
                                             $Manualtestpath = ($ManualTestPath + "\" + $Testfile).Replace('/', '\')
-                                            $Templatetestpath = ($ManualEntryDir + "\" + $TestfileTemplate).Replace('/', '\')
+                                            $Templatetestpath = ($ManualTestPath + "\" + $TestfileTemplate).Replace('/', '\')
                                         }
                                     }
 

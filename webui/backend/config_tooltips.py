@@ -134,6 +134,8 @@ CONFIG_TOOLTIPS = {
     "DisableOnlinePosterFetch": "Set to true to skip online lookups for Posters and use only locally available assets. (Default value is: false).",
     "DisableOnlineBackgroundFetch": "Set to true to skip online lookups for Backgrounds and use only locally available assets. (Default value is: false).",
     "DisableOnlineSeasonFetch": "Set to true to skip online lookups for Seasons and use only locally available assets. (Default value is: false).",
+    "AutoCreateSeasonTemplate": "When enabled, downloading or replacing a TV show poster automatically creates and updates a SeasonTemplate in ManualAssets so all seasons use the show poster.",
+    "AutoUpdateExistingSeasonPosters": "When enabled alongside Auto Create Season Template, replacing or updating a TV show poster will also automatically replace and re-render all existing season posters for that show.",
     "UseLogo": "Set to true to apply logos instead of title text to Posters.",
     "UseBGLogo": "Set to true to apply logos instead of title text to Backgrounds.",
     "UseClearlogo": "Set to true to use Clearlogo. A Clearlogo is a transparent PNG image that contains only the title text (logo) of a movie or show - no characters, no background, no extra artwork.",

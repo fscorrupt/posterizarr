@@ -216,6 +216,8 @@
     "DisableOnlinePosterFetch": "false",
     "DisableOnlineBackgroundFetch": "false",
     "DisableOnlineSeasonFetch": "false",
+    "AutoCreateSeasonTemplate": "false",
+    "AutoUpdateExistingSeasonPosters": "false",
     "TextlessPosterBypass": "false"
   },
   "OverlayPart": {
