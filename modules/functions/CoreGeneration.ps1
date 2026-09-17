@@ -2114,10 +2114,16 @@ function Invoke-ShowPosterCreation {
                                         }
                                         Copy-Item -LiteralPath $PosterImage -Destination $targetTemplateFile -Force -ErrorAction Stop
                                         Write-Entry -Subtext "Auto-created Season Template: $targetTemplateFile" -Path $global:configLogging -Color Cyan -log Info
+                                        # Flag that the template was freshly created in this run so seasons are
+                                        # always regenerated regardless of filesystem timestamp resolution.
+                                        $SeasonTemplateJustCreated = $true
                                     }
                                     catch {
                                         Write-Entry -Subtext "Failed to auto-create Season Template: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
                                     }
+                                }
+                                else {
+                                    $SeasonTemplateJustCreated = $false
                                 }
                             }
                             $global:IsTruncated = $null
@@ -2612,11 +2618,17 @@ function Invoke-ShowPosterCreation {
                                             }
                                             Copy-Item -LiteralPath $sourcePoster -Destination $targetTemplateFile -Force -ErrorAction Stop
                                             Write-Entry -Subtext "Auto-created Season Template from existing poster: $targetTemplateFile" -Path $global:configLogging -Color Cyan -log Info
+                                            # Flag that the template was freshly created in this run so seasons are
+                                            # always regenerated regardless of filesystem timestamp resolution.
+                                            $SeasonTemplateJustCreated = $true
                                         }
                                         catch {
                                             Write-Entry -Subtext "Failed to auto-create Season Template from existing poster: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
                                         }
                                     }
+                                }
+                                else {
+                                    $SeasonTemplateJustCreated = $false
                                 }
                             }
                         }
@@ -3546,20 +3558,30 @@ function Invoke-ShowPosterCreation {
 
                         $needsRegen = $false
                         if ($global:AutoCreateSeasonTemplate -eq 'true' -and $global:AutoUpdateExistingSeasonPosters -eq 'true') {
-                            foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
-                                $checkTemplate = "$Templatetestpath$ext"
-                                if (Test-Path -LiteralPath $checkTemplate) {
-                                    if (Test-Path -LiteralPath $SeasonImageoriginal) {
-                                        try {
-                                            $templateTime = (Get-Item -LiteralPath $checkTemplate).LastWriteTime
-                                            $seasonTime = (Get-Item -LiteralPath $SeasonImageoriginal).LastWriteTime
-                                            if ($templateTime -gt $seasonTime) {
-                                                $needsRegen = $true
-                                                Write-Entry -Message "Season Template is newer than existing Season Poster ($($checkTemplate) > $($SeasonImageoriginal)). Triggering regeneration." -Path $global:configLogging -Color Cyan -log Info
-                                                break
+                            # If the template was freshly created/updated in this same run, always regenerate
+                            # the season posters. Relying solely on timestamp comparison is unreliable because
+                            # the OS filesystem metadata cache may not reflect the just-written file immediately,
+                            # especially under parallel jobs.
+                            if ($SeasonTemplateJustCreated -eq $true) {
+                                $needsRegen = $true
+                                Write-Entry -Message "Season Template was created in this run. Triggering regeneration for all seasons of this show." -Path $global:configLogging -Color Cyan -log Info
+                            }
+                            else {
+                                foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
+                                    $checkTemplate = "$Templatetestpath$ext"
+                                    if (Test-Path -LiteralPath $checkTemplate) {
+                                        if (Test-Path -LiteralPath $SeasonImageoriginal) {
+                                            try {
+                                                $templateTime = (Get-Item -LiteralPath $checkTemplate).LastWriteTime
+                                                $seasonTime = (Get-Item -LiteralPath $SeasonImageoriginal).LastWriteTime
+                                                if ($templateTime -gt $seasonTime) {
+                                                    $needsRegen = $true
+                                                    Write-Entry -Message "Season Template is newer than existing Season Poster ($($checkTemplate) > $($SeasonImageoriginal)). Triggering regeneration." -Path $global:configLogging -Color Cyan -log Info
+                                                    break
+                                                }
                                             }
+                                            catch {}
                                         }
-                                        catch {}
                                     }
                                 }
                             }
