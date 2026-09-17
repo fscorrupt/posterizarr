@@ -287,6 +287,7 @@ $global:ShowProviderOrder = if ($null -ne $config.ApiPart.ShowProviderOrder) { $
 if ($global:ShowProviderOrder) {
     $global:ShowProviderOrder = @($global:ShowProviderOrder | ForEach-Object { $_.ToUpper() })
 }
+$global:UseCustomProviderOrder = ($global:ProviderPriorityMode -eq 'Global' -or $global:ProviderPriorityMode -eq 'PerMediaType')
 
 $global:TMDBVoteSorting = "$($config.ApiPart.tmdb_vote_sorting)".ToLower()
 if (!$global:TMDBVoteSorting) {
