@@ -594,9 +594,9 @@ $SeasonlineSpacing = $config.SeasonPosterOverlayPart.lineSpacing
 $Seasontextgravity = "$($config.SeasonPosterOverlayPart.TextGravity)".ToLower()
 $Seasonborderwidthsecond = $borderwidth + 'x' + $borderwidth
 $Seasonboxsize = $SeasonMaxWidth + 'x' + $SeasonMaxHeight
-$OverrideSeasonName = $config.SeasonPosterOverlayPart.OverrideSeasonName
-$SeasonOverrideText = "$($config.SeasonPosterOverlayPart.SeasonOverrideText)".ToLower()
-$SpecialSeasonOverrideText = "$($config.SeasonPosterOverlayPart.SpecialSeasonOverrideText)".ToLower()
+$OverrideSeasonName = "$($config.SeasonPosterOverlayPart.OverrideSeasonName)".ToLower()
+$SeasonOverrideText = "$($config.SeasonPosterOverlayPart.SeasonOverrideText)"
+$SpecialSeasonOverrideText = "$($config.SeasonPosterOverlayPart.SpecialSeasonOverrideText)"
 
 # Show Title on Season Poster Overlay Part
 $ShowOnSeasonfontAllCaps = "$($config.ShowTitleOnSeasonPosterPart.fontAllCaps)".ToLower()
@@ -617,7 +617,7 @@ $ShowOnSeasonlineSpacing = $config.ShowTitleOnSeasonPosterPart.lineSpacing
 # Collection Title on Collection Poster Overlay Part
 $CollectionTitleAllCaps = "$($config.CollectionTitlePosterPart.fontAllCaps)".ToLower()
 $AddCollectionTitle = "$($config.CollectionTitlePosterPart.AddCollectionTitle)".ToLower()
-$CollectionTitle = "$($config.CollectionTitlePosterPart.CollectionTitle)".ToLower()
+$CollectionTitle = "$($config.CollectionTitlePosterPart.CollectionTitle)"
 $AddCollectionTitleTextStroke = "$($config.CollectionTitlePosterPart.AddTextStroke)".ToLower()
 $CollectionTitlestrokecolor = $config.CollectionTitlePosterPart.strokecolor
 $CollectionTitlestrokewidth = $config.CollectionTitlePosterPart.strokewidth

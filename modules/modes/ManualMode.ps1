@@ -25,7 +25,7 @@
     $ExtractedTitleRegex = '^\s*(?:Season\s*\d+\s*\|\s*)?(.*?)(?:\s*\|\s*Season\s*\d+)?\s*$'
 
     # Regex to find "Specials" keywords or the numbers 0/00
-    $specialsPattern = '^(?:Specials|Extras|Spéciaux|0{1,2}|[Ss]eason ?0{1,2})$' # Add any other language keywords here
+    $specialsPattern = '^(?:Specials|Extras|Spéciaux|[Ss]pezial.*|0{1,2}|[Ss]eason ?0{1,2})$' # Add any other language keywords here
 
     if ([string]::IsNullOrEmpty($PicturePath)) {
         $TriggeredViaCli = 'true'
@@ -145,6 +145,7 @@
                 }
             }
             Elseif ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "Season00"
                 if ($SeasonPosterName -match $ExtractedTitleRegex) {
                     $global:ExtractedTitle = $Matches[1]
@@ -204,7 +205,8 @@
                 $global:SeasonNumber = $Matches[1]
                 $global:seasontmp = "S" + $global:SeasonNumber.PadLeft(2, '0')
             }
-            if ($SeasonPosterName -eq $specialsPattern) {
+            if ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "S00"
             }
             if ($EpisodeNumber -match '(\d+)') {
@@ -250,7 +252,8 @@
                     $global:ExtractedTitle = $Matches[1]
                 }
             }
-            Elseif ($SeasonPosterName -eq $specialsPattern) {
+            Elseif ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "Season00"
                 if ($SeasonPosterName -match $ExtractedTitleRegex) {
                     $global:ExtractedTitle = $Matches[1]
@@ -307,7 +310,8 @@
                 $global:SeasonNumber = $Matches[1]
                 $global:seasontmp = "S" + $global:SeasonNumber.PadLeft(2, '0')
             }
-            if ($SeasonPosterName -eq $specialsPattern) {
+            if ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "S00"
             }
             if ($EpisodeNumber -match '(\d+)') {
@@ -361,38 +365,62 @@
     }
     if ($global:ImageProcessing -eq 'true') {
         if ($SeasonPoster) {
-            if ($AddShowTitletoSeason -eq 'true') {
-                if ($fontAllCaps -eq 'true') {
-                    if ($global:ExtractedTitle) {
-                        $joinedTitle = $global:ExtractedTitle.ToUpper()
-                    }
-                    else {
-                        $joinedTitle = $SeasonPosterName.ToUpper()
-                    }
-                }
-                Else {
-                    if ($global:ExtractedTitle) {
-                        $joinedTitle = $global:ExtractedTitle
-                    }
-                    else {
-                        $joinedTitle = $SeasonPosterName
-                    }
-                }
+            # Determine Season Number and whether this is a specials season
+            $seasonNum = if ($null -ne $global:SeasonNumber -and $global:SeasonNumber -ne "") {
+                [string]$global:SeasonNumber
+            } elseif ($SeasonPosterName -match '(\d+)') {
+                [string][int]$Matches[1]
+            } else {
+                $null
+            }
+            $isSpecials = ($seasonNum -eq '0' -or $seasonNum -eq '00' -or $SeasonPosterName -match $specialsPattern)
 
-                if ($ShowOnSeasonfontAllCaps -eq 'true') {
-                    $ShowjoinedTitle = $titletext.ToUpper()
+            # Determine base season title text
+            if ($isSpecials) {
+                $computedSeasonTitle = if (-not [string]::IsNullOrWhiteSpace($SpecialSeasonOverrideText)) {
+                    $SpecialSeasonOverrideText
+                } else {
+                    "Specials"
                 }
-                Else {
-                    $ShowjoinedTitle = $titletext
+                $global:SeasonNumber = "0"
+                $global:seasontmp = "Season00"
+            }
+            elseif ($OverrideSeasonName -eq 'true' -or $OverrideSeasonName -eq $true -or [string]::IsNullOrWhiteSpace($SeasonPosterName) -or $SeasonPosterName -match '^\d+$') {
+                $prefix = if (-not [string]::IsNullOrWhiteSpace($SeasonOverrideText)) {
+                    $SeasonOverrideText
+                } else {
+                    "Season"
+                }
+                if ($null -ne $seasonNum) {
+                    $computedSeasonTitle = "$prefix $seasonNum"
+                } else {
+                    $computedSeasonTitle = $prefix
                 }
             }
-            Else {
-                if ($fontAllCaps -eq 'true') {
-                    $joinedTitle = $titletext.ToUpper()
-                }
-                Else {
-                    $joinedTitle = $titletext
-                }
+            elseif ($global:ExtractedTitle -and $global:ExtractedTitle -notmatch '^\d+$') {
+                $computedSeasonTitle = $global:ExtractedTitle
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($SeasonPosterName)) {
+                $computedSeasonTitle = $SeasonPosterName
+            }
+            else {
+                $computedSeasonTitle = if ($null -ne $seasonNum) { "Season $seasonNum" } else { "Season" }
+            }
+
+            # Apply capitalization for Season text
+            if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
+                $joinedTitle = $computedSeasonTitle.ToUpper()
+            }
+            else {
+                $joinedTitle = $computedSeasonTitle
+            }
+
+            # Show Title on Season text
+            if ($ShowOnSeasonfontAllCaps -eq 'true') {
+                $ShowjoinedTitle = $titletext.ToUpper()
+            }
+            else {
+                $ShowjoinedTitle = $titletext
             }
         }
         elseif ($CollectionCard) {
@@ -459,7 +487,10 @@
                 $joinedTitle = $Titletext
             }
         }
-        if ($Titletext -match '^(http|https)://' -or $Titletext -match '\.(png|jpg|jpeg|webp)$') {
+        if ($SeasonPoster) {
+            Write-Entry -Subtext "Processing Season Poster for: `"$Titletext | $joinedTitle`"" -Path $global:configLogging -Color White -log Info
+        }
+        elseif ($Titletext -match '^(http|https)://' -or $Titletext -match '\.(png|jpg|jpeg|webp)$') {
             Write-Entry -Subtext "Processing Poster/Logo for: `"$FolderName`"" -Path $global:configLogging -Color White -log Info
         }
         Else {
