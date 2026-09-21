@@ -12550,6 +12550,44 @@ def is_auto_update_existing_season_posters_enabled() -> bool:
 
 
 
+def _sanitize_path_segment(value: Optional[str]) -> Optional[str]:
+    """Sanitize a single path segment (e.g. folder name or library name)."""
+    if not value:
+        return None
+    raw = str(value).strip().replace("\\", "/")
+    # Keep only final segment and disallow traversal
+    segment = raw.split("/")[-1]
+    if not segment or segment in (".", ".."):
+        return None
+    cleaned = re.sub(r"[^A-Za-z0-9._ ()\[\]-]", "_", segment).strip(" .")
+    return cleaned if cleaned else None
+
+
+def _safe_relative_path(user_value: Optional[str]) -> Optional[Path]:
+    """
+    Return a normalized safe relative Path, or None if unsafe.
+    Disallows absolute paths, drive letters, and traversal.
+    """
+    if not user_value:
+        return None
+    normalized = str(user_value).replace("\\", "/").strip()
+    if normalized.startswith("/") or normalized.startswith("\\"):
+        return None
+    p = Path(normalized)
+    if p.is_absolute() or p.drive:
+        return None
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    if any(part == ".." for part in parts):
+        return None
+    safe_parts = []
+    for part in parts:
+        safe_part = _sanitize_path_segment(part)
+        if not safe_part:
+            return None
+        safe_parts.append(safe_part)
+    return Path(*safe_parts) if safe_parts else None
+
+
 def update_season_template_if_enabled(
     asset_path: str,
     file_content: bytes,
@@ -12564,28 +12602,35 @@ def update_season_template_if_enabled(
     """
     try:
         if not is_auto_create_season_template_enabled():
-            return
+            return None
 
         # If asset_type is explicitly provided and not poster/show, ignore
         if asset_type and asset_type.lower() in ("season", "titlecard", "background", "backdrop", "collection"):
-            return
+            return None
 
-        normalized = asset_path.replace("\\", "/")
-        path_obj = Path(normalized)
+        safe_asset = _safe_relative_path(asset_path)
+        if safe_asset is None:
+            logger.warning(f"Rejected unsafe asset_path for SeasonTemplate update: {asset_path}")
+            return None
+
+        path_obj = safe_asset
         filename = path_obj.name.lower()
 
         # Ignore if this is clearly a season, titlecard, background, or collection
         if "background" in filename or "season" in filename or re.search(r"s\d+e\d+", filename, re.IGNORECASE):
-            return
+            return None
         if "collection" in filename or (len(path_obj.parts) > 0 and path_obj.parts[0].lower() == "collections"):
-            return
+            return None
+
+        safe_library_name = _sanitize_path_segment(library_name)
+        safe_folder_name = _sanitize_path_segment(folder_name)
 
         # Check if media type is a TV show
         is_tv = False
         if media_type and media_type.lower() in ("tv", "show", "series"):
             is_tv = True
         else:
-            lib = library_name or (path_obj.parts[0] if len(path_obj.parts) >= 2 else None)
+            lib = safe_library_name or (path_obj.parts[0] if len(path_obj.parts) >= 2 else None)
             lib_type = get_library_type_from_db(lib) if lib else None
             if lib_type in ("show", "tv", "series"):
                 is_tv = True
@@ -12594,35 +12639,39 @@ def update_season_template_if_enabled(
             elif path_obj.parent != Path("."):
                 # Also check if the parent folder contains existing season assets or templates
                 for check_dir in [MANUAL_ASSETS_DIR / path_obj.parent, ASSETS_DIR / path_obj.parent]:
-                    if check_dir.exists() and any(
-                        f.name.lower().startswith("season") for f in check_dir.iterdir() if f.is_file()
-                    ):
-                        is_tv = True
-                        break
+                    try:
+                        if check_dir.exists() and any(
+                            f.name.lower().startswith("season") for f in check_dir.iterdir() if f.is_file()
+                        ):
+                            is_tv = True
+                            break
+                    except Exception:
+                        pass
 
         if not is_tv:
-            return
+            return None
 
         # Build target template file path in MANUAL_ASSETS_DIR
         ext = path_obj.suffix.lower() if path_obj.suffix.lower() in ('.jpg', '.jpeg', '.png', '.webp', '.bmp') else '.jpg'
         parent = path_obj.parent
         if filename.startswith("poster.") or filename == "poster":
             if parent != Path("."):
-                if library_name and len(parent.parts) == 1 and library_name.lower() != parent.parts[0].lower():
-                    template_dir = MANUAL_ASSETS_DIR / library_name / parent
+                if safe_library_name and len(parent.parts) == 1 and safe_library_name.lower() != parent.parts[0].lower():
+                    template_dir = MANUAL_ASSETS_DIR / safe_library_name / parent
                 else:
                     template_dir = MANUAL_ASSETS_DIR / parent
-            elif folder_name:
-                if library_name:
-                    template_dir = MANUAL_ASSETS_DIR / library_name / folder_name
+            elif safe_folder_name:
+                if safe_library_name:
+                    template_dir = MANUAL_ASSETS_DIR / safe_library_name / safe_folder_name
                 else:
-                    template_dir = MANUAL_ASSETS_DIR / folder_name
+                    template_dir = MANUAL_ASSETS_DIR / safe_folder_name
             else:
                 template_dir = MANUAL_ASSETS_DIR
             template_file = template_dir / f"SeasonTemplate{ext}"
         else:
             # Flat poster naming (e.g., ShowName_poster.jpg or ShowName.jpg)
-            stem = folder_name or re.sub(r'(_poster|\.poster)$', '', path_obj.stem, flags=re.IGNORECASE)
+            stem_source = safe_folder_name or re.sub(r'(_poster|\.poster)$', '', path_obj.stem, flags=re.IGNORECASE)
+            stem = _sanitize_path_segment(stem_source) or "asset"
             if parent != Path("."):
                 template_dir = MANUAL_ASSETS_DIR / parent
             else:
@@ -12650,26 +12699,6 @@ def update_season_template_if_enabled(
     return None
 
 
-def _safe_relative_path(user_value: Optional[str]) -> Optional[Path]:
-    """
-    Return a normalized safe relative Path, or None if unsafe.
-    Disallows absolute paths, drive letters, and traversal.
-    """
-    if not user_value:
-        return None
-    normalized = str(user_value).replace("\\", "/").strip("/ ")
-    p = Path(normalized)
-    if p.is_absolute() or p.drive:
-        return None
-    if any(part in ("..", "", ".") for part in p.parts):
-        return None
-    safe_parts = [re.sub(r"[^A-Za-z0-9._ ()\[\]-]", "_", part).strip(" .") for part in p.parts]
-    safe_parts = [part for part in safe_parts if part and part != ".."]
-    if not safe_parts:
-        return None
-    return Path(*safe_parts)
-
-
 def find_show_seasons(
     asset_path: str,
     library_name: Optional[str] = None,
@@ -12685,20 +12714,20 @@ def find_show_seasons(
         return []
     path_obj = safe_asset
     parent = path_obj.parent
-    safe_lib = _safe_relative_path(library_name)
-    safe_folder = _safe_relative_path(folder_name)
+    safe_lib = _sanitize_path_segment(library_name)
+    safe_folder = _sanitize_path_segment(folder_name)
 
     # Determine candidate directories for this show in ASSETS_DIR
     candidate_dirs = []
     assets_root = ASSETS_DIR.resolve()
     if parent != Path("."):
-        if safe_lib and len(parent.parts) == 1 and safe_lib.name.lower() != parent.parts[0].lower():
-            candidate_dirs.append(ASSETS_DIR / safe_lib.name / parent)
+        if safe_lib and len(parent.parts) == 1 and safe_lib.lower() != parent.parts[0].lower():
+            candidate_dirs.append(ASSETS_DIR / safe_lib / parent)
         candidate_dirs.append(ASSETS_DIR / parent)
     if safe_lib and safe_folder:
-        candidate_dirs.append(ASSETS_DIR / safe_lib.name / safe_folder.name)
+        candidate_dirs.append(ASSETS_DIR / safe_lib / safe_folder)
     if safe_folder:
-        candidate_dirs.append(ASSETS_DIR / safe_folder.name)
+        candidate_dirs.append(ASSETS_DIR / safe_folder)
 
     show_dir = None
     rel_show_dir = None
@@ -12973,7 +13002,7 @@ async def trigger_season_replacements_for_show(
             QUEUE_STAGING_DIR.mkdir(parents=True, exist_ok=True)
             timestamp = int(time.time() * 1000)
             safe_s_num = re.sub(r"[^0-9]", "", str(s.get("season_number", ""))) or "0"
-            safe_ext = template_file.suffix.lower()
+            safe_ext = _sanitize_path_segment(template_file.suffix.lower()) or ".jpg"
             if safe_ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
                 safe_ext = ".jpg"
             unique_token = secrets.token_hex(8)
@@ -12993,7 +13022,11 @@ async def trigger_season_replacements_for_show(
                 )
                 continue
 
-            shutil.copyfile(resolved_template_file, staging_path)
+            if file_content:
+                with open(staging_path, "wb") as sf:
+                    sf.write(file_content)
+            else:
+                shutil.copyfile(resolved_template_file, staging_path)
 
             season_overlay_params = {
                 "title_text": title_text,
