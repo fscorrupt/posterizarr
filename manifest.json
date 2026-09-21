@@ -9,6 +9,20 @@
     "imageUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/main/docs/images/Plugin_logo.png",
     "versions": [
       {
+        "version": "3.3.5",
+        "changelog": "Official Release 3.3.5",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.3.5/Posterizarr.Plugin_v3.3.5-jf12.zip",
+        "checksum": "059F536F9B782CDEE6CB4FF0B996A0E9"
+      },
+      {
+        "version": "3.3.5",
+        "changelog": "Official Release 3.3.5",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.3.5/Posterizarr.Plugin_v3.3.5.zip",
+        "checksum": "6162D9AE9AE1B077AD4ACBE55AA0B43F"
+      },
+      {
         "version": "3.3.4",
         "changelog": "Official Release 3.3.4\n\n- **WebSocket Real-Time Sync**: Added background listener service connecting to `/ws/events` for instant image updates.\n- **Direct Image Application**: Streams and persists image updates directly using internal provider APIs upon receiving events.\n- **Enhanced Configuration Page**: Added Real-Time Sync toggle, Posterizarr URL input, and API key configuration with live connection test diagnostics.\n- **Volume Latency Tolerance**: Added 2-second retry loop for newly created image files.\n- **Catalog Image**: Configured `imageUrl` in repository manifests.",
         "targetAbi": "12.0.0.0",
