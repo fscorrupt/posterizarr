@@ -12596,22 +12596,39 @@ def _safe_relative_path(user_value: Optional[str]) -> Optional[Path]:
     return Path(*safe_parts) if safe_parts else None
 
 
-def _safe_join_under_root(root: Path, *parts: Union[str, Path, None]) -> Optional[Path]:
+def _safe_join_under_root(root: Union[str, Path], *parts: Union[str, Path, None]) -> Optional[Path]:
     """
-    Join path parts under a trusted root and verify the result stays within root.
-    Returns resolved Path on success, otherwise None.
+    Safely joins a base directory with path parts using os.path.
+    Guarantees the resulting path is strictly within root and normalized.
+    Returns Path on success, otherwise None.
     """
-    candidate = root
-    for part in parts:
-        if part is None:
-            continue
-        candidate = candidate / part
     try:
-        resolved_root = root.resolve()
-        resolved_candidate = candidate.resolve()
-        resolved_candidate.relative_to(resolved_root)
-        return resolved_candidate
-    except Exception:
+        base_str = os.path.abspath(str(root))
+        base_prefix = base_str if base_str.endswith(os.sep) else base_str + os.sep
+
+        clean_parts = []
+        for p in parts:
+            if p is None:
+                continue
+            p_str = str(p).strip().replace("\\", "/").lstrip("/")
+            if not p_str or p_str == ".":
+                continue
+            if ".." in p_str.split("/"):
+                return None
+            if len(p_str) >= 2 and p_str[1] == ":":
+                p_str = p_str[2:].lstrip("/")
+            clean_parts.append(p_str)
+
+        if not clean_parts:
+            return Path(base_str)
+
+        combined = os.path.normpath(os.path.abspath(os.path.join(base_str, *clean_parts)))
+        if combined != base_str and not combined.startswith(base_prefix):
+            logger.warning(f"Path traversal detected in _safe_join_under_root: {parts} outside {root}")
+            return None
+        return Path(combined)
+    except Exception as e:
+        logger.warning(f"Error in _safe_join_under_root: {e}")
         return None
 
 
@@ -12676,15 +12693,19 @@ def update_season_template_if_enabled(
                 is_tv = True
             elif path_obj.parent != Path("."):
                 # Also check if the parent folder contains existing season assets or templates
-                for check_dir in [MANUAL_ASSETS_DIR / path_obj.parent, ASSETS_DIR / path_obj.parent]:
-                    try:
-                        if check_dir.exists() and any(
-                            f.name.lower().startswith("season") for f in check_dir.iterdir() if f.is_file()
-                        ):
-                            is_tv = True
-                            break
-                    except Exception:
-                        pass
+                for check_base in [MANUAL_ASSETS_DIR, ASSETS_DIR]:
+                    check_dir = _safe_join_under_root(check_base, str(path_obj.parent))
+                    if check_dir:
+                        cb_str = os.path.abspath(str(check_base))
+                        cb_prefix = cb_str if cb_str.endswith(os.sep) else cb_str + os.sep
+                        cd_str = os.path.abspath(str(check_dir))
+                        if (cd_str == cb_str or cd_str.startswith(cb_prefix)) and os.path.isdir(cd_str):
+                            try:
+                                if any(e.name.lower().startswith("season") for e in os.scandir(cd_str) if e.is_file()):
+                                    is_tv = True
+                                    break
+                            except Exception:
+                                pass
 
         if not is_tv:
             return None
@@ -12695,49 +12716,45 @@ def update_season_template_if_enabled(
         if filename.startswith("poster.") or filename == "poster":
             if parent != Path("."):
                 if safe_library_name and len(parent.parts) == 1 and safe_library_name.lower() != parent.parts[0].lower():
-                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, parent)
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, str(parent), f"SeasonTemplate{ext}")
                 else:
-                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, parent)
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, str(parent), f"SeasonTemplate{ext}")
             elif safe_folder_name:
                 if safe_library_name:
-                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, safe_folder_name)
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, safe_folder_name, f"SeasonTemplate{ext}")
                 else:
-                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_folder_name)
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_folder_name, f"SeasonTemplate{ext}")
             else:
-                template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR)
-            if template_dir is None:
-                logger.warning(f"Rejected SeasonTemplate directory outside manual assets directory")
-                return None
-            template_file = template_dir / f"SeasonTemplate{ext}"
+                template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, f"SeasonTemplate{ext}")
         else:
             # Flat poster naming (e.g., ShowName_poster.jpg or ShowName.jpg)
             stem_source = safe_folder_name or re.sub(r'(_poster|\.poster)$', '', path_obj.stem, flags=re.IGNORECASE)
             stem = _sanitize_path_segment(stem_source) or "asset"
+            filename_template = f"{stem}_SeasonTemplate{ext}"
             if parent != Path("."):
-                template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, parent)
+                template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, str(parent), filename_template)
             else:
-                template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR)
-            if template_dir is None:
-                logger.warning(f"Rejected SeasonTemplate directory outside manual assets directory")
-                return None
-            template_file = template_dir / f"{stem}_SeasonTemplate{ext}"
+                template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, filename_template)
+
+        if template_file is None:
+            logger.warning("Rejected SeasonTemplate path outside manual assets directory")
+            return None
 
         # Security check: ensure writes stay strictly inside MANUAL_ASSETS_DIR
-        safe_manual_root = MANUAL_ASSETS_DIR.resolve()
-        resolved_template_file = template_file.resolve()
-        try:
-            resolved_template_file.relative_to(safe_manual_root)
-        except ValueError:
+        manual_abs = os.path.abspath(str(MANUAL_ASSETS_DIR))
+        manual_prefix = manual_abs if manual_abs.endswith(os.sep) else manual_abs + os.sep
+        target_template_str = os.path.normpath(os.path.abspath(str(template_file)))
+        if not target_template_str.startswith(manual_prefix):
             logger.warning(
-                f"Rejected SeasonTemplate path outside manual assets directory: {resolved_template_file}"
+                f"Rejected SeasonTemplate path outside manual assets directory: {target_template_str}"
             )
             return None
 
-        resolved_template_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(resolved_template_file, "wb") as f:
+        os.makedirs(os.path.dirname(target_template_str), exist_ok=True)
+        with open(target_template_str, "wb") as f:
             f.write(file_content)
-        logger.info(f"Auto-created/updated SeasonTemplate at: {resolved_template_file}")
-        return resolved_template_file
+        logger.info(f"Auto-created/updated SeasonTemplate at: {target_template_str}")
+        return Path(target_template_str)
     except Exception as e:
         logger.warning(f"Could not auto-update SeasonTemplate for {asset_path}: {e}")
     return None
@@ -12763,45 +12780,46 @@ def find_show_seasons(
 
     # Determine candidate directories for this show in ASSETS_DIR
     candidate_dirs = []
-    assets_root = ASSETS_DIR.resolve()
     if parent != Path("."):
         if safe_lib and len(parent.parts) == 1 and safe_lib.lower() != parent.parts[0].lower():
-            candidate_dirs.append(ASSETS_DIR / safe_lib / parent)
-        candidate_dirs.append(ASSETS_DIR / parent)
+            cand = _safe_join_under_root(ASSETS_DIR, safe_lib, str(parent))
+            if cand:
+                candidate_dirs.append(cand)
+        cand = _safe_join_under_root(ASSETS_DIR, str(parent))
+        if cand:
+            candidate_dirs.append(cand)
     if safe_lib and safe_folder:
-        candidate_dirs.append(ASSETS_DIR / safe_lib / safe_folder)
+        cand = _safe_join_under_root(ASSETS_DIR, safe_lib, safe_folder)
+        if cand:
+            candidate_dirs.append(cand)
     if safe_folder:
-        candidate_dirs.append(ASSETS_DIR / safe_folder)
+        cand = _safe_join_under_root(ASSETS_DIR, safe_folder)
+        if cand:
+            candidate_dirs.append(cand)
 
     show_dir = None
     rel_show_dir = None
+    assets_base = os.path.abspath(str(ASSETS_DIR))
+    assets_prefix = assets_base if assets_base.endswith(os.sep) else assets_base + os.sep
+
     for cand in candidate_dirs:
-        try:
-            cand_res = cand.resolve()
-            cand_res.relative_to(assets_root)
-        except ValueError:
-            continue
-        if cand_res.exists() and cand_res.is_dir():
-            show_dir = cand_res
+        cand_str = os.path.abspath(str(cand))
+        if (cand_str == assets_base or cand_str.startswith(assets_prefix)) and os.path.isdir(cand_str):
+            show_dir = Path(cand_str)
             try:
-                rel_show_dir = cand_res.relative_to(assets_root)
+                rel_show_dir = show_dir.relative_to(ASSETS_DIR)
             except ValueError:
                 rel_show_dir = parent
             break
 
     if not show_dir:
-        fallback_rel = Path("")
-        if parent != Path("."):
-            fallback_rel = parent
-        elif safe_folder:
-            fallback_rel = Path(safe_folder)
-        rel_show_dir = fallback_rel
-        try:
-            cand_fallback = (ASSETS_DIR / rel_show_dir).resolve()
-            cand_fallback.relative_to(assets_root)
-            show_dir = cand_fallback
-        except ValueError:
-            show_dir = None
+        fallback_rel = parent if parent != Path(".") else (Path(safe_folder) if safe_folder else Path(""))
+        cand_fb = _safe_join_under_root(ASSETS_DIR, str(fallback_rel))
+        if cand_fb:
+            fb_str = os.path.abspath(str(cand_fb))
+            if (fb_str == assets_base or fb_str.startswith(assets_prefix)) and os.path.isdir(fb_str):
+                show_dir = Path(fb_str)
+                rel_show_dir = fallback_rel
 
     def add_season(s_num: str, rel_path: str, fname: str):
         s_key = str(int(s_num)) if str(s_num).isdigit() else str(s_num)
@@ -12814,76 +12832,67 @@ def find_show_seasons(
 
     # 1. Scan show directory in ASSETS_DIR
     if show_dir:
-        try:
-            resolved_show_dir = show_dir.resolve()
-            resolved_show_dir.relative_to(assets_root)
-            show_dir = resolved_show_dir
-        except Exception:
-            show_dir = None
-        for f in show_dir.iterdir():
-            if not f.is_file():
-                continue
-            ext = f.suffix.lower()
-            if ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
-                continue
-            fname_lower = f.name.lower()
-            if "seasontemplate" in fname_lower:
-                continue
-            if re.search(r"s\d+e\d+", fname_lower, re.IGNORECASE):
-                continue
-            m = re.search(r"^season\s*(\d+)", fname_lower, re.IGNORECASE)
-            if m:
-                s_num = str(int(m.group(1)))
-                rel_file = str(rel_show_dir / f.name)
-                add_season(s_num, rel_file, f.name)
-            elif re.search(r"^(season\s*00?|specials?)", fname_lower, re.IGNORECASE):
-                rel_file = str(rel_show_dir / f.name)
-                add_season("0", rel_file, f.name)
+        show_dir_str = os.path.abspath(str(show_dir))
+        if (show_dir_str == assets_base or show_dir_str.startswith(assets_prefix)) and os.path.isdir(show_dir_str):
+            for entry in os.scandir(show_dir_str):
+                if not entry.is_file():
+                    continue
+                ext = os.path.splitext(entry.name)[1].lower()
+                if ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+                    continue
+                fname_lower = entry.name.lower()
+                if "seasontemplate" in fname_lower:
+                    continue
+                if re.search(r"s\d+e\d+", fname_lower, re.IGNORECASE):
+                    continue
+                m = re.search(r"^season\s*(\d+)", fname_lower, re.IGNORECASE)
+                if m:
+                    s_num = str(int(m.group(1)))
+                    rel_file = str(Path(rel_show_dir) / entry.name)
+                    add_season(s_num, rel_file, entry.name)
+                elif re.search(r"^(season\s*00?|specials?)", fname_lower, re.IGNORECASE):
+                    rel_file = str(Path(rel_show_dir) / entry.name)
+                    add_season("0", rel_file, entry.name)
 
     # 2. Scan MANUAL_ASSETS_DIR
-    manual_root = MANUAL_ASSETS_DIR.resolve()
-    manual_show_dir = None
-    if rel_show_dir is not None:
-        safe_rel = _safe_relative_path(str(rel_show_dir))
-        if safe_rel is not None:
-            try:
-                cand_manual = (MANUAL_ASSETS_DIR / safe_rel).resolve()
-                cand_manual.relative_to(manual_root)
-                manual_show_dir = cand_manual
-            except ValueError:
-                manual_show_dir = None
+    manual_base = os.path.abspath(str(MANUAL_ASSETS_DIR))
+    manual_prefix = manual_base if manual_base.endswith(os.sep) else manual_base + os.sep
+    manual_show_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, str(rel_show_dir)) if rel_show_dir is not None else None
 
-    if manual_show_dir and manual_show_dir.exists() and manual_show_dir.is_dir():
-        for f in manual_show_dir.iterdir():
-            if not f.is_file():
-                continue
-            ext = f.suffix.lower()
-            if ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
-                continue
-            fname_lower = f.name.lower()
-            if "seasontemplate" in fname_lower:
-                continue
-            if re.search(r"s\d+e\d+", fname_lower, re.IGNORECASE):
-                continue
-            m = re.search(r"^season\s*(\d+)", fname_lower, re.IGNORECASE)
-            if m:
-                s_num = str(int(m.group(1)))
-                pad = f"{int(s_num):02d}"
-                rel_file = str(rel_show_dir / f"Season{pad}.jpg")
-                add_season(s_num, rel_file, f"Season{pad}.jpg")
-            elif re.search(r"^(season\s*00?|specials?)", fname_lower, re.IGNORECASE):
-                rel_file = str(rel_show_dir / "Season00.jpg")
-                add_season("0", rel_file, "Season00.jpg")
+    if manual_show_dir:
+        manual_dir_str = os.path.abspath(str(manual_show_dir))
+        if (manual_dir_str == manual_base or manual_dir_str.startswith(manual_prefix)) and os.path.isdir(manual_dir_str):
+            for entry in os.scandir(manual_dir_str):
+                if not entry.is_file():
+                    continue
+                ext = os.path.splitext(entry.name)[1].lower()
+                if ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+                    continue
+                fname_lower = entry.name.lower()
+                if "seasontemplate" in fname_lower:
+                    continue
+                if re.search(r"s\d+e\d+", fname_lower, re.IGNORECASE):
+                    continue
+                m = re.search(r"^season\s*(\d+)", fname_lower, re.IGNORECASE)
+                if m:
+                    s_num = str(int(m.group(1)))
+                    pad = f"{int(s_num):02d}"
+                    rel_file = str(Path(rel_show_dir) / f"Season{pad}.jpg")
+                    add_season(s_num, rel_file, f"Season{pad}.jpg")
+                elif re.search(r"^(season\s*00?|specials?)", fname_lower, re.IGNORECASE):
+                    rel_file = str(Path(rel_show_dir) / "Season00.jpg")
+                    add_season("0", rel_file, "Season00.jpg")
 
     # 3. Handle flat naming structure
     if rel_show_dir == Path("."):
         stem = folder_name or re.sub(r"(_poster|\.poster)$", "", path_obj.stem, flags=re.IGNORECASE)
-        for d in (ASSETS_DIR, MANUAL_ASSETS_DIR):
-            if d.exists() and d.is_dir():
-                for f in d.iterdir():
-                    if not f.is_file():
+        for base_p in (ASSETS_DIR, MANUAL_ASSETS_DIR):
+            base_p_str = os.path.abspath(str(base_p))
+            if os.path.isdir(base_p_str):
+                for entry in os.scandir(base_p_str):
+                    if not entry.is_file():
                         continue
-                    fname_lower = f.name.lower()
+                    fname_lower = entry.name.lower()
                     if "seasontemplate" in fname_lower:
                         continue
                     flat_match = re.search(re.escape(stem.lower()) + r"_season\s*(\d+)", fname_lower, re.IGNORECASE)
@@ -12939,7 +12948,7 @@ def find_show_seasons(
                         s_num = str(int(s_clean))
                         pad = f"{int(s_clean):02d}"
                         if rel_show_dir != Path("."):
-                            rel_file = str(rel_show_dir / f"Season{pad}.jpg")
+                            rel_file = str(Path(rel_show_dir) / f"Season{pad}.jpg")
                             filename = f"Season{pad}.jpg"
                         else:
                             stem = folder_name or re.sub(r"(_poster|\.poster)$", "", path_obj.stem, flags=re.IGNORECASE)
@@ -13057,47 +13066,30 @@ async def trigger_season_replacements_for_show(
             QUEUE_STAGING_DIR.mkdir(parents=True, exist_ok=True)
             timestamp = int(time.time() * 1000)
             safe_s_num = "".join(c for c in str(s.get("season_number", "")) if c.isdigit()) or "0"
-            allowed_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-            template_ext = str(template_file.suffix).lower()
-            safe_ext = template_ext if template_ext in allowed_exts else ".jpg"
             unique_token = secrets.token_hex(8)
-            safe_filename = f"{timestamp}_season_{safe_s_num}_{unique_token}{safe_ext}"
+            safe_filename = f"{timestamp}_season_{safe_s_num}_{unique_token}.jpg"
 
-            if not _is_safe_staging_filename(safe_filename):
-                continue
-
-            staging_root = QUEUE_STAGING_DIR.resolve()
-            staging_path = (staging_root / safe_filename).resolve()
-            try:
-                staging_path.relative_to(staging_root)
-            except ValueError:
-                continue
-
-            safe_manual_root = MANUAL_ASSETS_DIR.resolve()
-            try:
-                resolved_template_file = template_file.resolve(strict=True)
-            except (FileNotFoundError, OSError):
-                try:
-                    resolved_template_file = template_file.resolve()
-                except Exception:
-                    continue
-            try:
-                resolved_template_file.relative_to(safe_manual_root)
-            except ValueError:
-                logger.warning(
-                    f"Rejected template file outside manual assets directory: {resolved_template_file}"
-                )
-                continue
-
-            if not resolved_template_file.is_file():
-                logger.warning(f"Rejected non-file template path: {resolved_template_file}")
+            staging_dir_str = os.path.abspath(str(QUEUE_STAGING_DIR))
+            staging_prefix = staging_dir_str if staging_dir_str.endswith(os.sep) else staging_dir_str + os.sep
+            staging_path_str = os.path.normpath(os.path.abspath(os.path.join(staging_dir_str, safe_filename)))
+            if not staging_path_str.startswith(staging_prefix):
                 continue
 
             if file_content:
-                with open(staging_path, "wb") as sf:
+                with open(staging_path_str, "wb") as sf:
                     sf.write(file_content)
+            elif template_file:
+                manual_root_str = os.path.abspath(str(MANUAL_ASSETS_DIR))
+                manual_prefix = manual_root_str if manual_root_str.endswith(os.sep) else manual_root_str + os.sep
+                tpl_path_str = os.path.normpath(os.path.abspath(str(template_file)))
+                if tpl_path_str.startswith(manual_prefix) and os.path.isfile(tpl_path_str):
+                    with open(tpl_path_str, "rb") as tf, open(staging_path_str, "wb") as sf:
+                        sf.write(tf.read())
+                else:
+                    logger.warning(f"Rejected unsafe template file path: {tpl_path_str}")
+                    continue
             else:
-                shutil.copyfile(resolved_template_file, staging_path)
+                continue
 
             season_overlay_params = {
                 "title_text": title_text,
@@ -13115,7 +13107,7 @@ async def trigger_season_replacements_for_show(
             item_id = queue_manager.add_item(
                 asset_path=season_rel_path,
                 source_type="upload",
-                source_data=str(staging_path),
+                source_data=staging_path_str,
                 overlay_params=season_overlay_params
             )
             queued_ids.append(item_id)
