@@ -8381,46 +8381,83 @@ async def get_logs():
 
 LOG_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.log$")
 
+# Static mapping for standard log targets to allow monitoring before creation
+KNOWN_LOG_FILES: Dict[str, Path] = {
+    "Scriptlog.log": LOGS_DIR / "Scriptlog.log",
+    "Testinglog.log": LOGS_DIR / "Testinglog.log",
+    "Manuallog.log": LOGS_DIR / "Manuallog.log",
+    "ImageMagickCommands.log": LOGS_DIR / "ImageMagickCommands.log",
+    "BackendServer.log": UI_LOGS_DIR / "BackendServer.log",
+    "FrontendUI.log": UI_LOGS_DIR / "FrontendUI.log",
+}
+
+
+def _is_within_root(target: Path, root: Path) -> bool:
+    """Return True if target is inside root (after both are resolved)."""
+    try:
+        target.resolve(strict=False).relative_to(root.resolve(strict=False))
+        return True
+    except (ValueError, OSError):
+        return False
+
 
 def resolve_safe_log_path(base_dir: Path, log_name: Optional[str]) -> Optional[Path]:
-    """Resolve a user-provided log filename safely within a base directory."""
+    """
+    Resolve a user-provided log filename safely within a base directory.
+    Uses static allowlists and filesystem globbing to avoid constructing paths from user strings.
+    """
     if not log_name:
         return None
-    raw_str = str(log_name).strip()
-    if "/" in raw_str or "\\" in raw_str or ".." in raw_str:
-        return None
-    clean_name = os.path.basename(raw_str.replace("\\", "/"))
-    if clean_name != raw_str:
-        return None
+    clean_name = str(log_name).strip()
     if not LOG_FILENAME_RE.fullmatch(clean_name):
         return None
-    try:
-        base_resolved = base_dir.resolve(strict=False)
-        target = (base_resolved / clean_name).resolve(strict=False)
-        target.relative_to(base_resolved)
-        return target
-    except (ValueError, OSError):
-        return None
+
+    # Check known log targets
+    if clean_name in KNOWN_LOG_FILES:
+        target = KNOWN_LOG_FILES[clean_name]
+        try:
+            if target.parent.resolve(strict=False) == base_dir.resolve(strict=False):
+                return target
+        except Exception:
+            pass
+
+    # For other log files, only match against existing files via globbing
+    if base_dir.exists():
+        for candidate in base_dir.glob("*.log"):
+            if candidate.is_file() and candidate.name == clean_name:
+                return candidate.resolve(strict=False)
+
+    return None
 
 
 def get_safe_log_path(log_name: Optional[str]) -> Optional[Path]:
     """Find existing log file safely in LOGS_DIR first, then UI_LOGS_DIR."""
     if not log_name:
         return None
-    raw_str = str(log_name).strip()
-    if "/" in raw_str or "\\" in raw_str or ".." in raw_str:
+    clean_name = str(log_name).strip()
+    if not LOG_FILENAME_RE.fullmatch(clean_name):
         return None
-    clean_name = os.path.basename(raw_str.replace("\\", "/"))
-    if clean_name != raw_str or not LOG_FILENAME_RE.fullmatch(clean_name):
-        return None
-    # Check LOGS_DIR
-    p1 = resolve_safe_log_path(LOGS_DIR, clean_name)
-    if p1 and p1.exists():
-        return p1
-    # Check UI_LOGS_DIR
-    p2 = resolve_safe_log_path(UI_LOGS_DIR, clean_name)
-    if p2 and p2.exists():
-        return p2
+
+    # Build allowlist of existing log files from trusted directories
+    allowed_logs: Dict[str, Path] = {}
+    for base_dir in (LOGS_DIR, UI_LOGS_DIR):
+        if not base_dir.exists():
+            continue
+        for candidate in base_dir.glob("*.log"):
+            if (
+                candidate.is_file()
+                and LOG_FILENAME_RE.fullmatch(candidate.name)
+                and candidate.name not in allowed_logs
+            ):
+                allowed_logs[candidate.name] = candidate.resolve(strict=False)
+
+    if clean_name in allowed_logs:
+        return allowed_logs[clean_name]
+
+    # If not on disk yet, check known log targets (e.g. Scriptlog.log before script starts)
+    if clean_name in KNOWN_LOG_FILES:
+        return KNOWN_LOG_FILES[clean_name]
+
     return None
 
 
@@ -8431,13 +8468,22 @@ async def get_log_content(log_name: str, tail: int = 100):
     if not LOG_FILENAME_RE.fullmatch(clean_str):
         raise HTTPException(status_code=400, detail="Invalid log filename")
     log_path = get_safe_log_path(clean_str)
-    if not log_path or not log_path.exists():
+    if not log_path:
+        raise HTTPException(status_code=404, detail="Log file not found")
+
+    allowed_roots = [LOGS_DIR.resolve(strict=False), UI_LOGS_DIR.resolve(strict=False)]
+    resolved_log_path = log_path.resolve(strict=False)
+    if not any(_is_within_root(resolved_log_path, root) for root in allowed_roots):
+        raise HTTPException(status_code=400, detail="Invalid log filename")
+    if not resolved_log_path.exists():
         raise HTTPException(status_code=404, detail="Log file not found")
 
     try:
-        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(resolved_log_path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
             return {"content": lines[-tail:] if tail else lines}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error reading log: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -8596,6 +8642,11 @@ async def websocket_logs(
         await websocket.close(code=1008, reason="Invalid log file path")
         return
 
+    allowed_roots = [LOGS_DIR.resolve(strict=False), UI_LOGS_DIR.resolve(strict=False)]
+    if not any(_is_within_root(log_path, root) for root in allowed_roots):
+        await websocket.close(code=1008, reason="Invalid log file path")
+        return
+
     # Track if user explicitly requested a specific log file
     user_requested_log = requested_log != "Scriptlog.log"  # User manually selected a log
 
@@ -8687,7 +8738,7 @@ async def websocket_logs(
                     clean_new = str(new_log_file).strip()
                     if LOG_FILENAME_RE.fullmatch(clean_new):
                         safe_new = get_safe_log_path(clean_new) or resolve_safe_log_path(LOGS_DIR, clean_new)
-                        if safe_new is not None:
+                        if safe_new is not None and any(_is_within_root(safe_new, root) for root in allowed_roots):
                             log_path = safe_new
                     last_position = log_path.stat().st_size if log_path.exists() else 0
 
