@@ -1,0 +1,45 @@
+# Posterizarr
+
+> Automated artwork scraping, dynamic overlay generation, and media server synchronization for Plex, Jellyfin, and Emby.
+
+Posterizarr is a modular media automation system that combines a multi-threaded PowerShell automation engine, an ImageMagick 7 image composition pipeline, a Python 3.13 FastAPI backend, and a React 18 / Tailwind CSS single-page web interface. It automates fetching metadata and artwork across TMDB, TVDB, and Fanart.tv, composites custom typography, borders, badges, and gradient overlays, tags EXIF metadata, and synchronizes artwork directly with media servers and companion services.
+
+## LLM & AI Architecture Guides
+- [LLM Master Architecture Guide](https://fscorrupt.github.io/posterizarr/llms/): Exhaustive, authoritative architecture guide for LLMs and AI coding agents. Details system architecture, multi-process lifecycle, run modes, database schemas, rendering engine, REST endpoints, and conventions.
+
+## Core Documentation & Deployment
+- [Requirements](https://fscorrupt.github.io/posterizarr/requirements/): Host prerequisites including ImageMagick 7, PowerShell 7+, Python 3.13, memory requirements, and font dependencies.
+- [Quick Start / Docker Installation](https://fscorrupt.github.io/posterizarr/installation/): Docker Compose setup, persistent volume mounts (`/config`, `/assets`, `/manualassets`, `/assetsbackup`), and environment variables.
+- [Manual UI Installation](https://fscorrupt.github.io/posterizarr/uiinstallation/): Bare-metal setup instructions for Windows and Linux hosts without Docker.
+- [Walkthrough](https://fscorrupt.github.io/posterizarr/walkthrough/): Visual step-by-step onboarding walkthrough, first-time setup wizard, and initial run guide.
+- [Networking & Ports](https://fscorrupt.github.io/posterizarr/networking/): Port bindings (default 8000), reverse proxy configuration, SSL termination, and network architecture.
+- [FAQs](https://fscorrupt.github.io/posterizarr/faqs/): Frequently asked questions, common troubleshooting solutions, and configuration advice.
+
+## Configuration & Provider Strategy
+- [Configuration Guide](https://fscorrupt.github.io/posterizarr/configuration/): Comprehensive schema documentation for all 17 sections of `config.json` and `config.example.json`.
+- [Search Order & Provider Priority](https://fscorrupt.github.io/posterizarr/searchorder/): Logic for Simple, Global, and PerMediaType provider strategies, resolution filters, and library-level overrides.
+- [Naming Conventions](https://fscorrupt.github.io/posterizarr/namingconvention/): Rules for automated and manual assets, folder structures, and template overrides.
+- [Main Capabilities](https://fscorrupt.github.io/posterizarr/capabilities/): Summary table of key capabilities including resizing, EXIF tagging, backup/restore, clearlogos, and asset cleanup.
+
+## Operational Modes & Automation
+- [Usage & Execution Modes](https://fscorrupt.github.io/posterizarr/modes/): Comprehensive operational guide for all execution modes: Normal, Testing, Manual, Backup, Restore, Sync, PosterReset, LogoUpdater, ArrMode, and TautulliMode.
+- [Action Center Guide](https://fscorrupt.github.io/posterizarr/action_center/): Artwork resolution, fallback provider tracking, and manual image replacement workflows.
+- [Blueprints & Recipes](https://fscorrupt.github.io/posterizarr/blueprints/): Curated overlay styling blueprints and community design recipes.
+
+## Integrations & Media Servers
+- [Agregarr Integration](https://fscorrupt.github.io/posterizarr/agregarrintegration/): Setup and webhook callback specifications, bitr8/agregarr:develop fork requirements and PR #103 details, multi-episode import expansion, and retry timeout handling.
+- [Kometa Integration](https://fscorrupt.github.io/posterizarr/kometaintegration/): Docker volume sharing, asset folder directory structure alignment, and metadata prioritization.
+- [Jellyfin Plugin](https://fscorrupt.github.io/posterizarr/jellyfin_plugin/): Installation and setup of the native C# plugin for Jellyfin event automation.
+- [Emby Plugin](https://fscorrupt.github.io/posterizarr/emby_plugin/): Installation and setup of the native C# plugin for Emby event automation.
+- [Homepage Custom API](https://fscorrupt.github.io/posterizarr/homepage/): Widget configuration for displaying library counts, asset stats, and missing artwork on the Homepage dashboard.
+
+## Developer Reference & System Architecture
+- [API Endpoints Reference](https://fscorrupt.github.io/posterizarr/endpoints/): Full documentation of FastAPI REST endpoints, WebSocket feeds, and authentication schemes.
+- [PowerShell Automation Core](https://fscorrupt.github.io/posterizarr/powershell_scripts/): Script architecture, execution pipeline, ImageMagick wrapper functions, and runspace parallelization.
+- [Backend Python Architecture](https://fscorrupt.github.io/posterizarr/backend_python/): FastAPI backend architecture, SSRF protections, SQLite database models, queue manager, and scheduler.
+- [Frontend Components Reference](https://fscorrupt.github.io/posterizarr/frontend_components/): React 18 component tree, Vite build pipeline, Tailwind CSS design system, Context providers, and Live Collection Editor.
+- [Telemetry Server](https://fscorrupt.github.io/posterizarr/telemetry/): Specifications for anonymous telemetry data collection and opt-out controls.
+- [Platform & Tools](https://fscorrupt.github.io/posterizarr/platformandtools/): Overview of ImageMagick 7, PowerShell 7, fonts, and OS-specific notes.
+
+## Showcase
+- [Showcase](https://fscorrupt.github.io/posterizarr/showcase/): Visual showcase of generated posters, backgrounds, season art, and title cards.
