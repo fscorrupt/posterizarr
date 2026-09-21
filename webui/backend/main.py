@@ -12550,6 +12550,9 @@ def is_auto_update_existing_season_posters_enabled() -> bool:
 
 
 
+PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._ ()\[\]&'-]+$")
+
+
 def _sanitize_path_segment(value: Optional[str]) -> Optional[str]:
     """Sanitize a single path segment (e.g. folder name or library name)."""
     if not value:
@@ -12557,10 +12560,15 @@ def _sanitize_path_segment(value: Optional[str]) -> Optional[str]:
     raw = str(value).strip().replace("\\", "/")
     # Keep only final segment and disallow traversal
     segment = raw.split("/")[-1]
-    if not segment or segment in (".", ".."):
+    candidate = segment.strip(" .")
+    if not candidate or candidate in (".", ".."):
         return None
-    cleaned = re.sub(r"[^A-Za-z0-9._ ()\[\]-]", "_", segment).strip(" .")
-    return cleaned if cleaned else None
+    if not PATH_SEGMENT_RE.fullmatch(candidate):
+        cleaned = re.sub(r"[^A-Za-z0-9._ ()\[\]&'-]", "_", candidate).strip(" .")
+        if not cleaned or not PATH_SEGMENT_RE.fullmatch(cleaned):
+            return None
+        candidate = cleaned
+    return candidate
 
 
 def _safe_relative_path(user_value: Optional[str]) -> Optional[Path]:
@@ -12586,6 +12594,36 @@ def _safe_relative_path(user_value: Optional[str]) -> Optional[Path]:
             return None
         safe_parts.append(safe_part)
     return Path(*safe_parts) if safe_parts else None
+
+
+def _safe_join_under_root(root: Path, *parts: Union[str, Path, None]) -> Optional[Path]:
+    """
+    Join path parts under a trusted root and verify the result stays within root.
+    Returns resolved Path on success, otherwise None.
+    """
+    candidate = root
+    for part in parts:
+        if part is None:
+            continue
+        candidate = candidate / part
+    try:
+        resolved_root = root.resolve()
+        resolved_candidate = candidate.resolve()
+        resolved_candidate.relative_to(resolved_root)
+        return resolved_candidate
+    except Exception:
+        return None
+
+
+def _is_safe_staging_filename(filename: str) -> bool:
+    """Return True if filename is a single safe file name (no path semantics)."""
+    if not filename or "\x00" in filename:
+        return False
+    if "/" in filename or "\\" in filename:
+        return False
+    if filename.startswith(".") or ".." in filename:
+        return False
+    return re.fullmatch(r"^[A-Za-z0-9._-]+$", filename) is not None
 
 
 def update_season_template_if_enabled(
@@ -12657,25 +12695,31 @@ def update_season_template_if_enabled(
         if filename.startswith("poster.") or filename == "poster":
             if parent != Path("."):
                 if safe_library_name and len(parent.parts) == 1 and safe_library_name.lower() != parent.parts[0].lower():
-                    template_dir = MANUAL_ASSETS_DIR / safe_library_name / parent
+                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, parent)
                 else:
-                    template_dir = MANUAL_ASSETS_DIR / parent
+                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, parent)
             elif safe_folder_name:
                 if safe_library_name:
-                    template_dir = MANUAL_ASSETS_DIR / safe_library_name / safe_folder_name
+                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, safe_folder_name)
                 else:
-                    template_dir = MANUAL_ASSETS_DIR / safe_folder_name
+                    template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_folder_name)
             else:
-                template_dir = MANUAL_ASSETS_DIR
+                template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR)
+            if template_dir is None:
+                logger.warning(f"Rejected SeasonTemplate directory outside manual assets directory")
+                return None
             template_file = template_dir / f"SeasonTemplate{ext}"
         else:
             # Flat poster naming (e.g., ShowName_poster.jpg or ShowName.jpg)
             stem_source = safe_folder_name or re.sub(r'(_poster|\.poster)$', '', path_obj.stem, flags=re.IGNORECASE)
             stem = _sanitize_path_segment(stem_source) or "asset"
             if parent != Path("."):
-                template_dir = MANUAL_ASSETS_DIR / parent
+                template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, parent)
             else:
-                template_dir = MANUAL_ASSETS_DIR
+                template_dir = _safe_join_under_root(MANUAL_ASSETS_DIR)
+            if template_dir is None:
+                logger.warning(f"Rejected SeasonTemplate directory outside manual assets directory")
+                return None
             template_file = template_dir / f"{stem}_SeasonTemplate{ext}"
 
         # Security check: ensure writes stay strictly inside MANUAL_ASSETS_DIR
@@ -12746,7 +12790,12 @@ def find_show_seasons(
             break
 
     if not show_dir:
-        rel_show_dir = parent if parent != Path(".") else (safe_folder or Path(""))
+        fallback_rel = Path("")
+        if parent != Path("."):
+            fallback_rel = parent
+        elif safe_folder:
+            fallback_rel = Path(safe_folder)
+        rel_show_dir = fallback_rel
         try:
             cand_fallback = (ASSETS_DIR / rel_show_dir).resolve()
             cand_fallback.relative_to(assets_root)
@@ -12764,7 +12813,13 @@ def find_show_seasons(
             }
 
     # 1. Scan show directory in ASSETS_DIR
-    if show_dir and show_dir.exists() and show_dir.is_dir():
+    if show_dir:
+        try:
+            resolved_show_dir = show_dir.resolve()
+            resolved_show_dir.relative_to(assets_root)
+            show_dir = resolved_show_dir
+        except Exception:
+            show_dir = None
         for f in show_dir.iterdir():
             if not f.is_file():
                 continue
@@ -13001,25 +13056,41 @@ async def trigger_season_replacements_for_show(
 
             QUEUE_STAGING_DIR.mkdir(parents=True, exist_ok=True)
             timestamp = int(time.time() * 1000)
-            safe_s_num = re.sub(r"[^0-9]", "", str(s.get("season_number", ""))) or "0"
-            safe_ext = _sanitize_path_segment(template_file.suffix.lower()) or ".jpg"
-            if safe_ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
-                safe_ext = ".jpg"
+            safe_s_num = "".join(c for c in str(s.get("season_number", "")) if c.isdigit()) or "0"
+            allowed_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+            template_ext = str(template_file.suffix).lower()
+            safe_ext = template_ext if template_ext in allowed_exts else ".jpg"
             unique_token = secrets.token_hex(8)
             safe_filename = f"{timestamp}_season_{safe_s_num}_{unique_token}{safe_ext}"
-            staging_path = (QUEUE_STAGING_DIR / safe_filename).resolve()
+
+            if not _is_safe_staging_filename(safe_filename):
+                continue
+
+            staging_root = QUEUE_STAGING_DIR.resolve()
+            staging_path = (staging_root / safe_filename).resolve()
             try:
-                staging_path.relative_to(QUEUE_STAGING_DIR.resolve())
+                staging_path.relative_to(staging_root)
             except ValueError:
                 continue
 
-            resolved_template_file = template_file.resolve()
+            safe_manual_root = MANUAL_ASSETS_DIR.resolve()
             try:
-                resolved_template_file.relative_to(MANUAL_ASSETS_DIR.resolve())
+                resolved_template_file = template_file.resolve(strict=True)
+            except (FileNotFoundError, OSError):
+                try:
+                    resolved_template_file = template_file.resolve()
+                except Exception:
+                    continue
+            try:
+                resolved_template_file.relative_to(safe_manual_root)
             except ValueError:
                 logger.warning(
                     f"Rejected template file outside manual assets directory: {resolved_template_file}"
                 )
+                continue
+
+            if not resolved_template_file.is_file():
+                logger.warning(f"Rejected non-file template path: {resolved_template_file}")
                 continue
 
             if file_content:
