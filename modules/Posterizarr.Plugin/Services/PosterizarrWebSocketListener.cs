@@ -471,6 +471,9 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
             return;
         }
 
+        // Invalidate in-memory asset resolver cache for this folder so subsequent metadata refreshes hit the new file
+        Providers.AssetPathResolver.InvalidateFile(fullTargetFile);
+
         var sourceFileInfo = new FileInfo(fullTargetFile);
         _logger.LogInformation("[Posterizarr WS] Processing real-time update for '{0}' (Type: {1}, Folder: '{2}')",
             payload.Title ?? payload.FolderName, payload.AssetType, payload.FolderName);
@@ -488,84 +491,47 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
             };
 
             var items = _libraryManager.GetItemList(query);
-            var matchedItem = items.FirstOrDefault(i =>
+            var candidates = items.Where(i =>
                 !string.IsNullOrEmpty(i.Path) &&
                 (string.Equals(Path.GetFileName(i.Path), payload.FolderName, StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(Path.GetFileName(Path.GetDirectoryName(i.Path)), payload.FolderName, StringComparison.OrdinalIgnoreCase)));
+                 string.Equals(Path.GetFileName(Path.GetDirectoryName(i.Path)), payload.FolderName, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
 
-            if (matchedItem == null)
+            if (candidates.Count == 0)
             {
                 _logger.LogInformation("[Posterizarr WS] No matching Movie or Series found in Jellyfin for folder '{0}'.", payload.FolderName);
                 return;
             }
 
-            BaseItem targetItem = matchedItem;
-            var assetTypeLower = (payload.AssetType ?? "poster").ToLowerInvariant();
-            ImageType imageType = ImageType.Primary;
-
-            // Handle TV Show Seasons
-            if (assetTypeLower.Contains("season") && targetItem is Series series)
+            // Disambiguate by LibraryName if provided in the event payload
+            var targetCandidates = candidates;
+            if (candidates.Count > 1 && !string.IsNullOrWhiteSpace(payload.LibraryName))
             {
-                int seasonNum = payload.GetSeasonNumber() ?? 0;
-                var seasonQuery = new InternalItemsQuery
+                var libraryFiltered = candidates.Where(i =>
                 {
-                    ParentId = series.Id,
-                    IncludeItemTypes = new[] { BaseItemKind.Season },
-                    Recursive = false
-                };
+                    var displayLib = i.GetAncestorIds()
+                        .Select(id => _libraryManager.GetItemById(id))
+                        .OfType<CollectionFolder>()
+                        .FirstOrDefault()?.Name;
+                    if (string.Equals(displayLib, payload.LibraryName, StringComparison.OrdinalIgnoreCase)) return true;
 
-                var seasonItem = _libraryManager.GetItemList(seasonQuery)
-                    .OfType<Season>()
-                    .FirstOrDefault(s => (s.IndexNumber ?? 0) == seasonNum);
+                    var internalLib = i.GetAncestorIds()
+                        .Select(id => _libraryManager.GetItemById(id))
+                        .FirstOrDefault(p => p != null && p.ParentId != Guid.Empty && _libraryManager.GetItemById(p.ParentId)?.ParentId == Guid.Empty)?
+                        .Name;
+                    if (string.Equals(internalLib, payload.LibraryName, StringComparison.OrdinalIgnoreCase)) return true;
 
-                if (seasonItem != null)
+                    return false;
+                }).ToList();
+
+                if (libraryFiltered.Count > 0)
                 {
-                    targetItem = seasonItem;
-                    imageType = ImageType.Primary;
+                    targetCandidates = libraryFiltered;
                 }
                 else
                 {
-                    _logger.LogWarning("[Posterizarr WS] Could not find Season {0} for series '{1}'", seasonNum, series.Name);
-                    return;
+                    LogDebug("No candidate matched LibraryName '{0}', using all {1} candidate(s)", payload.LibraryName, candidates.Count);
                 }
-            }
-            // Handle TV Show Episode Title Cards
-            else if ((assetTypeLower.Contains("titlecard") || assetTypeLower.Contains("episode")) && targetItem is Series showSeries)
-            {
-                int sNum = payload.GetSeasonNumber() ?? 1;
-                int eNum = payload.GetEpisodeNumber() ?? 1;
-
-                var epQuery = new InternalItemsQuery
-                {
-                    AncestorIds = new[] { showSeries.Id },
-                    IncludeItemTypes = new[] { BaseItemKind.Episode },
-                    Recursive = true
-                };
-
-                var epItem = _libraryManager.GetItemList(epQuery)
-                    .OfType<Episode>()
-                    .FirstOrDefault(e => (e.ParentIndexNumber ?? 0) == sNum && (e.IndexNumber ?? 0) == eNum);
-
-                if (epItem != null)
-                {
-                    targetItem = epItem;
-                    imageType = ImageType.Primary;
-                }
-                else
-                {
-                    _logger.LogWarning("[Posterizarr WS] Could not find Episode S{0:02}E{1:02} for series '{2}'", sNum, eNum, showSeries.Name);
-                    return;
-                }
-            }
-            // Handle Backdrops / Backgrounds
-            else if (assetTypeLower.Contains("background") || assetTypeLower.Contains("backdrop"))
-            {
-                imageType = ImageType.Backdrop;
-            }
-            // Handle Thumbnails
-            else if (assetTypeLower.Contains("thumbnail") || assetTypeLower.Contains("thumb"))
-            {
-                imageType = ImageType.Thumb;
             }
 
             // Determine mime type
@@ -578,29 +544,102 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
                 _ => "image/jpeg"
             };
 
-            // Stream and save image directly to Jellyfin item
-            using (var stream = new FileStream(sourceFileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.SequentialScan))
-            {
-                await _providerManager.SaveImage(targetItem, stream, mimeType, imageType, 0, ct).ConfigureAwait(false);
-            }
-
-            var parent = targetItem.ParentId != Guid.Empty ? _libraryManager.GetItemById(targetItem.ParentId) : null;
-            await _libraryManager.UpdateItemAsync(targetItem, parent ?? targetItem, ItemUpdateType.ImageUpdate, ct).ConfigureAwait(false);
-
-            // Update persistent cache so scheduled task skips this item
+            // Update persistent cache so scheduled task skips updated items
             var dataFolder = Plugin.Instance?.DataFolderPath ?? Path.Combine(AppContext.BaseDirectory, "data");
             var syncCache = new SyncCacheManager(dataFolder, _loggerFactory.CreateLogger<SyncCacheManager>());
             syncCache.Load();
 
-            var updatedImage = targetItem.GetImageInfo(imageType, 0);
-            if (updatedImage != null)
+            foreach (var candidate in targetCandidates)
             {
-                syncCache.Update(targetItem.Id, imageType, sourceFileInfo, updatedImage);
-                syncCache.Save();
+                BaseItem targetItem = candidate;
+                var assetTypeLower = (payload.AssetType ?? "poster").ToLowerInvariant();
+                ImageType imageType = ImageType.Primary;
+
+                // Handle TV Show Seasons
+                if (assetTypeLower.Contains("season") && targetItem is Series series)
+                {
+                    int seasonNum = payload.GetSeasonNumber() ?? 0;
+                    var seasonQuery = new InternalItemsQuery
+                    {
+                        ParentId = series.Id,
+                        IncludeItemTypes = new[] { BaseItemKind.Season },
+                        Recursive = false
+                    };
+
+                    var seasonItem = _libraryManager.GetItemList(seasonQuery)
+                        .OfType<Season>()
+                        .FirstOrDefault(s => (s.IndexNumber ?? 0) == seasonNum);
+
+                    if (seasonItem != null)
+                    {
+                        targetItem = seasonItem;
+                        imageType = ImageType.Primary;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[Posterizarr WS] Could not find Season {0} for series '{1}'", seasonNum, series.Name);
+                        continue;
+                    }
+                }
+                // Handle TV Show Episode Title Cards
+                else if ((assetTypeLower.Contains("titlecard") || assetTypeLower.Contains("episode")) && targetItem is Series showSeries)
+                {
+                    int sNum = payload.GetSeasonNumber() ?? 1;
+                    int eNum = payload.GetEpisodeNumber() ?? 1;
+
+                    var epQuery = new InternalItemsQuery
+                    {
+                        AncestorIds = new[] { showSeries.Id },
+                        IncludeItemTypes = new[] { BaseItemKind.Episode },
+                        Recursive = true
+                    };
+
+                    var epItem = _libraryManager.GetItemList(epQuery)
+                        .OfType<Episode>()
+                        .FirstOrDefault(e => (e.ParentIndexNumber ?? 0) == sNum && (e.IndexNumber ?? 0) == eNum);
+
+                    if (epItem != null)
+                    {
+                        targetItem = epItem;
+                        imageType = ImageType.Primary;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[Posterizarr WS] Could not find Episode S{0:02}E{1:02} for series '{2}'", sNum, eNum, showSeries.Name);
+                        continue;
+                    }
+                }
+                // Handle Backdrops / Backgrounds
+                else if (assetTypeLower.Contains("background") || assetTypeLower.Contains("backdrop"))
+                {
+                    imageType = ImageType.Backdrop;
+                }
+                // Handle Thumbnails
+                else if (assetTypeLower.Contains("thumbnail") || assetTypeLower.Contains("thumb"))
+                {
+                    imageType = ImageType.Thumb;
+                }
+
+                // Stream and save image directly to Jellyfin item
+                using (var stream = new FileStream(sourceFileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.SequentialScan))
+                {
+                    await _providerManager.SaveImage(targetItem, stream, mimeType, imageType, 0, ct).ConfigureAwait(false);
+                }
+
+                var parent = targetItem.ParentId != Guid.Empty ? _libraryManager.GetItemById(targetItem.ParentId) : null;
+                await _libraryManager.UpdateItemAsync(targetItem, parent ?? targetItem, ItemUpdateType.ImageUpdate, ct).ConfigureAwait(false);
+
+                var updatedImage = targetItem.GetImageInfo(imageType, 0);
+                if (updatedImage != null)
+                {
+                    syncCache.Update(targetItem.Id, imageType, sourceFileInfo, updatedImage);
+                }
+
+                _logger.LogInformation("[Posterizarr WS] SUCCESS: Real-time image update applied to '{0}' ({1}) in Jellyfin!",
+                    targetItem.Name, imageType);
             }
 
-            _logger.LogInformation("[Posterizarr WS] SUCCESS: Real-time image update applied to '{0}' ({1}) in Jellyfin!",
-                targetItem.Name, imageType);
+            syncCache.Save();
         }
         catch (Exception ex)
         {

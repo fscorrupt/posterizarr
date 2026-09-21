@@ -228,6 +228,8 @@
     - `DisableOnlinePosterFetch` : Set to `true` to skip online lookups for Posters and use only locally available assets. (Default value is: false).
     - `DisableOnlineBackgroundFetch` : Set to `true` to skip online lookups for Backgrounds and use only locally available assets. (Default value is: false).
     - `DisableOnlineSeasonFetch` : Set to `true` to skip online lookups for Seasons and use only locally available assets. (Default value is: false).
+    - `AutoCreateSeasonTemplate` : Set to `true` to automatically create and update `SeasonTemplate` in `ManualAssets` when a TV show poster is downloaded or replaced via AssetReplacer. This enables all seasons of the show to automatically use the show poster as their template. (Default value is: false).
+    - `AutoUpdateExistingSeasonPosters` : Used together with `AutoCreateSeasonTemplate`. When set to `true`, replacing or updating a TV show poster also automatically replaces and re-renders all existing season posters for that show. When set to `false`, only the `SeasonTemplate` is updated so existing season posters remain untouched until explicitly replaced. (Default value is: false).
     - `FileTestOnTrigger` : On trigger run, checks whether the file is present locally. If set to $false, the test will be skipped and all images will be overwritten.
 
     #### OverlayPart

@@ -2004,7 +2004,7 @@ export default function Blueprints() {
 
                         {selectedLayer === "Season.Text" && (
                           <div className="space-y-4 border-t border-theme/50 pt-4 mt-4">
-                             <Toggle label="Show Fallback Text" checked={builderState.Season.ShowFallback} onChange={(v) => updateBuilder("Season", "ShowFallback", v)} />
+                             <Toggle label="Fallback to Show Poster" checked={builderState.Season.ShowFallback} onChange={(v) => updateBuilder("Season", "ShowFallback", v)} />
                              <Toggle label="Override Season Name" checked={builderState.Season.OverrideSeasonName} onChange={(v) => updateBuilder("Season", "OverrideSeasonName", v)} />
                              {builderState.Season.OverrideSeasonName && (
                                <div className="grid grid-cols-2 gap-4">

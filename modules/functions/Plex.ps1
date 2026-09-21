@@ -1,16 +1,76 @@
+function Invoke-PlexWebRequest {
+    <#
+    .SYNOPSIS
+        Executes a web request to Plex with built-in retry logic, timeout, and rich error reporting for PowerShell 7+.
+    .DESCRIPTION
+        Retries on transient network errors (such as SSL drops, connection resets, timeouts, 5xx/429) with exponential backoff.
+        Extracts inner exception messages to provide clear diagnostics. Automatically bypasses certificate validation issues in PS 7.
+        Does not retry permanent client errors (400, 401, 403, 404).
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Uri,
+        [hashtable]$Headers = $null,
+        [int]$MaxRetries = 3,
+        [int]$RetryDelaySeconds = 2,
+        [string]$Method = 'GET',
+        [int]$TimeoutSec = 45,
+        [string]$OutFile = $null,
+        [bool]$SkipCertificateCheck = $true
+    )
+
+    $attempt = 0
+    while ($attempt -le $MaxRetries) {
+        try {
+            $splat = @{
+                Uri                  = $Uri
+                Method               = $Method
+                TimeoutSec           = $TimeoutSec
+                ErrorAction          = 'Stop'
+                SkipCertificateCheck = $SkipCertificateCheck
+            }
+            if ($Headers) { $splat['Headers'] = $Headers }
+            if ($OutFile) { $splat['OutFile'] = $OutFile }
+
+            return (Invoke-WebRequest @splat)
+        }
+        catch {
+            $attempt++
+            $exMsg = $_.Exception.Message
+            $innerMsg = if ($_.Exception.InnerException) { " (Inner: $($_.Exception.InnerException.Message))" } else { "" }
+            $fullErr = "$exMsg$innerMsg"
+
+            # Do not retry permanent HTTP client errors (400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found)
+            $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+            if ($statusCode -in @(400, 401, 403, 404) -or $attempt -gt $MaxRetries) {
+                throw [System.InvalidOperationException]::new($fullErr, $_.Exception)
+            }
+
+            $redacted = if (Get-Command 'RedactMediaServerUrl' -ErrorAction SilentlyContinue) {
+                RedactMediaServerUrl -url $Uri
+            } else {
+                $Uri
+            }
+            $delay = $RetryDelaySeconds * $attempt
+            Write-Entry -Subtext "Plex request failed: $fullErr. Retrying in ${delay}s... (Attempt $attempt/$MaxRetries) | Uri: $redacted" -Path $global:configLogging -Color Yellow -log Warning
+            Start-Sleep -Seconds $delay
+        }
+    }
+}
+
 function CheckPlexAccess {
     param (
         [string]$PlexUrl
     )
     Write-Entry -Message "Checking Plex access now..." -Path $global:configLogging -Color White -log Info
     try {
-        $result = Invoke-WebRequest -Uri "$PlexUrl/library/sections" -ErrorAction SilentlyContinue -WarningAction SilentlyContinue -Headers $extraPlexHeaders
+        $result = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections" -Headers $extraPlexHeaders -MaxRetries 3 -RetryDelaySeconds 3
         if ($result.StatusCode -eq 200) {
             Write-Entry -Subtext "Plex access is working..." -Path $global:configLogging -Color Green -log Info
             # Check if libs are available
             [XML]$Libs = $result.Content
             # Plex Debug info
-            $plexdebuginfo = Invoke-WebRequest -Uri "$PlexUrl" -ErrorAction Stop -Headers $extraPlexHeaders
+            $plexdebuginfo = Invoke-PlexWebRequest -Uri "$PlexUrl" -Headers $extraPlexHeaders -MaxRetries 2
             [XML]$plexdebuginfo = $plexdebuginfo.Content
             Write-Entry -Subtext "Plex Server Version: $($plexdebuginfo.MediaContainer.version)" -Path $global:configLogging -Color Cyan -log Debug
             Write-Entry -Subtext "My Plex Server: $($plexdebuginfo.MediaContainer.myPlex)"-Path $global:configLogging -Color Cyan -log Debug
@@ -27,7 +87,11 @@ function CheckPlexAccess {
         }
     }
     catch {
-        Write-Entry -Subtext "Error occurred while accessing Plex server: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+        $exMsg = $_.Exception.Message
+        if ($_.Exception.InnerException) {
+            $exMsg += " (Inner: $($_.Exception.InnerException.Message))"
+        }
+        Write-Entry -Subtext "Error occurred while accessing Plex server: $exMsg" -Path $global:configLogging -Color Red -log Error
         Write-Entry -Subtext "Please check access and settings in Plex..." -Path $global:configLogging -Color Yellow -log Warning
         Write-Entry -Message "To be able to connect to Plex without authentication" -Path $global:configLogging -Color White -log Info
         Write-Entry -Message "You have to enter your IP range in 'Settings -> Network -> List of IP addresses and networks that are allowed without auth: '192.168.1.0/255.255.255.0''" -Path $global:configLogging -Color White -log Info
@@ -89,4 +153,126 @@ function GetPlexArtworkUrl {
         Write-Entry -Subtext "No posterizarr/kometa/tcm exif data found, using URL..." -Path $global:configLogging -Color Yellow -log Warning
         $global:posterurl = $ArtUrl
     }
+}
+
+function Get-PlexSectionSeasonsBulk {
+    <#
+    .SYNOPSIS
+        Fetches all seasons for a given TV show library in bulk and groups them by parent show ratingKey.
+    .DESCRIPTION
+        Calls GET /library/sections/{SectionId}/all?type=3 with pagination.
+        Returns a hashtable @{ [string]$parentRatingKey = [System.Collections.Generic.List[object]]::new() }.
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$PlexUrl,
+        [Parameter(Mandatory = $true)]
+        [string]$SectionId,
+        [hashtable]$Headers = $null
+    )
+
+    $seasonsByShow = @{}
+    $searchsize = 0
+    $totalContentSize = 1
+    $pageSize = 2000
+    $reqHeaders = if ($Headers) { $Headers.Clone() } else { @{} }
+
+    try {
+        do {
+            $reqHeaders['X-Plex-Container-Start'] = $searchsize
+            $reqHeaders['X-Plex-Container-Size'] = [string]$pageSize
+
+            $uri = "$PlexUrl/library/sections/$SectionId/all?type=3"
+            $resp = Invoke-PlexWebRequest -Uri $uri -Headers $reqHeaders -MaxRetries 3 -RetryDelaySeconds 2
+            [xml]$xml = $resp.Content
+
+            if ($totalContentSize -eq 1 -and $xml.MediaContainer.totalSize) {
+                $totalContentSize = [int]$xml.MediaContainer.totalSize
+            }
+
+            if ($xml.MediaContainer.Directory) {
+                foreach ($sNode in $xml.MediaContainer.Directory) {
+                    $pKey = [string]$sNode.parentRatingKey
+                    if (-not [string]::IsNullOrEmpty($pKey)) {
+                        if (-not $seasonsByShow.ContainsKey($pKey)) {
+                            $seasonsByShow[$pKey] = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $seasonsByShow[$pKey].Add($sNode)
+                    }
+                }
+            }
+
+            $batchCount = if ($xml.MediaContainer.size) { [int]$xml.MediaContainer.size } else { 0 }
+            if ($batchCount -le 0) { break }
+            $searchsize += $batchCount
+        } until ($searchsize -ge $totalContentSize)
+    }
+    catch {
+        $exMsg = $_.Exception.Message
+        if ($_.Exception.InnerException) { $exMsg += " (Inner: $($_.Exception.InnerException.Message))" }
+        Write-Entry -Subtext "Failed to fetch bulk seasons for Library ID $SectionId : $exMsg" -Path $global:configLogging -Color Yellow -log Warning
+    }
+
+    return $seasonsByShow
+}
+
+function Get-PlexSectionEpisodesBulk {
+    <#
+    .SYNOPSIS
+        Fetches all episodes for a given TV show library in bulk and groups them by season ratingKey (parentRatingKey).
+    .DESCRIPTION
+        Calls GET /library/sections/{SectionId}/all?type=4 with pagination.
+        Returns a hashtable @{ [string]$seasonRatingKey = [System.Collections.Generic.List[object]]::new() }.
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$PlexUrl,
+        [Parameter(Mandatory = $true)]
+        [string]$SectionId,
+        [hashtable]$Headers = $null
+    )
+
+    $episodesBySeason = @{}
+    $searchsize = 0
+    $totalContentSize = 1
+    $pageSize = 2000
+    $reqHeaders = if ($Headers) { $Headers.Clone() } else { @{} }
+
+    try {
+        do {
+            $reqHeaders['X-Plex-Container-Start'] = $searchsize
+            $reqHeaders['X-Plex-Container-Size'] = [string]$pageSize
+
+            $uri = "$PlexUrl/library/sections/$SectionId/all?type=4"
+            $resp = Invoke-PlexWebRequest -Uri $uri -Headers $reqHeaders -MaxRetries 3 -RetryDelaySeconds 2
+            [xml]$xml = $resp.Content
+
+            if ($totalContentSize -eq 1 -and $xml.MediaContainer.totalSize) {
+                $totalContentSize = [int]$xml.MediaContainer.totalSize
+            }
+
+            if ($xml.MediaContainer.Video) {
+                foreach ($epNode in $xml.MediaContainer.Video) {
+                    $sKey = [string]$epNode.parentRatingKey
+                    if (-not [string]::IsNullOrEmpty($sKey)) {
+                        if (-not $episodesBySeason.ContainsKey($sKey)) {
+                            $episodesBySeason[$sKey] = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $episodesBySeason[$sKey].Add($epNode)
+                    }
+                }
+            }
+
+            $batchCount = if ($xml.MediaContainer.size) { [int]$xml.MediaContainer.size } else { 0 }
+            if ($batchCount -le 0) { break }
+            $searchsize += $batchCount
+        } until ($searchsize -ge $totalContentSize)
+    }
+    catch {
+        $exMsg = $_.Exception.Message
+        if ($_.Exception.InnerException) { $exMsg += " (Inner: $($_.Exception.InnerException.Message))" }
+        Write-Entry -Subtext "Failed to fetch bulk episodes for Library ID $SectionId : $exMsg" -Path $global:configLogging -Color Yellow -log Warning
+    }
+
+    return $episodesBySeason
 }

@@ -287,6 +287,7 @@ $global:ShowProviderOrder = if ($null -ne $config.ApiPart.ShowProviderOrder) { $
 if ($global:ShowProviderOrder) {
     $global:ShowProviderOrder = @($global:ShowProviderOrder | ForEach-Object { $_.ToUpper() })
 }
+$global:UseCustomProviderOrder = ($global:ProviderPriorityMode -eq 'Global' -or $global:ProviderPriorityMode -eq 'PerMediaType')
 
 $global:TMDBVoteSorting = "$($config.ApiPart.tmdb_vote_sorting)".ToLower()
 if (!$global:TMDBVoteSorting) {
@@ -439,6 +440,8 @@ $global:DisableOnlineTitleCardFetch = "$($config.PrerequisitePart.DisableOnlineT
 $global:DisableOnlinePosterFetch = "$($config.PrerequisitePart.DisableOnlinePosterFetch)".ToLower()
 $global:DisableOnlineBackgroundFetch = "$($config.PrerequisitePart.DisableOnlineBackgroundFetch)".ToLower()
 $global:DisableOnlineSeasonFetch = "$($config.PrerequisitePart.DisableOnlineSeasonFetch)".ToLower()
+$global:AutoCreateSeasonTemplate = if ($config.PrerequisitePart.AutoCreateSeasonTemplate) { "$($config.PrerequisitePart.AutoCreateSeasonTemplate)".ToLower() } elseif ($config.SeasonPosterOverlayPart.AutoCreateSeasonTemplate) { "$($config.SeasonPosterOverlayPart.AutoCreateSeasonTemplate)".ToLower() } else { "false" }
+$global:AutoUpdateExistingSeasonPosters = if ($config.PrerequisitePart.AutoUpdateExistingSeasonPosters) { "$($config.PrerequisitePart.AutoUpdateExistingSeasonPosters)".ToLower() } elseif ($config.SeasonPosterOverlayPart.AutoUpdateExistingSeasonPosters) { "$($config.SeasonPosterOverlayPart.AutoUpdateExistingSeasonPosters)".ToLower() } else { "false" }
 $UseLogo = "$($config.PrerequisitePart.UseLogo)".ToLower()
 $ConvertLogoColor = "$($config.PrerequisitePart.ConvertLogoColor)".ToLower()
 $LogoFlatColor = "$($config.PrerequisitePart.LogoFlatColor)".ToLower()
@@ -465,6 +468,7 @@ if ($ManualAssetPath.StartsWith("\")) {
         $ManualAssetPath = "\" + $ManualAssetPath
     }
 }
+$ManualPath = $ManualAssetPath
 
 # Check if its a Network Share
 if ($BackupPath.StartsWith("\")) {
@@ -590,9 +594,9 @@ $SeasonlineSpacing = $config.SeasonPosterOverlayPart.lineSpacing
 $Seasontextgravity = "$($config.SeasonPosterOverlayPart.TextGravity)".ToLower()
 $Seasonborderwidthsecond = $borderwidth + 'x' + $borderwidth
 $Seasonboxsize = $SeasonMaxWidth + 'x' + $SeasonMaxHeight
-$OverrideSeasonName = $config.SeasonPosterOverlayPart.OverrideSeasonName
-$SeasonOverrideText = "$($config.SeasonPosterOverlayPart.SeasonOverrideText)".ToLower()
-$SpecialSeasonOverrideText = "$($config.SeasonPosterOverlayPart.SpecialSeasonOverrideText)".ToLower()
+$OverrideSeasonName = "$($config.SeasonPosterOverlayPart.OverrideSeasonName)".ToLower()
+$SeasonOverrideText = "$($config.SeasonPosterOverlayPart.SeasonOverrideText)"
+$SpecialSeasonOverrideText = "$($config.SeasonPosterOverlayPart.SpecialSeasonOverrideText)"
 
 # Show Title on Season Poster Overlay Part
 $ShowOnSeasonfontAllCaps = "$($config.ShowTitleOnSeasonPosterPart.fontAllCaps)".ToLower()
@@ -613,7 +617,7 @@ $ShowOnSeasonlineSpacing = $config.ShowTitleOnSeasonPosterPart.lineSpacing
 # Collection Title on Collection Poster Overlay Part
 $CollectionTitleAllCaps = "$($config.CollectionTitlePosterPart.fontAllCaps)".ToLower()
 $AddCollectionTitle = "$($config.CollectionTitlePosterPart.AddCollectionTitle)".ToLower()
-$CollectionTitle = "$($config.CollectionTitlePosterPart.CollectionTitle)".ToLower()
+$CollectionTitle = "$($config.CollectionTitlePosterPart.CollectionTitle)"
 $AddCollectionTitleTextStroke = "$($config.CollectionTitlePosterPart.AddTextStroke)".ToLower()
 $CollectionTitlestrokecolor = $config.CollectionTitlePosterPart.strokecolor
 $CollectionTitlestrokewidth = $config.CollectionTitlePosterPart.strokewidth

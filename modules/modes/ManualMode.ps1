@@ -25,7 +25,7 @@
     $ExtractedTitleRegex = '^\s*(?:Season\s*\d+\s*\|\s*)?(.*?)(?:\s*\|\s*Season\s*\d+)?\s*$'
 
     # Regex to find "Specials" keywords or the numbers 0/00
-    $specialsPattern = '^(?:Specials|Extras|Spéciaux|0{1,2}|[Ss]eason ?0{1,2})$' # Add any other language keywords here
+    $specialsPattern = '^(?:Specials|Extras|Spéciaux|[Ss]pezial.*|0{1,2}|[Ss]eason ?0{1,2})$' # Add any other language keywords here
 
     if ([string]::IsNullOrEmpty($PicturePath)) {
         $TriggeredViaCli = 'true'
@@ -145,6 +145,7 @@
                 }
             }
             Elseif ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "Season00"
                 if ($SeasonPosterName -match $ExtractedTitleRegex) {
                     $global:ExtractedTitle = $Matches[1]
@@ -204,7 +205,8 @@
                 $global:SeasonNumber = $Matches[1]
                 $global:seasontmp = "S" + $global:SeasonNumber.PadLeft(2, '0')
             }
-            if ($SeasonPosterName -eq $specialsPattern) {
+            if ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "S00"
             }
             if ($EpisodeNumber -match '(\d+)') {
@@ -250,7 +252,8 @@
                     $global:ExtractedTitle = $Matches[1]
                 }
             }
-            Elseif ($SeasonPosterName -eq $specialsPattern) {
+            Elseif ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "Season00"
                 if ($SeasonPosterName -match $ExtractedTitleRegex) {
                     $global:ExtractedTitle = $Matches[1]
@@ -307,7 +310,8 @@
                 $global:SeasonNumber = $Matches[1]
                 $global:seasontmp = "S" + $global:SeasonNumber.PadLeft(2, '0')
             }
-            if ($SeasonPosterName -eq $specialsPattern) {
+            if ($SeasonPosterName -match $specialsPattern) {
+                $global:SeasonNumber = "0"
                 $global:seasontmp = "S00"
             }
             if ($EpisodeNumber -match '(\d+)') {
@@ -345,40 +349,78 @@
     Else {
         Move-Item -LiteralPath $PicturePath -destination $PosterImage -Force -ErrorAction SilentlyContinue
     }
+    if ($global:AutoCreateSeasonTemplate -eq 'true' -and ($PosterType -eq 'Show' -or ($PosterType -eq 'Poster' -and -not $MoviePosterCard -and -not $SeasonPoster -and -not $TitleCard -and -not $CollectionCard -and -not $BackgroundCard))) {
+        $manualTemplateDir = if ($LibraryFolders -eq 'true') { Join-Path -Path $ManualAssetPath -ChildPath "$LibraryName\$FolderName" } else { $ManualAssetPath }
+        $manualTemplateFile = if ($LibraryFolders -eq 'true') { Join-Path -Path $manualTemplateDir -ChildPath "SeasonTemplate.jpg" } else { Join-Path -Path $manualTemplateDir -ChildPath "$($FolderName)_SeasonTemplate.jpg" }
+        try {
+            if (-not (Test-Path -LiteralPath $manualTemplateDir)) {
+                New-Item -ItemType Directory -Path $manualTemplateDir -Force | Out-Null
+            }
+            Copy-Item -LiteralPath $PosterImage -Destination $manualTemplateFile -Force -ErrorAction Stop
+            Write-Entry -Subtext "Auto-updated Season Template in ManualAssets: $manualTemplateFile" -Path $global:configLogging -Color Cyan -log Info
+        }
+        catch {
+            Write-Entry -Subtext "Failed to update Season Template in ManualAssets: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+        }
+    }
     if ($global:ImageProcessing -eq 'true') {
         if ($SeasonPoster) {
-            if ($AddShowTitletoSeason -eq 'true') {
-                if ($fontAllCaps -eq 'true') {
-                    if ($global:ExtractedTitle) {
-                        $joinedTitle = $global:ExtractedTitle.ToUpper()
-                    }
-                    else {
-                        $joinedTitle = $SeasonPosterName.ToUpper()
-                    }
-                }
-                Else {
-                    if ($global:ExtractedTitle) {
-                        $joinedTitle = $global:ExtractedTitle
-                    }
-                    else {
-                        $joinedTitle = $SeasonPosterName
-                    }
-                }
+            # Determine Season Number and whether this is a specials season
+            $seasonNum = if ($null -ne $global:SeasonNumber -and $global:SeasonNumber -ne "") {
+                [string]$global:SeasonNumber
+            } elseif ($SeasonPosterName -match '(\d+)') {
+                [string][int]$Matches[1]
+            } else {
+                $null
+            }
+            $isSpecials = ($seasonNum -eq '0' -or $seasonNum -eq '00' -or $SeasonPosterName -match $specialsPattern)
 
-                if ($ShowOnSeasonfontAllCaps -eq 'true') {
-                    $ShowjoinedTitle = $titletext.ToUpper()
+            # Determine base season title text
+            if ($isSpecials) {
+                $computedSeasonTitle = if (-not [string]::IsNullOrWhiteSpace($SpecialSeasonOverrideText)) {
+                    $SpecialSeasonOverrideText
+                } else {
+                    "Specials"
                 }
-                Else {
-                    $ShowjoinedTitle = $titletext
+                $global:SeasonNumber = "0"
+                $global:seasontmp = "Season00"
+            }
+            elseif ($OverrideSeasonName -eq 'true' -or $OverrideSeasonName -eq $true -or [string]::IsNullOrWhiteSpace($SeasonPosterName) -or $SeasonPosterName -match '^\d+$') {
+                $prefix = if (-not [string]::IsNullOrWhiteSpace($SeasonOverrideText)) {
+                    $SeasonOverrideText
+                } else {
+                    "Season"
+                }
+                if ($null -ne $seasonNum) {
+                    $computedSeasonTitle = "$prefix $seasonNum"
+                } else {
+                    $computedSeasonTitle = $prefix
                 }
             }
-            Else {
-                if ($fontAllCaps -eq 'true') {
-                    $joinedTitle = $titletext.ToUpper()
-                }
-                Else {
-                    $joinedTitle = $titletext
-                }
+            elseif ($global:ExtractedTitle -and $global:ExtractedTitle -notmatch '^\d+$') {
+                $computedSeasonTitle = $global:ExtractedTitle
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($SeasonPosterName)) {
+                $computedSeasonTitle = $SeasonPosterName
+            }
+            else {
+                $computedSeasonTitle = if ($null -ne $seasonNum) { "Season $seasonNum" } else { "Season" }
+            }
+
+            # Apply capitalization for Season text
+            if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
+                $joinedTitle = $computedSeasonTitle.ToUpper()
+            }
+            else {
+                $joinedTitle = $computedSeasonTitle
+            }
+
+            # Show Title on Season text
+            if ($ShowOnSeasonfontAllCaps -eq 'true') {
+                $ShowjoinedTitle = $titletext.ToUpper()
+            }
+            else {
+                $ShowjoinedTitle = $titletext
             }
         }
         elseif ($CollectionCard) {
@@ -445,7 +487,10 @@
                 $joinedTitle = $Titletext
             }
         }
-        if ($Titletext -match '^(http|https)://' -or $Titletext -match '\.(png|jpg|jpeg|webp)$') {
+        if ($SeasonPoster) {
+            Write-Entry -Subtext "Processing Season Poster for: `"$Titletext | $joinedTitle`"" -Path $global:configLogging -Color White -log Info
+        }
+        elseif ($Titletext -match '^(http|https)://' -or $Titletext -match '\.(png|jpg|jpeg|webp)$') {
             Write-Entry -Subtext "Processing Poster/Logo for: `"$FolderName`"" -Path $global:configLogging -Color White -log Info
         }
         Else {
@@ -1009,7 +1054,7 @@
 
                 Write-Entry -Subtext "Plex Search URI: $(RedactMediaServerUrl -url $searchUrl)" -Path $global:configLogging -Color Cyan -log Debug
 
-                [xml]$searchXml = (Invoke-WebRequest $searchUrl -Headers $extraPlexHeaders -ErrorAction SilentlyContinue).content
+                [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
 
                 if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) {
                     $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
@@ -1034,7 +1079,7 @@
             }
             elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
                 $SearchType = if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) { "Movie" } else { "Series" }
-                $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=$SearchType&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))"
+                $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=$SearchType&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false"
 
                 Write-Entry -Subtext "JF/Emby Search URI: $(RedactMediaServerUrl -url $searchUri)" -Path $global:configLogging -Color Cyan -log Debug
                 $results = Invoke-RestMethod -Uri $searchUri -Headers $global:OtherMediaServerHeaders
@@ -1044,7 +1089,7 @@
                 if (-not $baseItem -and $SearchType -eq "Series") {
                     Write-Entry -Subtext "Precision match failed for Series '$FolderName'. Retrying search as 'Movie' type..." -Path $global:configLogging -Color Yellow -log Info
 
-                    $retrySearchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Fields=Path&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))"
+                    $retrySearchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Fields=Path&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false"
                     $retryResults = Invoke-RestMethod -Uri $retrySearchUri -Headers $global:OtherMediaServerHeaders
                     $baseItem = $retryResults.Items | Where-Object { $_.Path -match [regex]::Escape($FolderName) }
 
@@ -1070,7 +1115,7 @@
                     Write-Entry -Subtext "Drilling down to Season $global:SeasonNumber" -Path $global:configLogging -Color Cyan -log Debug
                     if ($UsePlex -eq 'true') {
                         $drillUri = "$PlexUrl/library/metadata/$FinalTargetID/children"
-                        [xml]$children = (Invoke-WebRequest $drillUri -Headers $extraPlexHeaders).content
+                        [xml]$children = (Invoke-PlexWebRequest -Uri $drillUri -Headers $extraPlexHeaders).content
                         $FinalTargetID = ($children.MediaContainer.Directory | Where-Object { [int]$_.index -eq [int]$global:SeasonNumber }).ratingKey
                     }
                     else {
@@ -1083,10 +1128,10 @@
                 elseif ($TitleCard) {
                     Write-Entry -Subtext "Drilling down to Episode S$($global:SeasonNumber)E$($global:EpisodeNumber)" -Path $global:configLogging -Color Cyan -log Debug
                     if ($UsePlex -eq 'true') {
-                        [xml]$seasonsXml = (Invoke-WebRequest "$PlexUrl/library/metadata/$FinalTargetID/children" -Headers $extraPlexHeaders).content
+                        [xml]$seasonsXml = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$FinalTargetID/children" -Headers $extraPlexHeaders).content
                         $seasonKey = ($seasonsXml.MediaContainer.Directory | Where-Object { [int]$_.index -eq [int]$global:SeasonNumber }).ratingKey
 
-                        [xml]$epsXml = (Invoke-WebRequest "$PlexUrl/library/metadata/$seasonKey/children" -Headers $extraPlexHeaders).content
+                        [xml]$epsXml = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$seasonKey/children" -Headers $extraPlexHeaders).content
                         $FinalTargetID = ($epsXml.MediaContainer.video | Where-Object { [int]$_.index -eq [int]$global:EpisodeNumber }).ratingKey
                     }
                     else {

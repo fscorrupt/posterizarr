@@ -323,9 +323,31 @@ if (-not $module) {
 
 # Only connect if DisableOnlineAssetFetch is not set to false, and not running a mode that skips online search
 if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby -and !$Backup -and !$Manual -and !$PosterReset -and !$Restore) {
-    $checkFanart = (-not $global:UseCustomProviderOrder) -or ($global:ProviderOrder -contains 'FANART')
-    $checkTMDB = (-not $global:UseCustomProviderOrder) -or ($global:ProviderOrder -contains 'TMDB')
-    $checkTVDB = (-not $global:UseCustomProviderOrder) -or ($global:ProviderOrder -contains 'TVDB')
+    if ($global:UseCustomProviderOrder) {
+        $activeProviders = @($global:ProviderOrder)
+        if ($global:ProviderPriorityMode -eq 'PerMediaType') {
+            $activeProviders = @($global:MovieProviderOrder) + @($global:ShowProviderOrder)
+        }
+        if ($global:LibraryLanguageOverrides) {
+            $overrides = if ($global:LibraryLanguageOverrides -is [System.Collections.IDictionary]) {
+                $global:LibraryLanguageOverrides.Values
+            } else {
+                $global:LibraryLanguageOverrides.PSObject.Properties.Value
+            }
+            foreach ($ov in $overrides) {
+                if ($ov.EnableProviderOrderOverride -and $ov.ProviderOrder) {
+                    $activeProviders += @($ov.ProviderOrder)
+                }
+            }
+        }
+        $checkFanart = $activeProviders -contains 'FANART'
+        $checkTMDB   = $activeProviders -contains 'TMDB'
+        $checkTVDB   = $activeProviders -contains 'TVDB'
+    } else {
+        $checkFanart = $true
+        $checkTMDB   = $true
+        $checkTVDB   = $true
+    }
 
     Write-Entry -Message "Starting Provider Validation..." -Path $global:configLogging -Color White -log Info
 

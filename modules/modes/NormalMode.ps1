@@ -21,6 +21,7 @@
                     $libtemp | Add-Member -MemberType NoteProperty -Name "ID" -Value $lib.key
                     $libtemp | Add-Member -MemberType NoteProperty -Name "Name" -Value $lib.title
                     $libtemp | Add-Member -MemberType NoteProperty -Name "Language" -Value $lib.language
+                    $libtemp | Add-Member -MemberType NoteProperty -Name "Type" -Value $lib.type
 
                     # Check if $lib.location.path is an array
                     if ($lib.location.path -is [array]) {
@@ -51,7 +52,7 @@
             Write-Entry -Subtext "0 libraries were found. Retrying in 10 seconds... (Attempt $retryCount/$maxRetries)" -Path $global:configLogging -Color Yellow -log Warning
             Start-Sleep -Seconds 10
             try {
-                $result = Invoke-WebRequest -Uri "$PlexUrl/library/sections" -ErrorAction SilentlyContinue -Headers $extraPlexHeaders
+                $result = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections" -Headers $extraPlexHeaders -MaxRetries 1
                 if ($result -and $result.StatusCode -eq 200) {
                     [XML]$Libs = $result.Content
                 }
@@ -94,8 +95,8 @@
 
                 Write-Entry -Subtext "Fetching Library ID: $($Library.ID) | Start: $searchsize | Total: $totalContentSize" -Path $global:configLogging -Color Cyan -log Debug
 
-                # Fetch content from Plex server
-                $response = Invoke-WebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1 populates external GUIDs directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -125,6 +126,11 @@
             }
             Else {
                 $contentquery = 'Directory'
+            }
+            $bulkSeasonsByShow = @{}
+            if ($contentquery -eq 'Directory') {
+                Write-Entry -Subtext "Bulk fetching season metadata for Library: $($Library.Name)..." -Path $global:configLogging -Color Cyan -log Info
+                $bulkSeasonsByShow = Get-PlexSectionSeasonsBulk -PlexUrl $PlexUrl -SectionId $Library.ID -Headers $PlexHeaders
             }
             if ($global:logLevel -eq '3') {
                 $MasterXml = New-Object System.Xml.XmlDocument
@@ -167,12 +173,16 @@
 
                 if ($needFullMetadata) {
                     try {
-                        [xml]$Metadata = (Invoke-WebRequest $PlexUrl/library/metadata/$($item.ratingKey) -Headers $extraPlexHeaders).content
+                        [xml]$Metadata = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$($item.ratingKey)" -Headers $extraPlexHeaders).content
                     }
                     catch {
+                        $exMsg = $_.Exception.Message
+                        if ($_.Exception.InnerException) {
+                            $exMsg += " (Inner: $($_.Exception.InnerException.Message))"
+                        }
                         Write-Entry -Subtext "Current Metadata Plex Query: $($PlexUrl[0..10] -join '')****/library/metadata/$($item.ratingKey)" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "An error occurred during Plex query: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                        $isConnRefused = $_.Exception.Message -match "(Connection refused|Name or service not known)"
+                        Write-Entry -Subtext "An error occurred during Plex query: $exMsg" -Path $global:configLogging -Color Red -log Error
+                        $isConnRefused = $exMsg -match "(Connection refused|Name or service not known)"
                         if ($isConnRefused) {
                             $global:ConnRefusedCount = Increment-GlobalStat 'ConnRefusedCount'
                         }
@@ -185,20 +195,38 @@
                 }
 
                 if ($needSeasonData) {
-                    try {
-                        [xml]$Seasondata = (Invoke-WebRequest $PlexUrl/library/metadata/$($item.ratingKey)/children? -Headers $extraPlexHeaders).content
+                    $itemKeyStr = [string]$item.ratingKey
+                    if ($bulkSeasonsByShow -and $bulkSeasonsByShow.ContainsKey($itemKeyStr)) {
+                        $seasonsList = $bulkSeasonsByShow[$itemKeyStr]
+                        $seasonDoc = New-Object System.Xml.XmlDocument
+                        $seasonRoot = $seasonDoc.CreateElement('MediaContainer')
+                        $seasonDoc.AppendChild($seasonRoot) | Out-Null
+                        foreach ($sNode in $seasonsList) {
+                            $impNode = $seasonDoc.ImportNode($sNode, $true)
+                            $seasonRoot.AppendChild($impNode) | Out-Null
+                        }
+                        $Seasondata = $seasonDoc
                     }
-                    catch {
-                        Write-Entry -Subtext "Current Seasondata Plex Query: $($PlexUrl[0..10] -join '')****/library/metadata/$($item.ratingKey)/children?" -Path $global:configLogging -Color Cyan -log Debug
-                        Write-Entry -Subtext "An error occurred during Plex query: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                        $isConnRefused = $_.Exception.Message -match "(Connection refused|Name or service not known)"
-                        if ($isConnRefused) {
-                            $global:ConnRefusedCount = Increment-GlobalStat 'ConnRefusedCount'
+                    else {
+                        try {
+                            [xml]$Seasondata = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$($item.ratingKey)/children?" -Headers $extraPlexHeaders).content
                         }
-                        if ($isConnRefused -and $ConnRefusedCount -ge 3) {
-                            HandleScriptExit -Message "[FATAL] Connection refused 3 times. Terminating script."
+                        catch {
+                            $exMsg = $_.Exception.Message
+                            if ($_.Exception.InnerException) {
+                                $exMsg += " (Inner: $($_.Exception.InnerException.Message))"
+                            }
+                            Write-Entry -Subtext "Current Seasondata Plex Query: $($PlexUrl[0..10] -join '')****/library/metadata/$($item.ratingKey)/children?" -Path $global:configLogging -Color Cyan -log Debug
+                            Write-Entry -Subtext "An error occurred during Plex query: $exMsg" -Path $global:configLogging -Color Red -log Error
+                            $isConnRefused = $exMsg -match "(Connection refused|Name or service not known)"
+                            if ($isConnRefused) {
+                                $global:ConnRefusedCount = Increment-GlobalStat 'ConnRefusedCount'
+                            }
+                            if ($isConnRefused -and $ConnRefusedCount -ge 3) {
+                                HandleScriptExit -Message "[FATAL] Connection refused 3 times. Terminating script."
+                            }
+                            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                         }
-                        $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                     }
                 }
                 if ($global:logLevel -eq '3') {
@@ -402,7 +430,9 @@
             }
         }
     }
-    Write-Entry -Subtext "Found '$($Libraries.count)' Items..." -Path $global:configLogging -Color Cyan -log Info
+    $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'show' }
+    $AllMovies = $Libraries | Where-Object { $_.'Library Type' -eq 'movie' }
+    Write-Entry -Subtext "Found '$($Libraries.count)' Items ($($AllMovies.Count) Movies, $($AllShows.Count) Shows)..." -Path $global:configLogging -Color Cyan -log Info
     $Libraries | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\PlexLibexport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
     Write-Entry -Message "Export everything to a csv: $global:ScriptRoot\Logs\PlexLibexport.csv" -Path $global:configLogging -Color White -log Info
 
@@ -428,9 +458,6 @@
     $TextTruncatedCount = $null
     $TextCount = $null
 
-    $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'show' }
-    $AllMovies = $Libraries | Where-Object { $_.'Library Type' -eq 'movie' }
-
     # Getting information of all Episodes
     if ($global:TitleCards -eq 'true') {
         Write-Entry -Message "Query episodes data from all Libs, this can take a while..." -Path $global:configLogging -Color White -log Info
@@ -442,27 +469,77 @@
             $RootNode = $MasterXml.CreateElement("PlexEpisodeExport")
             $MasterXml.AppendChild($RootNode) | Out-Null
         }
+        $showLibNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($show in $AllShows) {
+            if ($show.'Library Name') {
+                [void]$showLibNames.Add([string]$show.'Library Name')
+            }
+        }
+        $bulkEpisodesBySeason = @{}
+        $showLibraries = [System.Collections.Generic.List[object]]::new()
+        $seenLibIds = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($Library in $Libsoverview) {
+            if ($Library.Name -notin $LibstoExclude -and ($Library.Type -eq 'show' -or $showLibNames.Contains($Library.Name))) {
+                if ($seenLibIds.Add([string]$Library.ID)) {
+                    $showLibraries.Add($Library)
+                }
+            }
+        }
+        foreach ($Library in $showLibraries) {
+            Write-Entry -Subtext "Bulk fetching episode metadata for Library: $($Library.Name)..." -Path $global:configLogging -Color Cyan -log Info
+            $epMap = Get-PlexSectionEpisodesBulk -PlexUrl $PlexUrl -SectionId $Library.ID -Headers $extraPlexHeaders
+            if ($epMap) {
+                foreach ($sKey in $epMap.Keys) {
+                    $bulkEpisodesBySeason[$sKey] = $epMap[$sKey]
+                }
+            }
+        }
         foreach ($showentry in $AllShows) {
             # Getting child entries for each season
             $splittedkeys = $showentry.SeasonRatingKeys.split(',')
             foreach ($key in $splittedkeys) {
                 if ([string]::IsNullOrWhiteSpace($key)) { continue }
-                $requestUrl = "$PlexUrl/library/metadata/$key/children?"
-                Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging -Color Cyan -log Debug
-                Write-Entry -Subtext "Requesting metadata for Key: $key | URL: $(RedactMediaServerUrl -url $requestUrl)" -Path $global:configLogging -Color Cyan -log Debug
-                try {
-                    $response = Invoke-WebRequest $requestUrl -Headers $extraPlexHeaders -ErrorAction Stop
-                    [xml]$Seasondata = $response.Content
+                $Seasondata = $null
+                $keyStr = [string]$key
 
-                    if (-not $Seasondata.MediaContainer) {
-                        Write-Entry -Subtext "  WARNING: No MediaContainer found for Key: $key" -Path $global:configLogging -Color Yellow -log Debug
-                        Write-Entry -Subtext "  Raw Response Start: $($response.Content.Substring(0, [Math]::Min(100, $response.Content.Length)))" -Path $global:configLogging -Color Yellow -log Debug
+                if ($bulkEpisodesBySeason -and $bulkEpisodesBySeason.ContainsKey($keyStr)) {
+                    $epList = $bulkEpisodesBySeason[$keyStr]
+                    $epDoc = New-Object System.Xml.XmlDocument
+                    $epRoot = $epDoc.CreateElement('MediaContainer')
+                    $epDoc.AppendChild($epRoot) | Out-Null
+                    if ($epList.Count -gt 0) {
+                        $epRoot.SetAttribute('grandparentTitle', [string]$epList[0].grandparentTitle)
+                        $epRoot.SetAttribute('parentIndex', [string]$epList[0].parentIndex)
+                        $epRoot.SetAttribute('viewGroup', 'season')
                     }
+                    foreach ($epNode in $epList) {
+                        $impNode = $epDoc.ImportNode($epNode, $true)
+                        $epRoot.AppendChild($impNode) | Out-Null
+                    }
+                    $Seasondata = $epDoc
                 }
-                catch {
-                    Write-Entry -Subtext "  Failed to query Key: $key" -Path $global:configLogging -Color Red -log Error
-                    Write-Entry -Subtext "  Error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Error
-                    continue
+                else {
+                    $requestUrl = "$PlexUrl/library/metadata/$key/children?"
+                    Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging -Color Cyan -log Debug
+                    Write-Entry -Subtext "Requesting metadata for Key: $key | URL: $(RedactMediaServerUrl -url $requestUrl)" -Path $global:configLogging -Color Cyan -log Debug
+                    try {
+                        $response = Invoke-PlexWebRequest -Uri $requestUrl -Headers $extraPlexHeaders
+                        [xml]$Seasondata = $response.Content
+
+                        if (-not $Seasondata.MediaContainer) {
+                            Write-Entry -Subtext "  WARNING: No MediaContainer found for Key: $key" -Path $global:configLogging -Color Yellow -log Debug
+                            Write-Entry -Subtext "  Raw Response Start: $($response.Content.Substring(0, [Math]::Min(100, $response.Content.Length)))" -Path $global:configLogging -Color Yellow -log Debug
+                        }
+                    }
+                    catch {
+                        $exMsg = $_.Exception.Message
+                        if ($_.Exception.InnerException) {
+                            $exMsg += " (Inner: $($_.Exception.InnerException.Message))"
+                        }
+                        Write-Entry -Subtext "  Failed to query Key: $key" -Path $global:configLogging -Color Red -log Error
+                        Write-Entry -Subtext "  Error: $exMsg" -Path $global:configLogging -Color Yellow -log Error
+                        continue
+                    }
                 }
                 if ($global:logLevel -eq '3') {
                     $ImportedNode = $MasterXml.ImportNode($Seasondata.MediaContainer, $true)

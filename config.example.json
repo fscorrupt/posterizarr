@@ -206,6 +206,8 @@
     "DisableOnlinePosterFetch": "false",
     "DisableOnlineBackgroundFetch": "false",
     "DisableOnlineSeasonFetch": "false",
+    "AutoCreateSeasonTemplate": "false",
+    "AutoUpdateExistingSeasonPosters": "false",
     "UseLogo": "false",
     "UseBGLogo": "false",
     "UseClearlogo": "false",

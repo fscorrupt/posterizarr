@@ -259,6 +259,12 @@ function Dashboard() {
             setAllLogs([]);
             disconnectDashboardWebSocket();
             setTimeout(() => connectDashboardWebSocket(), 300);
+          } else if (data.type === "ping") {
+            try {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "pong" }));
+              }
+            } catch (e) {}
           }
         } catch (e) {}
       };

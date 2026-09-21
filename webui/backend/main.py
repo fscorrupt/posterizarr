@@ -157,14 +157,14 @@ def is_safe_url(url: str, allow_private: bool = False, allow_apprise_schemes: bo
             logger.error(f"URL Validation: Failed to resolve hostname '{hostname}': {res_err}")
             return False
 
-        # Always block loopback IPs resolved via DNS
-        if ip.is_loopback:
-            logger.warning(f"Blocked SSRF attempt to loopback IP: {ip_addr}")
+        # Always block loopback, link-local (e.g. 169.254.169.254 cloud metadata), and multicast
+        if ip.is_loopback or ip.is_link_local or ip.is_multicast:
+            logger.warning(f"Blocked SSRF attempt to loopback/link-local/multicast IP: {ip_addr}")
             return False
 
-        # Block private, link-local, and multicast ranges unless explicitly allowed
+        # Block private ranges unless explicitly allowed for local media servers (LAN/Docker)
         if not allow_private:
-            if ip.is_private or ip.is_link_local or ip.is_multicast:
+            if ip.is_private:
                 logger.warning(f"Blocked SSRF attempt to internal/private IP: {ip_addr} (hostname: {hostname})")
                 return False
         else:
@@ -8379,23 +8379,111 @@ async def get_logs():
     return {"logs": sorted(log_files, key=lambda x: x["modified"], reverse=True)}
 
 
+LOG_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.log$")
+
+# Static mapping for standard log targets to allow monitoring before creation
+KNOWN_LOG_FILES: Dict[str, Path] = {
+    "Scriptlog.log": LOGS_DIR / "Scriptlog.log",
+    "Testinglog.log": LOGS_DIR / "Testinglog.log",
+    "Manuallog.log": LOGS_DIR / "Manuallog.log",
+    "ImageMagickCommands.log": LOGS_DIR / "ImageMagickCommands.log",
+    "BackendServer.log": UI_LOGS_DIR / "BackendServer.log",
+    "FrontendUI.log": UI_LOGS_DIR / "FrontendUI.log",
+}
+
+
+def _is_within_root(target: Path, root: Path) -> bool:
+    """Return True if target is inside root (after both are resolved)."""
+    try:
+        target.resolve(strict=False).relative_to(root.resolve(strict=False))
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def resolve_safe_log_path(base_dir: Path, log_name: Optional[str]) -> Optional[Path]:
+    """
+    Resolve a user-provided log filename safely within a base directory.
+    Uses static allowlists and filesystem globbing to avoid constructing paths from user strings.
+    """
+    if not log_name:
+        return None
+    clean_name = str(log_name).strip()
+    if not LOG_FILENAME_RE.fullmatch(clean_name):
+        return None
+
+    # Check known log targets
+    if clean_name in KNOWN_LOG_FILES:
+        target = KNOWN_LOG_FILES[clean_name]
+        try:
+            if target.parent.resolve(strict=False) == base_dir.resolve(strict=False):
+                return target
+        except Exception:
+            pass
+
+    # For other log files, only match against existing files via globbing
+    if base_dir.exists():
+        for candidate in base_dir.glob("*.log"):
+            if candidate.is_file() and candidate.name == clean_name:
+                return candidate.resolve(strict=False)
+
+    return None
+
+
+def get_safe_log_path(log_name: Optional[str]) -> Optional[Path]:
+    """Find existing log file safely in LOGS_DIR first, then UI_LOGS_DIR."""
+    if not log_name:
+        return None
+    clean_name = str(log_name).strip()
+    if not LOG_FILENAME_RE.fullmatch(clean_name):
+        return None
+
+    # Build allowlist of existing log files from trusted directories
+    allowed_logs: Dict[str, Path] = {}
+    for base_dir in (LOGS_DIR, UI_LOGS_DIR):
+        if not base_dir.exists():
+            continue
+        for candidate in base_dir.glob("*.log"):
+            if (
+                candidate.is_file()
+                and LOG_FILENAME_RE.fullmatch(candidate.name)
+                and candidate.name not in allowed_logs
+            ):
+                allowed_logs[candidate.name] = candidate.resolve(strict=False)
+
+    if clean_name in allowed_logs:
+        return allowed_logs[clean_name]
+
+    # If not on disk yet, check known log targets (e.g. Scriptlog.log before script starts)
+    if clean_name in KNOWN_LOG_FILES:
+        return KNOWN_LOG_FILES[clean_name]
+
+    return None
+
+
 @app.get("/api/logs/{log_name}")
 async def get_log_content(log_name: str, tail: int = 100):
     """Get log file content from either Logs or UILogs directory"""
-    # Try Logs directory first
-    log_path = LOGS_DIR / log_name
+    clean_str = str(log_name).strip()
+    if not LOG_FILENAME_RE.fullmatch(clean_str):
+        raise HTTPException(status_code=400, detail="Invalid log filename")
+    log_path = get_safe_log_path(clean_str)
+    if not log_path:
+        raise HTTPException(status_code=404, detail="Log file not found")
 
-    # If not found, try UILogs directory
-    if not log_path.exists():
-        log_path = UI_LOGS_DIR / log_name
-
-    if not log_path.exists():
+    allowed_roots = [LOGS_DIR.resolve(strict=False), UI_LOGS_DIR.resolve(strict=False)]
+    resolved_log_path = log_path.resolve(strict=False)
+    if not any(_is_within_root(resolved_log_path, root) for root in allowed_roots):
+        raise HTTPException(status_code=400, detail="Invalid log filename")
+    if not resolved_log_path.exists():
         raise HTTPException(status_code=404, detail="Log file not found")
 
     try:
-        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(resolved_log_path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
             return {"content": lines[-tail:] if tail else lines}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error reading log: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -8507,14 +8595,15 @@ async def get_unified_ui_logs(tail: int = 500):
 @app.get("/api/logs/{log_name}/exists")
 async def check_log_exists(log_name: str):
     """Check if a log file exists (for waiting until script creates log)"""
-    # Try Logs directory first
-    log_path = LOGS_DIR / log_name
-
-    # If not found, try UILogs directory
-    if not log_path.exists():
-        log_path = UI_LOGS_DIR / log_name
-
-    exists = log_path.exists()
+    clean_str = str(log_name).strip()
+    if not LOG_FILENAME_RE.fullmatch(clean_str):
+        return {
+            "exists": False,
+            "log_name": log_name,
+            "path": None,
+        }
+    log_path = get_safe_log_path(clean_str)
+    exists = log_path is not None and log_path.exists()
 
     return {
         "exists": exists,
@@ -8525,7 +8614,9 @@ async def check_log_exists(log_name: str):
 
 @app.websocket("/ws/logs")
 async def websocket_logs(
-    websocket: WebSocket, log_file: Optional[str] = Query("Scriptlog.log")
+    websocket: WebSocket,
+    log_file: Optional[str] = Query("Scriptlog.log"),
+    reconnect: Optional[bool] = Query(False),
 ):
     """
     WebSocket endpoint for REAL-TIME log streaming
@@ -8536,15 +8627,28 @@ async def websocket_logs(
     - Only auto-switches if user is watching the "active" log for current mode
     """
     await websocket.accept()
-    logger.info(f"WebSocket connection established for log: {log_file}")
+    logger.info(f"WebSocket connection established for log: {log_file} (reconnect={reconnect})")
 
-    # Determine which log file to monitor - check both directories
-    log_path = LOGS_DIR / log_file
-    if not log_path.exists():
-        log_path = UI_LOGS_DIR / log_file
+    requested_log = str(log_file).strip() if log_file else "Scriptlog.log"
+    if not LOG_FILENAME_RE.fullmatch(requested_log):
+        await websocket.close(code=1008, reason="Invalid log file path")
+        return
+
+    # Determine which log file to monitor safely - check both directories
+    log_path = get_safe_log_path(requested_log)
+    if log_path is None:
+        log_path = resolve_safe_log_path(LOGS_DIR, requested_log)
+    if log_path is None:
+        await websocket.close(code=1008, reason="Invalid log file path")
+        return
+
+    allowed_roots = [LOGS_DIR.resolve(strict=False), UI_LOGS_DIR.resolve(strict=False)]
+    if not any(_is_within_root(log_path, root) for root in allowed_roots):
+        await websocket.close(code=1008, reason="Invalid log file path")
+        return
 
     # Track if user explicitly requested a specific log file
-    user_requested_log = log_file != "Scriptlog.log"  # User manually selected a log
+    user_requested_log = requested_log != "Scriptlog.log"  # User manually selected a log
 
     # Map modes to their log files for dynamic switching
     mode_log_map = {
@@ -8558,9 +8662,33 @@ async def websocket_logs(
         "scheduled": "Scriptlog.log",
     }
 
+    disconnect_event = asyncio.Event()
+
+    async def client_reader():
+        """Continuously reads incoming client messages, servicing ASGI receive queue."""
+        try:
+            while not disconnect_event.is_set():
+                data = await websocket.receive_text()
+                if data:
+                    try:
+                        parsed = json.loads(data)
+                        if isinstance(parsed, dict) and parsed.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                    except json.JSONDecodeError:
+                        if data.strip().lower() == "ping":
+                            await websocket.send_json({"type": "pong"})
+        except (WebSocketDisconnect, asyncio.CancelledError):
+            pass
+        except Exception as ex:
+            logger.debug(f"WebSocket client reader terminated: {ex}")
+        finally:
+            disconnect_event.set()
+
+    reader_task = asyncio.create_task(client_reader())
+
     try:
-        # Send initial logs (increased to 100 lines)
-        if log_path.exists():
+        # Send initial logs (100 lines) only on fresh connect, not on reconnect
+        if not reconnect and log_path.exists():
             with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()[-100:]
                 for line in lines:
@@ -8574,18 +8702,21 @@ async def websocket_logs(
         current_log_file = log_file  # Track current log file being watched
 
         loop_count = 0
-        while True:
+        while not disconnect_event.is_set():
             try:
                 # FASTER POLLING: 0.3s instead of 1s
                 await asyncio.sleep(0.3)
 
-                # Send ping every ~15 seconds to prevent proxy idle timeouts
+                # Send ping every ~3 seconds to prevent proxy idle timeouts (10 * 0.3s)
                 loop_count += 1
-                if loop_count >= 50:
+                if loop_count >= 10:
                     await websocket.send_json({"type": "ping"})
                     loop_count = 0
             except asyncio.CancelledError:
-                logger.info("WebSocket log streaming cancelled (connection closed)")
+                logger.debug("WebSocket log streaming cancelled (connection closed)")
+                break
+
+            if disconnect_event.is_set():
                 break
 
             # Only auto-switch if user didn't manually request a specific log
@@ -8604,10 +8735,11 @@ async def websocket_logs(
                     )
 
                     current_log_file = new_log_file
-                    # Check both directories for the new log file
-                    log_path = LOGS_DIR / new_log_file
-                    if not log_path.exists():
-                        log_path = UI_LOGS_DIR / new_log_file
+                    clean_new = str(new_log_file).strip()
+                    if LOG_FILENAME_RE.fullmatch(clean_new):
+                        safe_new = get_safe_log_path(clean_new) or resolve_safe_log_path(LOGS_DIR, clean_new)
+                        if safe_new is not None and any(_is_within_root(safe_new, root) for root in allowed_roots):
+                            log_path = safe_new
                     last_position = log_path.stat().st_size if log_path.exists() else 0
 
                     # Notify client about log file change
@@ -8660,31 +8792,45 @@ async def websocket_logs(
                     await asyncio.sleep(1)  # Wait longer on file errors
 
     except WebSocketDisconnect as e:
-        # Normal disconnect - check close code
-        close_code = e.code if hasattr(e, "code") else None
-
-        if close_code in [1000, 1001, 1005]:
-            logger.info(f"WebSocket disconnected normally (code: {close_code})")
-        else:
-            logger.warning(f"WebSocket disconnected unexpectedly (code: {close_code})")
+        close_code = getattr(e, "code", None)
+        logger.debug(f"WebSocket client disconnected (code: {close_code})")
 
     except asyncio.CancelledError:
         logger.debug("WebSocket task cancelled during shutdown")
 
-    except Exception as e:
-        error_msg = str(e)
+    except (ConnectionResetError, BrokenPipeError) as e:
+        logger.debug(f"WebSocket client connection reset: {e}")
 
-        if "1001" in error_msg or "1005" in error_msg or "going away" in error_msg:
-            logger.info(f"WebSocket closed normally: {error_msg}")
+    except Exception as e:
+        error_msg = str(e).lower()
+        is_client_disconnect = any(
+            phrase in error_msg
+            for phrase in [
+                "1000",
+                "1001",
+                "1005",
+                "1006",
+                "going away",
+                "no close frame",
+                "connection closed",
+                "connection reset",
+                "broken pipe",
+                "closed abnormally",
+                "not connected",
+            ]
+        )
+
+        if is_client_disconnect:
+            logger.debug(f"WebSocket client closed connection: {e}")
         else:
-            logger.error(f"WebSocket error: {e}")
-            try:
-                await websocket.send_json(
-                    {"type": "error", "message": f"WebSocket error: {str(e)}"}
-                )
-            except:
-                pass
+            logger.warning(f"WebSocket streaming error: {e}")
     finally:
+        disconnect_event.set()
+        reader_task.cancel()
+        try:
+            await reader_task
+        except (asyncio.CancelledError, Exception):
+            pass
         logger.debug("WebSocket connection closed")
 
 
@@ -12373,6 +12519,607 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
         logger.error(f"Error fetching asset replacements: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+def is_auto_create_season_template_enabled() -> bool:
+    """Check if AutoCreateSeasonTemplate is enabled in config.json"""
+    try:
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                val = cfg.get("PrerequisitePart", {}).get("AutoCreateSeasonTemplate")
+                if val is None:
+                    val = cfg.get("SeasonPosterOverlayPart", {}).get("AutoCreateSeasonTemplate")
+                return str(val).lower() in ("true", "1", "yes")
+    except Exception as e:
+        logger.warning(f"Error checking AutoCreateSeasonTemplate setting: {e}")
+    return False
+
+
+def is_auto_update_existing_season_posters_enabled() -> bool:
+    """Check if AutoUpdateExistingSeasonPosters is enabled in config.json"""
+    try:
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                val = cfg.get("PrerequisitePart", {}).get("AutoUpdateExistingSeasonPosters")
+                if val is None:
+                    val = cfg.get("SeasonPosterOverlayPart", {}).get("AutoUpdateExistingSeasonPosters")
+                return str(val).lower() in ("true", "1", "yes")
+    except Exception as e:
+        logger.warning(f"Error checking AutoUpdateExistingSeasonPosters setting: {e}")
+    return False
+
+
+
+PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._ ()\[\]&'-]+$")
+
+
+def _sanitize_path_segment(value: Optional[str]) -> Optional[str]:
+    """Sanitize a single path segment (e.g. folder name or library name)."""
+    if not value:
+        return None
+    raw = str(value).strip().replace("\\", "/")
+    # Keep only final segment and disallow traversal
+    segment = raw.split("/")[-1]
+    candidate = segment.strip(" .")
+    if not candidate or candidate in (".", ".."):
+        return None
+    if not PATH_SEGMENT_RE.fullmatch(candidate):
+        cleaned = re.sub(r"[^A-Za-z0-9._ ()\[\]&'-]", "_", candidate).strip(" .")
+        if not cleaned or not PATH_SEGMENT_RE.fullmatch(cleaned):
+            return None
+        candidate = cleaned
+    return candidate
+
+
+def _safe_relative_path(user_value: Optional[str]) -> Optional[Path]:
+    """
+    Return a normalized safe relative Path, or None if unsafe.
+    Disallows absolute paths, drive letters, and traversal.
+    """
+    if not user_value:
+        return None
+    normalized = str(user_value).replace("\\", "/").strip()
+    if normalized.startswith("/") or normalized.startswith("\\"):
+        return None
+    p = Path(normalized)
+    if p.is_absolute() or p.drive:
+        return None
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    if any(part == ".." for part in parts):
+        return None
+    safe_parts = []
+    for part in parts:
+        safe_part = _sanitize_path_segment(part)
+        if not safe_part:
+            return None
+        safe_parts.append(safe_part)
+    return Path(*safe_parts) if safe_parts else None
+
+
+def _safe_join_under_root(root: Union[str, Path], *parts: Union[str, Path, None]) -> Optional[Path]:
+    """
+    Safely joins a base directory with path parts using os.path.
+    Guarantees the resulting path is strictly within root and normalized.
+    Returns Path on success, otherwise None.
+    """
+    try:
+        base_str = os.path.abspath(str(root))
+        base_prefix = base_str if base_str.endswith(os.sep) else base_str + os.sep
+
+        clean_parts = []
+        for p in parts:
+            if p is None:
+                continue
+            p_str = str(p).strip().replace("\\", "/").lstrip("/")
+            if not p_str or p_str == ".":
+                continue
+            if ".." in p_str.split("/"):
+                return None
+            if len(p_str) >= 2 and p_str[1] == ":":
+                p_str = p_str[2:].lstrip("/")
+            clean_parts.append(p_str)
+
+        if not clean_parts:
+            return Path(base_str)
+
+        combined = os.path.normpath(os.path.abspath(os.path.join(base_str, *clean_parts)))
+        if combined != base_str and not combined.startswith(base_prefix):
+            logger.warning(f"Path traversal detected in _safe_join_under_root: {parts} outside {root}")
+            return None
+        return Path(combined)
+    except Exception as e:
+        logger.warning(f"Error in _safe_join_under_root: {e}")
+        return None
+
+
+def _is_safe_staging_filename(filename: str) -> bool:
+    """Return True if filename is a single safe file name (no path semantics)."""
+    if not filename or "\x00" in filename:
+        return False
+    if "/" in filename or "\\" in filename:
+        return False
+    if filename.startswith(".") or ".." in filename:
+        return False
+    return re.fullmatch(r"^[A-Za-z0-9._-]+$", filename) is not None
+
+
+def update_season_template_if_enabled(
+    asset_path: str,
+    file_content: bytes,
+    media_type: Optional[str] = None,
+    library_name: Optional[str] = None,
+    folder_name: Optional[str] = None,
+    asset_type: Optional[str] = None,
+):
+    """
+    If AutoCreateSeasonTemplate is enabled and the replaced asset is a TV show poster,
+    automatically write/update SeasonTemplate.jpg in the show's manualassets directory.
+    """
+    try:
+        if not is_auto_create_season_template_enabled():
+            return None
+
+        # If asset_type is explicitly provided and not poster/show, ignore
+        if asset_type and asset_type.lower() in ("season", "titlecard", "background", "backdrop", "collection"):
+            return None
+
+        safe_asset = _safe_relative_path(asset_path)
+        if safe_asset is None:
+            logger.warning(f"Rejected unsafe asset_path for SeasonTemplate update: {asset_path}")
+            return None
+
+        path_obj = safe_asset
+        filename = path_obj.name.lower()
+
+        # Ignore if this is clearly a season, titlecard, background, or collection
+        if "background" in filename or "season" in filename or re.search(r"s\d+e\d+", filename, re.IGNORECASE):
+            return None
+        if "collection" in filename or (len(path_obj.parts) > 0 and path_obj.parts[0].lower() == "collections"):
+            return None
+
+        safe_library_name = _sanitize_path_segment(library_name)
+        safe_folder_name = _sanitize_path_segment(folder_name)
+
+        # Check if media type is a TV show
+        is_tv = False
+        if media_type and media_type.lower() in ("tv", "show", "series"):
+            is_tv = True
+        else:
+            lib = safe_library_name or (path_obj.parts[0] if len(path_obj.parts) >= 2 else None)
+            lib_type = get_library_type_from_db(lib) if lib else None
+            if lib_type in ("show", "tv", "series"):
+                is_tv = True
+            elif determine_media_type(path_obj.name, lib) == "Show":
+                is_tv = True
+            elif path_obj.parent != Path("."):
+                # Also check if the parent folder contains existing season assets or templates
+                for check_base in [MANUAL_ASSETS_DIR, ASSETS_DIR]:
+                    check_dir = _safe_join_under_root(check_base, str(path_obj.parent))
+                    if check_dir:
+                        cb_str = os.path.abspath(str(check_base))
+                        cb_prefix = cb_str if cb_str.endswith(os.sep) else cb_str + os.sep
+                        cd_str = os.path.abspath(str(check_dir))
+                        if (cd_str == cb_str or cd_str.startswith(cb_prefix)) and os.path.isdir(cd_str):
+                            try:
+                                if any(e.name.lower().startswith("season") for e in os.scandir(cd_str) if e.is_file()):
+                                    is_tv = True
+                                    break
+                            except Exception:
+                                pass
+
+        if not is_tv:
+            return None
+
+        # Build target template file path in MANUAL_ASSETS_DIR
+        ext = path_obj.suffix.lower() if path_obj.suffix.lower() in ('.jpg', '.jpeg', '.png', '.webp', '.bmp') else '.jpg'
+        parent = path_obj.parent
+        if filename.startswith("poster.") or filename == "poster":
+            if parent != Path("."):
+                if safe_library_name and len(parent.parts) == 1 and safe_library_name.lower() != parent.parts[0].lower():
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, str(parent), f"SeasonTemplate{ext}")
+                else:
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, str(parent), f"SeasonTemplate{ext}")
+            elif safe_folder_name:
+                if safe_library_name:
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_library_name, safe_folder_name, f"SeasonTemplate{ext}")
+                else:
+                    template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, safe_folder_name, f"SeasonTemplate{ext}")
+            else:
+                template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, f"SeasonTemplate{ext}")
+        else:
+            # Flat poster naming (e.g., ShowName_poster.jpg or ShowName.jpg)
+            stem_source = safe_folder_name or re.sub(r'(_poster|\.poster)$', '', path_obj.stem, flags=re.IGNORECASE)
+            stem = _sanitize_path_segment(stem_source) or "asset"
+            filename_template = f"{stem}_SeasonTemplate{ext}"
+            if parent != Path("."):
+                template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, str(parent), filename_template)
+            else:
+                template_file = _safe_join_under_root(MANUAL_ASSETS_DIR, filename_template)
+
+        if template_file is None:
+            logger.warning("Rejected SeasonTemplate path outside manual assets directory")
+            return None
+
+        # Security check: ensure writes stay strictly inside MANUAL_ASSETS_DIR
+        manual_abs = os.path.abspath(str(MANUAL_ASSETS_DIR))
+        manual_prefix = manual_abs if manual_abs.endswith(os.sep) else manual_abs + os.sep
+        target_template_str = os.path.normpath(os.path.abspath(str(template_file)))
+        if not target_template_str.startswith(manual_prefix):
+            logger.warning(
+                f"Rejected SeasonTemplate path outside manual assets directory: {target_template_str}"
+            )
+            return None
+
+        os.makedirs(os.path.dirname(target_template_str), exist_ok=True)
+        with open(target_template_str, "wb") as f:
+            f.write(file_content)
+        logger.info(f"Auto-created/updated SeasonTemplate at: {target_template_str}")
+        return Path(target_template_str)
+    except Exception as e:
+        logger.warning(f"Could not auto-update SeasonTemplate for {asset_path}: {e}")
+    return None
+
+
+def find_show_seasons(
+    asset_path: str,
+    library_name: Optional[str] = None,
+    folder_name: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Find all seasons for a TV show by scanning ASSETS_DIR, MANUAL_ASSETS_DIR, and media_export.db.
+    Returns a sorted list of season dictionaries with normalized season_number, relative_path, and filename.
+    """
+    seasons_dict: Dict[str, Dict[str, Any]] = {}
+    safe_asset = _safe_relative_path(asset_path)
+    if safe_asset is None:
+        return []
+    path_obj = safe_asset
+    parent = path_obj.parent
+    safe_lib = _sanitize_path_segment(library_name)
+    safe_folder = _sanitize_path_segment(folder_name)
+
+    # Determine candidate directories for this show in ASSETS_DIR
+    candidate_dirs = []
+    if parent != Path("."):
+        if safe_lib and len(parent.parts) == 1 and safe_lib.lower() != parent.parts[0].lower():
+            cand = _safe_join_under_root(ASSETS_DIR, safe_lib, str(parent))
+            if cand:
+                candidate_dirs.append(cand)
+        cand = _safe_join_under_root(ASSETS_DIR, str(parent))
+        if cand:
+            candidate_dirs.append(cand)
+    if safe_lib and safe_folder:
+        cand = _safe_join_under_root(ASSETS_DIR, safe_lib, safe_folder)
+        if cand:
+            candidate_dirs.append(cand)
+    if safe_folder:
+        cand = _safe_join_under_root(ASSETS_DIR, safe_folder)
+        if cand:
+            candidate_dirs.append(cand)
+
+    show_dir = None
+    rel_show_dir = None
+    assets_base = os.path.abspath(str(ASSETS_DIR))
+    assets_prefix = assets_base if assets_base.endswith(os.sep) else assets_base + os.sep
+
+    for cand in candidate_dirs:
+        cand_str = os.path.abspath(str(cand))
+        if (cand_str == assets_base or cand_str.startswith(assets_prefix)) and os.path.isdir(cand_str):
+            show_dir = Path(cand_str)
+            try:
+                rel_show_dir = show_dir.relative_to(ASSETS_DIR)
+            except ValueError:
+                rel_show_dir = parent
+            break
+
+    if not show_dir:
+        fallback_rel = parent if parent != Path(".") else (Path(safe_folder) if safe_folder else Path(""))
+        cand_fb = _safe_join_under_root(ASSETS_DIR, str(fallback_rel))
+        if cand_fb:
+            fb_str = os.path.abspath(str(cand_fb))
+            if (fb_str == assets_base or fb_str.startswith(assets_prefix)) and os.path.isdir(fb_str):
+                show_dir = Path(fb_str)
+                rel_show_dir = fallback_rel
+
+    def add_season(s_num: str, rel_path: str, fname: str):
+        s_key = str(int(s_num)) if str(s_num).isdigit() else str(s_num)
+        if s_key not in seasons_dict:
+            seasons_dict[s_key] = {
+                "season_number": s_key,
+                "relative_path": rel_path.replace("\\", "/"),
+                "filename": fname,
+            }
+
+    # 1. Scan show directory in ASSETS_DIR
+    if show_dir:
+        show_dir_str = os.path.abspath(str(show_dir))
+        if (show_dir_str == assets_base or show_dir_str.startswith(assets_prefix)) and os.path.isdir(show_dir_str):
+            for entry in os.scandir(show_dir_str):
+                if not entry.is_file():
+                    continue
+                ext = os.path.splitext(entry.name)[1].lower()
+                if ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+                    continue
+                fname_lower = entry.name.lower()
+                if "seasontemplate" in fname_lower:
+                    continue
+                if re.search(r"s\d+e\d+", fname_lower, re.IGNORECASE):
+                    continue
+                m = re.search(r"^season\s*(\d+)", fname_lower, re.IGNORECASE)
+                if m:
+                    s_num = str(int(m.group(1)))
+                    rel_file = str(Path(rel_show_dir) / entry.name)
+                    add_season(s_num, rel_file, entry.name)
+                elif re.search(r"^(season\s*00?|specials?)", fname_lower, re.IGNORECASE):
+                    rel_file = str(Path(rel_show_dir) / entry.name)
+                    add_season("0", rel_file, entry.name)
+
+    # 2. Scan MANUAL_ASSETS_DIR
+    manual_base = os.path.abspath(str(MANUAL_ASSETS_DIR))
+    manual_prefix = manual_base if manual_base.endswith(os.sep) else manual_base + os.sep
+    manual_show_dir = _safe_join_under_root(MANUAL_ASSETS_DIR, str(rel_show_dir)) if rel_show_dir is not None else None
+
+    if manual_show_dir:
+        manual_dir_str = os.path.abspath(str(manual_show_dir))
+        if (manual_dir_str == manual_base or manual_dir_str.startswith(manual_prefix)) and os.path.isdir(manual_dir_str):
+            for entry in os.scandir(manual_dir_str):
+                if not entry.is_file():
+                    continue
+                ext = os.path.splitext(entry.name)[1].lower()
+                if ext not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+                    continue
+                fname_lower = entry.name.lower()
+                if "seasontemplate" in fname_lower:
+                    continue
+                if re.search(r"s\d+e\d+", fname_lower, re.IGNORECASE):
+                    continue
+                m = re.search(r"^season\s*(\d+)", fname_lower, re.IGNORECASE)
+                if m:
+                    s_num = str(int(m.group(1)))
+                    pad = f"{int(s_num):02d}"
+                    rel_file = str(Path(rel_show_dir) / f"Season{pad}.jpg")
+                    add_season(s_num, rel_file, f"Season{pad}.jpg")
+                elif re.search(r"^(season\s*00?|specials?)", fname_lower, re.IGNORECASE):
+                    rel_file = str(Path(rel_show_dir) / "Season00.jpg")
+                    add_season("0", rel_file, "Season00.jpg")
+
+    # 3. Handle flat naming structure
+    if rel_show_dir == Path("."):
+        stem = folder_name or re.sub(r"(_poster|\.poster)$", "", path_obj.stem, flags=re.IGNORECASE)
+        for base_p in (ASSETS_DIR, MANUAL_ASSETS_DIR):
+            base_p_str = os.path.abspath(str(base_p))
+            if os.path.isdir(base_p_str):
+                for entry in os.scandir(base_p_str):
+                    if not entry.is_file():
+                        continue
+                    fname_lower = entry.name.lower()
+                    if "seasontemplate" in fname_lower:
+                        continue
+                    flat_match = re.search(re.escape(stem.lower()) + r"_season\s*(\d+)", fname_lower, re.IGNORECASE)
+                    if flat_match:
+                        s_num = str(int(flat_match.group(1)))
+                        pad = f"{int(s_num):02d}"
+                        add_season(s_num, f"{stem}_Season{pad}.jpg", f"{stem}_Season{pad}.jpg")
+
+    # 4. Lookup seasons from media_export.db if available
+    try:
+        media_export_db = BASE_DIR / "database" / "media_export.db"
+        if media_export_db.exists():
+            conn = sqlite3.connect(str(media_export_db))
+            cursor = conn.cursor()
+            search_folders = [folder_name, parent.name if parent != Path(".") else None]
+            search_folders = [sf for sf in search_folders if sf]
+            search_titles = []
+            for sf in search_folders:
+                sf_clean = sf.strip()
+                if "(" in sf_clean and sf_clean.endswith(")"):
+                    lparen = sf_clean.rfind("(")
+                    year_part = sf_clean[lparen + 1:-1].strip()
+                    if len(year_part) == 4 and year_part.isdigit():
+                        base_title = sf_clean[:lparen].strip()
+                        if base_title:
+                            search_titles.append(base_title)
+                            continue
+                search_titles.append(sf)
+
+            season_numbers_str = None
+            for table in ("plex_library_export", "other_media_library_export"):
+                for sf in search_folders:
+                    cursor.execute(f"SELECT season_numbers FROM {table} WHERE root_foldername = ? ORDER BY id DESC LIMIT 1", (sf,))
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        season_numbers_str = row[0]
+                        break
+                if not season_numbers_str:
+                    for st in search_titles:
+                        cursor.execute(f"SELECT season_numbers FROM {table} WHERE title = ? ORDER BY id DESC LIMIT 1", (st,))
+                        row = cursor.fetchone()
+                        if row and row[0]:
+                            season_numbers_str = row[0]
+                            break
+                if season_numbers_str:
+                    break
+            conn.close()
+
+            if season_numbers_str:
+                for s in str(season_numbers_str).split(","):
+                    s_clean = s.strip()
+                    if s_clean.isdigit():
+                        s_num = str(int(s_clean))
+                        pad = f"{int(s_clean):02d}"
+                        if rel_show_dir != Path("."):
+                            rel_file = str(Path(rel_show_dir) / f"Season{pad}.jpg")
+                            filename = f"Season{pad}.jpg"
+                        else:
+                            stem = folder_name or re.sub(r"(_poster|\.poster)$", "", path_obj.stem, flags=re.IGNORECASE)
+                            rel_file = f"{stem}_Season{pad}.jpg"
+                            filename = f"{stem}_Season{pad}.jpg"
+                        add_season(s_num, rel_file, filename)
+    except Exception as e:
+        logger.debug(f"Could not query media_export.db for seasons: {e}")
+
+    # Sort seasons by integer number
+    sorted_seasons = sorted(
+        seasons_dict.values(),
+        key=lambda s: int(s["season_number"]) if str(s["season_number"]).isdigit() else 999
+    )
+    return sorted_seasons
+
+
+async def trigger_season_replacements_for_show(
+    asset_path: str,
+    file_content: bytes,
+    template_file: Path,
+    library_name: Optional[str] = None,
+    folder_name: Optional[str] = None,
+    title_text: Optional[str] = None,
+    process_with_overlays: bool = False,
+    add_to_queue: bool = False,
+    poster_with_text: bool = False,
+    blueprint_overrides: Optional[Any] = None,
+) -> List[int]:
+    """
+    Trigger replacement / re-generation for all seasons of a TV show when its show poster was replaced.
+    - If process_with_overlays is False: overwrites existing season poster files in ASSETS_DIR directly,
+      updates DB entries, and broadcasts WebSocket asset events.
+    - If process_with_overlays is True: stages a copy of template_file for each season into QUEUE_STAGING_DIR
+      and adds them to queue_manager.
+    Returns list of newly queued item IDs (if any).
+    """
+    try:
+        if not is_auto_create_season_template_enabled():
+            return []
+
+        if not is_auto_update_existing_season_posters_enabled():
+            logger.info(f"AutoUpdateExistingSeasonPosters is disabled: skipping season updates for {asset_path}")
+            return []
+
+        seasons = find_show_seasons(asset_path, library_name=library_name, folder_name=folder_name)
+        if not seasons:
+            logger.info(f"AutoCreateSeasonTemplate: No seasons found to update for {asset_path}")
+            return []
+
+        logger.info(
+            f"AutoCreateSeasonTemplate: Found {len(seasons)} seasons for {asset_path} (seasons: {[s['season_number'] for s in seasons]})"
+        )
+
+        # 1. Direct replacement without overlays
+        if not process_with_overlays:
+            for s in seasons:
+                season_rel_path = s["relative_path"]
+                try:
+                    full_season_path = get_safe_path(ASSETS_DIR, season_rel_path)
+                    full_season_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(full_season_path, "wb") as f:
+                        f.write(file_content)
+                    logger.info(f"AutoCreateSeasonTemplate: Direct replaced season poster at: {full_season_path}")
+
+                    # Keep manualassets in sync if present
+                    try:
+                        manual_season_path = get_safe_path(MANUAL_ASSETS_DIR, season_rel_path)
+                        if manual_season_path.exists():
+                            with open(manual_season_path, "wb") as f:
+                                f.write(file_content)
+                    except Exception:
+                        pass
+
+                    # Update database entry
+                    try:
+                        await update_asset_db_entry_as_manual(
+                            season_rel_path,
+                            "AutoCreateSeasonTemplate",
+                            library_name,
+                            folder_name,
+                            title_text
+                        )
+                    except Exception as db_err:
+                        logger.debug(f"DB update error for season {season_rel_path}: {db_err}")
+
+                    # Broadcast WS event for WebUI
+                    try:
+                        await broadcast_asset_event(
+                            library_name=library_name,
+                            folder_name=folder_name,
+                            asset_type="season",
+                            relative_path=season_rel_path,
+                            season_number=s["season_number"],
+                            title=title_text
+                        )
+                    except Exception as ws_err:
+                        logger.debug(f"WS broadcast error for season {season_rel_path}: {ws_err}")
+
+                except Exception as ex:
+                    logger.warning(f"Error direct-updating season {season_rel_path}: {ex}")
+
+            return []
+
+        # 2. Overlay processing: stage template and add each season to queue_manager
+        queued_ids = []
+        pending_paths = {item["asset_path"] for item in queue_manager.get_pending_items()}
+
+        for s in seasons:
+            season_rel_path = s["relative_path"]
+            if season_rel_path in pending_paths:
+                logger.info(f"AutoCreateSeasonTemplate: Season {season_rel_path} already pending in queue, skipping")
+                continue
+
+            QUEUE_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+            timestamp = int(time.time() * 1000)
+            safe_s_num = "".join(c for c in str(s.get("season_number", "")) if c.isdigit()) or "0"
+            unique_token = secrets.token_hex(8)
+            safe_filename = f"{timestamp}_season_{safe_s_num}_{unique_token}.jpg"
+
+            staging_dir_str = os.path.abspath(str(QUEUE_STAGING_DIR))
+            staging_prefix = staging_dir_str if staging_dir_str.endswith(os.sep) else staging_dir_str + os.sep
+            staging_path_str = os.path.normpath(os.path.abspath(os.path.join(staging_dir_str, safe_filename)))
+            if not staging_path_str.startswith(staging_prefix):
+                continue
+
+            if file_content:
+                with open(staging_path_str, "wb") as sf:
+                    sf.write(file_content)
+            elif template_file:
+                manual_root_str = os.path.abspath(str(MANUAL_ASSETS_DIR))
+                manual_prefix = manual_root_str if manual_root_str.endswith(os.sep) else manual_root_str + os.sep
+                tpl_path_str = os.path.normpath(os.path.abspath(str(template_file)))
+                if tpl_path_str.startswith(manual_prefix) and os.path.isfile(tpl_path_str):
+                    with open(tpl_path_str, "rb") as tf, open(staging_path_str, "wb") as sf:
+                        sf.write(tf.read())
+                else:
+                    logger.warning(f"Rejected unsafe template file path: {tpl_path_str}")
+                    continue
+            else:
+                continue
+
+            season_overlay_params = {
+                "title_text": title_text,
+                "folder_name": folder_name,
+                "library_name": library_name,
+                "season_number": s["season_number"],
+                "asset_type": "season",
+                "mediaType": "show",
+                "process_with_overlays": True,
+                "poster_with_text": poster_with_text,
+                "blueprint_overrides": blueprint_overrides
+            }
+            season_overlay_params = {k: v for k, v in season_overlay_params.items() if v is not None}
+
+            item_id = queue_manager.add_item(
+                asset_path=season_rel_path,
+                source_type="upload",
+                source_data=staging_path_str,
+                overlay_params=season_overlay_params
+            )
+            queued_ids.append(item_id)
+            logger.info(f"AutoCreateSeasonTemplate: Queued season {s['season_number']} overlay replacement (item #{item_id}) for {season_rel_path}")
+
+        return queued_ids
+    except Exception as e:
+        logger.warning(f"AutoCreateSeasonTemplate season replacement failed: {e}", exc_info=True)
+        return []
+
+
+
 @app.post("/api/assets/upload-replacement")
 async def upload_asset_replacement(
     file: UploadFile = File(...),
@@ -12450,6 +13197,10 @@ async def upload_asset_replacement(
             logger.error("Uploaded file is empty")
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
+        # Validate target base directory and asset path upfront (prevent traversal even when queued)
+        target_base_dir = ASSETS_DIR if process_with_overlays else MANUAL_ASSETS_DIR
+        full_asset_path = get_safe_path(target_base_dir, asset_path)
+
         # ==========================================
         # NEW QUEUE LOGIC INJECTED HERE
         # ==========================================
@@ -12461,8 +13212,10 @@ async def upload_asset_replacement(
 
                 # Create a unique filename for the staged file
                 timestamp = int(time.time() * 1000)
-                safe_filename = f"{timestamp}_{file.filename}"
-                staging_path = QUEUE_STAGING_DIR / safe_filename
+                clean_upload_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(file.filename).name)
+                safe_filename = f"{timestamp}_{clean_upload_name}"
+                staging_path = (QUEUE_STAGING_DIR / safe_filename).resolve()
+                staging_path.relative_to(QUEUE_STAGING_DIR.resolve())
 
                 # Save file to staging
                 with open(staging_path, "wb") as f:
@@ -12495,6 +13248,30 @@ async def upload_asset_replacement(
                     source_data=str(staging_path),
                     overlay_params=overlay_params
                 )
+
+                # Auto-update SeasonTemplate and queue all seasons if enabled
+                parsed_overrides = json.loads(blueprint_overrides) if blueprint_overrides else None
+                template_file = update_season_template_if_enabled(
+                    asset_path=asset_path,
+                    file_content=contents,
+                    media_type=mediaType,
+                    library_name=library_name,
+                    folder_name=folder_name,
+                    asset_type=asset_type
+                )
+                if template_file:
+                    await trigger_season_replacements_for_show(
+                        asset_path=asset_path,
+                        file_content=contents,
+                        template_file=template_file,
+                        library_name=library_name,
+                        folder_name=folder_name,
+                        title_text=title_text,
+                        process_with_overlays=process_with_overlays,
+                        add_to_queue=True,
+                        poster_with_text=posterWithText,
+                        blueprint_overrides=parsed_overrides
+                    )
 
                 return {
                     "success": True,
@@ -12681,6 +13458,32 @@ async def upload_asset_replacement(
             logger.info(
                 f"{action} asset: {asset_path} (size: {len(contents)} bytes, target: {target_base_dir.name})"
             )
+
+            # Auto-update SeasonTemplate if enabled
+            uploaded_template_file = update_season_template_if_enabled(
+                asset_path=normalized_path,
+                file_content=contents,
+                media_type=mediaType,
+                library_name=library_name,
+                folder_name=folder_name,
+                asset_type=asset_type
+            )
+            if not process_with_overlays and uploaded_template_file:
+                try:
+                    await trigger_season_replacements_for_show(
+                        asset_path=normalized_path,
+                        file_content=contents,
+                        template_file=uploaded_template_file,
+                        library_name=library_name,
+                        folder_name=folder_name,
+                        title_text=title_text,
+                        process_with_overlays=False,
+                        add_to_queue=False,
+                        poster_with_text=posterWithText,
+                        blueprint_overrides=json.loads(blueprint_overrides) if blueprint_overrides else None
+                    )
+                except Exception as ex:
+                    logger.warning(f"Error direct-replacing seasons after show poster upload: {ex}")
         except PermissionError as e:
             logger.error(f"Permission denied writing to {full_asset_path}: {e}")
             raise HTTPException(
@@ -12834,6 +13637,11 @@ async def upload_asset_replacement(
                                     episode_number=enum,
                                     title=ttext
                                 )
+                                if is_auto_create_season_template_enabled() and is_auto_update_existing_season_posters_enabled():
+                                    await asyncio.sleep(1)
+                                    if not RUNNING_FILE.exists():
+                                        logger.info("[AutoCreateSeasonTemplate] Starting queue processor for season replacements...")
+                                        await run_queue_processor()
                         except Exception as ex:
                             logger.debug(f"[WS-Events] Manual run broadcast error: {ex}")
 
@@ -12847,6 +13655,23 @@ async def upload_asset_replacement(
                         episode_number,
                         final_title_text
                     ))
+
+                    if uploaded_template_file:
+                        try:
+                            await trigger_season_replacements_for_show(
+                                asset_path=normalized_path,
+                                file_content=contents,
+                                template_file=uploaded_template_file,
+                                library_name=final_library_name,
+                                folder_name=final_folder_name,
+                                title_text=final_title_text,
+                                process_with_overlays=True,
+                                add_to_queue=False,
+                                poster_with_text=posterWithText,
+                                blueprint_overrides=override_dict if blueprint_overrides else None
+                            )
+                        except Exception as ex:
+                            logger.warning(f"Error queuing seasons after show poster manual run: {ex}")
 
                     result["manual_run_triggered"] = True
                     result["message"] = (
@@ -13209,6 +14034,10 @@ async def replace_asset_from_url(
                 detail="Cannot replace assets while Posterizarr is running. Please wait or use 'Add to Queue'.",
             )
 
+        # Validate target base directory and asset path upfront (prevent traversal even when queued)
+        target_base_dir = ASSETS_DIR if process_with_overlays else MANUAL_ASSETS_DIR
+        full_asset_path = get_safe_path(target_base_dir, asset_path)
+
         # QUEUE LOGIC
         if add_to_queue:
             try:
@@ -13312,6 +14141,32 @@ async def replace_asset_from_url(
         logger.info(
             f"Replaced asset from URL: {asset_path} (size: {len(contents)} bytes, target: {target_base_dir.name})"
         )
+
+        # Auto-update SeasonTemplate if enabled
+        url_template_file = update_season_template_if_enabled(
+            asset_path=asset_path,
+            file_content=contents,
+            media_type=mediaType,
+            library_name=library_name,
+            folder_name=folder_name,
+            asset_type=asset_type
+        )
+        if not process_with_overlays and url_template_file:
+            try:
+                await trigger_season_replacements_for_show(
+                    asset_path=asset_path,
+                    file_content=contents,
+                    template_file=url_template_file,
+                    library_name=library_name,
+                    folder_name=folder_name,
+                    title_text=title_text,
+                    process_with_overlays=False,
+                    add_to_queue=False,
+                    poster_with_text=posterWithText,
+                    blueprint_overrides=json.loads(blueprint_overrides) if blueprint_overrides else None
+                )
+            except Exception as ex:
+                logger.warning(f"Error direct-replacing seasons after URL replacement: {ex}")
 
         # Add/Update database entry for this replaced asset (mark as Manual)
         try:
@@ -13489,6 +14344,11 @@ async def replace_asset_from_url(
                                         episode_number=enum,
                                         title=ttext
                                     )
+                                    if is_auto_create_season_template_enabled() and is_auto_update_existing_season_posters_enabled():
+                                        await asyncio.sleep(1)
+                                        if not RUNNING_FILE.exists():
+                                            logger.info("[AutoCreateSeasonTemplate] Starting queue processor for season replacements...")
+                                            await run_queue_processor()
                             except Exception as ex:
                                 logger.debug(f"[WS-Events] Error in URL manual run broadcast: {ex}")
 
@@ -13502,6 +14362,23 @@ async def replace_asset_from_url(
                             ep_number,
                             final_title_text
                         ))
+
+                    if url_template_file:
+                        try:
+                            await trigger_season_replacements_for_show(
+                                asset_path=asset_path,
+                                file_content=contents,
+                                template_file=url_template_file,
+                                library_name=final_library_name,
+                                folder_name=final_folder_name,
+                                title_text=final_title_text,
+                                process_with_overlays=True,
+                                add_to_queue=False,
+                                poster_with_text=posterWithText,
+                                blueprint_overrides=manual_request.blueprint_overrides
+                            )
+                        except Exception as ex:
+                            logger.warning(f"Error queuing seasons after URL show poster manual run: {ex}")
 
                     result["message"] = (
                         "Asset replaced and queued for overlay processing"
@@ -15920,6 +16797,33 @@ async def finalize_asset_replacement(
 
         logger.info(f"Queue Processor: Saved asset successfully")
 
+        # Auto-update SeasonTemplate if enabled
+        template_file = update_season_template_if_enabled(
+            asset_path=asset_path,
+            file_content=file_content,
+            media_type=overlay_params.get("mediaType"),
+            library_name=overlay_params.get("library_name"),
+            folder_name=overlay_params.get("folder_name"),
+            asset_type=overlay_params.get("asset_type")
+        )
+
+        if template_file:
+            try:
+                await trigger_season_replacements_for_show(
+                    asset_path=asset_path,
+                    file_content=file_content,
+                    template_file=template_file,
+                    library_name=overlay_params.get("library_name"),
+                    folder_name=overlay_params.get("folder_name"),
+                    title_text=overlay_params.get("title_text"),
+                    process_with_overlays=process_with_overlays,
+                    add_to_queue=True,
+                    poster_with_text=overlay_params.get("poster_with_text", False),
+                    blueprint_overrides=overlay_params.get("blueprint_overrides")
+                )
+            except Exception as ex:
+                logger.warning(f"Error queueing seasons from finalize_asset_replacement: {ex}")
+
 
         # 4. Update Database
         try:
@@ -16035,92 +16939,6 @@ async def finalize_asset_replacement(
         logger.error(f"Queue Processor Error: {e}")
         raise e
 
-async def run_queue_processor():
-    """
-    Background task to process the queue sequentially.
-    """
-    logger.info("Starting Queue Processor")
-
-    # helper check
-    if RUNNING_FILE.exists():
-        logger.warning("Posterizarr is running. Aborting queue start.")
-        return
-
-    items = queue_manager.get_pending_items()
-    logger.info(f"Queue Processor: Found {len(items)} pending items.")
-
-    for item in items:
-        # Check running file before each item to be safe/responsive to external stops
-        if RUNNING_FILE.exists():
-             logger.warning("Queue Processor: execution paused/stopped because RUNNING_FILE appeared.")
-             break
-
-        item_id = item["id"]
-        logger.info(f"Queue Processor: Processing item #{item_id} ({item['asset_path']})")
-
-        queue_manager.update_status(item_id, "processing")
-
-        try:
-            content = b""
-            if item["source_type"] == "url":
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(item["source_data"])
-                    if resp.status_code != 200:
-                        raise Exception(f"Failed to download URL: {resp.status_code}")
-                    content = resp.content
-            elif item["source_type"] == "upload":
-                # Staged file
-                staged_path = Path(item["source_data"])
-                if not staged_path.exists():
-                    raise Exception(f"Staged file not found: {staged_path}")
-                with open(staged_path, "rb") as f:
-                    content = f.read()
-
-            # Execute
-            await finalize_asset_replacement(
-                asset_path=item["asset_path"],
-                file_content=content,
-                process_with_overlays=item["overlay_params"].get("process_with_overlays", False),
-                overlay_params=item["overlay_params"]
-            )
-
-            queue_manager.update_status(item_id, "completed")
-
-            # Cleanup staged file if upload
-            if item["source_type"] == "upload":
-                try:
-                    Path(item["source_data"]).unlink(missing_ok=True)
-                except: pass
-
-        except Exception as e:
-            logger.error(f"Queue Processor: Failed item #{item_id}: {e}")
-            queue_manager.update_status(item_id, "failed", str(e))
-
-    logger.info("Queue Processor: Batch finished.")
-
-
-@app.get("/api/queue")
-async def get_queue():
-    items = queue_manager.get_queue()
-    return items
-
-@app.delete("/api/queue/{item_id}")
-async def delete_queue_item(item_id: int):
-    queue_manager.delete_item(item_id)
-    return {"success": True, "message": "Item deleted"}
-
-@app.post("/api/queue/clear")
-async def clear_queue():
-    queue_manager.clear_queue()
-    return {"success": True, "message": "Queue cleared"}
-
-@app.post("/api/queue/run")
-async def run_queue(background_tasks: BackgroundTasks):
-    if RUNNING_FILE.exists():
-        raise HTTPException(status_code=409, detail="Posterizarr is already running")
-
-    background_tasks.add_task(run_queue_processor)
-    return {"success": True, "message": "Queue execution started"}
 
 
 # ==========================================
@@ -16180,6 +16998,7 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                     "Recursive": "true",
                     "IncludeItemTypes": "Movie,Series",
                     "Fields": "ProviderIds,ImageTags",
+                    "CollapseBoxSetItems": "false",
                 }
                 headers = {auth_header: request.token}
                 response = await client.get(api_url, params=params, headers=headers)
@@ -16468,65 +17287,81 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
     """
     logger.info("Starting Queue Processor")
 
-    # helper check
-    if RUNNING_FILE.exists():
-        logger.warning("Posterizarr is running. Aborting queue start.")
-        return
-
-    if item_ids:
-        logger.info(f"Queue Processor: Processing selected items: {item_ids}")
-        items = queue_manager.get_items_by_ids(item_ids)
-    else:
-        items = queue_manager.get_pending_items()
-
-    logger.info(f"Queue Processor: Found {len(items)} pending items.")
-
-    for item in items:
-        # Check running file before each item to be safe/responsive to external stops
+    while True:
+        # helper check
         if RUNNING_FILE.exists():
-             logger.warning("Queue Processor: execution paused/stopped because RUNNING_FILE appeared.")
-             break
+            logger.warning("Posterizarr is running. Aborting queue start.")
+            break
 
-        item_id = item["id"]
-        logger.info(f"Queue Processor: Processing item #{item_id} ({item['asset_path']})")
+        if item_ids:
+            logger.info(f"Queue Processor: Processing selected items: {item_ids}")
+            items = queue_manager.get_items_by_ids(item_ids)
+        else:
+            items = queue_manager.get_pending_items()
 
-        queue_manager.update_status(item_id, "processing")
+        if not items:
+            break
 
-        try:
-            content = b""
-            if item["source_type"] == "url":
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(item["source_data"])
-                    if resp.status_code != 200:
-                        raise Exception(f"Failed to download URL: {resp.status_code}")
-                    content = resp.content
-            elif item["source_type"] == "upload":
-                # Staged file
-                staged_path = Path(item["source_data"])
-                if not staged_path.exists():
-                    raise Exception(f"Staged file not found: {staged_path}")
-                with open(staged_path, "rb") as f:
-                    content = f.read()
+        logger.info(f"Queue Processor: Found {len(items)} pending items.")
 
-            # Execute
-            await finalize_asset_replacement(
-                asset_path=item["asset_path"],
-                file_content=content,
-                process_with_overlays=item["overlay_params"].get("process_with_overlays", False),
-                overlay_params=item["overlay_params"]
-            )
+        for item in items:
+            # Check running file before each item to be safe/responsive to external stops
+            if RUNNING_FILE.exists():
+                 logger.warning("Queue Processor: execution paused/stopped because RUNNING_FILE appeared.")
+                 break
 
-            queue_manager.update_status(item_id, "completed")
+            item_id = item["id"]
+            logger.info(f"Queue Processor: Processing item #{item_id} ({item['asset_path']})")
 
-            # Cleanup staged file if upload
-            if item["source_type"] == "upload":
-                try:
-                    Path(item["source_data"]).unlink(missing_ok=True)
-                except: pass
+            queue_manager.update_status(item_id, "processing")
 
-        except Exception as e:
-            logger.error(f"Queue Processor: Failed item #{item_id}: {e}")
-            queue_manager.update_status(item_id, "failed", str(e))
+            try:
+                content = b""
+                if item["source_type"] == "url":
+                    if not is_safe_url(item["source_data"], allow_private=True):
+                        raise Exception(f"Unsafe URL rejected in queue item #{item_id}: {item['source_data']}")
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        resp = await client.get(item["source_data"])
+                        if resp.status_code != 200:
+                            raise Exception(f"Failed to download URL: {resp.status_code}")
+                        content = resp.content
+                elif item["source_type"] == "upload":
+                    # Staged file - strictly verify path stays within QUEUE_STAGING_DIR
+                    staged_path = Path(item["source_data"]).resolve()
+                    try:
+                        staged_path.relative_to(QUEUE_STAGING_DIR.resolve())
+                    except ValueError:
+                        raise Exception(f"Staged file path outside staging directory: {staged_path}")
+                    if not staged_path.exists():
+                        raise Exception(f"Staged file not found: {staged_path}")
+                    with open(staged_path, "rb") as f:
+                        content = f.read()
+
+                # Execute
+                await finalize_asset_replacement(
+                    asset_path=item["asset_path"],
+                    file_content=content,
+                    process_with_overlays=item["overlay_params"].get("process_with_overlays", False),
+                    overlay_params=item["overlay_params"]
+                )
+
+                queue_manager.update_status(item_id, "completed")
+
+                # Cleanup staged file if upload
+                if item["source_type"] == "upload":
+                    try:
+                        staged_path = Path(item["source_data"]).resolve()
+                        staged_path.relative_to(QUEUE_STAGING_DIR.resolve())
+                        staged_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+            except Exception as e:
+                logger.error(f"Queue Processor: Failed item #{item_id}: {e}")
+                queue_manager.update_status(item_id, "failed", str(e))
+
+        if item_ids:
+            break
 
     logger.info("Queue Processor: Batch finished.")
 
