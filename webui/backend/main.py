@@ -157,14 +157,14 @@ def is_safe_url(url: str, allow_private: bool = False, allow_apprise_schemes: bo
             logger.error(f"URL Validation: Failed to resolve hostname '{hostname}': {res_err}")
             return False
 
-        # Always block loopback IPs resolved via DNS
-        if ip.is_loopback:
-            logger.warning(f"Blocked SSRF attempt to loopback IP: {ip_addr}")
+        # Always block loopback, link-local (e.g. 169.254.169.254 cloud metadata), and multicast
+        if ip.is_loopback or ip.is_link_local or ip.is_multicast:
+            logger.warning(f"Blocked SSRF attempt to loopback/link-local/multicast IP: {ip_addr}")
             return False
 
-        # Block private, link-local, and multicast ranges unless explicitly allowed
+        # Block private ranges unless explicitly allowed for local media servers (LAN/Docker)
         if not allow_private:
-            if ip.is_private or ip.is_link_local or ip.is_multicast:
+            if ip.is_private:
                 logger.warning(f"Blocked SSRF attempt to internal/private IP: {ip_addr} (hostname: {hostname})")
                 return False
         else:
@@ -8379,17 +8379,45 @@ async def get_logs():
     return {"logs": sorted(log_files, key=lambda x: x["modified"], reverse=True)}
 
 
+def resolve_safe_log_path(base_dir: Path, log_name: Optional[str]) -> Optional[Path]:
+    """Resolve a user-provided log filename safely within a base directory."""
+    if not log_name:
+        return None
+    candidate = Path(log_name)
+    if candidate.is_absolute() or candidate.drive:
+        return None
+    clean_name = candidate.name
+    if not clean_name.lower().endswith(".log"):
+        return None
+    try:
+        base_resolved = base_dir.resolve()
+        target = (base_dir / clean_name).resolve()
+        target.relative_to(base_resolved)
+        return target
+    except (ValueError, Exception):
+        return None
+
+
+def get_safe_log_path(log_name: Optional[str]) -> Optional[Path]:
+    """Find existing log file safely in LOGS_DIR first, then UI_LOGS_DIR."""
+    if not log_name:
+        return None
+    # Check LOGS_DIR
+    p1 = resolve_safe_log_path(LOGS_DIR, log_name)
+    if p1 and p1.exists():
+        return p1
+    # Check UI_LOGS_DIR
+    p2 = resolve_safe_log_path(UI_LOGS_DIR, log_name)
+    if p2 and p2.exists():
+        return p2
+    return None
+
+
 @app.get("/api/logs/{log_name}")
 async def get_log_content(log_name: str, tail: int = 100):
     """Get log file content from either Logs or UILogs directory"""
-    # Try Logs directory first
-    log_path = LOGS_DIR / log_name
-
-    # If not found, try UILogs directory
-    if not log_path.exists():
-        log_path = UI_LOGS_DIR / log_name
-
-    if not log_path.exists():
+    log_path = get_safe_log_path(log_name)
+    if not log_path or not log_path.exists():
         raise HTTPException(status_code=404, detail="Log file not found")
 
     try:
@@ -8507,14 +8535,8 @@ async def get_unified_ui_logs(tail: int = 500):
 @app.get("/api/logs/{log_name}/exists")
 async def check_log_exists(log_name: str):
     """Check if a log file exists (for waiting until script creates log)"""
-    # Try Logs directory first
-    log_path = LOGS_DIR / log_name
-
-    # If not found, try UILogs directory
-    if not log_path.exists():
-        log_path = UI_LOGS_DIR / log_name
-
-    exists = log_path.exists()
+    log_path = get_safe_log_path(log_name)
+    exists = log_path is not None and log_path.exists()
 
     return {
         "exists": exists,
@@ -8540,13 +8562,17 @@ async def websocket_logs(
     await websocket.accept()
     logger.info(f"WebSocket connection established for log: {log_file} (reconnect={reconnect})")
 
-    # Determine which log file to monitor - check both directories
-    log_path = LOGS_DIR / log_file
-    if not log_path.exists():
-        log_path = UI_LOGS_DIR / log_file
+    requested_log = log_file or "Scriptlog.log"
+    # Determine which log file to monitor safely - check both directories
+    log_path = get_safe_log_path(requested_log)
+    if log_path is None:
+        log_path = resolve_safe_log_path(LOGS_DIR, requested_log)
+    if log_path is None:
+        await websocket.close(code=1008, reason="Invalid log file path")
+        return
 
     # Track if user explicitly requested a specific log file
-    user_requested_log = log_file != "Scriptlog.log"  # User manually selected a log
+    user_requested_log = requested_log != "Scriptlog.log"  # User manually selected a log
 
     # Map modes to their log files for dynamic switching
     mode_log_map = {
@@ -8633,10 +8659,10 @@ async def websocket_logs(
                     )
 
                     current_log_file = new_log_file
-                    # Check both directories for the new log file
-                    log_path = LOGS_DIR / new_log_file
-                    if not log_path.exists():
-                        log_path = UI_LOGS_DIR / new_log_file
+                    # Check both directories safely for the new log file
+                    safe_new = get_safe_log_path(new_log_file) or resolve_safe_log_path(LOGS_DIR, new_log_file)
+                    if safe_new is not None:
+                        log_path = safe_new
                     last_position = log_path.stat().st_size if log_path.exists() else 0
 
                     # Notify client about log file change
@@ -12526,11 +12552,22 @@ def update_season_template_if_enabled(
                 template_dir = MANUAL_ASSETS_DIR
             template_file = template_dir / f"{stem}_SeasonTemplate{ext}"
 
-        template_dir.mkdir(parents=True, exist_ok=True)
-        with open(template_file, "wb") as f:
+        # Security check: ensure writes stay strictly inside MANUAL_ASSETS_DIR
+        safe_manual_root = MANUAL_ASSETS_DIR.resolve()
+        resolved_template_file = template_file.resolve()
+        try:
+            resolved_template_file.relative_to(safe_manual_root)
+        except ValueError:
+            logger.warning(
+                f"Rejected SeasonTemplate path outside manual assets directory: {resolved_template_file}"
+            )
+            return None
+
+        resolved_template_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(resolved_template_file, "wb") as f:
             f.write(file_content)
-        logger.info(f"Auto-created/updated SeasonTemplate at: {template_file}")
-        return template_file
+        logger.info(f"Auto-created/updated SeasonTemplate at: {resolved_template_file}")
+        return resolved_template_file
     except Exception as e:
         logger.warning(f"Could not auto-update SeasonTemplate for {asset_path}: {e}")
     return None
@@ -12561,20 +12598,31 @@ def find_show_seasons(
     if folder_name:
         candidate_dirs.append(ASSETS_DIR / folder_name)
 
+    assets_root = ASSETS_DIR.resolve()
     show_dir = None
     rel_show_dir = None
     for cand in candidate_dirs:
-        if cand.exists() and cand.is_dir():
-            show_dir = cand
+        try:
+            cand_res = cand.resolve()
+            cand_res.relative_to(assets_root)
+        except ValueError:
+            continue
+        if cand_res.exists() and cand_res.is_dir():
+            show_dir = cand_res
             try:
-                rel_show_dir = cand.relative_to(ASSETS_DIR)
+                rel_show_dir = cand_res.relative_to(assets_root)
             except ValueError:
                 rel_show_dir = parent
             break
 
     if not show_dir:
         rel_show_dir = parent if parent != Path(".") else Path(folder_name or "")
-        show_dir = ASSETS_DIR / rel_show_dir
+        try:
+            cand_fallback = (ASSETS_DIR / rel_show_dir).resolve()
+            cand_fallback.relative_to(assets_root)
+            show_dir = cand_fallback
+        except ValueError:
+            show_dir = None
 
     def add_season(s_num: str, rel_path: str, fname: str):
         s_key = str(int(s_num)) if str(s_num).isdigit() else str(s_num)
@@ -12586,7 +12634,7 @@ def find_show_seasons(
             }
 
     # 1. Scan show directory in ASSETS_DIR
-    if show_dir.exists() and show_dir.is_dir():
+    if show_dir and show_dir.exists() and show_dir.is_dir():
         for f in show_dir.iterdir():
             if not f.is_file():
                 continue
@@ -12608,8 +12656,17 @@ def find_show_seasons(
                 add_season("0", rel_file, f.name)
 
     # 2. Scan MANUAL_ASSETS_DIR
-    manual_show_dir = MANUAL_ASSETS_DIR / rel_show_dir
-    if manual_show_dir.exists() and manual_show_dir.is_dir():
+    manual_root = MANUAL_ASSETS_DIR.resolve()
+    manual_show_dir = None
+    if rel_show_dir is not None:
+        try:
+            cand_manual = (MANUAL_ASSETS_DIR / rel_show_dir).resolve()
+            cand_manual.relative_to(manual_root)
+            manual_show_dir = cand_manual
+        except ValueError:
+            manual_show_dir = None
+
+    if manual_show_dir and manual_show_dir.exists() and manual_show_dir.is_dir():
         for f in manual_show_dir.iterdir():
             if not f.is_file():
                 continue
@@ -12658,11 +12715,16 @@ def find_show_seasons(
             search_folders = [sf for sf in search_folders if sf]
             search_titles = []
             for sf in search_folders:
-                tm = re.match(r"^([^()]+)\s*\(\d{4}\)", sf)
-                if tm:
-                    search_titles.append(tm.group(1).strip())
-                else:
-                    search_titles.append(sf)
+                sf_clean = sf.strip()
+                if "(" in sf_clean and sf_clean.endswith(")"):
+                    lparen = sf_clean.rfind("(")
+                    year_part = sf_clean[lparen + 1:-1].strip()
+                    if len(year_part) == 4 and year_part.isdigit():
+                        base_title = sf_clean[:lparen].strip()
+                        if base_title:
+                            search_titles.append(base_title)
+                            continue
+                search_titles.append(sf)
 
             season_numbers_str = None
             for table in ("plex_library_export", "other_media_library_export"):
@@ -12807,8 +12869,14 @@ async def trigger_season_replacements_for_show(
 
             QUEUE_STAGING_DIR.mkdir(parents=True, exist_ok=True)
             timestamp = int(time.time() * 1000)
-            safe_filename = f"{timestamp}_season_{s['season_number']}_{template_file.name}"
-            staging_path = QUEUE_STAGING_DIR / safe_filename
+            safe_s_num = re.sub(r"[^A-Za-z0-9]", "", str(s.get("season_number", "")))
+            safe_tpl_name = re.sub(r"[^A-Za-z0-9._-]", "_", template_file.name)
+            safe_filename = f"{timestamp}_season_{safe_s_num}_{safe_tpl_name}"
+            staging_path = (QUEUE_STAGING_DIR / safe_filename).resolve()
+            try:
+                staging_path.relative_to(QUEUE_STAGING_DIR.resolve())
+            except ValueError:
+                continue
             shutil.copyfile(template_file, staging_path)
 
             season_overlay_params = {
@@ -12917,6 +12985,10 @@ async def upload_asset_replacement(
             logger.error("Uploaded file is empty")
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
+        # Validate target base directory and asset path upfront (prevent traversal even when queued)
+        target_base_dir = ASSETS_DIR if process_with_overlays else MANUAL_ASSETS_DIR
+        full_asset_path = get_safe_path(target_base_dir, asset_path)
+
         # ==========================================
         # NEW QUEUE LOGIC INJECTED HERE
         # ==========================================
@@ -12928,8 +13000,10 @@ async def upload_asset_replacement(
 
                 # Create a unique filename for the staged file
                 timestamp = int(time.time() * 1000)
-                safe_filename = f"{timestamp}_{file.filename}"
-                staging_path = QUEUE_STAGING_DIR / safe_filename
+                clean_upload_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(file.filename).name)
+                safe_filename = f"{timestamp}_{clean_upload_name}"
+                staging_path = (QUEUE_STAGING_DIR / safe_filename).resolve()
+                staging_path.relative_to(QUEUE_STAGING_DIR.resolve())
 
                 # Save file to staging
                 with open(staging_path, "wb") as f:
@@ -13748,6 +13822,10 @@ async def replace_asset_from_url(
                 detail="Cannot replace assets while Posterizarr is running. Please wait or use 'Add to Queue'.",
             )
 
+        # Validate target base directory and asset path upfront (prevent traversal even when queued)
+        target_base_dir = ASSETS_DIR if process_with_overlays else MANUAL_ASSETS_DIR
+        full_asset_path = get_safe_path(target_base_dir, asset_path)
+
         # QUEUE LOGIC
         if add_to_queue:
             try:
@@ -13780,8 +13858,9 @@ async def replace_asset_from_url(
                 # If AutoCreateSeasonTemplate is enabled, download image and update template & queue seasons
                 if is_auto_create_season_template_enabled():
                     try:
-                        async with httpx.AsyncClient(timeout=30.0) as client:
-                            resp = await client.get(image_url)
+                        if is_safe_url(image_url, allow_private=True):
+                            async with httpx.AsyncClient(timeout=30.0) as client:
+                                resp = await client.get(image_url)
                             if resp.status_code == 200:
                                 parsed_overrides = json.loads(blueprint_overrides) if blueprint_overrides else None
                                 template_file = update_season_template_if_enabled(
@@ -17059,14 +17138,20 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
             try:
                 content = b""
                 if item["source_type"] == "url":
-                    async with httpx.AsyncClient() as client:
+                    if not is_safe_url(item["source_data"], allow_private=True):
+                        raise Exception(f"Unsafe URL rejected in queue item #{item_id}: {item['source_data']}")
+                    async with httpx.AsyncClient(timeout=30.0) as client:
                         resp = await client.get(item["source_data"])
                         if resp.status_code != 200:
                             raise Exception(f"Failed to download URL: {resp.status_code}")
                         content = resp.content
                 elif item["source_type"] == "upload":
-                    # Staged file
-                    staged_path = Path(item["source_data"])
+                    # Staged file - strictly verify path stays within QUEUE_STAGING_DIR
+                    staged_path = Path(item["source_data"]).resolve()
+                    try:
+                        staged_path.relative_to(QUEUE_STAGING_DIR.resolve())
+                    except ValueError:
+                        raise Exception(f"Staged file path outside staging directory: {staged_path}")
                     if not staged_path.exists():
                         raise Exception(f"Staged file not found: {staged_path}")
                     with open(staged_path, "rb") as f:
@@ -17085,8 +17170,11 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
                 # Cleanup staged file if upload
                 if item["source_type"] == "upload":
                     try:
-                        Path(item["source_data"]).unlink(missing_ok=True)
-                    except: pass
+                        staged_path = Path(item["source_data"]).resolve()
+                        staged_path.relative_to(QUEUE_STAGING_DIR.resolve())
+                        staged_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
             except Exception as e:
                 logger.error(f"Queue Processor: Failed item #{item_id}: {e}")
