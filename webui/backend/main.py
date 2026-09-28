@@ -17565,14 +17565,25 @@ async def api_save_collection_poster(request: CollectionSaveRequest):
             return {"success": False, "error": "Invalid library or collection name."}
 
         collections_base = (ASSETS_DIR / "Collections").resolve()
-        save_dir = (collections_base / safe_library_name / safe_collection_name).resolve()
-
-        if not str(save_dir).startswith(str(collections_base)):
+        save_dir = _safe_join_under_root(collections_base, safe_library_name, safe_collection_name)
+        if not save_dir:
             return {"success": False, "error": "Path traversal detected."}
 
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        save_path = save_dir / "poster.png"
+        collections_base_str = os.path.abspath(str(collections_base))
+        collections_prefix = (
+            collections_base_str
+            if collections_base_str.endswith(os.sep)
+            else collections_base_str + os.sep
+        )
+
+        save_path = os.path.normpath(
+            os.path.abspath(os.path.join(str(save_dir), "poster.png"))
+        )
+        if not save_path.startswith(collections_prefix):
+            return {"success": False, "error": "Path traversal detected."}
+
         with open(save_path, "wb") as f:
             f.write(data)
 
