@@ -9,6 +9,20 @@
     "imageUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/main/docs/images/Plugin_logo.png",
     "versions": [
       {
+        "version": "3.3.6",
+        "changelog": "Official Release 3.3.6\n\n- **BoxSet & Collection Support**: Added Primary, Thumbnail, and Backdrop image resolution for collections across Jellyfin and Emby.\n- **Asset Path Resolution**: Resolves Collections directory at root or within subfolders, supporting both nested folders and flat file structures.\n- **Smart Name Normalization**: Handles '[boxset]' tag stripping, '&' vs 'and' variants, illegal character sanitization, and automatic 'Collection' suffix matching.\n- **Metadata Refresh Detection**: Implemented HasChanged check using file timestamps so library refreshes detect updated assets on disk.\n- **Real-Time WebSocket Sync**: Added collection asset handling to automatically invalidate cache and update artwork via WebSocket stream.\n- **Opt-In Setting**: Added UpdateCollection configuration toggle (default false) in plugin configuration page.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.3.6/Posterizarr.Plugin_v3.3.6-jf12.zip",
+        "checksum": "D85C321F6F77AB11DE67D8CA5DDA3E0A"
+      },
+      {
+        "version": "3.3.6",
+        "changelog": "Official Release 3.3.6\n\n- **BoxSet & Collection Support**: Added Primary, Thumbnail, and Backdrop image resolution for collections across Jellyfin and Emby.\n- **Asset Path Resolution**: Resolves Collections directory at root or within subfolders, supporting both nested folders and flat file structures.\n- **Smart Name Normalization**: Handles '[boxset]' tag stripping, '&' vs 'and' variants, illegal character sanitization, and automatic 'Collection' suffix matching.\n- **Metadata Refresh Detection**: Implemented HasChanged check using file timestamps so library refreshes detect updated assets on disk.\n- **Real-Time WebSocket Sync**: Added collection asset handling to automatically invalidate cache and update artwork via WebSocket stream.\n- **Opt-In Setting**: Added UpdateCollection configuration toggle (default false) in plugin configuration page.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/3.3.6/Posterizarr.Plugin_v3.3.6.zip",
+        "checksum": "FD6E2A9967D6402871B4687E7294A643"
+      },
+      {
         "version": "3.3.5",
         "changelog": "Official Release 3.3.5",
         "targetAbi": "12.0.0.0",
