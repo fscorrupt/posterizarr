@@ -4697,7 +4697,7 @@ function Invoke-TitleCardCreation {
                 $EpisodeImage = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($episode.ShowRatingKey)_$($episode.RootFoldername)_$global:FileNaming.jpg"
                 $EpisodeImage = $EpisodeImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
 
-                $EpisodeTempImage = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($episode.ShowRatingKey)_$($episode.RootFoldername)_temp.jpg"
+                $EpisodeTempImage = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($episode.ShowRatingKey)_$($episode.RootFoldername)_S$($episode."Season Number")_temp.jpg"
                 $cjkTitlePattern = '[\p{IsHiragana}\p{IsKatakana}\p{IsCJKUnifiedIdeographs}\p{IsThai}]'
 
                 # Pre-check the title against skipwords
