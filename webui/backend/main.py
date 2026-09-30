@@ -35,7 +35,10 @@ import requests
 import threading
 from datetime import datetime, timedelta
 import threading
-from defusedxml.ElementTree import fromstring
+try:
+    from defusedxml.ElementTree import fromstring
+except ImportError:
+    from xml.etree.ElementTree import fromstring
 import sys
 from urllib.parse import quote
 import zipfile
@@ -85,6 +88,7 @@ if IS_DOCKER:
     IMAGES_DIR = Path("/config/Cache/images")
     FRONTEND_DIR = Path("/app/frontend/dist")
     BACKUP_DIR = Path("/assetsbackup")
+    DATABASE_DIR = BASE_DIR / "database"
 else:
     # Local: webui/backend/main.py -> project root (3 levels up)
     PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -92,6 +96,8 @@ else:
     APP_DIR = PROJECT_ROOT
     IMAGES_DIR = PROJECT_ROOT / "images"
     FRONTEND_DIR = PROJECT_ROOT / "webui" / "frontend" / "dist"
+    DATABASE_DIR = PROJECT_ROOT / "database"
+
 
     # Load AssetPath, ManualAssetPath and BackupPath from config
     CONFIG_PATH_TEMP = PROJECT_ROOT / "config.json"
@@ -215,24 +221,28 @@ def get_safe_path(base_dir: Path, user_path: str) -> Path:
     Safely joins a base directory with a user-provided path, ensuring that
     the resulting path remains within the base directory (preventing Path Traversal).
     """
-    # Normalize paths
-    safe_base = Path(os.path.abspath(base_dir))
+    safe_base = Path(os.path.abspath(base_dir)).resolve()
 
-    # Handle both absolute and relative user paths safely
-    # If user_path starts with a slash, it's "drive-relative" on Windows
-    # and would anchor to the drive root (e.g. C:\etc\passwd instead of C:\assets\etc\passwd)
-    user_path = user_path.lstrip("/\\")
+    user_str = str(user_path).strip().replace("\\", "/").lstrip("/")
 
-    if os.path.isabs(user_path):
-        # Strip drive letter to force it to be relative to base_dir
-        parts = Path(user_path).parts
+    # Reject null bytes or direct traversal patterns
+    if "\x00" in user_str or ".." in user_str.split("/"):
+        logger.warning(f"Path traversal attempt detected in get_safe_path: {user_path}")
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+
+    if os.path.isabs(user_str):
+        parts = Path(user_str).parts
         if parts[0].endswith(":") or parts[0].startswith("\\\\"):
-            user_path = str(Path(*parts[1:]))
+            user_str = str(Path(*parts[1:]))
 
-    requested_path = Path(os.path.abspath(os.path.join(safe_base, user_path)))
+    requested_path = Path(os.path.abspath(os.path.join(safe_base, user_str)))
 
-    # Check if requested_path is still inside safe_base
-    if not str(requested_path).startswith(str(safe_base)):
+    try:
+        resolved_req = requested_path.resolve()
+        if not resolved_req.is_relative_to(safe_base):
+            logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
+            raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+    except (ValueError, RuntimeError):
         logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
         raise HTTPException(status_code=403, detail="Path traversal attempt detected")
 
@@ -4855,8 +4865,8 @@ async def perform_jellyfin_emby_action(request: JellyfinEmbyActionRequest):
 # ============================================================================
 
 @app.get("/api/libraries/{server_type}/cached")
-async def get_cached_libraries(server_type: str):
-    logger.info(f"Fetching cached libraries for {server_type}")
+async def get_cached_libraries(server_type: str, refresh: bool = False):
+    logger.info(f"Fetching cached libraries for {server_type} (refresh={refresh})")
 
     if server_type not in ["plex", "jellyfin", "emby"]:
         return {"success": False, "error": "Invalid server type"}
@@ -4871,6 +4881,78 @@ async def get_cached_libraries(server_type: str):
 
     try:
         result = server_libraries_db.get_media_server_libraries(server_type)
+        if refresh or not result.get("libraries"):
+            config = {}
+            if CONFIG_PATH.exists():
+                try:
+                    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                except Exception:
+                    pass
+            if server_type == "plex":
+                plex_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
+                plex_token = config.get("PlexToken") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("PlexToken")
+                if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True):
+                    try:
+                        clean_url = str(plex_url).rstrip('/')
+                        headers = {"X-Plex-Token": plex_token} if plex_token else {}
+                        async with httpx.AsyncClient(timeout=10.0) as client:
+                            resp = await client.get(f"{clean_url}/library/sections/?X-Plex-Token={plex_token or ''}", headers=headers)
+                            if resp.status_code == 200:
+                                root = fromstring(resp.content)
+                                libraries = []
+                                for directory in root.findall(".//Directory"):
+                                    lib_title = directory.get("title", "")
+                                    lib_type = directory.get("type", "")
+                                    lib_key = directory.get("key", "")
+                                    if lib_title:
+                                        libraries.append({"name": lib_title, "type": lib_type, "key": lib_key})
+                                if libraries:
+                                    server_libraries_db.save_media_server_libraries("plex", libraries, None)
+                                    result = server_libraries_db.get_media_server_libraries("plex")
+                    except Exception as fe:
+                        logger.warning(f"Could not refresh Plex libraries: {fe}")
+            elif server_type == "jellyfin":
+                jf_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
+                jf_api = config.get("JellyfinApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("JellyfinApiKey")
+                if jf_url and is_safe_url(str(jf_url).rstrip('/'), allow_private=True):
+                    try:
+                        clean_url = str(jf_url).rstrip('/')
+                        headers = {"Authorization": f'MediaBrowser Token="{jf_api}"'} if jf_api else {}
+                        async with httpx.AsyncClient(timeout=10.0) as client:
+                            resp = await client.get(f"{clean_url}/Library/VirtualFolders", headers=headers)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                libraries = [
+                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId", "")}
+                                    for lib in data if lib.get("Name")
+                                ]
+                                if libraries:
+                                    server_libraries_db.save_media_server_libraries("jellyfin", libraries, None)
+                                    result = server_libraries_db.get_media_server_libraries("jellyfin")
+                    except Exception as fe:
+                        logger.warning(f"Could not refresh Jellyfin libraries: {fe}")
+            elif server_type == "emby":
+                emby_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
+                emby_api = config.get("EmbyApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("EmbyApiKey")
+                if emby_url and is_safe_url(str(emby_url).rstrip('/'), allow_private=True):
+                    try:
+                        clean_url = str(emby_url).rstrip('/')
+                        headers = {"Authorization": f'MediaBrowser Token="{emby_api}"'} if emby_api else {}
+                        async with httpx.AsyncClient(timeout=10.0) as client:
+                            resp = await client.get(f"{clean_url}/Library/VirtualFolders", headers=headers)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                libraries = [
+                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId", "")}
+                                    for lib in data if lib.get("Name")
+                                ]
+                                if libraries:
+                                    server_libraries_db.save_media_server_libraries("emby", libraries, None)
+                                    result = server_libraries_db.get_media_server_libraries("emby")
+                    except Exception as fe:
+                        logger.warning(f"Could not refresh Emby libraries: {fe}")
+
         logger.info(
             f"Found {len(result['libraries'])} cached libraries for {server_type} ({len(result['excluded'])} excluded)"
         )
@@ -8126,7 +8208,7 @@ async def run_logoupdater(request: LogoUpdaterRequest):
 
         command.extend([
             "-LibraryName",
-            request.library.strip(),
+            sanitize_command_arg(request.library),
         ])
 
         if request.force_replace:
@@ -8188,11 +8270,11 @@ async def run_restore(request: RestoreModeRequest):
         ]
 
         if request.library_name:
-            command.extend(["-RestoreLibrary", request.library_name.strip()])
+            command.extend(["-RestoreLibrary", sanitize_command_arg(request.library_name)])
         if request.item_name:
-            command.extend(["-RestoreItem", request.item_name.strip()])
+            command.extend(["-RestoreItem", sanitize_command_arg(request.item_name)])
         if request.asset_type:
-            command.extend(["-RestoreType", request.asset_type.strip()])
+            command.extend(["-RestoreType", sanitize_command_arg(request.asset_type)])
 
         try:
             logger.info(f"Running Restore for library: {request.library_name}, item: {request.item_name}, type: {request.asset_type}")
@@ -8393,6 +8475,7 @@ KNOWN_LOG_FILES: Dict[str, Path] = {
     "ImageMagickCommands.log": LOGS_DIR / "ImageMagickCommands.log",
     "BackendServer.log": UI_LOGS_DIR / "BackendServer.log",
     "FrontendUI.log": UI_LOGS_DIR / "FrontendUI.log",
+    "PlexSync.log": UI_LOGS_DIR / "PlexSync.log",
 }
 
 
@@ -9091,14 +9174,9 @@ async def get_thumbnail(path: str = Query(..., description="Path to the image"),
     else:
         raise HTTPException(status_code=400, detail="Invalid path prefix")
 
-    # Ensure it's safe and prevent directory traversal
-    import os
-    base_dir_abs = os.path.abspath(base_dir)
-    filepath = os.path.abspath(os.path.join(base_dir_abs, suffix.lstrip("\\/")))
-    if not filepath.startswith(base_dir_abs + os.sep) and filepath != base_dir_abs:
+    real_path = get_safe_path(Path(base_dir), suffix)
+    if not real_path.resolve().is_relative_to(Path(base_dir).resolve()):
         raise HTTPException(status_code=403, detail="Access denied: Invalid path")
-
-    real_path = Path(filepath)
 
     if not real_path.exists() or not real_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
@@ -9153,14 +9231,10 @@ async def get_gallery():
 async def delete_poster(path: str):
     """Delete a poster from the assets directory"""
     try:
-        # Construct the full file path
-        file_path = ASSETS_DIR / path
+        # Construct the full file path safely
+        file_path = get_safe_path(ASSETS_DIR, path)
 
-        # Ensure the path is within ASSETS_DIR
-        try:
-            file_path = file_path.resolve()
-            file_path.relative_to(ASSETS_DIR.resolve())
-        except ValueError:
+        if not file_path.is_relative_to(ASSETS_DIR.resolve()):
             raise HTTPException(status_code=403, detail="Access denied: Invalid path")
 
         # Check if file exists
@@ -10810,7 +10884,25 @@ async def get_scheduler_config():
 
     try:
         config = scheduler.load_config()
-        return {"success": True, "config": config}
+        servers = {"plex": False, "jellyfin": False, "emby": False}
+        if CONFIG_PATH.exists():
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                use_p = cfg.get("UsePlex") if cfg.get("using_flat_structure") else cfg.get("PlexPart", {}).get("UsePlex")
+                p_url = cfg.get("PlexUrl") if cfg.get("using_flat_structure") else cfg.get("PlexPart", {}).get("PlexUrl")
+                servers["plex"] = str(use_p).lower() == "true" and bool(p_url)
+
+                use_j = cfg.get("UseJellyfin") if cfg.get("using_flat_structure") else cfg.get("JellyfinPart", {}).get("UseJellyfin")
+                j_url = cfg.get("JellyfinUrl") if cfg.get("using_flat_structure") else cfg.get("JellyfinPart", {}).get("JellyfinUrl")
+                servers["jellyfin"] = str(use_j).lower() == "true" and bool(j_url)
+
+                use_e = cfg.get("UseEmby") if cfg.get("using_flat_structure") else cfg.get("EmbyPart", {}).get("UseEmby")
+                e_url = cfg.get("EmbyUrl") if cfg.get("using_flat_structure") else cfg.get("EmbyPart", {}).get("EmbyUrl")
+                servers["emby"] = str(use_e).lower() == "true" and bool(e_url)
+            except Exception as fe:
+                logger.warning(f"Error checking configured servers for scheduler: {fe}")
+        return {"success": True, "config": config, "servers": servers}
     except Exception as e:
         logger.error(f"Error loading scheduler config: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -10883,7 +10975,12 @@ async def add_schedule(request: Request):
             day=day,
             month=month,
             interval_value=interval_value,
-            interval_unit=interval_unit
+            interval_unit=interval_unit,
+            library=data.get("library", "all"),
+            asset_types=data.get("asset_types"),
+            force_replace=data.get("force_replace", False),
+            exif_check=data.get("exif_check", False),
+            revert=data.get("revert", False)
         )
 
         if success:
@@ -10893,6 +10990,80 @@ async def add_schedule(request: Request):
 
     except Exception as e:
         logger.error(f"Error adding schedule: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.put("/api/scheduler/schedule/{index}")
+async def update_schedule(index: int, request: Request):
+    """Update an existing execution schedule by its list index"""
+    if not SCHEDULER_AVAILABLE or not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not available")
+
+    try:
+        data = await request.json()
+
+        time_str = data.get("time")
+        description = data.get("description", "")
+        mode = data.get("mode", "normal")
+
+        frequency = data.get("frequency", "daily")
+        day_of_week = data.get("day_of_week", "*")
+        day = data.get("day", "*")
+        month = data.get("month", "*")
+
+        interval_value = data.get("interval_value", 1)
+        interval_unit = data.get("interval_unit", "hours")
+
+        if frequency != "interval" and not time_str:
+            raise HTTPException(status_code=400, detail="Time is required for non-interval schedules")
+
+        success = scheduler.update_schedule(
+            index=index,
+            time_str=time_str,
+            description=description,
+            mode=mode,
+            frequency=frequency,
+            day_of_week=day_of_week,
+            day=day,
+            month=month,
+            interval_value=interval_value,
+            interval_unit=interval_unit,
+            library=data.get("library", "all"),
+            asset_types=data.get("asset_types"),
+            force_replace=data.get("force_replace", False),
+            exif_check=data.get("exif_check", False),
+            revert=data.get("revert", False)
+        )
+
+        if success:
+            return {"success": True, "message": "Schedule updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Schedule index not found or invalid")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating schedule at index {index}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/api/scheduler/schedule/index/{index}")
+async def remove_schedule_by_index(index: int):
+    """Remove a schedule specifically by its index"""
+    if not SCHEDULER_AVAILABLE or not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not available")
+
+    try:
+        success = scheduler.remove_schedule_by_index(index)
+        if success:
+            import asyncio
+            await asyncio.sleep(0.1)
+            status = scheduler.get_status()
+            return {"success": True, "message": f"Schedule removed at index {index}", **status}
+        else:
+            raise HTTPException(status_code=404, detail="Schedule index not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing schedule by index {index}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete("/api/scheduler/schedule/{time}")
@@ -17065,68 +17236,203 @@ async def check_media_server_logos(request: CheckLogosRequest):
 from fastapi.responses import StreamingResponse
 import urllib.parse
 
+THUMB_CACHE_DIR = (BASE_DIR / "Cache" / "server_thumbs").resolve()
+try:
+    THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
+def invalidate_media_server_thumb_cache(rating_key: Optional[str] = None):
+    """Purges cached server thumbs for a given rating_key or all if none provided"""
+    try:
+        if not THUMB_CACHE_DIR.exists():
+            return
+        safe_key = None
+        if rating_key is not None:
+            safe_key = "".join(c for c in str(rating_key) if c.isalnum()).strip()
+            if not safe_key:
+                return
+
+        for meta_file in list(THUMB_CACHE_DIR.glob("*.meta")):
+            try:
+                # Ensure file is inside cache directory
+                if not meta_file.resolve().is_relative_to(THUMB_CACHE_DIR.resolve()):
+                    continue
+                if not safe_key:
+                    img_file = meta_file.with_suffix(".img")
+                    if img_file.exists() and img_file.resolve().is_relative_to(THUMB_CACHE_DIR.resolve()):
+                        img_file.unlink()
+                    meta_file.unlink()
+                else:
+                    meta_content = meta_file.read_text(encoding="utf-8")
+                    if safe_key in meta_content:
+                        img_file = meta_file.with_suffix(".img")
+                        if img_file.exists() and img_file.resolve().is_relative_to(THUMB_CACHE_DIR.resolve()):
+                            img_file.unlink()
+                        meta_file.unlink()
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Error invalidating thumb cache: {e}")
+
 @app.get("/api/media-server/image")
-async def proxy_media_server_image(server_type: str, url: str):
-    """Proxies images from the media server to hide API keys/tokens from the frontend URL"""
+async def proxy_media_server_image(
+    server_type: str,
+    url: str,
+    t: Optional[str] = None,
+    _cb: Optional[str] = None,
+    force: bool = False
+):
+    """Proxies images from the media server with local disk caching to prevent polling on every reload"""
+    server_type = server_type.lower().strip()
+    if server_type not in ["plex", "jellyfin", "emby"]:
+        raise HTTPException(status_code=400, detail="Invalid server_type")
+
+    # Guard against URL-based traversal and SSRF
     if not is_safe_url(url, allow_private=True):
         raise HTTPException(status_code=403, detail="Unsafe or invalid media server URL")
 
+    # Load media server configuration
     config = {}
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            import json
             config = json.load(f)
 
-    valid_urls = []
-    if config.get("using_flat_structure"):
-        valid_urls = [config.get("PlexUrl"), config.get("JellyfinUrl"), config.get("EmbyUrl")]
-    else:
-        valid_urls = [
-            config.get("PlexPart", {}).get("PlexUrl"),
-            config.get("JellyfinPart", {}).get("JellyfinUrl"),
-            config.get("EmbyPart", {}).get("EmbyUrl")
-        ]
-    valid_urls = [u.rstrip('/') for u in valid_urls if u]
-
-    # Validate that target URL hostname matches one of the configured server URLs
-    parsed_target = urllib.parse.urlparse(url)
-    matched_base = None
-    for v in valid_urls:
-        parsed_v = urllib.parse.urlparse(v)
-        if parsed_target.scheme in ["http", "https"] and parsed_target.netloc == parsed_v.netloc:
-            if parsed_target.path.startswith(parsed_v.path):
-                matched_base = parsed_v
-                break
-
-    if not matched_base:
-        raise HTTPException(status_code=403, detail="Proxy URL not allowed")
-
-    headers = {}
-
-    api_part = config.get("ApiPart", {})
+    # Determine allowed base URL from configuration for this exact server_type
+    base_server_url = None
     if server_type == "plex":
-        headers["X-Plex-Token"] = api_part.get("PlexToken", "")
+        base_server_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
     elif server_type == "jellyfin":
-        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("JellyfinAPIKey", "")}"'
+        base_server_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
     elif server_type == "emby":
-        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("EmbyAPIKey", "")}"'
+        base_server_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
 
+    if not base_server_url:
+        raise HTTPException(status_code=400, detail="Requested media server is not configured")
+
+    base_server_url = str(base_server_url).rstrip('/')
+    parsed_base = urllib.parse.urlparse(base_server_url)
+    parsed_target = urllib.parse.urlparse(url)
+
+    # If full URL supplied, host must strictly match configured media server host
+    if parsed_target.netloc and parsed_target.netloc.lower() != parsed_base.netloc.lower():
+        raise HTTPException(status_code=403, detail="Proxy URL host mismatch with configured media server")
+
+    target_path = parsed_target.path
+    if ".." in target_path or "\\" in target_path:
+        raise HTTPException(status_code=400, detail="Path traversal in image URL not permitted")
+
+    # Allowed endpoint prefixes per server type
+    allowed_prefixes = {
+        "plex": ("/library/metadata/", "/photo/", "/thumb/"),
+        "jellyfin": ("/Items/", "/Images/"),
+        "emby": ("/Items/", "/Images/")
+    }
+    valid_prefixes = allowed_prefixes.get(server_type, ())
+    if not any(target_path.startswith(prefix) for prefix in valid_prefixes):
+        raise HTTPException(status_code=403, detail="Requested image endpoint not permitted for media server")
+
+    # Reconstruct destination URL strictly using configured base server scheme & host
     safe_target_url = urllib.parse.urlunsplit((
-        matched_base.scheme,
-        matched_base.netloc,
-        parsed_target.path,
+        parsed_base.scheme,
+        parsed_base.netloc,
+        target_path,
         parsed_target.query,
         ""
     ))
 
-    async def stream_image():
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("GET", safe_target_url, headers=headers) as resp:
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
+    if not is_safe_url(safe_target_url, allow_private=True):
+        raise HTTPException(status_code=403, detail="Unsafe media server target URL")
 
-    # Return streaming response
-    return StreamingResponse(stream_image(), media_type="image/png")
+    # Hash the normalized target path and query for persistent local disk caching
+    cache_key = hashlib.sha256(f"{server_type}:{target_path}:{parsed_target.query}".encode("utf-8")).hexdigest()
+    cached_img_path = (THUMB_CACHE_DIR / f"{cache_key}.img").resolve()
+    cached_meta_path = (THUMB_CACHE_DIR / f"{cache_key}.meta").resolve()
+
+    # Guard cache paths against directory traversal
+    if not cached_img_path.is_relative_to(THUMB_CACHE_DIR.resolve()) or not cached_meta_path.is_relative_to(THUMB_CACHE_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid cache path")
+
+    # Fast path: serve directly from disk cache if exists and not forced
+    if not force and not _cb and cached_img_path.is_file() and cached_img_path.stat().st_size > 0:
+        content_type = "image/jpeg"
+        if cached_meta_path.is_file():
+            try:
+                meta = json.loads(cached_meta_path.read_text(encoding="utf-8"))
+                content_type = meta.get("content_type", "image/jpeg")
+            except Exception:
+                pass
+        return FileResponse(
+            cached_img_path,
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
+                "X-Posterizarr-Cache": "HIT"
+            }
+        )
+
+    headers = {}
+    api_part = config.get("ApiPart", {})
+    if server_type == "plex":
+        headers["X-Plex-Token"] = api_part.get("PlexToken", "") or (config.get("PlexToken", "") if config.get("using_flat_structure") else "")
+    elif server_type == "jellyfin":
+        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("JellyfinAPIKey", "") or (config.get("JellyfinAPIKey", "") if config.get("using_flat_structure") else "")}"'
+    elif server_type == "emby":
+        headers["Authorization"] = f'MediaBrowser Token="{api_part.get("EmbyAPIKey", "") or (config.get("EmbyAPIKey", "") if config.get("using_flat_structure") else "")}"'
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(safe_target_url, headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail="Media server image not found")
+
+            content_type = resp.headers.get("content-type", "image/jpeg")
+
+            # Persist to local disk cache securely
+            try:
+                temp_file = (THUMB_CACHE_DIR / f"{cache_key}.tmp").resolve()
+                if temp_file.is_relative_to(THUMB_CACHE_DIR.resolve()):
+                    temp_file.write_bytes(resp.content)
+                    temp_file.replace(cached_img_path)
+                    meta_data = {
+                        "content_type": content_type,
+                        "url": safe_target_url,
+                        "server_type": server_type,
+                        "cached_at": datetime.now().isoformat()
+                    }
+                    cached_meta_path.write_text(json.dumps(meta_data), encoding="utf-8")
+            except Exception as write_err:
+                logger.warning(f"Could not persist thumb cache: {write_err}")
+
+            return FileResponse(
+                cached_img_path,
+                media_type=content_type,
+                headers={
+                    "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
+                    "X-Posterizarr-Cache": "MISS"
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error streaming media server image: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch image from media server")
+
+
+ALLOWED_IMAGE_DOMAINS = {
+    "tmdb.org",
+    "themoviedb.org",
+    "fanart.tv",
+    "thetvdb.com",
+    "tvdb.com",
+    "plex.tv",
+    "plex.direct",
+    "media-amazon.com",
+    "imdb.com",
+    "wikimedia.org",
+    "wikipedia.org",
+    "githubusercontent.com",
+}
 
 
 @app.get("/api/proxy-image")
@@ -17136,13 +17442,49 @@ async def proxy_image(url: str):
     if parsed.scheme not in ["http", "https"] or not parsed.hostname:
         raise HTTPException(status_code=400, detail="Invalid URL")
 
-    # Block localhost, private IPs, and cloud metadata (only allow public internet hosts)
-    if not is_safe_url(url, allow_private=False):
+    hostname = parsed.hostname.lower()
+    is_allowed = any(hostname == d or hostname.endswith("." + d) for d in ALLOWED_IMAGE_DOMAINS)
+    allow_private = False
+
+    if not is_allowed:
+        # Check if URL target matches configured media server host
+        config = {}
+        if CONFIG_PATH.exists():
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+            except Exception:
+                pass
+        configured_hosts = set()
+        for key in ["PlexUrl", "JellyfinUrl", "EmbyUrl"]:
+            u = config.get(key) if config.get("using_flat_structure") else config.get(key.replace("Url", "Part"), {}).get(key)
+            if u:
+                try:
+                    configured_hosts.add(urllib.parse.urlparse(str(u)).netloc.lower())
+                except Exception:
+                    pass
+        if parsed.netloc.lower() in configured_hosts:
+            is_allowed = True
+            allow_private = True
+
+    if not is_allowed:
+        raise HTTPException(status_code=403, detail="Domain not permitted for image proxy")
+
+    safe_url = urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.query,
+        ""
+    ))
+
+    # Block localhost, private IPs, and cloud metadata unless configured media server
+    if not is_safe_url(safe_url, allow_private=allow_private):
         raise HTTPException(status_code=403, detail="Forbidden URL target")
 
     async def stream_image():
         async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("GET", url) as resp:
+            async with client.stream("GET", safe_url) as resp:
                 if resp.status_code != 200:
                     yield b""
                     return
@@ -17204,11 +17546,30 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 logger.error(f"Failed to decode base64 image: {e}")
                 return {"success": False, "error": "Failed to decode base64 image."}
         elif request.logo_url.startswith(("http://", "https://")):
-            # Download via HTTP with SSRF check (prevent hitting internal/private IPs or metadata endpoints)
-            if not is_safe_url(request.logo_url, allow_private=False):
+            parsed_logo = urllib.parse.urlparse(request.logo_url)
+            if not parsed_logo.hostname:
+                return {"success": False, "error": "Invalid logo URL."}
+            logo_host = parsed_logo.hostname.lower()
+            is_allowed_logo = any(logo_host == d or logo_host.endswith("." + d) for d in ALLOWED_IMAGE_DOMAINS)
+            allow_private_logo = False
+            if not is_allowed_logo:
+                if any(request.logo_url.startswith(v.rstrip('/')) for v in valid_urls):
+                    is_allowed_logo = True
+                    allow_private_logo = True
+            if not is_allowed_logo:
+                return {"success": False, "error": "Logo domain not allowed."}
+
+            safe_logo_url = urllib.parse.urlunsplit((
+                parsed_logo.scheme,
+                parsed_logo.netloc,
+                parsed_logo.path,
+                parsed_logo.query,
+                ""
+            ))
+            if not is_safe_url(safe_logo_url, allow_private=allow_private_logo):
                 return {"success": False, "error": "Invalid or forbidden logo URL."}
             async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(request.logo_url)
+                resp = await client.get(safe_logo_url)
                 if resp.status_code != 200:
                     return {"success": False, "error": f"Failed to download logo: {resp.status_code}"}
                 with open(temp_logo, "wb") as f:
@@ -17238,8 +17599,7 @@ async def upload_media_server_logo(request: UploadLogoRequest):
 
         # Upload Logo
         async with httpx.AsyncClient(timeout=30.0) as client:
-            import urllib.parse
-            safe_item_id = urllib.parse.quote(str(request.item_id), safe="")
+            safe_item_id = "".join(c for c in str(request.item_id) if c.isalnum() or c in "-_")
             if request.server_type == "plex":
                 upload_url = f"{url}/library/metadata/{safe_item_id}/clearLogos"
                 headers = {"X-Plex-Token": request.token, "Content-Type": "image/jpeg"}
@@ -17331,12 +17691,11 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
                         content = resp.content
                 elif item["source_type"] == "upload":
                     # Staged file - strictly verify path stays within QUEUE_STAGING_DIR
-                    staged_path = Path(item["source_data"]).resolve()
-                    try:
-                        staged_path.relative_to(QUEUE_STAGING_DIR.resolve())
-                    except ValueError:
+                    staged_name = Path(item["source_data"]).name
+                    staged_path = get_safe_path(QUEUE_STAGING_DIR, staged_name)
+                    if not staged_path.resolve().is_relative_to(QUEUE_STAGING_DIR.resolve()):
                         raise Exception(f"Staged file path outside staging directory: {staged_path}")
-                    if not staged_path.exists():
+                    if not staged_path.exists() or not staged_path.is_file():
                         raise Exception(f"Staged file not found: {staged_path}")
                     with open(staged_path, "rb") as f:
                         content = f.read()
@@ -17354,9 +17713,10 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
                 # Cleanup staged file if upload
                 if item["source_type"] == "upload":
                     try:
-                        staged_path = Path(item["source_data"]).resolve()
-                        staged_path.relative_to(QUEUE_STAGING_DIR.resolve())
-                        staged_path.unlink(missing_ok=True)
+                        staged_name = Path(item["source_data"]).name
+                        staged_path = get_safe_path(QUEUE_STAGING_DIR, staged_name)
+                        if staged_path.resolve().is_relative_to(QUEUE_STAGING_DIR.resolve()):
+                            staged_path.unlink(missing_ok=True)
                     except Exception:
                         pass
 
@@ -17405,35 +17765,111 @@ async def run_queue(background_tasks: BackgroundTasks, request: Optional[RunQueu
 async def get_media_server_collections(request: MediaServerItemsRequest):
     """Fetch collections from media server"""
     try:
+        server_type = request.server_type.lower().strip()
+        if server_type not in ["plex", "jellyfin", "emby"]:
+            raise HTTPException(status_code=400, detail="Invalid server_type")
+
+        clean_lib_id = "".join(c for c in str(request.library_id) if c.isalnum() or c in "-_").strip()
+        if not clean_lib_id:
+            raise HTTPException(status_code=400, detail="Invalid library_id")
+
         url = request.url.rstrip('/')
+        if not is_safe_url(url, allow_private=True):
+            raise HTTPException(status_code=403, detail="Unsafe media server URL")
+
+        # Load config and verify host
+        config = {}
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+        expected_url = None
+        if server_type == "plex":
+            expected_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
+        elif server_type == "jellyfin":
+            expected_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
+        elif server_type == "emby":
+            expected_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
+
+        if expected_url:
+            req_host = urllib.parse.urlparse(url).netloc.lower()
+            exp_host = urllib.parse.urlparse(str(expected_url)).netloc.lower()
+            if req_host != exp_host:
+                raise HTTPException(status_code=403, detail="Server URL host mismatch with configured media server")
+
         items = []
         total = 0
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            if request.server_type == "plex":
-                api_url = f"{url}/library/sections/{request.library_id}/all"
-                headers = {
-                    "X-Plex-Token": request.token,
-                    "X-Plex-Container-Start": str(request.start),
-                    "X-Plex-Container-Size": str(request.limit)
-                }
-                params = {"type": "18"} # 18 = Collection
-                response = await client.get(api_url, headers=headers, params=params)
-                if response.status_code == 200:
-                    root = fromstring(response.content)
-                    container = root
-                    total = int(container.get("totalSize", container.get("size", 0)))
-                    for item in root.findall(".//*[@title]"):
-                        rating_key = item.get("ratingKey", "")
-                        has_poster = True
-                        items.append({
-                            "title": item.get("title", ""),
-                            "year": item.get("year", ""),
-                            "type": "collection",
-                            "ratingKey": rating_key,
-                            "hasPoster": has_poster,
-                            "posterUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/thumb')}"
-                        })
+            if server_type == "plex":
+                try:
+                    from plex_push_service import get_plex_collection_diffs, PlexPushCache, get_effective_plex_exclusions
+                    cache_db_path = DATABASE_DIR / "plex_push_cache.db"
+                    cache = PlexPushCache(cache_db_path)
+                    excluded_libs = get_effective_plex_exclusions(CONFIG_PATH, SERVER_LIBRARIES_DB_PATH) if clean_lib_id == "all" else None
+                    diff_items = await get_plex_collection_diffs(
+                        plex_url=url,
+                        plex_token=request.token,
+                        library_id=clean_lib_id,
+                        assets_dir=ASSETS_DIR,
+                        cache=cache,
+                        limit=request.limit,
+                        excluded_libraries=excluded_libs
+                    )
+                    items = diff_items
+                    total = len(diff_items)
+                except Exception as ex:
+                    logger.error(f"Error enriching Plex collection diffs: {ex}", exc_info=True)
+                    api_url = f"{url}/library/sections/{clean_lib_id}/all"
+                    headers = {
+                        "X-Plex-Token": request.token,
+                        "X-Plex-Container-Start": str(request.start),
+                        "X-Plex-Container-Size": str(request.limit)
+                    }
+                    params = {"type": "18"} # 18 = Collection
+                    response = await client.get(api_url, headers=headers, params=params)
+                    if response.status_code == 200:
+                        root = fromstring(response.content)
+                        container = root
+                        total = int(container.get("totalSize", container.get("size", 0)))
+                        for item in root.findall(".//*[@title]"):
+                            rating_key = item.get("ratingKey", "")
+                            thumb = item.get("thumb", "")
+                            has_poster = bool(thumb)
+                            thumb_path = thumb if thumb and thumb.startswith("/") else (f"/{thumb}" if thumb else f"/library/metadata/{rating_key}/thumb")
+
+                            child_count_str = item.get("childCount") or item.get("leafCount") or item.get("size")
+                            child_count = int(child_count_str) if child_count_str and child_count_str.isdigit() else None
+                            min_year = item.get("minYear", "")
+                            max_year = item.get("maxYear", "")
+                            year_val = item.get("year", "")
+                            if min_year and max_year:
+                                year_display = min_year if min_year == max_year else f"{min_year} - {max_year}"
+                            elif min_year:
+                                year_display = min_year
+                            elif max_year:
+                                year_display = max_year
+                            elif year_val:
+                                year_display = year_val
+                            else:
+                                year_display = ""
+
+                            items.append({
+                                "title": item.get("title", ""),
+                                "year": year_display,
+                                "minYear": min_year,
+                                "maxYear": max_year,
+                                "childCount": child_count,
+                                "itemCount": child_count,
+                                "summary": item.get("summary", ""),
+                                "type": "collection",
+                                "subtype": item.get("subtype", "movie"),
+                                "ratingKey": rating_key,
+                                "hasPoster": has_poster,
+                                "posterUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}{thumb_path}')}" if has_poster else None,
+                                "hasLocalAsset": False,
+                                "syncStatus": "missing_local"
+                            })
 
             elif request.server_type in ["jellyfin", "emby"]:
                 auth_header = "Authorization"
@@ -17454,19 +17890,212 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
                     total = data.get("TotalRecordCount", 0)
                     for item in data.get("Items", []):
                         has_poster = "Primary" in item.get("ImageTags", {})
+                        item_id = str(item.get("Id", ""))
+                        jf_web_url = f"{url}/web/index.html#!/details?id={item_id}" if request.server_type == "jellyfin" else f"{url}/web/index.html#!/item?id={item_id}"
                         items.append({
                             "title": item.get("Name", ""),
                             "year": item.get("ProductionYear", ""),
+                            "summary": item.get("Overview", ""),
                             "type": "collection",
-                            "ratingKey": item.get("Id", ""),
+                            "ratingKey": item_id,
+                            "webUrl": jf_web_url,
                             "hasPoster": has_poster,
-                            "posterUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item.get('Id')}/Images/Primary?tag={item.get('ImageTags', {}).get('Primary', '')}')}" if has_poster else None
+                            "posterUrl": f"/api/media-server/image?server_type={request.server_type}&url={urllib.parse.quote(f'{url}/Items/{item_id}/Images/Primary?tag={item.get('ImageTags', {}).get('Primary', '')}')}" if has_poster else None
                         })
 
         return {"success": True, "items": items, "total": total}
     except Exception as e:
         logger.error(f"Error fetching media server collections: {e}", exc_info=True)
         return {"success": False, "error": "Failed to fetch media server collections. Check server logs."}
+
+
+@app.get("/api/media-server/item-link")
+async def get_media_server_item_link(
+    rating_key: Optional[str] = None,
+    title: Optional[str] = None,
+    path: Optional[str] = None,
+    library: Optional[str] = None,
+    item_type: Optional[str] = None,
+    server_type: Optional[str] = None
+):
+    """
+    Returns direct deep link to Plex Web (app.plex.tv) or local Jellyfin/Emby web client for an item.
+    """
+    config = {}
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            pass
+
+    st = (server_type or "").lower().strip()
+    if not st:
+        use_plex = config.get("UsePlex") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("UsePlex")
+        use_jf = config.get("UseJellyfin") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("UseJellyfin")
+        use_emby = config.get("UseEmby") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("UseEmby")
+        if str(use_plex).lower() == "true":
+            st = "plex"
+        elif str(use_jf).lower() == "true":
+            st = "jellyfin"
+        elif str(use_emby).lower() == "true":
+            st = "emby"
+        else:
+            st = "plex"
+
+    key = rating_key
+    safe_key = "".join(c for c in str(key) if c.isalnum() or c in "-_") if key else None
+
+    # Determine effective search terms from path if available
+    search_title = (title or "").strip()
+    if not search_title and path:
+        p_obj = Path(path)
+        if p_obj.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]:
+            search_title = p_obj.parent.name
+        else:
+            search_title = p_obj.name
+
+    # If no rating_key provided, search in local databases
+    if not safe_key and (path or search_title):
+        # 1. Search in plex_push_cache.db
+        cache_db_path = DATABASE_DIR / "plex_push_cache.db"
+        if cache_db_path.exists():
+            try:
+                conn = sqlite3.connect(cache_db_path, timeout=5)
+                cursor = conn.cursor()
+                if path:
+                    p_obj = Path(path)
+                    folder_leaf = p_obj.parent.name if p_obj.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"] else p_obj.name
+                    cursor.execute("SELECT rating_key FROM plex_push_cache WHERE asset_path LIKE ? LIMIT 1", (f"%{folder_leaf}%",))
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        safe_key = "".join(c for c in str(row[0]) if c.isalnum() or c in "-_")
+                if not safe_key and search_title:
+                    cursor.execute("SELECT rating_key FROM plex_push_cache WHERE item_title = ? LIMIT 1", (search_title,))
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        safe_key = "".join(c for c in str(row[0]) if c.isalnum() or c in "-_")
+                conn.close()
+            except Exception:
+                pass
+
+        # 2. Search in media_export.db
+        if not safe_key:
+            export_db_path = DATABASE_DIR / "media_export.db"
+            if export_db_path.exists():
+                try:
+                    conn = sqlite3.connect(export_db_path, timeout=5)
+                    cursor = conn.cursor()
+                    if search_title:
+                        if library:
+                            cursor.execute(
+                                "SELECT rating_key FROM plex_library_export WHERE title = ? AND library_name = ? LIMIT 1",
+                                (search_title, library)
+                            )
+                            row = cursor.fetchone()
+                            if row and row[0]:
+                                safe_key = "".join(c for c in str(row[0]) if c.isalnum() or c in "-_")
+                        if not safe_key:
+                            cursor.execute("SELECT rating_key FROM plex_library_export WHERE title = ? LIMIT 1", (search_title,))
+                            row = cursor.fetchone()
+                            if row and row[0]:
+                                safe_key = "".join(c for c in str(row[0]) if c.isalnum() or c in "-_")
+                    conn.close()
+                except Exception:
+                    pass
+
+    # If still no safe_key and server is Plex, perform live lookup on configured Plex server
+    if not safe_key and st == "plex" and search_title:
+        plex_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
+        plex_token = config.get("PlexToken") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("PlexToken")
+        if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True):
+            clean_url = str(plex_url).rstrip('/')
+            try:
+                headers = {"X-Plex-Token": plex_token, "Accept": "application/xml"} if plex_token else {"Accept": "application/xml"}
+                async with httpx.AsyncClient(timeout=8.0) as client:
+                    resp = await client.get(f"{clean_url}/library/all", params={"title": search_title}, headers=headers)
+                    if resp.status_code == 200:
+                        search_root = fromstring(resp.content)
+                        # Match candidate elements (Directory for collections, Video for movies/episodes)
+                        candidates = []
+                        for child in search_root:
+                            c_title = child.get("title", "").strip().lower()
+                            if c_title == search_title.strip().lower():
+                                candidates.append(child)
+                        if not candidates:
+                            candidates = list(search_root)
+
+                        # Prefer candidate that matches librarySectionTitle if library is provided
+                        matched_elem = None
+                        if library and candidates:
+                            lib_lower = library.strip().lower()
+                            for c in candidates:
+                                if c.get("librarySectionTitle", "").strip().lower() == lib_lower:
+                                    matched_elem = c
+                                    break
+                        if not matched_elem and candidates:
+                            matched_elem = candidates[0]
+
+                        if matched_elem is not None and matched_elem.get("ratingKey"):
+                            safe_key = "".join(c for c in str(matched_elem.get("ratingKey")) if c.isalnum() or c in "-_")
+            except Exception as e:
+                logger.debug(f"Plex live search fallback failed for '{search_title}': {e}")
+
+    if not safe_key:
+        return {"success": False, "error": "Item ratingKey could not be resolved"}
+
+    if st == "plex":
+        plex_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
+        plex_token = config.get("PlexToken") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("PlexToken")
+        if not plex_url:
+            return {"success": False, "error": "Plex URL not configured"}
+
+        plex_url = str(plex_url).rstrip('/')
+        machine_id = getattr(get_media_server_item_link, "_cached_machine_id", None)
+        if not machine_id and is_safe_url(plex_url, allow_private=True):
+            try:
+                headers = {"X-Plex-Token": plex_token, "Accept": "application/xml"} if plex_token else {"Accept": "application/xml"}
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    id_resp = await client.get(f"{plex_url}/identity", headers=headers)
+                    if id_resp.status_code == 200:
+                        id_root = fromstring(id_resp.content)
+                        machine_id = id_root.get("machineIdentifier", "")
+                        get_media_server_item_link._cached_machine_id = machine_id
+            except Exception as e:
+                logger.debug(f"Could not fetch Plex identity for item link: {e}")
+
+        is_collection = (
+            (item_type and item_type.lower() == "collection") or
+            (path and ("collections" in path.lower().replace("\\", "/")))
+        )
+        key_prefix = "%2Flibrary%2Fcollections%2F" if is_collection else "%2Flibrary%2Fmetadata%2F"
+        web_url = f"https://app.plex.tv/desktop/#!/server/{machine_id}/details?key={key_prefix}{safe_key}" if machine_id else None
+        local_url = f"{plex_url}/web/index.html#!/server/{machine_id}/details?key={key_prefix}{safe_key}" if machine_id else f"{plex_url}/web/index.html"
+
+        return {
+            "success": True,
+            "server_type": "plex",
+            "rating_key": safe_key,
+            "machine_identifier": machine_id,
+            "web_url": web_url,
+            "local_url": local_url
+        }
+
+    elif st in ["jellyfin", "emby"]:
+        server_url = (config.get("JellyfinUrl") if st == "jellyfin" else config.get("EmbyUrl")) if config.get("using_flat_structure") else (config.get("JellyfinPart", {}).get("JellyfinUrl") if st == "jellyfin" else config.get("EmbyPart", {}).get("EmbyUrl"))
+        if not server_url:
+            return {"success": False, "error": f"{st.title()} URL not configured"}
+        server_url = str(server_url).rstrip('/')
+        web_url = f"{server_url}/web/index.html#!/details?id={safe_key}" if st == "jellyfin" else f"{server_url}/web/index.html#!/item?id={safe_key}"
+        return {
+            "success": True,
+            "server_type": st,
+            "rating_key": safe_key,
+            "web_url": web_url,
+            "local_url": web_url
+        }
+
+    return {"success": False, "error": "Unknown server type"}
 
 
 @app.get("/api/studio-logos")
@@ -17503,6 +18132,8 @@ class UploadToServerRequest(BaseModel):
     server_url: str
     server_token: str
     image_data: str
+    collection_name: Optional[str] = None
+    library_name: Optional[str] = None
 
 @app.post("/api/collections/upload-to-server")
 async def api_upload_collection_to_server(request: UploadToServerRequest):
@@ -17526,6 +18157,31 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
                 if response.status_code not in [200, 201]:
                     return {"success": False, "error": f"Plex returned status {response.status_code}"}
 
+                # Update persistent cache so Collection Explorer recognizes it as in sync immediately
+                try:
+                    from plex_push_service import PlexPushCache, scan_local_collection_assets, normalize_collection_name
+                    cache_db_path = DATABASE_DIR / "plex_push_cache.db"
+                    cache = PlexPushCache(cache_db_path)
+                    local_assets = scan_local_collection_assets(ASSETS_DIR)
+                    norm = normalize_collection_name(request.collection_name or "")
+                    matched = local_assets.get(norm)
+                    if matched:
+                        loc_p = Path(matched["poster_path"])
+                        st = loc_p.stat()
+                        cache.record_push(
+                            asset_path=str(loc_p.resolve()),
+                            file_mtime=st.st_mtime,
+                            file_size=st.st_size,
+                            rating_key=str(request.rating_key),
+                            asset_type="collection",
+                            library_name=request.library_name or "",
+                            item_title=request.collection_name or "",
+                            status="synced"
+                        )
+                        invalidate_media_server_thumb_cache(str(request.rating_key))
+                except Exception as cache_err:
+                    logger.warning(f"Could not update plex push cache after upload: {cache_err}")
+
             elif request.server_type in ["jellyfin", "emby"]:
                 url = f"{server_url}/Items/{request.rating_key}/Images/Primary"
                 headers = {
@@ -17542,6 +18198,202 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
     except Exception as e:
         logger.error(f"Error uploading to media server: {e}", exc_info=True)
         return {"success": False, "error": "Failed to upload to media server. Check server logs."}
+
+
+class PlexMarkSyncedRequest(BaseModel):
+    rating_key: str
+    collection_name: str
+    local_path: Optional[str] = None
+
+@app.post("/api/plex/collections/mark-synced")
+async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
+    """Marks a local collection poster as In-Sync with Plex without re-uploading."""
+    try:
+        from plex_push_service import PlexPushCache, scan_local_collection_assets, normalize_collection_name
+        cache_db_path = DATABASE_DIR / "plex_push_cache.db"
+        cache = PlexPushCache(cache_db_path)
+
+        safe_rating_key = "".join(c for c in str(request.rating_key) if c.isdigit())
+        if not safe_rating_key:
+            return {"success": False, "error": "Invalid rating_key"}
+
+        local_file = None
+        if request.local_path:
+            try:
+                cand = get_safe_path(ASSETS_DIR, request.local_path)
+                if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
+                    local_file = cand
+            except HTTPException:
+                pass
+
+        if not local_file:
+            local_assets = scan_local_collection_assets(ASSETS_DIR)
+            norm = normalize_collection_name(request.collection_name)
+            if norm in local_assets:
+                try:
+                    cand = get_safe_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"])
+                    if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
+                        local_file = cand
+                except HTTPException:
+                    pass
+
+        if not local_file or not local_file.exists():
+            return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
+
+        stat = local_file.stat()
+        cache.record_push(
+            asset_path=str(local_file.resolve()),
+            file_mtime=stat.st_mtime,
+            file_size=stat.st_size,
+            rating_key=safe_rating_key,
+            asset_type="collection",
+            item_title=request.collection_name,
+            status="synced"
+        )
+        return {"success": True, "message": f"Marked '{request.collection_name}' as In-Sync"}
+    except Exception as e:
+        logger.error(f"Error marking collection as synced: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+class PlexPushSingleRequest(BaseModel):
+    rating_key: str
+    collection_name: str
+    local_path: Optional[str] = None
+    server_url: Optional[str] = None
+    server_token: Optional[str] = None
+
+@app.post("/api/plex/collections/push-item")
+async def api_plex_push_single_collection(request: PlexPushSingleRequest):
+    """Pushes a local collection poster to Plex Media Server."""
+    try:
+        from plex_push_service import push_collection_artwork_to_plex, PlexPushCache, get_plex_credentials_from_config
+        url = request.server_url
+        token = request.server_token
+        cfg_url, cfg_token = get_plex_credentials_from_config(CONFIG_PATH)
+
+        if url:
+            if not is_safe_url(url, allow_private=True):
+                raise HTTPException(status_code=403, detail="Unsafe Plex server URL")
+            if cfg_url and urllib.parse.urlparse(url).netloc.lower() != urllib.parse.urlparse(cfg_url).netloc.lower():
+                raise HTTPException(status_code=403, detail="Server URL does not match configured Plex server")
+        else:
+            url = cfg_url
+            token = cfg_token
+
+        if not url or not token:
+            return {"success": False, "error": "Plex URL or Token not found in configuration."}
+
+        safe_rating_key = "".join(c for c in str(request.rating_key) if c.isdigit())
+        if not safe_rating_key:
+            return {"success": False, "error": "Invalid rating_key"}
+
+        cache_db_path = DATABASE_DIR / "plex_push_cache.db"
+        cache = PlexPushCache(cache_db_path)
+
+        local_file = None
+        if request.local_path:
+            try:
+                cand = get_safe_path(ASSETS_DIR, request.local_path)
+                if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
+                    local_file = cand
+            except HTTPException:
+                pass
+
+        if not local_file:
+            from plex_push_service import scan_local_collection_assets, normalize_collection_name
+            local_assets = scan_local_collection_assets(ASSETS_DIR)
+            norm = normalize_collection_name(request.collection_name)
+            if norm in local_assets:
+                try:
+                    cand = get_safe_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"])
+                    if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
+                        local_file = cand
+                except HTTPException:
+                    pass
+
+        if not local_file or not local_file.exists():
+            return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
+
+        res = await push_collection_artwork_to_plex(
+            plex_url=url,
+            plex_token=token,
+            rating_key=safe_rating_key,
+            local_image_path=local_file,
+            cache=cache,
+            asset_type="collection",
+            item_title=request.collection_name
+        )
+        if res.get("success"):
+            invalidate_media_server_thumb_cache(safe_rating_key)
+        return res
+    except Exception as e:
+        logger.error(f"Error in api_plex_push_single_collection: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+class PlexPushBatchRequest(BaseModel):
+    items: List[Dict[str, Any]]
+    server_url: Optional[str] = None
+    server_token: Optional[str] = None
+
+@app.post("/api/plex/collections/push-batch")
+async def api_plex_push_batch_collections(request: PlexPushBatchRequest):
+    """Pushes multiple collection posters to Plex in parallel with rate limiting."""
+    try:
+        from plex_push_service import push_batch_collections_to_plex, PlexPushCache, get_plex_credentials_from_config
+        url = request.server_url
+        token = request.server_token
+        cfg_url, cfg_token = get_plex_credentials_from_config(CONFIG_PATH)
+
+        if url:
+            if not is_safe_url(url, allow_private=True):
+                raise HTTPException(status_code=403, detail="Unsafe Plex server URL")
+            if cfg_url and urllib.parse.urlparse(url).netloc.lower() != urllib.parse.urlparse(cfg_url).netloc.lower():
+                raise HTTPException(status_code=403, detail="Server URL does not match configured Plex server")
+        else:
+            url = cfg_url
+            token = cfg_token
+
+        if not url or not token:
+            return {"success": False, "error": "Plex URL or Token not configured."}
+
+        cache_db_path = DATABASE_DIR / "plex_push_cache.db"
+        cache = PlexPushCache(cache_db_path)
+
+        res = await push_batch_collections_to_plex(
+            plex_url=url,
+            plex_token=token,
+            items=request.items,
+            assets_dir=ASSETS_DIR,
+            cache=cache,
+            max_concurrency=2
+        )
+        if res.get("success"):
+            invalidate_media_server_thumb_cache()
+        return res
+    except Exception as e:
+        logger.error(f"Error in api_plex_push_batch_collections: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/plex/sync/run")
+async def api_plex_trigger_sync(request: Request):
+    """Triggers an on-demand Plex Sync background task."""
+    try:
+        data = await request.json() if await request.body() else {}
+        from plex_push_service import run_plex_sync_task
+        asyncio.create_task(run_plex_sync_task(
+            schedule_config=data,
+            base_dir=BASE_DIR,
+            assets_dir=ASSETS_DIR,
+            config_path=CONFIG_PATH,
+            log_file_path=UI_LOGS_DIR / "PlexSync.log"
+        ))
+        return {"success": True, "message": "Plex sync started in background"}
+    except Exception as e:
+        logger.error(f"Error triggering Plex sync: {e}")
+        return {"success": False, "error": str(e)}
 
 class CollectionSaveRequest(BaseModel):
     collection_name: str

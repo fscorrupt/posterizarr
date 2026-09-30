@@ -532,3 +532,37 @@ In the WebUI's **Manual Mode**, you can use the **"Browse Logos"** button to sea
 3.  Search for a movie or show.
 4.  Select a logo to automatically use its URL as the title source.
 5.  When you run the manual mode with a URL in the "Title Text" field, Posterizarr will download and use that image as a logo overlay on your poster.
+
+### Plex Sync Mode (WebUI & Scheduler)
+
+The **Plex Sync Mode** is a dedicated, lightweight synchronization mechanism built directly into Posterizarr's WebUI backend. It allows you to selectively push generated artwork directly to your Plex server without running full PowerShell image generation cycles or triggering external scrapers.
+
+#### Why Use Plex Sync Mode?
+- **Lightweight & Fast**: Pure Python execution utilizing PMS REST endpoints (`/library/metadata/{rating_key}/posters` and `/arts`). No ImageMagick overhead.
+- **Change Tracking (Zero Redundant Uploads)**: Maintains an internal SQLite cache (`database/plex_push_cache.db`) recording file sizes, modification timestamps, and upload history. Assets that have not changed locally are skipped immediately.
+- **Granular Control (Respects Kometa & Custom Workflows)**: You can select exactly which libraries (e.g. "Movies", "TV Shows", or "all") and which asset types to sync:
+    - `Collections`: Collection posters (`Assets/Collections/`)
+    - `Posters`: Movie and Show main posters (`Assets/<Library>/<Item>/poster.*`)
+    - `Seasons`: TV Season posters (`Assets/<Library>/<Item>/SeasonXX.*`)
+    - `Title Cards`: Episode title cards (`Assets/<Library>/<Item>/<Item> - SxxExx.*`)
+    - `Backgrounds`: Fanart / Backdrops (`Assets/<Library>/<Item>/background.*`)
+    If you manage movie posters with Kometa or PMM, you can enable Plex Sync exclusively for **Collections** without touching other media artwork.
+
+#### Interactive Collection Explorer Diff & Push
+Under **Collection Builder** (`/media-server-collections`):
+1. Select your **Plex** server and library.
+2. The UI automatically compares every local collection poster against the Plex server and labels it with real-time diff tags:
+   - **`In Sync`**: Local poster matches Plex and was previously uploaded.
+   - **`Update Ready`**: Local poster has been updated or edited locally and is ready to push.
+   - **`Missing on Plex`**: Local collection poster exists on disk, but has not yet been pushed to Plex.
+   - **`No Local Asset`**: Collection exists on Plex, but no local poster file was found in `Assets/Collections/`.
+3. Use the **`LOCAL` / `SERVER`** toggle on each card to visually inspect the differences between your local asset and what is currently live on your Plex server.
+4. Click **`Push to Plex`** on an individual collection card for instant 1-click upload, or click **`Push All Out-of-Sync`** in the toolbar to batch upload all pending collections concurrently.
+
+#### Automated Scheduling
+In **Scheduler** (`/scheduler`):
+1. Select **`Plex Sync (Lightweight)`** as the execution mode.
+2. Select target library (`All Libraries` or a specific library).
+3. Toggle which asset types to include using the interactive checkboxes.
+4. Set your desired interval or cron schedule.
+5. All sync activity is logged to `UILogs/PlexSync.log` and viewable in real-time in the WebUI Log Viewer.

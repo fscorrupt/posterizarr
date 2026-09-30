@@ -177,16 +177,27 @@ function AppContent() {
   // OR immediately hide if we're on a non-dashboard route
   useEffect(() => {
     if (showLoadingScreen) {
+      // Safety timeout: Never allow the loading screen overlay to hang longer than 4 seconds
+      const safetyTimeout = setTimeout(() => {
+        setShowLoadingScreen(false);
+      }, 4000);
+
       if (isDashboardRoute && isDashboardFullyLoaded) {
         // Dashboard is ready - hide loading screen
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           setShowLoadingScreen(false);
         }, 300);
+        return () => {
+          clearTimeout(safetyTimeout);
+          clearTimeout(timer);
+        };
       } else if (!isDashboardRoute) {
         // We're not on dashboard - hide loading screen immediately
         // This fixes the bug where reload on other pages causes loading screen to hang
         setShowLoadingScreen(false);
       }
+
+      return () => clearTimeout(safetyTimeout);
     }
   }, [isDashboardRoute, isDashboardFullyLoaded, showLoadingScreen]);
 

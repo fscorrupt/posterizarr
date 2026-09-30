@@ -15,11 +15,17 @@ import {
   Server,
   Loader2,
   X,
-  Menu
+  Menu,
+  UploadCloud,
+  Layers,
+  Eye,
+  CheckCircle2,
+  Check
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import CollectionLiveEditor from "./CollectionLiveEditor";
 import CompactImageSizeSlider from "./CompactImageSizeSlider";
+import ImagePreviewModal from "./ImagePreviewModal";
 import { buildResponsiveGridClass } from "../utils/gridClass";
 
 const API_URL = "/api";
@@ -133,8 +139,17 @@ const CollectionExplorer = () => {
 
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [showLiveEditor, setShowLiveEditor] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
+  const [isDeletingAsset, setIsDeletingAsset] = useState(false);
   const [updatedPosters, setUpdatedPosters] = useState({});
+  const [cacheBuster, setCacheBuster] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Plex Diff & Push State
+  const [syncFilter, setSyncFilter] = useState("all"); // "all" | "needs_push" | "synced" | "missing_local"
+  const [pushingRatingKey, setPushingRatingKey] = useState(null);
+  const [isBatchPushing, setIsBatchPushing] = useState(false);
+  const [diffPreviewMode, setDiffPreviewMode] = useState({}); // { [ratingKey]: 'local' | 'server' }
 
   // Setup click outside for sort dropdown
   useEffect(() => {
@@ -300,33 +315,265 @@ const CollectionExplorer = () => {
 
   const handleEditorClose = () => {
     setShowLiveEditor(false);
-    fetchItems(true); // Refresh items to show new poster
+    if (selectedCollection?.ratingKey) {
+      setUpdatedPosters((prev) => ({ ...prev, [selectedCollection.ratingKey]: Date.now() }));
+    }
+    setCacheBuster(Date.now());
+    setTimeout(() => {
+      fetchItems(true);
+    }, 600);
+  };
+
+  const handleForceRefresh = () => {
+    setCacheBuster(Date.now());
+    setUpdatedPosters({});
+    fetchItems(true);
   };
   // Removing handleUploadLogo body since CollectionLiveEditor handles saving
 
-  // Reset page to 1 when search or sort changes
+  // Reset page to 1 when search or sort or syncFilter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortOrder, showMissingOnly]);
+  }, [searchTerm, sortOrder, showMissingOnly, syncFilter]);
+
+  const isPlex = activeServer?.id === "plex";
+
+  // Derive counts for Plex diff badges
+  const needsPushItems = items.filter(
+    (i) => (i.syncStatus === "update_available" || i.syncStatus === "missing_server") && i.hasLocalAsset
+  );
+  const syncedItems = items.filter((i) => i.syncStatus === "synced");
+  const missingLocalItems = items.filter((i) => i.syncStatus === "missing_local" || !i.hasLocalAsset);
+
+  const toggleDiffPreview = (ratingKey, currentlyLocal) => {
+    setDiffPreviewMode((prev) => {
+      const isLocal = prev[ratingKey] !== undefined ? prev[ratingKey] === "local" : currentlyLocal;
+      return {
+        ...prev,
+        [ratingKey]: isLocal ? "server" : "local",
+      };
+    });
+  };
+
+  const handlePushSingle = async (item, e) => {
+    if (e) e.stopPropagation();
+    if (pushingRatingKey) return;
+    setPushingRatingKey(item.ratingKey);
+    try {
+      const res = await fetch(`${API_URL}/plex/collections/push-item`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating_key: item.ratingKey,
+          collection_name: item.title,
+          local_path: item.localAssetPath,
+          server_url: activeServer.url,
+          server_token: activeServer.token,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSuccess(`Pushed artwork for "${item.title}" to Plex!`);
+        const now = Date.now();
+        setUpdatedPosters((prev) => ({ ...prev, [item.ratingKey]: now }));
+        setItems((prev) =>
+          prev.map((it) =>
+            it.ratingKey === item.ratingKey
+              ? { ...it, syncStatus: "synced", hasPoster: true }
+              : it
+          )
+        );
+        setTimeout(() => {
+          fetchItems(true);
+        }, 800);
+      } else {
+        showError(data.error || "Failed to push poster to Plex");
+      }
+    } catch (err) {
+      showError("Error pushing poster to Plex");
+    } finally {
+      setPushingRatingKey(null);
+    }
+  };
+
+  const handleMarkSynced = async (item, e) => {
+    if (e) e.stopPropagation();
+    try {
+      const res = await fetch(`${API_URL}/plex/collections/mark-synced`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating_key: item.ratingKey,
+          collection_name: item.title,
+          local_path: item.localAssetPath,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSuccess(`Marked "${item.title}" as In-Sync!`);
+        setItems((prev) =>
+          prev.map((it) =>
+            it.ratingKey === item.ratingKey
+              ? { ...it, syncStatus: "synced" }
+              : it
+          )
+        );
+        setUpdatedPosters((prev) => ({ ...prev, [item.ratingKey]: Date.now() }));
+      } else {
+        showError(data.error || "Failed to mark as in-sync");
+      }
+    } catch (err) {
+      showError("Error marking collection as in-sync");
+    }
+  };
+
+  const handleOpenPreview = (item) => {
+    const isPreviewingLocal = diffPreviewMode[item.ratingKey] !== undefined
+      ? diffPreviewMode[item.ratingKey] === "local"
+      : Boolean(item.hasLocalAsset && item.localPosterUrl);
+    const activeUrl = isPreviewingLocal
+      ? (item.localPosterUrl || item.posterUrl)
+      : (item.posterUrl || item.localPosterUrl);
+    const libraryTitle = activeLibrary?.name || "Collections";
+    const displayPath = item.localAssetPath || `Collections\\${libraryTitle}\\${item.title}\\${item.localFilename || 'poster.png'}`;
+
+    setPreviewImage({
+      url: activeUrl,
+      name: item.localFilename || "poster.png",
+      title: item.title,
+      show_name: item.title,
+      collection_name: item.title,
+      path: displayPath,
+      type: "Collection",
+      library: activeLibrary?.name || "",
+      created: item.localCreated || null,
+      modified: item.localMtime || null,
+      size: item.localSize || null,
+      summary: item.summary || "",
+      itemCount: item.itemCount !== undefined && item.itemCount !== null ? item.itemCount : item.childCount,
+      year: item.year || "",
+      ratingKey: item.ratingKey,
+      plexWebUrl: item.plexWebUrl,
+      plexLocalUrl: item.plexLocalUrl,
+      webUrl: item.webUrl || item.plexWebUrl,
+      serverType: activeServer?.id,
+      serverUrl: activeServer?.url,
+      machineIdentifier: item.machineIdentifier,
+      _originalItem: item,
+    });
+  };
+
+  const handleDeleteAsset = async (image) => {
+    if (!image || !image.path) return;
+    if (!window.confirm(`Are you sure you want to delete the local artwork for "${image.title || 'this collection'}"?`)) {
+      return;
+    }
+    setIsDeletingAsset(true);
+    try {
+      const encodedPath = encodeURIComponent(image.path.replace(/\\/g, '/'));
+      const res = await fetch(`${API_URL}/gallery/${encodedPath}`, {
+        method: "DELETE"
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showSuccess(t("gallery.posterDeleted", { name: image.name || "Collection poster" }));
+        const targetRatingKey = image._originalItem?.ratingKey;
+        if (targetRatingKey) {
+          setItems(prev => prev.map(it => {
+            if (it.ratingKey === targetRatingKey) {
+              return {
+                ...it,
+                hasLocalAsset: false,
+                localPosterUrl: null,
+                localAssetPath: null,
+                syncStatus: "missing_local"
+              };
+            }
+            return it;
+          }));
+        }
+        setPreviewImage(null);
+      } else {
+        throw new Error(data.detail || data.message || "Failed to delete poster");
+      }
+    } catch (err) {
+      console.error("Error deleting collection poster:", err);
+      showError(err.message || "Failed to delete collection poster");
+    } finally {
+      setIsDeletingAsset(false);
+    }
+  };
+
+  const handlePushBatch = async () => {
+    if (isBatchPushing || needsPushItems.length === 0) return;
+    setIsBatchPushing(true);
+    try {
+      const res = await fetch(`${API_URL}/plex/collections/push-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: needsPushItems,
+          server_url: activeServer.url,
+          server_token: activeServer.token,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSuccess(`Successfully pushed ${data.pushed} collection(s) to Plex!`);
+        if (data.failed > 0) {
+          showInfo(`${data.failed} collection(s) failed. Check server logs.`);
+        }
+        const now = Date.now();
+        const batchBust = {};
+        needsPushItems.forEach((it) => {
+          batchBust[it.ratingKey] = now;
+        });
+        setUpdatedPosters((prev) => ({ ...prev, ...batchBust }));
+        setCacheBuster(now);
+        setTimeout(() => {
+          fetchItems(true);
+        }, 1000);
+      } else {
+        showError(data.error || "Failed to batch push collections");
+      }
+    } catch (err) {
+      showError("Error during batch push to Plex");
+    } finally {
+      setIsBatchPushing(false);
+    }
+  };
 
   // Derive Displayed Items
-  const filteredItems = items.filter(item => {
+  const filteredItems = (items || []).filter((item) => {
+    if (!item) return false;
     if (showMissingOnly) {
-       let hasPoster = item.hasPoster;
-       if (hasPoster && item.posterUrl) return false;
+      let hasPoster = item.hasPoster;
+      if (hasPoster && item.posterUrl) return false;
     }
-    return item.title.toLowerCase().includes(searchTerm.toLowerCase());
+    if (isPlex && syncFilter !== "all") {
+      if (syncFilter === "needs_push") {
+        if (!(item.syncStatus === "update_available" || item.syncStatus === "missing_server") || !item.hasLocalAsset)
+          return false;
+      } else if (syncFilter === "synced") {
+        if (item.syncStatus !== "synced") return false;
+      } else if (syncFilter === "missing_local") {
+        if (item.syncStatus !== "missing_local" && item.hasLocalAsset) return false;
+      }
+    }
+    const itemTitle = (item.title || "").toLowerCase();
+    const query = (searchTerm || "").toLowerCase();
+    return itemTitle.includes(query);
   });
   
   const sortedItems = [...filteredItems].sort((a, b) => {
-    const titleA = a.title.toLowerCase();
-    const titleB = b.title.toLowerCase();
+    const titleA = (a?.title || "").toLowerCase();
+    const titleB = (b?.title || "").toLowerCase();
     if (sortOrder === "name_asc") return titleA.localeCompare(titleB);
     if (sortOrder === "name_desc") return titleB.localeCompare(titleA);
     
     // Sort by Year as a pseudo-date fallback
-    const yearA = parseInt(a.year) || 0;
-    const yearB = parseInt(b.year) || 0;
+    const yearA = parseInt(a?.year, 10) || 0;
+    const yearB = parseInt(b?.year, 10) || 0;
     if (sortOrder === "date_newest") return yearB - yearA;
     if (sortOrder === "date_oldest") return yearA - yearB;
     return 0;
@@ -412,11 +659,11 @@ const CollectionExplorer = () => {
                 <Menu className="w-5 h-5 text-theme-primary" />
               </button>
               <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-theme-primary to-theme-secondary flex items-center gap-2">
-                <ImageIcon className="w-6 h-6 text-theme-primary" />
-                {activeLibrary ? activeLibrary.name : "Logo Browser"}
+                <Layers className="w-6 h-6 text-theme-primary" />
+                {activeLibrary ? activeLibrary.name : "Collection Explorer"}
                 {activeLibrary && !loadingItems && (
                    <span className="text-sm text-theme-muted font-normal ml-2">
-                     ({sortedItems.length} items)
+                     ({sortedItems.length} collections)
                    </span>
                 )}
               </h2>
@@ -485,10 +732,27 @@ const CollectionExplorer = () => {
                   )}
                 </div>
 
+                {isPlex && needsPushItems.length > 0 && (
+                  <button
+                    onClick={handlePushBatch}
+                    disabled={isBatchPushing}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition-all shadow-md hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Push all collections that have new or updated local artwork to Plex"
+                  >
+                    {isBatchPushing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <UploadCloud className="w-4 h-4" />
+                    )}
+                    Push All Out-of-Sync ({needsPushItems.length})
+                  </button>
+                )}
+
                 <button
-                  onClick={fetchItems}
+                  onClick={handleForceRefresh}
                   disabled={loadingItems}
                   className="flex items-center gap-2 px-3 py-2 bg-theme-bg hover:bg-theme-hover border border-theme hover:border-theme-primary/50 disabled:opacity-50 rounded-lg text-theme-text text-sm font-medium transition-all shadow-sm"
+                  title="Reload collections and bypass cached images"
                 >
                   <RefreshCw className={`w-4 h-4 text-theme-primary ${loadingItems ? "animate-spin" : ""}`} />
                   Refresh
@@ -499,12 +763,13 @@ const CollectionExplorer = () => {
 
           {/* Search Bar & Filters */}
           {activeLibrary && (
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-theme-muted" />
                   <input
                     type="text"
-                    placeholder="Search logos..."
+                    placeholder="Search collections..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-9 pr-4 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-colors text-sm"
@@ -519,34 +784,7 @@ const CollectionExplorer = () => {
                   )}
                 </div>
                 <button
-                    onClick={async () => {
-                        const newShowMissing = !showMissingOnly;
-                        setShowMissingOnly(newShowMissing);
-                        if (newShowMissing && activeServer?.id === 'plex' && !plexLogosChecked && !checkingPlexLogos) {
-                            setCheckingPlexLogos(true);
-                            try {
-                                const ratingKeys = items.map(i => i.ratingKey);
-                                const res = await fetch(`${API_URL}/media-server/check-logos`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({
-                                        server_type: activeServer.id,
-                                        url: activeServer.url,
-                                        token: activeServer.token,
-                                        rating_keys: ratingKeys
-                                    })
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                    setKnownPlexLogos(data.results);
-                                    setPlexLogosChecked(true);
-                                }
-                            } catch (e) {
-                                console.error("Failed to check logos", e);
-                            }
-                            setCheckingPlexLogos(false);
-                        }
-                    }}
+                    onClick={() => setShowMissingOnly(!showMissingOnly)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border flex items-center justify-center gap-2 whitespace-nowrap transition-colors ${
                         showMissingOnly 
                         ? 'bg-theme-primary border-theme-primary text-white' 
@@ -555,8 +793,62 @@ const CollectionExplorer = () => {
                 >
                     <Square className={`w-4 h-4 ${showMissingOnly ? 'hidden' : 'block'}`} />
                     <CheckSquare className={`w-4 h-4 ${showMissingOnly ? 'block' : 'hidden'}`} />
-                    Missing Only
+                    Missing Poster
                 </button>
+              </div>
+
+              {/* Plex Sync Filter Tabs */}
+              {isPlex && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-theme/40 text-xs">
+                  <span className="text-theme-muted font-medium mr-1 text-[11px]">Sync Filter:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSyncFilter("all")}
+                    className={`px-2.5 py-1 rounded-full font-medium transition-all ${
+                      syncFilter === "all"
+                        ? "bg-theme-primary text-white shadow-sm"
+                        : "bg-theme-bg text-theme-muted hover:text-theme-text border border-theme"
+                    }`}
+                  >
+                    All ({items.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSyncFilter("needs_push")}
+                    className={`px-2.5 py-1 rounded-full font-medium transition-all flex items-center gap-1.5 ${
+                      syncFilter === "needs_push"
+                        ? "bg-amber-500 text-white shadow-sm"
+                        : "bg-theme-bg text-amber-400 hover:bg-amber-500/10 border border-amber-500/30"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                    Needs Push ({needsPushItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSyncFilter("synced")}
+                    className={`px-2.5 py-1 rounded-full font-medium transition-all flex items-center gap-1.5 ${
+                      syncFilter === "synced"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "bg-theme-bg text-emerald-400 hover:bg-emerald-500/10 border border-emerald-500/30"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    In Sync ({syncedItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSyncFilter("missing_local")}
+                    className={`px-2.5 py-1 rounded-full font-medium transition-all ${
+                      syncFilter === "missing_local"
+                        ? "bg-neutral-600 text-white shadow-sm"
+                        : "bg-theme-bg text-neutral-400 hover:text-theme-text border border-theme"
+                    }`}
+                  >
+                    No Local Asset ({missingLocalItems.length})
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -572,72 +864,216 @@ const CollectionExplorer = () => {
           ) : !activeServer || !activeLibrary ? (
             <div className="flex flex-col items-center justify-center h-full text-theme-muted">
               <ImageIcon className="w-16 h-16 opacity-20 mb-4" />
-              <p>Select a server and library to view logos.</p>
+              <p>Select a server and library to view collections.</p>
             </div>
           ) : loadingItems ? (
             <div className="flex flex-col items-center justify-center h-full text-theme-muted">
               <Loader2 className="w-10 h-10 animate-spin text-theme-primary mb-4" />
-              <p>Loading items from {activeLibrary.name}...</p>
+              <p>Loading collections from {activeLibrary.name}...</p>
             </div>
           ) : displayedItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-theme-muted">
               <Film className="w-16 h-16 opacity-20 mb-4" />
-              <p>{searchTerm ? "No matching items found." : "No items found in this library."}</p>
+              <p>{searchTerm ? "No matching collections found." : "No collections found in this library."}</p>
             </div>
           ) : (
             <>
               <div className={`grid gap-4 ${buildResponsiveGridClass(imageSize)}`}>
-                {displayedItems.map((item) => (
-                  <div
-                    key={item.ratingKey}
-                    className="group bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all hover:shadow-lg hover:shadow-theme-primary/10 flex flex-col relative"
-                  >
-                    <div className="aspect-[2/3] bg-theme-bg/50 relative flex items-center justify-center p-2">
-                        {item.hasPoster && item.posterUrl && (
-                            <img 
-                                src={updatedPosters[item.ratingKey] ? `${item.posterUrl}&t=${updatedPosters[item.ratingKey]}` : item.posterUrl} 
-                                alt={item.title} 
-                                className="w-full h-full object-cover filter drop-shadow-md" 
-                                loading="lazy" 
-                                onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    if (e.target.nextSibling) {
-                                        e.target.nextSibling.style.display = 'block';
-                                    }
-                                }}
-                            />
-                        )}
-                        
-                        <div className="text-center text-theme-muted opacity-30" style={{ display: (!item.hasPoster || !item.posterUrl) ? 'block' : 'none' }}>
-                            <ImageIcon className="w-8 h-8 mx-auto mb-1" />
-                            <span className="text-[10px] uppercase font-bold tracking-wider">No Poster</span>
-                        </div>
-                        
-                        {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
+                {displayedItems.map((item) => {
+                  if (!item) return null;
+                  const isExplicitLocal = diffPreviewMode[item.ratingKey] === "local";
+                  const isExplicitServer = diffPreviewMode[item.ratingKey] === "server";
+                  // When synced, default to the local asset to completely bypass media server requests and load instantly
+                  const isPreviewingLocal = isExplicitLocal || (!isExplicitServer && item.syncStatus === "synced" && item.hasLocalAsset);
+                  const rawPosterUrl = isPreviewingLocal && item.localPosterUrl ? item.localPosterUrl : item.posterUrl;
+                  const buster = updatedPosters[item.ratingKey] || cacheBuster;
+                  const currentPosterUrl = rawPosterUrl
+                    ? (buster ? `${rawPosterUrl}${rawPosterUrl.includes("?") ? "&" : "?"}_cb=${buster}` : rawPosterUrl)
+                    : rawPosterUrl;
+
+                  return (
+                    <div
+                      key={item.ratingKey}
+                      className="group bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 transition-all hover:shadow-lg hover:shadow-theme-primary/10 flex flex-col relative"
+                    >
+                      <div className="aspect-[2/3] bg-theme-bg/50 relative flex items-center justify-center p-2">
+                          {/* Sync Status Badge (Plex only) */}
+                          {isPlex && (
+                            <div className="absolute top-2 left-2 z-20 pointer-events-none">
+                              {item.syncStatus === "synced" && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-950/90 text-green-300 border border-green-500/50 backdrop-blur-sm flex items-center gap-1 shadow">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                                  In Sync
+                                </span>
+                              )}
+                              {item.syncStatus === "update_available" && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-950/90 text-yellow-300 border border-yellow-500/50 backdrop-blur-sm flex items-center gap-1 shadow">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                                  Update Ready
+                                </span>
+                              )}
+                              {item.syncStatus === "missing_server" && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/90 text-amber-300 border border-amber-500/50 backdrop-blur-sm flex items-center gap-1 shadow">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                  Missing on Plex
+                                </span>
+                              )}
+                              {(!item.hasLocalAsset || item.syncStatus === "missing_local") && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-neutral-900/90 text-neutral-400 border border-neutral-700/50 backdrop-blur-sm shadow">
+                                  No Local Asset
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Diff Preview Switcher in top-right */}
+                          {isPlex && item.hasLocalAsset && item.localPosterUrl && item.hasPoster && item.posterUrl && (
                             <button
-                                onClick={() => {
-                                    setSelectedCollection(item);
-                                    setShowLiveEditor(true);
-                                }}
-                                className="px-3 py-1.5 bg-theme-primary hover:bg-theme-primary-hover text-white text-sm rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center gap-1.5"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleDiffPreview(item.ratingKey, isPreviewingLocal);
+                              }}
+                              className={`absolute top-2 right-2 z-20 px-1.5 py-0.5 rounded text-[9px] font-bold border backdrop-blur-md transition-all shadow ${
+                                isPreviewingLocal
+                                  ? "bg-theme-primary text-white border-theme-primary"
+                                  : "bg-black/70 text-theme-muted border-white/20 hover:text-white"
+                              }`}
+                              title={`Currently viewing ${isPreviewingLocal ? "Local Asset" : "Plex Server Artwork"}. Click to toggle.`}
                             >
-                                <Search className="w-3.5 h-3.5" />
-                                Edit Poster
+                              {isPreviewingLocal ? "LOCAL" : "SERVER"}
                             </button>
+                          )}
+
+                          {currentPosterUrl ? (
+                              <img 
+                                  src={currentPosterUrl} 
+                                  alt={item.title} 
+                                  className="w-full h-full object-cover filter drop-shadow-md rounded" 
+                                  loading="lazy" 
+                                  onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      if (e.target.nextSibling) {
+                                          e.target.nextSibling.style.display = 'block';
+                                      }
+                                  }}
+                              />
+                          ) : null}
+                          
+                          <div className="text-center text-theme-muted opacity-30" style={{ display: !currentPosterUrl ? 'block' : 'none' }}>
+                              <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                              <span className="text-[10px] uppercase font-bold tracking-wider">No Poster</span>
+                          </div>
+                          
+                          {/* Hover Overlay */}
+                          <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 z-10 p-3">
+                              <button
+                                  onClick={() => {
+                                      setSelectedCollection(item);
+                                      setShowLiveEditor(true);
+                                  }}
+                                  className="w-full py-1.5 bg-theme-primary hover:bg-theme-primary-hover text-white text-xs rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center justify-center gap-1.5"
+                              >
+                                  <Search className="w-3.5 h-3.5" />
+                                  Edit Poster
+                              </button>
+                              <button
+                                  onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenPreview(item);
+                                  }}
+                                  className="w-full py-1.5 bg-theme-card/90 hover:bg-theme-card border border-theme text-theme-text text-xs rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center justify-center gap-1.5"
+                                  title="View full artwork preview and details"
+                              >
+                                  <Eye className="w-3.5 h-3.5 text-theme-primary" />
+                                  Asset Details
+                              </button>
+                              {isPlex && item.hasLocalAsset && (item.syncStatus === "update_available" || item.syncStatus === "missing_server") && (
+                                  <div className="flex gap-1.5 w-full">
+                                    <button
+                                        onClick={(e) => handlePushSingle(item, e)}
+                                        disabled={pushingRatingKey === item.ratingKey}
+                                        className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                    >
+                                        {pushingRatingKey === item.ratingKey ? (
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                            <UploadCloud className="w-3.5 h-3.5" />
+                                        )}
+                                        Push to Plex
+                                    </button>
+                                    <button
+                                        onClick={(e) => handleMarkSynced(item, e)}
+                                        className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded-lg font-medium shadow-lg transition-transform transform scale-95 group-hover:scale-100 flex items-center justify-center gap-1"
+                                        title="Already matches Plex? Mark as In-Sync without re-uploading"
+                                    >
+                                        <Check className="w-3.5 h-3.5" />
+                                        In-Sync
+                                    </button>
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                      
+                      <div className="p-2.5 bg-theme-card border-t border-theme flex flex-col justify-between flex-1">
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="font-semibold text-xs truncate text-theme-text flex-1" title={item.title}>
+                              {item.title}
+                            </p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPreview(item);
+                              }}
+                              className="text-theme-muted hover:text-theme-primary p-0.5 rounded hover:bg-theme-bg/60 transition-colors shrink-0"
+                              title="Asset Details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-[10px] text-theme-muted opacity-80 truncate" title={item.summary || undefined}>
+                              {item.itemCount !== undefined && item.itemCount !== null ? `${item.itemCount} ${item.itemCount === 1 ? 'item' : 'items'}` : ""}
+                              {item.itemCount !== undefined && item.itemCount !== null && item.year ? " • " : ""}
+                              {item.year || (item.itemCount === undefined || item.itemCount === null ? "Collection" : "")}
+                            </span>
+                            {isPlex && item.hasLocalAsset && (
+                              <span className="text-[9px] text-theme-primary font-medium truncate max-w-[120px]" title={item.localAssetPath}>
+                                Local ready
+                              </span>
+                            )}
+                          </div>
                         </div>
+
+                        {isPlex && item.hasLocalAsset && (item.syncStatus === "update_available" || item.syncStatus === "missing_server") && (
+                          <div className="flex items-center gap-1.5 mt-2">
+                            <button
+                              onClick={(e) => handlePushSingle(item, e)}
+                              disabled={pushingRatingKey === item.ratingKey}
+                              className="flex-1 py-1 px-2 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                              title="Push local collection poster to Plex"
+                            >
+                              {pushingRatingKey === item.ratingKey ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <UploadCloud className="w-3 h-3" />
+                              )}
+                              Push
+                            </button>
+                            <button
+                              onClick={(e) => handleMarkSynced(item, e)}
+                              className="py-1 px-2 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors"
+                              title="Already matches Plex? Mark as in-sync without re-uploading"
+                            >
+                              <Check className="w-3 h-3" />
+                              In-Sync
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    
-                    <div className="p-2.5 bg-theme-card border-t border-theme">
-                      <p className="font-semibold text-xs truncate text-theme-text" title={item.title}>
-                        {item.title}
-                      </p>
-                      <p className="text-[10px] text-theme-muted mt-0.5 opacity-70">
-                        {item.year || "Unknown"}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <PaginationControls
@@ -662,6 +1098,27 @@ const CollectionExplorer = () => {
           collection={selectedCollection}
           libraryName={activeLibrary?.name}
           activeServer={activeServer}
+        />
+      )}
+
+      {/* Asset Preview / Details Modal */}
+      {previewImage && (
+        <ImagePreviewModal
+          selectedImage={previewImage}
+          onClose={() => setPreviewImage(null)}
+          onReplace={(img) => {
+            const origItem = img._originalItem || items.find(c => c.ratingKey === img.ratingKey || c.title === img.title);
+            setPreviewImage(null);
+            if (origItem) {
+              setSelectedCollection(origItem);
+              setShowLiveEditor(true);
+            }
+          }}
+          onDelete={previewImage._originalItem?.hasLocalAsset ? handleDeleteAsset : undefined}
+          isDeleting={isDeletingAsset}
+          cacheBuster={cacheBuster || Date.now()}
+          formatDisplayPath={(p) => p}
+          formatTimestamp={(p) => "Unknown"}
         />
       )}
     </div>

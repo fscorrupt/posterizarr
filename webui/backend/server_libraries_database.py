@@ -4,6 +4,7 @@ Separate database for media server library management
 """
 
 import sqlite3
+import json
 from pathlib import Path
 import logging
 import threading
@@ -94,6 +95,31 @@ class ServerLibrariesDB:
         logger.info("Server libraries database initialization complete")
         logger.info("=" * 60)
 
+    def _get_config_exclusions(self, server_type: str) -> list:
+        try:
+            candidates = [
+                self.db_path.parent.parent / "config.json",
+                self.db_path.parent / "config.json",
+                Path("config.json"),
+            ]
+            for config_file in candidates:
+                if config_file.exists():
+                    with open(config_file, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                    if server_type == "plex":
+                        ex = cfg.get("PlexLibstoExclude") or cfg.get("PlexPart", {}).get("LibstoExclude", []) or []
+                    elif server_type == "jellyfin":
+                        ex = cfg.get("JellyfinLibstoExclude") or cfg.get("JellyfinPart", {}).get("LibstoExclude", []) or []
+                    elif server_type == "emby":
+                        ex = cfg.get("EmbyLibstoExclude") or cfg.get("EmbyPart", {}).get("LibstoExclude", []) or []
+                    else:
+                        ex = []
+                    if ex:
+                        return list(ex)
+        except Exception as e:
+            logger.warning(f"Error reading exclusions from config.json for {server_type}: {e}")
+        return []
+
     def save_media_server_libraries(
         self, server_type: str, libraries: list, excluded_libraries: list = None
     ):
@@ -113,7 +139,14 @@ class ServerLibrariesDB:
                 )
                 existing_exclusions = {row["library_name"]: row["is_excluded"] for row in cursor.fetchall()}
 
-                excluded_set = set(excluded_libraries) if excluded_libraries is not None else set(k for k, v in existing_exclusions.items() if v == 1)
+                if excluded_libraries is not None:
+                    excluded_set = set(excluded_libraries)
+                else:
+                    excluded_set = set(k for k, v in existing_exclusions.items() if v == 1)
+                    if not excluded_set:
+                        cfg_ex = self._get_config_exclusions(server_type)
+                        if cfg_ex:
+                            excluded_set = set(cfg_ex)
 
                 # Delete existing libraries
                 cursor.execute(
@@ -203,7 +236,6 @@ class ServerLibrariesDB:
                 )
 
                 rows = cursor.fetchall()
-                conn.close()
 
                 libraries = []
                 excluded = []
@@ -211,11 +243,33 @@ class ServerLibrariesDB:
                     lib_data = {
                         "name": row["library_name"],
                         "type": row["library_type"],
-                        "last_fetched": row["last_fetched"]
+                        "last_fetched": row["last_fetched"],
+                        "is_excluded": bool(row["is_excluded"])
                     }
                     libraries.append(lib_data)
                     if row["is_excluded"] == 1:
                         excluded.append(row["library_name"])
+
+                # If no exclusions found in DB yet, check config.json and sync DB
+                if not excluded and libraries:
+                    cfg_ex = self._get_config_exclusions(server_type)
+                    if cfg_ex:
+                        try:
+                            placeholders = ",".join("?" * len(cfg_ex))
+                            cursor.execute(
+                                f"UPDATE media_server_libraries SET is_excluded = 1 WHERE server_type = ? AND library_name IN ({placeholders})",
+                                [server_type] + list(cfg_ex)
+                            )
+                            conn.commit()
+                            excluded = [lib["name"] for lib in libraries if lib["name"] in cfg_ex]
+                            for lib in libraries:
+                                if lib["name"] in cfg_ex:
+                                    lib["is_excluded"] = True
+                            logger.info(f"Auto-synced {len(excluded)} exclusions from config.json to DB for {server_type}")
+                        except Exception as e:
+                            logger.warning(f"Error auto-syncing config exclusions to DB: {e}")
+
+                conn.close()
 
                 logger.debug(
                     f"Found {len(libraries)} libraries for {server_type} ({len(excluded)} excluded)"

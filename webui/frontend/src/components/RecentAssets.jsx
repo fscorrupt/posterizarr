@@ -230,10 +230,10 @@ function RecentAssets({ refreshTrigger = 0 }) {
 
   const getTypeColor = (type) => {
     switch (type?.toLowerCase()) {
+      case "collection":
+        return "bg-amber-500/10 text-amber-400 border-amber-500/20";
       case "movie":
       case "poster":
-        return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-      case "collection":
         return "bg-blue-500/10 text-blue-400 border-blue-500/20";
       case "show":
         return "bg-purple-500/10 text-purple-400 border-purple-500/20";
@@ -253,9 +253,10 @@ function RecentAssets({ refreshTrigger = 0 }) {
   const getTypeLabel = (type) => {
     switch (type?.toLowerCase()) {
       case "titlecard":
-      case "collection":
       case "title_card":
         return "Episode";
+      case "collection":
+        return "Collection";
       default:
         return type;
     }
@@ -265,9 +266,9 @@ function RecentAssets({ refreshTrigger = 0 }) {
     const type = asset.type?.toLowerCase() || "";
 
     switch (type) {
-      case "movie":
       case "collection":
-        return "collection";
+        return "Collection";
+      case "movie":
       case "poster":
         return "Movie";
       case "show":
