@@ -78,3 +78,6 @@ When setting up the schedule:
 3. Set your cron schedule or interval (e.g., daily).
 
 This job runs as a fast Python task without invoking PowerShell or ImageMagick, inspects local files for changes against `database/plex_push_cache.db`, and pushes only your selected asset types to Plex.
+
+> [!WARNING]
+> **Warning for Kometa Users:** Never schedule Plex Sync for asset types (like movie/show posters or seasons) that are also managed by Kometa. Because Kometa applies its own overlays directly to Plex, Posterizarr will detect that the server image differs from the local file and will repeatedly attempt to re-upload it, leading to a continuous overwrite war. If you use Kometa, only sync asset types (such as custom **Collections**) that Kometa does not touch.

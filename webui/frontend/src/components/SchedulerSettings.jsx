@@ -10,6 +10,7 @@ import {
   Play,
   Calendar,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Settings,
   Zap,
@@ -1116,6 +1117,15 @@ const SchedulerSettings = () => {
                   >
                     Clear
                   </button>
+                </div>
+              </div>
+
+              {/* Kometa Incompatibility Warning */}
+              <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 text-xs leading-relaxed">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-amber-300">Warning (Kometa / PMM Conflict):</span>{" "}
+                  Do not use a scheduled Plex Sync job in combination with <strong>Kometa (Plex Meta Manager)</strong> for media that Kometa manages. Because Kometa applies its own overlays and artwork directly to Plex, Posterizarr's Plex Sync will detect that the server artwork differs from your local assets and continuously attempt to re-upload them, resulting in an endless overwrite loop.
                 </div>
               </div>
 

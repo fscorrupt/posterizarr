@@ -566,3 +566,11 @@ In **Scheduler** (`/scheduler`):
 3. Toggle which asset types to include using the interactive checkboxes.
 4. Set your desired interval or cron schedule.
 5. All sync activity is logged to `UILogs/PlexSync.log` and viewable in real-time in the WebUI Log Viewer.
+
+> [!WARNING]
+> **Do not use Plex Sync schedule in combination with Kometa (Plex Meta Manager)!**
+> If you run Kometa to manage posters, titlecards, or overlays, **do not** schedule a Plex Sync job for those same libraries or asset types.
+> 
+> Because Kometa applies its own overlays and metadata modifications directly to Plex, Posterizarr's Plex Sync will continuously detect that the live Plex artwork differs from your clean local assets and will repeatedly attempt to re-upload them. This triggers an endless overwrite cycle between Kometa and Posterizarr.
+> 
+> If you use Kometa, ensure that Plex Sync is only scheduled for asset types that Kometa does not touch (e.g. custom **Collections** only), or manage all uploads exclusively through Kometa.

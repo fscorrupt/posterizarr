@@ -18135,20 +18135,64 @@ class UploadToServerRequest(BaseModel):
     collection_name: Optional[str] = None
     library_name: Optional[str] = None
 
+def _is_valid_image_bytes(b: bytes) -> bool:
+    """Validate image magic bytes (JPEG, PNG, WebP) to prevent arbitrary file upload."""
+    if not b or len(b) < 12:
+        return False
+    if b.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True
+    if b.startswith(b"\xff\xd8\xff"):
+        return True
+    if b.startswith(b"RIFF") and b[8:12] == b"WEBP":
+        return True
+    return False
+
 @app.post("/api/collections/upload-to-server")
 async def api_upload_collection_to_server(request: UploadToServerRequest):
     """Upload poster directly to Media Server (Plex/Jellyfin/Emby)"""
     try:
+        if len(request.image_data) > 35 * 1024 * 1024:
+            return {"success": False, "error": "Image data exceeds size limit (25MB)"}
+
         # Decode base64 image
         import base64
-        header, encoded = request.image_data.split(",", 1)
+        header, encoded = request.image_data.split(",", 1) if "," in request.image_data else ("", request.image_data)
         data = base64.b64decode(encoded)
 
+        if not _is_valid_image_bytes(data):
+            return {"success": False, "error": "Invalid image payload. Only JPEG, PNG, and WebP are allowed."}
+
         server_url = request.server_url.rstrip('/')
+        if not is_safe_url(server_url, allow_private=True):
+            raise HTTPException(status_code=403, detail="Unsafe media server URL")
+
+        # Load config and verify host
+        config = {}
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+        expected_url = None
+        if request.server_type == "plex":
+            expected_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
+        elif request.server_type == "jellyfin":
+            expected_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
+        elif request.server_type == "emby":
+            expected_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
+
+        if expected_url:
+            req_host = urllib.parse.urlparse(server_url).netloc.lower()
+            exp_host = urllib.parse.urlparse(str(expected_url)).netloc.lower()
+            if req_host != exp_host:
+                raise HTTPException(status_code=403, detail="Server URL host mismatch with configured media server")
+
+        safe_rating_key = "".join(c for c in str(request.rating_key) if c.isalnum() or c in "-_").strip()
+        if not safe_rating_key:
+            return {"success": False, "error": "Invalid rating_key"}
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             if request.server_type == "plex":
-                url = f"{server_url}/library/metadata/{request.rating_key}/posters"
+                url = f"{server_url}/library/metadata/{safe_rating_key}/posters"
                 headers = {
                     "X-Plex-Token": request.server_token,
                     "Content-Type": "image/jpeg"
@@ -18172,18 +18216,18 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
                             asset_path=str(loc_p.resolve()),
                             file_mtime=st.st_mtime,
                             file_size=st.st_size,
-                            rating_key=str(request.rating_key),
+                            rating_key=safe_rating_key,
                             asset_type="collection",
                             library_name=request.library_name or "",
                             item_title=request.collection_name or "",
                             status="synced"
                         )
-                        invalidate_media_server_thumb_cache(str(request.rating_key))
+                        invalidate_media_server_thumb_cache(safe_rating_key)
                 except Exception as cache_err:
                     logger.warning(f"Could not update plex push cache after upload: {cache_err}")
 
             elif request.server_type in ["jellyfin", "emby"]:
-                url = f"{server_url}/Items/{request.rating_key}/Images/Primary"
+                url = f"{server_url}/Items/{safe_rating_key}/Images/Primary"
                 headers = {
                     "Authorization": f'MediaBrowser Token="{request.server_token}"',
                     "Content-Type": "image/jpeg"
@@ -18239,6 +18283,9 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
 
         if not local_file or not local_file.exists():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
+
+        if local_file.suffix.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
+            return {"success": False, "error": "Invalid image file extension"}
 
         stat = local_file.stat()
         cache.record_push(
@@ -18315,6 +18362,9 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
         if not local_file or not local_file.exists():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
 
+        if local_file.suffix.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
+            return {"success": False, "error": "Invalid image file extension"}
+
         res = await push_collection_artwork_to_plex(
             plex_url=url,
             plex_token=token,
@@ -18322,7 +18372,8 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
             local_image_path=local_file,
             cache=cache,
             asset_type="collection",
-            item_title=request.collection_name
+            item_title=request.collection_name,
+            allowed_base_dir=ASSETS_DIR
         )
         if res.get("success"):
             invalidate_media_server_thumb_cache(safe_rating_key)
@@ -18361,10 +18412,12 @@ async def api_plex_push_batch_collections(request: PlexPushBatchRequest):
         cache_db_path = DATABASE_DIR / "plex_push_cache.db"
         cache = PlexPushCache(cache_db_path)
 
+        safe_items = request.items[:500] if isinstance(request.items, list) else []
+
         res = await push_batch_collections_to_plex(
             plex_url=url,
             plex_token=token,
-            items=request.items,
+            items=safe_items,
             assets_dir=ASSETS_DIR,
             cache=cache,
             max_concurrency=2
@@ -18382,6 +18435,8 @@ async def api_plex_trigger_sync(request: Request):
     """Triggers an on-demand Plex Sync background task."""
     try:
         data = await request.json() if await request.body() else {}
+        if not isinstance(data, dict):
+            data = {}
         from plex_push_service import run_plex_sync_task
         asyncio.create_task(run_plex_sync_task(
             schedule_config=data,
@@ -18403,11 +18458,17 @@ class CollectionSaveRequest(BaseModel):
 @app.post("/api/collections/save")
 async def api_save_collection_poster(request: CollectionSaveRequest):
     try:
+        if len(request.image_data) > 35 * 1024 * 1024:
+            return {"success": False, "error": "Image data exceeds 25MB limit."}
+
         # Decode base64
         import base64
         import re
         header, encoded = request.image_data.split(",", 1) if "," in request.image_data else ("", request.image_data)
         data = base64.b64decode(encoded)
+
+        if not _is_valid_image_bytes(data):
+            return {"success": False, "error": "Invalid image format. Only JPEG, PNG, and WebP are allowed."}
 
         # Sanitize to prevent path traversal and invalid filename characters
         safe_library_name = re.sub(r'[\\/*?:"<>|]', "", request.library_name).strip(" .")
