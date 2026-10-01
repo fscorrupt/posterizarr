@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   RefreshCw,
   Download,
@@ -18,6 +18,8 @@ import {
   LifeBuoy,
   X,
   Info,
+  ExternalLink,
+  TestTube,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Notification from "./Notification";
@@ -111,6 +113,7 @@ function LogViewer() {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
   const location = useLocation();
+  const navigate = useNavigate();
   const [logs, setLogs] = useState([]);
   const [availableLogs, setAvailableLogs] = useState([]);
 
@@ -124,6 +127,14 @@ function LogViewer() {
   const [loading, setLoading] = useState(false);
   const [isLoadingFullLog, setIsLoadingFullLog] = useState(false);
   const [isGatheringSupportZip, setIsGatheringSupportZip] = useState(false); // Added
+
+  // Redirect after run completion (e.g. testing mode -> /test-gallery)
+  const redirectToOnFinish = location.state?.redirectToOnFinish;
+  const [redirectBanner, setRedirectBanner] = useState(false);
+  const [redirectCountdown, setRedirectCountdown] = useState(null);
+  const countdownIntervalRef = useRef(null);
+  const wasRunningRef = useRef(Boolean(redirectToOnFinish));
+  const hasTriggeredRedirectRef = useRef(false);
 
   // --- NEW FILTER STATE ---
   const [searchTerm, setSearchTerm] = useState("");
@@ -181,14 +192,56 @@ function LogViewer() {
     return { raw: line, level: null }; // level is null
   };
 
+  const startRedirectCountdown = () => {
+    setRedirectBanner(true);
+    setRedirectCountdown(4);
+
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+
+    countdownIntervalRef.current = setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+          if (redirectToOnFinish) {
+            navigate(redirectToOnFinish);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const handleCancelRedirect = () => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setRedirectCountdown(null);
+  };
+
   const fetchStatus = async () => {
     try {
       const response = await fetch(`${API_URL}/status`);
       const data = await response.json();
+      const isRunning = Boolean(data.running);
+
       setStatus({
-        running: data.running || false,
+        running: isRunning,
         current_mode: data.current_mode || null,
       });
+
+      if (isRunning) {
+        wasRunningRef.current = true;
+      } else if (wasRunningRef.current && !isRunning) {
+        wasRunningRef.current = false;
+        if (redirectToOnFinish && !hasTriggeredRedirectRef.current) {
+          hasTriggeredRedirectRef.current = true;
+          startRedirectCountdown();
+        }
+      }
     } catch (error) {
       console.error("Error fetching status:", error);
     }
@@ -583,6 +636,7 @@ function LogViewer() {
 
     return () => {
       clearInterval(statusInterval);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       disconnectWebSocket();
     };
   }, []); // Empty dependency array, runs only once on mount
@@ -804,6 +858,54 @@ function LogViewer() {
               )}
               {t("logViewer.stopScript")}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Redirect Banner after completion (e.g. testing mode) */}
+      {redirectBanner && (
+        <div className="bg-blue-950/50 rounded-xl p-4 border border-blue-500/60 shadow-lg animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400 flex-shrink-0">
+                <TestTube className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-blue-200">
+                  {t("logViewer.testCompletedTitle", "Test run completed!")}
+                </p>
+                <p className="text-sm text-blue-300/80">
+                  {redirectCountdown !== null
+                    ? t("logViewer.redirectingIn", {
+                        count: redirectCountdown,
+                        defaultValue: `Redirecting to Test Gallery in ${redirectCountdown}s...`,
+                      })
+                    : t("logViewer.testAssetsReady", "Test assets are ready in the Test Gallery.")}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {redirectCountdown !== null && (
+                <button
+                  type="button"
+                  onClick={handleCancelRedirect}
+                  className="px-3 py-1.5 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg text-xs font-medium text-theme-text transition-all cursor-pointer"
+                >
+                  {t("logViewer.stayOnLogs", "Stay on Logs")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  handleCancelRedirect();
+                  navigate(redirectToOnFinish);
+                }}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white transition-all shadow flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>{t("logViewer.viewTestGalleryNow", "View Test Gallery Now")}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

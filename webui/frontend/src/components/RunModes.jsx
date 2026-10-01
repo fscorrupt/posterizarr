@@ -30,6 +30,8 @@ import { useTranslation } from "react-i18next";
 import ConfirmDialog from "./ConfirmDialog";
 import DangerZone from "./DangerZone";
 import RestoreModeModal from "./modals/RestoreModeModal";
+import NormalModeModal from "./modals/NormalModeModal";
+import TestingModeModal from "./modals/TestingModeModal";
 import { useToast } from "../context/ToastContext";
 import { BLUEPRINTS } from "./Blueprints";
 
@@ -549,6 +551,9 @@ function RunModes() {
   const [resetLibrary, setResetLibrary] = useState("");
 
   // Sync Modal States
+  const [showNormalModeModal, setShowNormalModeModal] = useState(false);
+  const [showTestingModeModal, setShowTestingModeModal] = useState(false);
+  const [autoRedirectTesting, setAutoRedirectTesting] = useState(true);
   const [showJellyfinSyncModal, setShowJellyfinSyncModal] = useState(false);
   const [showEmbySyncModal, setShowEmbySyncModal] = useState(false);
   const [showBackupModeModal, setShowBackupModeModal] = useState(false);
@@ -813,7 +818,7 @@ function RunModes() {
     }
   };
 
-  const runScript = async (mode) => {
+  const runScript = async (mode, options = {}) => {
     if (status.running) {
       showError(
         `${t("runModes.scriptRunning")} - ${t("runModes.status.mode")}: ${status.current_mode.charAt(0).toUpperCase() +
@@ -839,19 +844,29 @@ function RunModes() {
         );
         fetchStatus();
 
+        if (options.directRedirectTo) {
+          navigate(options.directRedirectTo);
+          return;
+        }
+
         const logFile = getLogFileForMode(mode);
         console.log(`Waiting for log file: ${logFile}`);
 
         // Wait for log file to be created before navigating
         const logExists = await waitForLogFile(logFile);
 
+        const navState = {
+          logFile: logFile,
+          ...(options.redirectToOnFinish ? { redirectToOnFinish: options.redirectToOnFinish, mode } : {})
+        };
+
         if (logExists) {
           console.log(`Redirecting to LogViewer with log: ${logFile}`);
-          navigate("/logs", { state: { logFile: logFile } });
+          navigate("/logs", { state: navState });
         } else {
           console.warn(`Log file ${logFile} not found, redirecting anyway`);
           // Still navigate even if log doesn't exist yet
-          navigate("/logs", { state: { logFile: logFile } });
+          navigate("/logs", { state: navState });
         }
       } else {
         showError(`Error: ${data.message}`);
@@ -2016,6 +2031,37 @@ const LogoUpdaterModal = React.memo(({
         type="danger"
       />
 
+      <NormalModeModal
+        show={showNormalModeModal}
+        onClose={() => setShowNormalModeModal(false)}
+        onStart={() => {
+          setShowNormalModeModal(false);
+          runScript("normal");
+        }}
+        loading={loading}
+        status={status}
+        t={t}
+      />
+      <TestingModeModal
+        show={showTestingModeModal}
+        onClose={() => setShowTestingModeModal(false)}
+        onStart={({ autoRedirect }) => {
+          setShowTestingModeModal(false);
+          runScript("testing", {
+            redirectToOnFinish: autoRedirect ? "/test-gallery" : null,
+          });
+        }}
+        onStartAndGoToGallery={() => {
+          setShowTestingModeModal(false);
+          runScript("testing", { directRedirectTo: "/test-gallery" });
+        }}
+        autoRedirect={autoRedirectTesting}
+        setAutoRedirect={setAutoRedirectTesting}
+        loading={loading}
+        status={status}
+        t={t}
+        navigate={navigate}
+      />
       <JellyfinSyncModal
         show={showJellyfinSyncModal}
         onClose={() => setShowJellyfinSyncModal(false)}
@@ -2191,7 +2237,7 @@ const LogoUpdaterModal = React.memo(({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           {/* Normal Mode */}
           <button
-            onClick={() => runScript("normal")}
+            onClick={() => setShowNormalModeModal(true)}
             disabled={loading || status.running}
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >
@@ -2206,7 +2252,7 @@ const LogoUpdaterModal = React.memo(({
 
           {/* Testing Mode */}
           <button
-            onClick={() => runScript("testing")}
+            onClick={() => setShowTestingModeModal(true)}
             disabled={loading || status.running}
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >

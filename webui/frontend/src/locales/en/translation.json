@@ -237,6 +237,41 @@
       "cancel": "Cancel",
       "start": "Start Backup"
     },
+    "normal": {
+      "title": "Normal Mode",
+      "info": "Run Posterizarr across configured media libraries",
+      "description": "This mode processes your movies, TV shows, and seasons based on your configuration and custom blueprints. It generates artwork and uploads directly to your media server.",
+      "howItWorks": "How Normal Mode works:",
+      "step1Title": "Media Library Scan",
+      "step1Text": "Scans configured libraries (Plex, Jellyfin, Emby) for media items requiring artwork updates.",
+      "step2Title": "Artwork & Overlay Processing",
+      "step2Text": "Fetches source images, applies your configured borders, overlays, gradients, and custom blueprints.",
+      "step3Title": "Media Server Sync & Local Backups",
+      "step3Text": "Sets the generated artwork on your media server and stores local backups if enabled in settings.",
+      "tip": "Tip: Review your configuration and active blueprints before starting a normal run.",
+      "cancel": "Cancel",
+      "start": "Start Normal Run"
+    },
+    "testing": {
+      "title": "Testing Mode",
+      "info": "Safe Preview Run (No Server Uploads)",
+      "description": "Generates sample posters and artwork according to your rules and configuration without modifying your media server or applying images to your libraries. Ideal for safely testing fonts, borders, overlays, and blueprints.",
+      "howItWorks": "How Testing Mode works:",
+      "step1Title": "Sample Processing",
+      "step1Text": "Processes a test subset of items using your active settings, overlays, borders, and blueprints.",
+      "step2Title": "No Media Server Changes",
+      "step2Text": "Posters are never uploaded or synced to your live Plex, Jellyfin, or Emby servers during test runs.",
+      "step3Title": "Saved to Test Assets",
+      "step3Text": "All created assets land in your local test folder, completely isolated from production libraries.",
+      "assetLocationTitle": "Where created assets will land",
+      "assetLocationText": "All sample posters, backgrounds, and season cards generated during testing are saved to your test folder and appear directly in the",
+      "openGalleryBtn": "Open Test Gallery",
+      "autoRedirect": "Redirect to Test Gallery after test run finishes",
+      "autoRedirectDesc": "Watches the test run in the log viewer and automatically navigates to /test-gallery once complete.",
+      "cancel": "Cancel",
+      "start": "Start Test Run",
+      "startAndGoToGallery": "Start & Go to Gallery"
+    },
     "status": {
       "running": "Script Running",
       "stopFirst": "Stop the script before running another mode",
@@ -772,6 +807,11 @@
       "reconnecting": "Reconnecting...",
       "disconnected": "Disconnected"
     },
+    "testCompletedTitle": "Test run completed!",
+    "redirectingIn": "Redirecting to Test Gallery in {{count}}s...",
+    "testAssetsReady": "Test assets are ready in the Test Gallery.",
+    "stayOnLogs": "Stay on Logs",
+    "viewTestGalleryNow": "View Test Gallery Now",
     "scriptRunning": "Script is running",
     "mode": "Mode",
     "stopBeforeRunning": "Stop the script before running another mode",
@@ -1277,7 +1317,8 @@
   "testGallery": {
     "success": {
       "filesLoaded": "Loaded {{count}} test files",
-      "testModeStarted": "Test Mode started successfully!"
+      "testModeStarted": "Test Mode started successfully!",
+      "testComplete": "Test run completed! Test assets refreshed."
     },
     "errors": {
       "scriptRunning": "Script is already running! Please stop it first.",
