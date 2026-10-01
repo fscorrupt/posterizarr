@@ -105,7 +105,10 @@
       "logoUpdater": {
         "title": "Logo-Updater",
         "description": "Plex/Jellyfin/Emby ClearLogos automatisch abrufen"
-      }
+      },
+      "resetPrompts": "Modaldialoge zurücksetzen",
+      "resetPromptsTooltip": "Alle Bestätigungsdialoge wiederherstellen",
+      "promptsReset": "Bestätigungsdialoge für Ausführungsmodi wiederhergestellt."
     },
     "logoUpdater": {
       "title": "Logo-Updater-Modus",
@@ -1861,6 +1864,7 @@
     "skippedInfoDesc": "Diese Ansicht zeigt alle Assets, denen in Ihrem Medienserver das Label 'skip_posterizarr' zugewiesen wurde, sowie Elemente, die manuell über die Posterizarr-Benutzeroberfläche übersprungen wurden. Die hier aufgelisteten Elemente werden von Posterizarr bei Hintergrundsynchronisierungen ignoriert."
   },
   "common": {
+    "dontShowAgain": "Nicht mehr anzeigen",
     "view": "Ansehen",
     "save": "Speichern",
     "cancel": "Abbrechen",

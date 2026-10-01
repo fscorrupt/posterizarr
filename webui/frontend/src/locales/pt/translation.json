@@ -105,7 +105,10 @@
       "logoUpdater": {
         "title": "Atualizador de Logos",
         "description": "Obter Plex/Jellyfin/Emby ClearLogos automaticamente"
-      }
+      },
+      "resetPrompts": "Redefinir avisos modais",
+      "resetPromptsTooltip": "Restaurar todas as caixas de confirmação",
+      "promptsReset": "Caixas de confirmação de modos restauradas."
     },
     "logoUpdater": {
       "title": "Modo Atualizador de Logos",
@@ -1808,6 +1811,7 @@
     "skippedInfoDesc": "Esta visualização mostra todos os ativos que têm o rótulo 'skip_posterizarr' aplicado em seu servidor de mídia, bem como os itens ignorados manualmente pela interface do Posterizarr. Os itens listados aqui serão ignorados pelo Posterizarr durante as sincronizações em segundo plano."
   },
   "common": {
+    "dontShowAgain": "Não mostrar novamente",
     "view": "Visualizar",
     "save": "Salvar",
     "cancel": "Cancelar",

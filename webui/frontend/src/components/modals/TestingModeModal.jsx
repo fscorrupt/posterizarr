@@ -18,6 +18,14 @@ const TestingModeModal = React.memo(({
   t,
   navigate,
 }) => {
+  const [dontShowAgain, setDontShowAgain] = React.useState(false);
+
+  React.useEffect(() => {
+    if (show) {
+      setDontShowAgain(false);
+    }
+  }, [show]);
+
   if (!show) return null;
 
   return (
@@ -203,15 +211,24 @@ const TestingModeModal = React.memo(({
 
         {/* Footer */}
         <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm"
-          >
-            {t("runModes.testing.cancel", "Cancel")}
-          </button>
+          <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-theme-muted hover:text-theme-text transition-colors">
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+              className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
+            />
+            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+          </label>
           <div className="flex items-center gap-2">
             <button
-              onClick={onStartAndGoToGallery}
+              onClick={onClose}
+              className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm"
+            >
+              {t("runModes.testing.cancel", "Cancel")}
+            </button>
+            <button
+              onClick={() => onStartAndGoToGallery({ dontShowAgain })}
               disabled={loading || status.running}
               className="px-4 py-2 bg-theme-card hover:bg-theme-hover border border-blue-500/40 hover:border-blue-400 disabled:bg-gray-800 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-blue-400 hover:text-blue-300 text-sm flex items-center shadow-sm"
               title="Start test mode and immediately navigate to Test Gallery"
@@ -220,7 +237,7 @@ const TestingModeModal = React.memo(({
               {t("runModes.testing.startAndGoToGallery", "Start & Go to Gallery")}
             </button>
             <button
-              onClick={() => onStart({ autoRedirect })}
+              onClick={() => onStart({ autoRedirect, dontShowAgain })}
               disabled={loading || status.running}
               className="px-5 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white text-sm flex items-center shadow-lg"
             >

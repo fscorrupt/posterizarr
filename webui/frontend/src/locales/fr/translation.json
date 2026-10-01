@@ -105,7 +105,10 @@
       "logoUpdater": {
         "title": "Mise à jour des logos",
         "description": "Récupérer automatiquement les ClearLogos Plex/Jellyfin/Emby"
-      }
+      },
+      "resetPrompts": "Réinitialiser les invites",
+      "resetPromptsTooltip": "Restaurer toutes les boîtes de confirmation",
+      "promptsReset": "Boîtes de confirmation des modes d'exécution restaurées."
     },
     "logoUpdater": {
       "title": "Mode Mise à jour des logos",
@@ -1809,6 +1812,7 @@
     "skippedInfoDesc": "Cette vue montre tous les actifs qui ont l'étiquette 'skip_posterizarr' appliquée dans votre serveur multimédia, ainsi que les éléments ignorés manuellement via l'interface utilisateur de Posterizarr. Les éléments listés ici seront ignorés par Posterizarr lors des synchronisations en arrière-plan."
   },
   "common": {
+    "dontShowAgain": "Ne plus afficher",
     "view": "Voir",
     "save": "Enregistrer",
     "cancel": "Annuler",

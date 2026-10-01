@@ -105,7 +105,10 @@
       "logoUpdater": {
         "title": "Logo Updater",
         "description": "Auto-fetch Plex/Jellyfin/Emby ClearLogos"
-      }
+      },
+      "resetPrompts": "Reset modal prompts",
+      "resetPromptsTooltip": "Restore all confirmation dialogs",
+      "promptsReset": "Run mode confirmation dialogs restored."
     },
     "logoUpdater": {
       "title": "Logo Updater Mode",
@@ -1817,6 +1820,7 @@
     "skippedInfoDesc": "This view shows all assets that have the 'skip_posterizarr' label applied in your media server, as well as items manually skipped via the Posterizarr UI. Items listed here will be ignored by Posterizarr during background syncs."
   },
   "common": {
+    "dontShowAgain": "Don't show this again",
     "view": "View",
     "save": "Save",
     "cancel": "Cancel",
