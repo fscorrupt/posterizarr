@@ -129,13 +129,21 @@ else:
 # ++ SECURITY UTILITY FUNCTIONS
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-def is_safe_url(url: str, allow_private: bool = False, allow_apprise_schemes: bool = False) -> bool:
+def is_safe_url(
+    url: str,
+    allow_private: bool = False,
+    allow_loopback: bool = False,
+    allow_apprise_schemes: bool = False,
+) -> bool:
     """
     Validate that the URL is using a safe scheme (http/https) and that the
     target host is not a loopback or reserved IP address.
 
     If allow_private is False (default), private network ranges (LAN/Docker) are also blocked.
+    If allow_loopback is False (default), loopback addresses (localhost/127.0.0.1) are also blocked.
     """
+    if not url:
+        return False
     try:
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme not in ["http", "https"]:
@@ -150,10 +158,12 @@ def is_safe_url(url: str, allow_private: bool = False, allow_apprise_schemes: bo
         if not hostname:
             return False
 
-        # ALWAYS block loopback/localhost
+        # Check loopback/localhost
         if hostname.lower() in ["localhost", "127.0.0.1", "::1"]:
-            logger.warning(f"Blocked SSRF attempt to localhost: {hostname}")
-            return False
+            if not allow_loopback:
+                logger.warning(f"Blocked SSRF attempt to localhost: {hostname}")
+                return False
+            return True
 
         try:
             ip_addr = socket.gethostbyname(hostname)
@@ -163,10 +173,17 @@ def is_safe_url(url: str, allow_private: bool = False, allow_apprise_schemes: bo
             logger.error(f"URL Validation: Failed to resolve hostname '{hostname}': {res_err}")
             return False
 
-        # Always block loopback, link-local (e.g. 169.254.169.254 cloud metadata), and multicast
-        if ip.is_loopback or ip.is_link_local or ip.is_multicast:
-            logger.warning(f"Blocked SSRF attempt to loopback/link-local/multicast IP: {ip_addr}")
+        # Always block link-local (e.g. 169.254.169.254 cloud metadata) and multicast
+        if ip.is_link_local or ip.is_multicast:
+            logger.warning(f"Blocked SSRF attempt to link-local/multicast IP: {ip_addr}")
             return False
+
+        # Check loopback IP
+        if ip.is_loopback:
+            if not allow_loopback:
+                logger.warning(f"Blocked SSRF attempt to loopback IP: {ip_addr}")
+                return False
+            return True
 
         # Block private ranges unless explicitly allowed for local media servers (LAN/Docker)
         if not allow_private:
@@ -2843,6 +2860,12 @@ async def update_config(data: ConfigUpdate):
                 hashed = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                 data.config["basicAuthPassword"] = hashed
 
+        # Normalize UptimeKumaUrl if full push query was pasted
+        if "UptimeKumaUrl" in data.config and isinstance(data.config["UptimeKumaUrl"], str):
+            val = data.config["UptimeKumaUrl"].strip()
+            if "?" in val:
+                data.config["UptimeKumaUrl"] = val.split("?")[0].rstrip("/")
+
         # Preserve library exclusions if database hasn't been populated yet
         logger.debug("Checking if library exclusions need to be preserved...")
         for server_config in [
@@ -3830,7 +3853,7 @@ async def validate_plex(request: PlexValidationRequest):
     )
 
 
-    if not is_safe_url(request.url, allow_private=True):
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
         logger.warning(f"SSRF attempt blocked for Plex URL: {request.url[:20]}...")
         raise HTTPException(status_code=400, detail="Invalid or unsafe Plex URL")
 
@@ -3911,7 +3934,7 @@ async def validate_jellyfin(request: JellyfinValidationRequest):
     )
 
 
-    if not is_safe_url(request.url, allow_private=True):
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
         logger.warning(f"SSRF attempt blocked for Jellyfin URL: {request.url[:20]}...")
         raise HTTPException(status_code=400, detail="Invalid or unsafe Jellyfin URL")
 
@@ -3991,7 +4014,7 @@ async def validate_emby(request: EmbyValidationRequest):
     )
 
 
-    if not is_safe_url(request.url, allow_private=True):
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
         logger.warning(f"SSRF attempt blocked for Emby URL: {request.url[:20]}...")
         raise HTTPException(status_code=400, detail="Invalid or unsafe Emby URL")
 
@@ -4381,7 +4404,7 @@ async def validate_apprise(request: AppriseValidationRequest):
     logger.info("APPRISE VALIDATION & TEST MESSAGE STARTED")
     logger.info(f"[URL] URL: {request.url[:20]}...")
 
-    if not is_safe_url(request.url, allow_private=True, allow_apprise_schemes=True):
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True, allow_apprise_schemes=True):
         logger.warning(f"SSRF attempt blocked for Apprise URL: {request.url[:20]}...")
         raise HTTPException(status_code=400, detail="Invalid or unsafe Apprise URL")
 
@@ -4444,14 +4467,26 @@ async def validate_uptimekuma(request: UptimeKumaValidationRequest):
     logger.info("UPTIME KUMA VALIDATION STARTED")
     logger.info(f"[URL] Push URL: {request.url[:50]}...")
 
+    clean_url = (request.url or "").strip()
+    if not clean_url:
+        return {
+            "valid": False,
+            "message": "Uptime Kuma URL cannot be empty.",
+            "details": {"error": "empty_url"},
+        }
+
+    if not is_safe_url(clean_url, allow_private=True, allow_loopback=True):
+        logger.warning(f"SSRF attempt blocked for Uptime Kuma: {clean_url[:20]}...")
+        raise HTTPException(status_code=400, detail="Invalid or unsafe URL")
+
+    # If user provided a push URL with query params (e.g. ?status=up&msg=OK&ping=),
+    # strip query params so we can pass clean test params to the push endpoint.
+    push_base_url = clean_url.split("?")[0].rstrip("/")
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            if not is_safe_url(request.url):
-                logger.warning(f"SSRF attempt blocked for Uptime Kuma: {request.url[:20]}...")
-                raise HTTPException(status_code=400, detail="Invalid or unsafe URL")
-
             response = await client.get(
-                request.url,
+                push_base_url,
                 params={
                     "status": "up",
                     "msg": "Posterizarr WebUI validation test",
@@ -4465,7 +4500,7 @@ async def validate_uptimekuma(request: UptimeKumaValidationRequest):
                 logger.info(f"   Response data: {data}")
 
                 if data.get("ok"):
-                    logger.info(f"Uptime Kuma validation successful! Test ping sent.")
+                    logger.info("Uptime Kuma validation successful! Test ping sent.")
                     logger.info("=" * 60)
                     return {
                         "valid": True,
@@ -4473,7 +4508,7 @@ async def validate_uptimekuma(request: UptimeKumaValidationRequest):
                         "details": {"status_code": 200},
                     }
                 else:
-                    logger.warning(f"Uptime Kuma responded but 'ok' was false")
+                    logger.warning("Uptime Kuma responded but 'ok' was false")
                     logger.info("=" * 60)
                     return {
                         "valid": False,
@@ -4490,6 +4525,8 @@ async def validate_uptimekuma(request: UptimeKumaValidationRequest):
                     "message": f" Uptime Kuma validation failed (Status: {response.status_code})",
                     "details": {"status_code": response.status_code},
                 }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[ERROR] Uptime Kuma validation error: {str(e)}")
         logger.exception("Full traceback:")
@@ -4519,7 +4556,7 @@ async def validate_agregarr(request: AgregarrValidationRequest):
             "details": {"error": "missing_configuration"},
         }
 
-    if not is_safe_url(base_url, allow_private=True):
+    if not is_safe_url(base_url, allow_private=True, allow_loopback=True):
         logger.warning(f"Invalid or unsafe Agregarr URL: {base_url[:50]}...")
         return {
             "valid": False,
@@ -4892,7 +4929,7 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
             if server_type == "plex":
                 plex_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
                 plex_token = config.get("PlexToken") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("PlexToken")
-                if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True):
+                if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True, allow_loopback=True):
                     try:
                         clean_url = str(plex_url).rstrip('/')
                         headers = {"X-Plex-Token": plex_token} if plex_token else {}
@@ -4915,7 +4952,7 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
             elif server_type == "jellyfin":
                 jf_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
                 jf_api = config.get("JellyfinApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("JellyfinApiKey")
-                if jf_url and is_safe_url(str(jf_url).rstrip('/'), allow_private=True):
+                if jf_url and is_safe_url(str(jf_url).rstrip('/'), allow_private=True, allow_loopback=True):
                     try:
                         clean_url = str(jf_url).rstrip('/')
                         headers = {"Authorization": f'MediaBrowser Token="{jf_api}"'} if jf_api else {}
@@ -4935,7 +4972,7 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
             elif server_type == "emby":
                 emby_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
                 emby_api = config.get("EmbyApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("EmbyApiKey")
-                if emby_url and is_safe_url(str(emby_url).rstrip('/'), allow_private=True):
+                if emby_url and is_safe_url(str(emby_url).rstrip('/'), allow_private=True, allow_loopback=True):
                     try:
                         clean_url = str(emby_url).rstrip('/')
                         headers = {"Authorization": f'MediaBrowser Token="{emby_api}"'} if emby_api else {}
@@ -5178,7 +5215,7 @@ async def get_plex_library_items(request: LibraryItemsRequest):
     logger.info(f"Fetching items from Plex library key: {request.library_key}")
 
     # SSRF Validation
-    if not is_safe_url(request.url, allow_private=True):
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
         raise HTTPException(status_code=400, detail="Invalid or unsafe Plex URL")
 
     try:
@@ -17289,7 +17326,7 @@ async def proxy_media_server_image(
         raise HTTPException(status_code=400, detail="Invalid server_type")
 
     # Guard against URL-based traversal and SSRF
-    if not is_safe_url(url, allow_private=True):
+    if not is_safe_url(url, allow_private=True, allow_loopback=True):
         raise HTTPException(status_code=403, detail="Unsafe or invalid media server URL")
 
     # Load media server configuration
@@ -17341,7 +17378,7 @@ async def proxy_media_server_image(
         ""
     ))
 
-    if not is_safe_url(safe_target_url, allow_private=True):
+    if not is_safe_url(safe_target_url, allow_private=True, allow_loopback=True):
         raise HTTPException(status_code=403, detail="Unsafe media server target URL")
 
     # Hash the normalized target path and query for persistent local disk caching
@@ -17479,7 +17516,7 @@ async def proxy_image(url: str):
     ))
 
     # Block localhost, private IPs, and cloud metadata unless configured media server
-    if not is_safe_url(safe_url, allow_private=allow_private):
+    if not is_safe_url(safe_url, allow_private=allow_private, allow_loopback=allow_private):
         raise HTTPException(status_code=403, detail="Forbidden URL target")
 
     async def stream_image():
@@ -17566,7 +17603,7 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 parsed_logo.query,
                 ""
             ))
-            if not is_safe_url(safe_logo_url, allow_private=allow_private_logo):
+            if not is_safe_url(safe_logo_url, allow_private=allow_private_logo, allow_loopback=allow_private_logo):
                 return {"success": False, "error": "Invalid or forbidden logo URL."}
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.get(safe_logo_url)
@@ -17774,7 +17811,7 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
             raise HTTPException(status_code=400, detail="Invalid library_id")
 
         url = request.url.rstrip('/')
-        if not is_safe_url(url, allow_private=True):
+        if not is_safe_url(url, allow_private=True, allow_loopback=True):
             raise HTTPException(status_code=403, detail="Unsafe media server URL")
 
         # Load config and verify host
@@ -18008,7 +18045,7 @@ async def get_media_server_item_link(
     if not safe_key and st == "plex" and search_title:
         plex_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
         plex_token = config.get("PlexToken") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("PlexToken")
-        if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True):
+        if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True, allow_loopback=True):
             clean_url = str(plex_url).rstrip('/')
             try:
                 headers = {"X-Plex-Token": plex_token, "Accept": "application/xml"} if plex_token else {"Accept": "application/xml"}
@@ -18052,7 +18089,7 @@ async def get_media_server_item_link(
 
         plex_url = str(plex_url).rstrip('/')
         machine_id = getattr(get_media_server_item_link, "_cached_machine_id", None)
-        if not machine_id and is_safe_url(plex_url, allow_private=True):
+        if not machine_id and is_safe_url(plex_url, allow_private=True, allow_loopback=True):
             try:
                 headers = {"X-Plex-Token": plex_token, "Accept": "application/xml"} if plex_token else {"Accept": "application/xml"}
                 async with httpx.AsyncClient(timeout=10.0) as client:
@@ -18163,7 +18200,7 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
             return {"success": False, "error": "Invalid image payload. Only JPEG, PNG, and WebP are allowed."}
 
         server_url = request.server_url.rstrip('/')
-        if not is_safe_url(server_url, allow_private=True):
+        if not is_safe_url(server_url, allow_private=True, allow_loopback=True):
             raise HTTPException(status_code=403, detail="Unsafe media server URL")
 
         # Load config and verify host
@@ -18320,7 +18357,7 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
         cfg_url, cfg_token = get_plex_credentials_from_config(CONFIG_PATH)
 
         if url:
-            if not is_safe_url(url, allow_private=True):
+            if not is_safe_url(url, allow_private=True, allow_loopback=True):
                 raise HTTPException(status_code=403, detail="Unsafe Plex server URL")
             if cfg_url and urllib.parse.urlparse(url).netloc.lower() != urllib.parse.urlparse(cfg_url).netloc.lower():
                 raise HTTPException(status_code=403, detail="Server URL does not match configured Plex server")
@@ -18398,7 +18435,7 @@ async def api_plex_push_batch_collections(request: PlexPushBatchRequest):
         cfg_url, cfg_token = get_plex_credentials_from_config(CONFIG_PATH)
 
         if url:
-            if not is_safe_url(url, allow_private=True):
+            if not is_safe_url(url, allow_private=True, allow_loopback=True):
                 raise HTTPException(status_code=403, detail="Unsafe Plex server URL")
             if cfg_url and urllib.parse.urlparse(url).netloc.lower() != urllib.parse.urlparse(cfg_url).netloc.lower():
                 raise HTTPException(status_code=403, detail="Server URL does not match configured Plex server")
