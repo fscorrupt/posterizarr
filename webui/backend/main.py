@@ -2861,10 +2861,18 @@ async def update_config(data: ConfigUpdate):
                 data.config["basicAuthPassword"] = hashed
 
         # Normalize UptimeKumaUrl if full push query was pasted
-        if "UptimeKumaUrl" in data.config and isinstance(data.config["UptimeKumaUrl"], str):
-            val = data.config["UptimeKumaUrl"].strip()
-            if "?" in val:
-                data.config["UptimeKumaUrl"] = val.split("?")[0].rstrip("/")
+        def _clean_kuma_url(v):
+            if isinstance(v, str):
+                cleaned = v.strip().strip('"\'')
+                if "?" in cleaned:
+                    return cleaned.split("?")[0].rstrip("/")
+                return cleaned.rstrip("/")
+            return v
+
+        if "UptimeKumaUrl" in data.config:
+            data.config["UptimeKumaUrl"] = _clean_kuma_url(data.config["UptimeKumaUrl"])
+        if "Notification" in data.config and isinstance(data.config["Notification"], dict) and "UptimeKumaUrl" in data.config["Notification"]:
+            data.config["Notification"]["UptimeKumaUrl"] = _clean_kuma_url(data.config["Notification"]["UptimeKumaUrl"])
 
         # Preserve library exclusions if database hasn't been populated yet
         logger.debug("Checking if library exclusions need to be preserved...")
@@ -4467,7 +4475,7 @@ async def validate_uptimekuma(request: UptimeKumaValidationRequest):
     logger.info("UPTIME KUMA VALIDATION STARTED")
     logger.info(f"[URL] Push URL: {request.url[:50]}...")
 
-    clean_url = (request.url or "").strip()
+    clean_url = (request.url or "").strip().strip('"\'')
     if not clean_url:
         return {
             "valid": False,

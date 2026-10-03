@@ -226,7 +226,7 @@ if ($null -ne $config.Notification.AgregarrRetryTimeout -and [int]::TryParse("$(
     $global:AgregarrRetryTimeout = [int]$config.Notification.AgregarrRetryTimeout
 }
 if ($global:UseUptimeKuma -eq 'true') {
-    $global:UptimeKumaUrl = $config.Notification.UptimeKumaUrl
+    $global:UptimeKumaUrl = "$($config.Notification.UptimeKumaUrl)".Trim().Trim('"', "'")
 }
 
 if ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') {
