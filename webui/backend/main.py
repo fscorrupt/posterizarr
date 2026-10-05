@@ -223,14 +223,11 @@ def sanitize_command_arg(arg: str) -> str:
 def mask_secret(secret: Any) -> str:
     """
     Mask a sensitive string (API Key, Token, Password) for logging.
-    Example: 'abcdef123456789' -> 'abcde...56789'
+    Returns '***' when secret is present, 'None' when empty.
     """
     if not secret:
         return "None"
-    s = str(secret)
-    if len(s) <= 8:
-        return "***"
-    return f"{s[:5]}...{s[-4:]}"
+    return "***"
 
 
 def get_safe_path(base_dir: Path, user_path: str) -> Path:
@@ -2650,7 +2647,7 @@ async def get_config(request: Request):
             if is_key_valid:
                 logger.info("Access granted via valid API Key (Script/CLI access)")
             else:
-                logger.warning(f"Invalid API Key provided: {api_key[:5]}...")
+                logger.warning("Invalid API Key provided")
 
         # 3. Security Logic
         # If Auth is OFF, we enforce Browser-Only access...
