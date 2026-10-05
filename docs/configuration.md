@@ -328,9 +328,9 @@
     - `borderwidth`: Border width.
     - `bordercolor`: Color of border.
     - `SkipWords`: List of words to be skipped for TC, e.g 'TBA, Episode...'. (SkipTBA has to be true). You can also use Regex by wrapping your expression in slashes (e.g. `/^TBA$/`).
-        - > [!NOTE]
-        - > If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
-         - **Any already created TitleCards that match these words will be deleted.**
+        !!! note
+            If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
+        - **Any already created TitleCards that match these words will be deleted.**
 
     #### TitleCardTitleTextPart
 

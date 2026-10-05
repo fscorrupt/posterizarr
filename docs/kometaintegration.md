@@ -67,20 +67,20 @@ A common question is how Posterizarr's `PlexUpload` configuration behaves alongs
 
 ## 4. Kometa and Scheduled Plex Sync (Important Warning)
 
-> [!WARNING]
-> **Do NOT use the automated Plex Sync schedule (`plexsync`) on media managed by Kometa!**
-> 
-> The WebUI includes a lightweight **Plex Sync** schedule mode designed to directly upload artwork (posters, seasons, titlecards, backgrounds, and collections) from your local `/assets` directory to Plex via REST API.
-> 
-> If you run a Plex Sync schedule on libraries managed by Kometa:
-> 1. Kometa uploads its own overlaid artwork and metadata to Plex.
-> 2. Posterizarr's Plex Sync detects that the artwork currently live on Plex does not match the clean, un-overlaid local file in `/assets`.
-> 3. Plex Sync attempts to re-upload the local file, overwriting Kometa's overlays.
-> 4. Kometa runs its next cycle and overwrites Posterizarr's upload again, causing an **endless overwrite loop**.
-> 
-> **Best Practice:** If you use Kometa to manage posters/overlays, either:
-> - **Only** use Plex Sync for **Collections / BoxSets** (by checking *Collections Only*), provided Kometa is not managing collection artwork.
-> - Or leave artwork uploads entirely to Kometa.
+!!! warning "Do NOT use the automated Plex Sync schedule (`plexsync`) on media managed by Kometa!"
+    The WebUI includes a lightweight **Plex Sync** schedule mode designed to directly upload artwork (posters, seasons, titlecards, backgrounds, and collections) from your local `/assets` directory to Plex via REST API.
+
+    If you run a Plex Sync schedule on libraries managed by Kometa:
+
+    1. Kometa uploads its own overlaid artwork and metadata to Plex.
+    2. Posterizarr's Plex Sync detects that the artwork currently live on Plex does not match the clean, un-overlaid local file in `/assets`.
+    3. Plex Sync attempts to re-upload the local file, overwriting Kometa's overlays.
+    4. Kometa runs its next cycle and overwrites Posterizarr's upload again, causing an **endless overwrite loop**.
+
+    **Best Practice:** If you use Kometa to manage posters/overlays, either:
+
+    - **Only** use Plex Sync for **Collections / BoxSets** (by checking *Collections Only*), provided Kometa is not managing collection artwork.
+    - Or leave artwork uploads entirely to Kometa.
 
 ## Summary
 
