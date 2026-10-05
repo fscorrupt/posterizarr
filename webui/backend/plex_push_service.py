@@ -87,47 +87,42 @@ def safe_resolve_asset_path(
 ) -> Optional[Path]:
     """
     Safely resolves a path relative to base_dir, strictly preventing path traversal.
-    Supports both absolute paths (strictly validated within base_dir) and relative paths.
     Blocks null bytes, traversal parent directory patterns ('..'), and restricts to allowed extensions.
     """
     if not user_path:
         return None
     try:
-        user_str = str(user_path).strip()
+        user_str = str(user_path).strip().replace("\\", "/")
         if "\x00" in user_str:
             logger.warning(f"[Security] Null byte detected in path: {user_path}")
             return None
 
-        safe_base = base_dir.resolve()
-
-        # 1. If user_path is already an absolute path, verify it is strictly within safe_base
-        raw_p = Path(user_str)
-        if raw_p.is_absolute():
-            cand = raw_p.resolve()
-            if not cand.is_relative_to(safe_base):
-                logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {safe_base}")
-                return None
-            if allowed_extensions and cand.suffix.lower() not in allowed_extensions:
-                logger.warning(f"[Security] Disallowed file extension: {cand.suffix} in {user_path}")
-                return None
-            return cand
-
-        # 2. Treat as relative path: normalize and strip any drive prefix / traversal tokens
-        norm_str = user_str.replace("\\", "/").lstrip("/")
-        norm_str = re.sub(r'^[a-zA-Z]:', '', norm_str).lstrip("/")
-
-        parts = [p for p in norm_str.split("/") if p]
-        if ".." in parts:
-            logger.warning(f"[Security] Directory traversal '..' detected in path: {user_path}")
+        # Reject directory traversal tokens
+        if any(part in ("..", "~") for part in user_str.split("/")):
+            logger.warning(f"[Security] Directory traversal detected in path: {user_path}")
             return None
 
-        clean_rel = "/".join(parts)
-        candidate = (safe_base / clean_rel).resolve()
+        base_abs = os.path.abspath(str(base_dir))
+        base_prefix = base_abs if base_abs.endswith(os.sep) else base_abs + os.sep
 
-        if not candidate.is_relative_to(safe_base):
-            logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {safe_base}")
+        # If user_str is an absolute path, verify it is directly under base_abs
+        if os.path.isabs(user_str):
+            clean_path = os.path.normpath(user_str)
+            target_abs = os.path.abspath(clean_path)
+        else:
+            clean_rel = re.sub(r'^[a-zA-Z]:', '', user_str).lstrip("/")
+            target_abs = os.path.normpath(os.path.abspath(os.path.join(base_abs, clean_rel)))
+
+        # Verify containment using both startswith prefix and commonpath
+        if not (target_abs == base_abs or target_abs.startswith(base_prefix)):
+            logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {base_dir}")
             return None
 
+        if os.path.commonpath([base_abs, target_abs]) != base_abs:
+            logger.warning(f"[Security] Path traversal attempt blocked by commonpath: {user_path}")
+            return None
+
+        candidate = Path(target_abs)
         if allowed_extensions and candidate.suffix.lower() not in allowed_extensions:
             logger.warning(f"[Security] Disallowed file extension: {candidate.suffix} in {user_path}")
             return None
@@ -248,10 +243,7 @@ class PlexPushCache:
         item_title: str = "",
         status: str = "synced"
     ) -> bool:
-        try:
-            norm_path = str(Path(asset_path).resolve()).replace("\\", "/")
-        except Exception:
-            norm_path = str(asset_path).replace("\\", "/")
+        norm_path = os.path.normpath(str(asset_path)).replace("\\", "/")
         now_iso = datetime.now().isoformat()
         with self.lock:
             try:
@@ -787,25 +779,19 @@ async def push_collection_artwork_to_plex(
     if not safe_key:
         return {"success": False, "error": f"Invalid rating_key: {rating_key}"}
 
-    try:
-        local_image_path = local_image_path.resolve()
-    except Exception as e:
-        return {"success": False, "error": f"Invalid path resolution: {e}"}
+    if allowed_base_dir:
+        validated_path = safe_resolve_asset_path(allowed_base_dir, local_image_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+        if not validated_path:
+            return {"success": False, "error": "Path traversal attempt blocked or disallowed file extension"}
+        local_image_path = validated_path
 
-    if not local_image_path.exists() or not local_image_path.is_file():
-        return {"success": False, "error": f"Local file not found: {local_image_path}"}
+    if not local_image_path.is_file():
+        return {"success": False, "error": f"Local file not found: {local_image_path.name}"}
 
     ext = local_image_path.suffix.lower()
     allowed_exts = {".jpg", ".jpeg", ".png", ".webp"}
     if ext not in allowed_exts:
         return {"success": False, "error": f"Disallowed file extension '{ext}'. Only {allowed_exts} allowed."}
-
-    if allowed_base_dir:
-        try:
-            if not local_image_path.is_relative_to(allowed_base_dir.resolve()):
-                return {"success": False, "error": "Path traversal attempt blocked"}
-        except Exception:
-            return {"success": False, "error": "Path traversal verification failed"}
 
     try:
         stat = local_image_path.stat()
@@ -895,7 +881,7 @@ async def push_batch_collections_to_plex(
             return
 
         full_path = safe_resolve_asset_path(assets_dir, local_rel, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-        if not full_path or not full_path.exists() or not full_path.is_file():
+        if not full_path or not full_path.is_file():
             failed_count += 1
             errors.append(f"{title}: Path traversal or invalid artwork path blocked")
             return

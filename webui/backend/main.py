@@ -238,32 +238,38 @@ def get_safe_path(base_dir: Path, user_path: str) -> Path:
     Safely joins a base directory with a user-provided path, ensuring that
     the resulting path remains within the base directory (preventing Path Traversal).
     """
-    safe_base = Path(os.path.abspath(base_dir)).resolve()
+    if not user_path:
+        raise HTTPException(status_code=400, detail="Path cannot be empty")
 
-    user_str = str(user_path).strip().replace("\\", "/").lstrip("/")
+    base_abs = os.path.abspath(str(base_dir))
+    base_prefix = base_abs if base_abs.endswith(os.sep) else base_abs + os.sep
 
-    # Reject null bytes or direct traversal patterns
-    if "\x00" in user_str or ".." in user_str.split("/"):
+    user_str = str(user_path).strip().replace("\\", "/")
+    if "\x00" in user_str:
         logger.warning(f"Path traversal attempt detected in get_safe_path: {user_path}")
         raise HTTPException(status_code=403, detail="Path traversal attempt detected")
 
-    if os.path.isabs(user_str):
-        parts = Path(user_str).parts
-        if parts[0].endswith(":") or parts[0].startswith("\\\\"):
-            user_str = str(Path(*parts[1:]))
+    # Reject direct traversal patterns
+    if any(part in ("..", "~") for part in user_str.split("/")):
+        logger.warning(f"Path traversal attempt detected in get_safe_path: {user_path}")
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
 
-    requested_path = Path(os.path.abspath(os.path.join(safe_base, user_str)))
+    clean_user = re.sub(r'^[a-zA-Z]:', '', user_str).lstrip("/")
+    target_abs = os.path.normpath(os.path.abspath(os.path.join(base_abs, clean_user)))
 
-    try:
-        resolved_req = requested_path.resolve()
-        if not resolved_req.is_relative_to(safe_base):
-            logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
-            raise HTTPException(status_code=403, detail="Path traversal attempt detected")
-    except (ValueError, RuntimeError):
+    if not (target_abs == base_abs or target_abs.startswith(base_prefix)):
         logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
         raise HTTPException(status_code=403, detail="Path traversal attempt detected")
 
-    return requested_path
+    try:
+        if os.path.commonpath([base_abs, target_abs]) != base_abs:
+            logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
+            raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+    except (ValueError, Exception):
+        logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+
+    return Path(target_abs)
 
 
 
@@ -4483,18 +4489,48 @@ async def validate_uptimekuma(request: UptimeKumaValidationRequest):
             "details": {"error": "empty_url"},
         }
 
-    if not is_safe_url(clean_url, allow_private=True, allow_loopback=True):
+    parsed = urllib.parse.urlsplit(clean_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        logger.warning(f"Invalid URL scheme or hostname for Uptime Kuma: {clean_url[:30]}...")
+        raise HTTPException(status_code=400, detail="Invalid URL scheme or hostname")
+
+    if "/api/push/" not in parsed.path:
+        return {
+            "valid": False,
+            "message": "Invalid Uptime Kuma push URL format. Expected '/api/push/<key>'.",
+            "details": {"error": "invalid_push_path"},
+        }
+
+    push_token = parsed.path.split("/api/push/")[-1].strip("/")
+    if not push_token or not re.match(r"^[a-zA-Z0-9_\-]+$", push_token):
+        return {
+            "valid": False,
+            "message": "Invalid Uptime Kuma push token in URL path.",
+            "details": {"error": "invalid_push_token"},
+        }
+
+    # Load configured Uptime Kuma URL to allow loopback only if it matches configured host
+    cfg_kuma = ""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg_data = json.load(f)
+            cfg_kuma = cfg_data.get("UptimeKumaUrl") or cfg_data.get("Notification", {}).get("UptimeKumaUrl", "")
+    except Exception:
+        pass
+    cfg_netloc = urllib.parse.urlsplit(cfg_kuma).netloc.lower() if cfg_kuma else ""
+    is_configured_host = bool(cfg_netloc and parsed.netloc.lower() == cfg_netloc)
+
+    if not is_safe_url(clean_url, allow_private=True, allow_loopback=is_configured_host):
         logger.warning(f"SSRF attempt blocked for Uptime Kuma: {clean_url[:20]}...")
         raise HTTPException(status_code=400, detail="Invalid or unsafe URL")
 
-    # If user provided a push URL with query params (e.g. ?status=up&msg=OK&ping=),
-    # strip query params so we can pass clean test params to the push endpoint.
-    push_base_url = clean_url.split("?")[0].rstrip("/")
+    target_base = f"{parsed.scheme}://{parsed.netloc}"
+    push_endpoint = f"/api/push/{push_token}"
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(base_url=target_base, timeout=10.0) as client:
             response = await client.get(
-                push_base_url,
+                push_endpoint,
                 params={
                     "status": "up",
                     "msg": "Posterizarr WebUI validation test",
@@ -9220,10 +9256,7 @@ async def get_thumbnail(path: str = Query(..., description="Path to the image"),
         raise HTTPException(status_code=400, detail="Invalid path prefix")
 
     real_path = get_safe_path(Path(base_dir), suffix)
-    if not real_path.resolve().is_relative_to(Path(base_dir).resolve()):
-        raise HTTPException(status_code=403, detail="Access denied: Invalid path")
-
-    if not real_path.exists() or not real_path.is_file():
+    if not real_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
 
     try:
@@ -18298,7 +18331,7 @@ class PlexMarkSyncedRequest(BaseModel):
 async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
     """Marks a local collection poster as In-Sync with Plex without re-uploading."""
     try:
-        from plex_push_service import PlexPushCache, scan_local_collection_assets, normalize_collection_name
+        from plex_push_service import PlexPushCache, scan_local_collection_assets, normalize_collection_name, safe_resolve_asset_path
         cache_db_path = DATABASE_DIR / "plex_push_cache.db"
         cache = PlexPushCache(cache_db_path)
 
@@ -18308,33 +18341,25 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
 
         local_file = None
         if request.local_path:
-            try:
-                cand = get_safe_path(ASSETS_DIR, request.local_path)
-                if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
-                    local_file = cand
-            except HTTPException:
-                pass
+            cand = safe_resolve_asset_path(ASSETS_DIR, request.local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+            if cand and cand.is_file():
+                local_file = cand
 
         if not local_file:
+            from plex_push_service import scan_local_collection_assets, normalize_collection_name
             local_assets = scan_local_collection_assets(ASSETS_DIR)
             norm = normalize_collection_name(request.collection_name)
             if norm in local_assets:
-                try:
-                    cand = get_safe_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"])
-                    if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
-                        local_file = cand
-                except HTTPException:
-                    pass
+                cand = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+                if cand and cand.is_file():
+                    local_file = cand
 
-        if not local_file or not local_file.exists():
+        if not local_file or not local_file.is_file():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
-
-        if local_file.suffix.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
-            return {"success": False, "error": "Invalid image file extension"}
 
         stat = local_file.stat()
         cache.record_push(
-            asset_path=str(local_file.resolve()),
+            asset_path=str(local_file),
             file_mtime=stat.st_mtime,
             file_size=stat.st_size,
             rating_key=safe_rating_key,
@@ -18345,7 +18370,7 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
         return {"success": True, "message": f"Marked '{request.collection_name}' as In-Sync"}
     except Exception as e:
         logger.error(f"Error marking collection as synced: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to mark collection as synced."}
 
 
 class PlexPushSingleRequest(BaseModel):
@@ -18359,7 +18384,7 @@ class PlexPushSingleRequest(BaseModel):
 async def api_plex_push_single_collection(request: PlexPushSingleRequest):
     """Pushes a local collection poster to Plex Media Server."""
     try:
-        from plex_push_service import push_collection_artwork_to_plex, PlexPushCache, get_plex_credentials_from_config
+        from plex_push_service import push_collection_artwork_to_plex, PlexPushCache, get_plex_credentials_from_config, safe_resolve_asset_path
         url = request.server_url
         token = request.server_token
         cfg_url, cfg_token = get_plex_credentials_from_config(CONFIG_PATH)
@@ -18385,30 +18410,21 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
 
         local_file = None
         if request.local_path:
-            try:
-                cand = get_safe_path(ASSETS_DIR, request.local_path)
-                if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
-                    local_file = cand
-            except HTTPException:
-                pass
+            cand = safe_resolve_asset_path(ASSETS_DIR, request.local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+            if cand and cand.is_file():
+                local_file = cand
 
         if not local_file:
             from plex_push_service import scan_local_collection_assets, normalize_collection_name
             local_assets = scan_local_collection_assets(ASSETS_DIR)
             norm = normalize_collection_name(request.collection_name)
             if norm in local_assets:
-                try:
-                    cand = get_safe_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"])
-                    if cand.exists() and cand.is_file() and cand.is_relative_to(ASSETS_DIR.resolve()):
-                        local_file = cand
-                except HTTPException:
-                    pass
+                cand = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+                if cand and cand.is_file():
+                    local_file = cand
 
-        if not local_file or not local_file.exists():
+        if not local_file or not local_file.is_file():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
-
-        if local_file.suffix.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
-            return {"success": False, "error": "Invalid image file extension"}
 
         res = await push_collection_artwork_to_plex(
             plex_url=url,
@@ -18425,7 +18441,7 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
         return res
     except Exception as e:
         logger.error(f"Error in api_plex_push_single_collection: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "An error occurred while pushing artwork to Plex."}
 
 
 class PlexPushBatchRequest(BaseModel):
@@ -18472,7 +18488,7 @@ async def api_plex_push_batch_collections(request: PlexPushBatchRequest):
         return res
     except Exception as e:
         logger.error(f"Error in api_plex_push_batch_collections: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "An error occurred while pushing batch collections to Plex."}
 
 
 @app.post("/api/plex/sync/run")
@@ -18493,7 +18509,7 @@ async def api_plex_trigger_sync(request: Request):
         return {"success": True, "message": "Plex sync started in background"}
     except Exception as e:
         logger.error(f"Error triggering Plex sync: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to trigger Plex sync task."}
 
 class CollectionSaveRequest(BaseModel):
     collection_name: str
