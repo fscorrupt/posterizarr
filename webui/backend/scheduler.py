@@ -284,6 +284,32 @@ class PosterizarrScheduler:
             else:
                 ps_command = "pwsh"
 
+            if mode.lower() == "plexsync":
+                logger.info(f"Executing scheduled Plex Sync task: {schedule_config}")
+                try:
+                    from plex_push_service import run_plex_sync_task, get_asset_path_from_config
+                    config_path = self.base_dir / "config.json"
+                    assets_dir = get_asset_path_from_config(config_path, self.base_dir)
+
+                    res = await run_plex_sync_task(
+                        schedule_config=schedule_config or {},
+                        base_dir=self.base_dir,
+                        assets_dir=assets_dir,
+                        config_path=config_path,
+                        log_file_path=self.base_dir / "UILogs" / "PlexSync.log"
+                    )
+                    if res.get("success"):
+                        self.update_schedule_status(schedule_config, "success")
+                    else:
+                        self.update_schedule_status(schedule_config, "failed")
+                except Exception as ex:
+                    logger.error(f"Error executing scheduled Plex Sync: {ex}", exc_info=True)
+                    self.update_schedule_status(schedule_config, "failed")
+                finally:
+                    with self._lock:
+                        self.is_running = False
+                return
+
             mode_switches = {
                 "normal": ["-UISchedule"],
                 "syncjelly": ["-UISchedule", "-SyncJelly"],
@@ -367,6 +393,7 @@ class PosterizarrScheduler:
 
             for idx, schedule in enumerate(schedules):
                 mode = schedule.get("mode", "normal")
+                display_mode = "Plex Sync" if mode.lower() == "plexsync" else mode.title()
                 frequency = schedule.get("frequency", "daily")
                 job_id = f"posterizarr_{mode}_{idx}"
 
@@ -383,7 +410,7 @@ class PosterizarrScheduler:
                     # If the start time has already passed today, start from that time anyway
                     # (APScheduler will calculate the next interval from that baseline)
                     trigger = IntervalTrigger(**{iunit: ival}, start_date=start_time, timezone=timezone)
-                    job_name = f"Posterizarr {mode.title()} (Every {ival} {iunit} starting @ {time_str})"
+                    job_name = f"Posterizarr {display_mode} (Every {ival} {iunit} starting @ {time_str})"
 
                 else:
                     time_str = schedule.get("time", "00:00")
@@ -409,7 +436,7 @@ class PosterizarrScheduler:
 
                     # Enhanced display name for multi-day support
                     detail = f" ({frequency.title()})" if frequency != "daily" else ""
-                    job_name = f"Posterizarr {mode.title()}{detail} @ {time_str}"
+                    job_name = f"Posterizarr {display_mode}{detail} @ {time_str}"
 
                 self.scheduler.add_job(
                     self.run_script,
@@ -552,7 +579,10 @@ class PosterizarrScheduler:
     def add_schedule(self, time_str: str, description: str = "", mode: str = "normal",
                      frequency: str = "daily", day_of_week: str = "*",
                      day: Union[int, str] = "*", month: str = "*",
-                     interval_value: int = 1, interval_unit: str = "hours") -> bool:
+                     interval_value: int = 1, interval_unit: str = "hours",
+                     library: str = "all", asset_types: Optional[List[str]] = None,
+                     force_replace: bool = False, exif_check: bool = False, revert: bool = False,
+                     **kwargs) -> bool:
         """Add a new schedule (Thread-safe)"""
         with self._lock:
             config = self.load_config()
@@ -570,6 +600,20 @@ class PosterizarrScheduler:
                 "interval_unit": interval_unit
             }
 
+            if mode.lower() == "logoupdater":
+                new_entry["library"] = library
+                new_entry["force_replace"] = force_replace
+                new_entry["exif_check"] = exif_check
+                new_entry["revert"] = revert
+            elif mode.lower() == "plexsync":
+                new_entry["library"] = library
+                new_entry["asset_types"] = asset_types if asset_types is not None else ["collection", "poster", "season", "titlecard", "background"]
+
+            # Store any additional kwargs passed
+            for k, v in kwargs.items():
+                if k not in new_entry:
+                    new_entry[k] = v
+
             schedules.append(new_entry)
             config["schedules"] = schedules
             self.save_config(config)
@@ -579,6 +623,77 @@ class PosterizarrScheduler:
             else:
                 self.update_next_run_from_schedules()
             return True
+
+    def update_schedule(self, index: int, time_str: str, description: str = "", mode: str = "normal",
+                        frequency: str = "daily", day_of_week: str = "*",
+                        day: Union[int, str] = "*", month: str = "*",
+                        interval_value: int = 1, interval_unit: str = "hours",
+                        library: str = "all", asset_types: Optional[List[str]] = None,
+                        force_replace: bool = False, exif_check: bool = False, revert: bool = False,
+                        **kwargs) -> bool:
+        """Update an existing schedule by its index in the schedules list (Thread-safe)"""
+        with self._lock:
+            config = self.load_config()
+            schedules = config.get("schedules", [])
+            if index < 0 or index >= len(schedules):
+                logger.error(f"Cannot update schedule: index {index} out of range (0-{len(schedules)-1})")
+                return False
+
+            updated_entry = {
+                "time": time_str,
+                "description": description,
+                "mode": mode,
+                "frequency": frequency,
+                "day_of_week": day_of_week,
+                "day": day,
+                "month": month,
+                "interval_value": interval_value,
+                "interval_unit": interval_unit
+            }
+
+            if mode.lower() == "logoupdater":
+                updated_entry["library"] = library
+                updated_entry["force_replace"] = force_replace
+                updated_entry["exif_check"] = exif_check
+                updated_entry["revert"] = revert
+            elif mode.lower() == "plexsync":
+                updated_entry["library"] = library
+                updated_entry["asset_types"] = asset_types if asset_types is not None else ["collection", "poster", "season", "titlecard", "background"]
+
+            if "status" in schedules[index]:
+                updated_entry["status"] = schedules[index]["status"]
+
+            for k, v in kwargs.items():
+                if k not in updated_entry:
+                    updated_entry[k] = v
+
+            schedules[index] = updated_entry
+            config["schedules"] = schedules
+            self.save_config(config)
+
+            if config.get("enabled", False) and self.scheduler.running:
+                self.apply_schedules()
+            else:
+                self.update_next_run_from_schedules()
+            return True
+
+    def remove_schedule_by_index(self, index: int) -> bool:
+        """Remove a schedule specifically by its index in the schedules list"""
+        with self._lock:
+            config = self.load_config()
+            schedules = config.get("schedules", [])
+            if 0 <= index < len(schedules):
+                schedules.pop(index)
+                config["schedules"] = schedules
+                if not schedules:
+                    config["next_run"] = None
+                self.save_config(config)
+                if config.get("enabled", False) and self.scheduler.running:
+                    self.apply_schedules()
+                else:
+                    self.update_next_run_from_schedules()
+                return True
+            return False
 
     def remove_schedule(self, time_str: str) -> bool:
         """Remove a schedule by time"""

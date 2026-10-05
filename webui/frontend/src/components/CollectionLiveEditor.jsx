@@ -1072,6 +1072,8 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             rating_key: collection.ratingKey,
+                            collection_name: collection.title,
+                            library_name: libraryName,
                             server_type: activeServer.id,
                             server_url: activeServer.url,
                             server_token: activeServer.token,

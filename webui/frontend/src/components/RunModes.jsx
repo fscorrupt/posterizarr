@@ -30,6 +30,8 @@ import { useTranslation } from "react-i18next";
 import ConfirmDialog from "./ConfirmDialog";
 import DangerZone from "./DangerZone";
 import RestoreModeModal from "./modals/RestoreModeModal";
+import NormalModeModal from "./modals/NormalModeModal";
+import TestingModeModal from "./modals/TestingModeModal";
 import { useToast } from "../context/ToastContext";
 import { BLUEPRINTS } from "./Blueprints";
 
@@ -549,6 +551,9 @@ function RunModes() {
   const [resetLibrary, setResetLibrary] = useState("");
 
   // Sync Modal States
+  const [showNormalModeModal, setShowNormalModeModal] = useState(false);
+  const [showTestingModeModal, setShowTestingModeModal] = useState(false);
+  const [autoRedirectTesting, setAutoRedirectTesting] = useState(true);
   const [showJellyfinSyncModal, setShowJellyfinSyncModal] = useState(false);
   const [showEmbySyncModal, setShowEmbySyncModal] = useState(false);
   const [showBackupModeModal, setShowBackupModeModal] = useState(false);
@@ -559,6 +564,74 @@ function RunModes() {
   const [logoExifCheck, setLogoExifCheck] = useState(false);
   const [logoRevert, setLogoRevert] = useState(false);
   const [processAllLibraries, setProcessAllLibraries] = useState(false);
+
+  // Skipped Modals ("Don't show this again") State
+  const checkSkippedModals = () => {
+    return [
+      "posterizarr_skip_modal_normal",
+      "posterizarr_skip_modal_testing",
+      "posterizarr_skip_modal_backup",
+      "posterizarr_skip_modal_syncjelly",
+      "posterizarr_skip_modal_syncemby",
+    ].some((k) => localStorage.getItem(k) === "true");
+  };
+
+  const [hasSkippedModals, setHasSkippedModals] = useState(checkSkippedModals);
+
+  const resetModalPreferences = () => {
+    [
+      "posterizarr_skip_modal_normal",
+      "posterizarr_skip_modal_testing",
+      "posterizarr_skip_modal_backup",
+      "posterizarr_skip_modal_syncjelly",
+      "posterizarr_skip_modal_syncemby",
+    ].forEach((k) => localStorage.removeItem(k));
+    setHasSkippedModals(false);
+    showSuccess(t("runModes.quickRun.promptsReset", "Run mode confirmation dialogs restored."));
+  };
+
+  const handleNormalModeClick = () => {
+    if (localStorage.getItem("posterizarr_skip_modal_normal") === "true") {
+      runScript("normal");
+    } else {
+      setShowNormalModeModal(true);
+    }
+  };
+
+  const handleTestingModeClick = () => {
+    if (localStorage.getItem("posterizarr_skip_modal_testing") === "true") {
+      const savedAutoRedirect = localStorage.getItem("posterizarr_testing_auto_redirect") !== "false";
+      runScript("testing", {
+        redirectToOnFinish: savedAutoRedirect ? "/test-gallery" : null,
+      });
+    } else {
+      setShowTestingModeModal(true);
+    }
+  };
+
+  const handleBackupModeClick = () => {
+    if (localStorage.getItem("posterizarr_skip_modal_backup") === "true") {
+      runScript("backup");
+    } else {
+      setShowBackupModeModal(true);
+    }
+  };
+
+  const handleJellyfinSyncClick = () => {
+    if (localStorage.getItem("posterizarr_skip_modal_syncjelly") === "true") {
+      runScript("syncjelly");
+    } else {
+      setShowJellyfinSyncModal(true);
+    }
+  };
+
+  const handleEmbySyncClick = () => {
+    if (localStorage.getItem("posterizarr_skip_modal_syncemby") === "true") {
+      runScript("syncemby");
+    } else {
+      setShowEmbySyncModal(true);
+    }
+  };
 
   // Global Config for Defaults
   const [globalConfig, setGlobalConfig] = useState(null);
@@ -813,7 +886,7 @@ function RunModes() {
     }
   };
 
-  const runScript = async (mode) => {
+  const runScript = async (mode, options = {}) => {
     if (status.running) {
       showError(
         `${t("runModes.scriptRunning")} - ${t("runModes.status.mode")}: ${status.current_mode.charAt(0).toUpperCase() +
@@ -839,19 +912,29 @@ function RunModes() {
         );
         fetchStatus();
 
+        if (options.directRedirectTo) {
+          navigate(options.directRedirectTo);
+          return;
+        }
+
         const logFile = getLogFileForMode(mode);
         console.log(`Waiting for log file: ${logFile}`);
 
         // Wait for log file to be created before navigating
         const logExists = await waitForLogFile(logFile);
 
+        const navState = {
+          logFile: logFile,
+          ...(options.redirectToOnFinish ? { redirectToOnFinish: options.redirectToOnFinish, mode } : {})
+        };
+
         if (logExists) {
           console.log(`Redirecting to LogViewer with log: ${logFile}`);
-          navigate("/logs", { state: { logFile: logFile } });
+          navigate("/logs", { state: navState });
         } else {
           console.warn(`Log file ${logFile} not found, redirecting anyway`);
           // Still navigate even if log doesn't exist yet
-          navigate("/logs", { state: { logFile: logFile } });
+          navigate("/logs", { state: navState });
         }
       } else {
         showError(`Error: ${data.message}`);
@@ -1536,6 +1619,11 @@ function RunModes() {
 // JELLYFIN SYNC MODAL
 // ============================================================================
 const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status, t }) => {
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  useEffect(() => {
+    if (show) setDontShowAgain(false);
+  }, [show]);
+
   if (!show) return null;
 
   return (
@@ -1594,12 +1682,23 @@ const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status,
             </a>
           </div>
         </div>
-        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex justify-between border-t-2 border-theme">
-          <button onClick={onClose} className="px-6 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all">{t("runModes.jellyfin.cancel")}</button>
-          <button onClick={onStart} disabled={loading || status.running} className="px-6 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white flex items-center shadow-lg">
-            <RefreshCw className="w-5 h-5 mr-2" />
-            {t("runModes.jellyfin.start")}
-          </button>
+        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme">
+          <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-theme-muted hover:text-theme-text transition-colors">
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+              className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
+            />
+            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.jellyfin.cancel")}</button>
+            <button onClick={() => onStart({ dontShowAgain })} disabled={loading || status.running} className="px-6 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white flex items-center shadow-lg text-sm">
+              <RefreshCw className="w-5 h-5 mr-2" />
+              {t("runModes.jellyfin.start")}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1612,6 +1711,11 @@ const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status,
 // EMBY SYNC MODAL
 // ============================================================================
 const EmbySyncModal = React.memo(({ show, onClose, onStart, loading, status, t }) => {
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  useEffect(() => {
+    if (show) setDontShowAgain(false);
+  }, [show]);
+
   if (!show) return null;
 
   return (
@@ -1670,12 +1774,23 @@ const EmbySyncModal = React.memo(({ show, onClose, onStart, loading, status, t }
             </a>
           </div>
         </div>
-        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex justify-between border-t-2 border-theme">
-          <button onClick={onClose} className="px-6 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all">{t("runModes.emby.cancel")}</button>
-          <button onClick={onStart} disabled={loading || status.running} className="px-6 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white flex items-center shadow-lg">
-            <RefreshCw className="w-5 h-5 mr-2" />
-            {t("runModes.emby.start")}
-          </button>
+        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme">
+          <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-theme-muted hover:text-theme-text transition-colors">
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+              className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
+            />
+            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.emby.cancel")}</button>
+            <button onClick={() => onStart({ dontShowAgain })} disabled={loading || status.running} className="px-6 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white flex items-center shadow-lg text-sm">
+              <RefreshCw className="w-5 h-5 mr-2" />
+              {t("runModes.emby.start")}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1688,6 +1803,11 @@ const EmbySyncModal = React.memo(({ show, onClose, onStart, loading, status, t }
 // BACKUP MODE MODAL
 // ============================================================================
 const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t }) => {
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  useEffect(() => {
+    if (show) setDontShowAgain(false);
+  }, [show]);
+
   if (!show) return null;
 
   return (
@@ -1733,12 +1853,23 @@ const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t
             </a>
           </div>
         </div>
-        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex justify-between border-t-2 border-theme">
-          <button onClick={onClose} className="px-6 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all">{t("runModes.backup.cancel")}</button>
-          <button onClick={onStart} disabled={loading || status.running} className="px-6 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white flex items-center shadow-lg">
-            <RefreshCw className="w-5 h-5 mr-2" />
-            {t("runModes.backup.start")}
-          </button>
+        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme">
+          <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-theme-muted hover:text-theme-text transition-colors">
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+              className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
+            />
+            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.backup.cancel")}</button>
+            <button onClick={() => onStart({ dontShowAgain })} disabled={loading || status.running} className="px-6 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white flex items-center shadow-lg text-sm">
+              <RefreshCw className="w-5 h-5 mr-2" />
+              {t("runModes.backup.start")}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2016,10 +2147,58 @@ const LogoUpdaterModal = React.memo(({
         type="danger"
       />
 
+      <NormalModeModal
+        show={showNormalModeModal}
+        onClose={() => setShowNormalModeModal(false)}
+        onStart={({ dontShowAgain } = {}) => {
+          if (dontShowAgain) {
+            localStorage.setItem("posterizarr_skip_modal_normal", "true");
+            setHasSkippedModals(true);
+          }
+          setShowNormalModeModal(false);
+          runScript("normal");
+        }}
+        loading={loading}
+        status={status}
+        t={t}
+      />
+      <TestingModeModal
+        show={showTestingModeModal}
+        onClose={() => setShowTestingModeModal(false)}
+        onStart={({ autoRedirect, dontShowAgain } = {}) => {
+          localStorage.setItem("posterizarr_testing_auto_redirect", autoRedirect ? "true" : "false");
+          if (dontShowAgain) {
+            localStorage.setItem("posterizarr_skip_modal_testing", "true");
+            setHasSkippedModals(true);
+          }
+          setShowTestingModeModal(false);
+          runScript("testing", {
+            redirectToOnFinish: autoRedirect ? "/test-gallery" : null,
+          });
+        }}
+        onStartAndGoToGallery={({ dontShowAgain } = {}) => {
+          if (dontShowAgain) {
+            localStorage.setItem("posterizarr_skip_modal_testing", "true");
+            setHasSkippedModals(true);
+          }
+          setShowTestingModeModal(false);
+          runScript("testing", { directRedirectTo: "/test-gallery" });
+        }}
+        autoRedirect={autoRedirectTesting}
+        setAutoRedirect={setAutoRedirectTesting}
+        loading={loading}
+        status={status}
+        t={t}
+        navigate={navigate}
+      />
       <JellyfinSyncModal
         show={showJellyfinSyncModal}
         onClose={() => setShowJellyfinSyncModal(false)}
-        onStart={() => {
+        onStart={({ dontShowAgain } = {}) => {
+          if (dontShowAgain) {
+            localStorage.setItem("posterizarr_skip_modal_syncjelly", "true");
+            setHasSkippedModals(true);
+          }
           setShowJellyfinSyncModal(false);
           runScript("syncjelly");
         }}
@@ -2030,7 +2209,11 @@ const LogoUpdaterModal = React.memo(({
       <EmbySyncModal
         show={showEmbySyncModal}
         onClose={() => setShowEmbySyncModal(false)}
-        onStart={() => {
+        onStart={({ dontShowAgain } = {}) => {
+          if (dontShowAgain) {
+            localStorage.setItem("posterizarr_skip_modal_syncemby", "true");
+            setHasSkippedModals(true);
+          }
           setShowEmbySyncModal(false);
           runScript("syncemby");
         }}
@@ -2041,7 +2224,11 @@ const LogoUpdaterModal = React.memo(({
       <BackupModeModal
         show={showBackupModeModal}
         onClose={() => setShowBackupModeModal(false)}
-        onStart={() => {
+        onStart={({ dontShowAgain } = {}) => {
+          if (dontShowAgain) {
+            localStorage.setItem("posterizarr_skip_modal_backup", "true");
+            setHasSkippedModals(true);
+          }
           setShowBackupModeModal(false);
           runScript("backup");
         }}
@@ -2183,15 +2370,28 @@ const LogoUpdaterModal = React.memo(({
 
       {/* Quick Run Modes */}
       <div className="bg-theme-card rounded-xl p-6 border border-theme">
-        <h2 className="text-xl font-semibold text-theme-text mb-4 flex items-center gap-2">
-          <Play className="w-5 h-5 text-theme-primary" />
-          {t("runModes.quickRun.title")}
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h2 className="text-xl font-semibold text-theme-text flex items-center gap-2">
+            <Play className="w-5 h-5 text-theme-primary" />
+            {t("runModes.quickRun.title")}
+          </h2>
+          {hasSkippedModals && (
+            <button
+              type="button"
+              onClick={resetModalPreferences}
+              className="text-xs text-theme-muted hover:text-theme-primary transition-colors flex items-center gap-1.5 px-2.5 py-1 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg cursor-pointer shadow-sm"
+              title={t("runModes.quickRun.resetPromptsTooltip", "Restore all confirmation dialogs")}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{t("runModes.quickRun.resetPrompts", "Reset modal prompts")}</span>
+            </button>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           {/* Normal Mode */}
           <button
-            onClick={() => runScript("normal")}
+            onClick={handleNormalModeClick}
             disabled={loading || status.running}
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >
@@ -2206,7 +2406,7 @@ const LogoUpdaterModal = React.memo(({
 
           {/* Testing Mode */}
           <button
-            onClick={() => runScript("testing")}
+            onClick={handleTestingModeClick}
             disabled={loading || status.running}
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >
@@ -2221,7 +2421,7 @@ const LogoUpdaterModal = React.memo(({
 
           {/* Backup Mode */}
           <button
-            onClick={() => setShowBackupModeModal(true)}
+            onClick={handleBackupModeClick}
             disabled={loading || status.running}
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >
@@ -2251,7 +2451,7 @@ const LogoUpdaterModal = React.memo(({
 
           {/* Sync Jellyfin */}
           <button
-            onClick={() => setShowJellyfinSyncModal(true)}
+            onClick={handleJellyfinSyncClick}
             disabled={loading || status.running}
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >
@@ -2266,7 +2466,7 @@ const LogoUpdaterModal = React.memo(({
 
           {/* Sync Emby */}
           <button
-            onClick={() => setShowEmbySyncModal(true)}
+            onClick={handleEmbySyncClick}
             disabled={loading || status.running}
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >

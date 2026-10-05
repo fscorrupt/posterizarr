@@ -33,7 +33,7 @@ The frontend follows a component-based architecture located entirely within `web
 - **`ConfigEditor.jsx`**: A dynamic form component for editing the `config.json`. It fetches tooltips from the backend and handles schema validation.
 - **`OnboardingModal.jsx`**: The comprehensive first-run setup wizard that guides users through configuring media servers, schedules, libraries, and notifications.
 - **`RunModes.jsx`**: Interface for selecting and triggering the various Posterizarr PowerShell modes (Normal, Backup, Sync, etc.).
-- **`SchedulerSettings.jsx`**: UI for managing cron jobs and automated schedules.
+- **`SchedulerSettings.jsx`**: UI for managing cron jobs and automated schedules, supporting standard PowerShell execution modes as well as lightweight Python-based **Plex Sync** jobs with granular library selection and asset type toggles (collections, posters, seasons, title cards, backgrounds).
 - **`Blueprints.jsx`**: Interface for managing layout blueprints and recipes.
 - **`LanguageOrderSelector.jsx` & `LanguageSwitcher.jsx`**: Components to handle UI language switching and the priority order of downloaded asset languages.
 - **`ProviderOrderSelector.jsx`**: Drag-and-drop interface allowing users to configure the precise fallback order for metadata providers (TMDB, TVDB, Fanart, Plex).
@@ -51,7 +51,7 @@ The frontend follows a component-based architecture located entirely within `web
 - **`AssetReplacer.jsx`**: Deep inspection and replacement modal for swapping out posters or logos on the fly.
 - **`AssetSearchModal.jsx`**: Provider search modal (TMDB, TVDB, Fanart) to find and apply replacement artwork or clearlogos by title or ID.
 - **`LogoBrowser.jsx`**: Media server library browser for inspecting, filtering, and uploading missing ClearLogos directly to Plex, Jellyfin, or Emby.
-- **`CollectionExplorer.jsx`**: Visual collection manager listing collections across connected media servers with status badges.
+- **`CollectionExplorer.jsx`**: Visual collection manager listing collections across connected media servers. Displays enriched collection metadata (item count and release year ranges, e.g. `12 items • 1979 - 2024`), Asset Details modal inspection (`ImagePreviewModal.jsx`), real-time diff status badges (`In Sync`, `Update Ready`, `Missing on Plex`, `No Local Asset`), quick diff view toggling (`LOCAL` vs `SERVER`), 1-click single-poster push to Plex, batch out-of-sync push, and status filtering.
 - **`CollectionLiveEditor.jsx`**: Real-time interactive collection poster designer featuring linear/radial gradients, top/bottom matte fades, vignettes, tiled grain, border radius, typography alignment/drop shadows, preset thumbnails, and direct media server uploads.
 
 ### Monitoring & Status

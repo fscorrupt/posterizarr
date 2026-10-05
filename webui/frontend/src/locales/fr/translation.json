@@ -105,7 +105,10 @@
       "logoUpdater": {
         "title": "Mise à jour des logos",
         "description": "Récupérer automatiquement les ClearLogos Plex/Jellyfin/Emby"
-      }
+      },
+      "resetPrompts": "Réinitialiser les invites",
+      "resetPromptsTooltip": "Restaurer toutes les boîtes de confirmation",
+      "promptsReset": "Boîtes de confirmation des modes d'exécution restaurées."
     },
     "logoUpdater": {
       "title": "Mode Mise à jour des logos",
@@ -236,6 +239,41 @@
       "step2Text": "C'est pratique pour créer un deuxième dossier d'assets avec des données EXIF Kometa/TCM, qui peut ensuite être utilisé par Jellyfin ou Emby.",
       "cancel": "Annuler",
       "start": "Démarrer la sauvegarde"
+    },
+    "normal": {
+      "title": "Mode Normal",
+      "info": "Exécuter Posterizarr sur les bibliothèques configurées",
+      "description": "Ce mode traite vos films, séries et saisons selon votre configuration et vos blueprints personnalisés. Les affiches sont générées et envoyées directement à votre serveur multimédia.",
+      "howItWorks": "Comment fonctionne le Mode Normal :",
+      "step1Title": "Analyse des Bibliothèques",
+      "step1Text": "Analyse vos bibliothèques configurées (Plex, Jellyfin, Emby) à la recherche d'éléments nécessitant des mises à jour.",
+      "step2Title": "Traitement des Images et Overlays",
+      "step2Text": "Récupère les images sources et applique vos bordures, overlays, dégradés et blueprints configurés.",
+      "step3Title": "Synchronisation Serveur & Sauvegardes",
+      "step3Text": "Applique les affiches générées sur votre serveur multimédia et enregistre des sauvegardes locales si activé.",
+      "tip": "Conseil : Vérifiez votre configuration et vos blueprints actifs avant de lancer une exécution normale.",
+      "cancel": "Annuler",
+      "start": "Démarrer le Mode Normal"
+    },
+    "testing": {
+      "title": "Mode Test",
+      "info": "Exécution d'aperçu sécurisée (Aucun envoi vers les serveurs)",
+      "description": "Génère des affiches d'essai selon vos règles et réglages sans modifier votre serveur multimédia ni vos bibliothèques réelles. Idéal pour tester en toute sécurité polices, bordures, overlays et blueprints.",
+      "howItWorks": "Comment fonctionne le Mode Test :",
+      "step1Title": "Traitement d'échantillons",
+      "step1Text": "Traite un sous-ensemble d'essai avec vos paramètres, overlays et bordures actifs.",
+      "step2Title": "Aucune modification de serveur",
+      "step2Text": "Les affiches ne sont jamais envoyées vers vos serveurs en production (Plex, Jellyfin, Emby).",
+      "step3Title": "Enregistré dans les assets de test",
+      "step3Text": "Tous les assets créés atterrissent dans votre dossier de test local, totalement isolés de vos bibliothèques.",
+      "assetLocationTitle": "Où atterriront les assets créés",
+      "assetLocationText": "Toutes les affiches, arrière-plans et cartes de saisons générés pendant le test sont sauvegardés dans votre dossier de test et apparaissent directement dans la",
+      "openGalleryBtn": "Ouvrir la Galerie de Test",
+      "autoRedirect": "Rediriger vers la Galerie de Test une fois le test terminé",
+      "autoRedirectDesc": "Suit le test dans le visualiseur de journaux et navigue automatiquement vers /test-gallery à la fin.",
+      "cancel": "Annuler",
+      "start": "Lancer le Test",
+      "startAndGoToGallery": "Lancer et Aller à la Galerie"
     },
     "status": {
       "running": "Script en cours",
@@ -770,6 +808,11 @@
       "reconnecting": "Reconnexion...",
       "disconnected": "Déconnecté"
     },
+    "testCompletedTitle": "Test terminé !",
+    "redirectingIn": "Redirection vers la Galerie de Test dans {{count}}s...",
+    "testAssetsReady": "Les assets de test sont prêts dans la Galerie de Test.",
+    "stayOnLogs": "Rester sur les journaux",
+    "viewTestGalleryNow": "Voir la Galerie de Test",
     "scriptRunning": "Le script est en cours d'exécution",
     "mode": "Mode",
     "stopBeforeRunning": "Arrêtez le script avant de lancer un autre mode",
@@ -1269,7 +1312,8 @@
   "testGallery": {
     "success": {
       "filesLoaded": "Chargé {{count}} fichiers de test",
-      "testModeStarted": "Mode Test démarré avec succès !"
+      "testModeStarted": "Mode Test démarré avec succès !",
+      "testComplete": "Test terminé ! Assets de test actualisés."
     },
     "errors": {
       "scriptRunning": "Le script est déjà en cours d'exécution ! Veuillez d'abord l'arrêter.",
@@ -1768,6 +1812,7 @@
     "skippedInfoDesc": "Cette vue montre tous les actifs qui ont l'étiquette 'skip_posterizarr' appliquée dans votre serveur multimédia, ainsi que les éléments ignorés manuellement via l'interface utilisateur de Posterizarr. Les éléments listés ici seront ignorés par Posterizarr lors des synchronisations en arrière-plan."
   },
   "common": {
+    "dontShowAgain": "Ne plus afficher",
     "view": "Voir",
     "save": "Enregistrer",
     "cancel": "Annuler",

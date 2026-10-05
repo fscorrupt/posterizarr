@@ -105,7 +105,10 @@
       "logoUpdater": {
         "title": "Atualizador de Logos",
         "description": "Obter Plex/Jellyfin/Emby ClearLogos automaticamente"
-      }
+      },
+      "resetPrompts": "Redefinir avisos modais",
+      "resetPromptsTooltip": "Restaurar todas as caixas de confirmação",
+      "promptsReset": "Caixas de confirmação de modos restauradas."
     },
     "logoUpdater": {
       "title": "Modo Atualizador de Logos",
@@ -236,6 +239,41 @@
       "step2Text": "Isso é útil para criar uma segunda pasta de ativos com dados EXIF Kometa/TCM, que pode então ser usada pelo Jellyfin ou Emby.",
       "cancel": "Cancelar",
       "start": "Iniciar Backup"
+    },
+    "normal": {
+      "title": "Modo Normal",
+      "info": "Executar Posterizarr nas bibliotecas configuradas",
+      "description": "Este modo processa filmes, séries e temporadas de acordo com suas configurações e blueprints personalizados. As capas são geradas e enviadas diretamente para seu servidor de mídia.",
+      "howItWorks": "Como funciona o Modo Normal:",
+      "step1Title": "Varredura de Bibliotecas",
+      "step1Text": "Verifica bibliotecas configuradas (Plex, Jellyfin, Emby) por itens que precisam de novas artes ou atualizações.",
+      "step2Title": "Processamento de Imagens e Overlays",
+      "step2Text": "Obtém as imagens de origem e aplica bordas, overlays, gradientes e blueprints configurados.",
+      "step3Title": "Sincronização com Servidor e Backups",
+      "step3Text": "Envia as artes geradas para seu servidor de mídia e cria backups locais se ativado.",
+      "tip": "Dica: Revise sua configuração e blueprints ativos antes de iniciar uma execução normal.",
+      "cancel": "Cancelar",
+      "start": "Iniciar Modo Normal"
+    },
+    "testing": {
+      "title": "Modo de Teste",
+      "info": "Execução Segura de Pré-visualização (Sem envios para o servidor)",
+      "description": "Gera pôsteres e artes de exemplo de acordo com suas regras e configurações sem modificar seu servidor de mídia ou bibliotecas em produção. Ideal para testar fontes, bordas, overlays e blueprints com segurança.",
+      "howItWorks": "Como funciona o Modo de Teste:",
+      "step1Title": "Processamento de Amostras",
+      "step1Text": "Processa um subconjunto de itens de teste usando suas configurações e overlays ativos.",
+      "step2Title": "Nenhuma alteração no Servidor",
+      "step2Text": "Os pôsteres nunca são enviados para os servidores Plex, Jellyfin ou Emby em execução.",
+      "step3Title": "Salvo em Ativos de Teste",
+      "step3Text": "Todas as artes criadas vão para sua pasta local de teste, totalmente isoladas das bibliotecas reais.",
+      "assetLocationTitle": "Onde os ativos criados serão salvos",
+      "assetLocationText": "Todos os pôsteres de exemplo, planos de fundo e capas de temporada gerados durante o teste são salvos na pasta de teste e aparecem diretamente na",
+      "openGalleryBtn": "Abrir Galeria de Teste",
+      "autoRedirect": "Redirecionar para a Galeria de Teste após o término",
+      "autoRedirectDesc": "Acompanha o teste no visualizador de logs e navega automaticamente para /test-gallery após a conclusão.",
+      "cancel": "Cancelar",
+      "start": "Iniciar Execução de Teste",
+      "startAndGoToGallery": "Iniciar e Ir para Galeria"
     },
     "status": {
       "running": "Script em execução",
@@ -770,6 +808,11 @@
       "reconnecting": "Reconectando...",
       "disconnected": "Desconectado"
     },
+    "testCompletedTitle": "Execução de teste concluída!",
+    "redirectingIn": "Redirecionando para a Galeria de Teste em {{count}}s...",
+    "testAssetsReady": "Os ativos de teste estão prontos na Galeria de Teste.",
+    "stayOnLogs": "Permanecer nos Logs",
+    "viewTestGalleryNow": "Ver Galeria de Teste Agora",
     "scriptRunning": "O script está em execução",
     "mode": "Modo",
     "stopBeforeRunning": "Pare o script antes de executar outro modo",
@@ -1269,7 +1312,8 @@
   "testGallery": {
     "success": {
       "filesLoaded": "Carregados {{count}} arquivos de teste",
-      "testModeStarted": "Modo de teste iniciado com sucesso!"
+      "testModeStarted": "Modo de teste iniciado com sucesso!",
+      "testComplete": "Execução de teste concluída! Ativos de teste atualizados."
     },
     "errors": {
       "scriptRunning": "O script já está em execução! Por favor, pare-o primeiro.",
@@ -1767,6 +1811,7 @@
     "skippedInfoDesc": "Esta visualização mostra todos os ativos que têm o rótulo 'skip_posterizarr' aplicado em seu servidor de mídia, bem como os itens ignorados manualmente pela interface do Posterizarr. Os itens listados aqui serão ignorados pelo Posterizarr durante as sincronizações em segundo plano."
   },
   "common": {
+    "dontShowAgain": "Não mostrar novamente",
     "view": "Visualizar",
     "save": "Salvar",
     "cancel": "Cancelar",

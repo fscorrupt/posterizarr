@@ -52,3 +52,32 @@ Here is why:
    Leave Tautulli or *Arr triggers enabled. Newly added media receives styled Posterizarr artwork right away, and whenever Kometa runs later, Kometa will add its overlay flags on top.
 2. **If you want ONLY Kometa to ever touch Plex artwork:**
    **Disable Tautulli and *Arr triggers entirely**. Instead, schedule Posterizarr to run periodically (e.g., daily at 02:00) before your scheduled Kometa run (e.g., daily at 03:00). With `PlexUpload: "false"`, Posterizarr will generate images exclusively into the `/assets` directory, and Kometa will perform 100% of the uploads to Plex.
+
+## Plex: How does Collection Diff & Push work in Collection Explorer?
+
+**Question:** How does the Collection Explorer compare local collection posters with Plex, and will it push artwork if I use Kometa?
+
+**Answer:**
+Under `/media-server-collections`, Posterizarr inspects your local `Assets/Collections/` directory alongside your Plex collections. It computes a status tag for each collection:
+* **`In Sync`**: The local collection image exists and matches the recorded upload state.
+* **`Update Ready`**: The local image was modified or redesigned and differs from the last uploaded version.
+* **`Missing on Plex`**: A local collection poster exists on disk, but has not yet been pushed to your Plex server.
+* **`No Local Asset`**: A collection exists on Plex, but no matching artwork exists in `Assets/Collections/`.
+
+You can preview the local image vs. the server image directly using the **LOCAL / SERVER** switcher on each card. Clicking **"Push to Plex"** or **"Push All Out-of-Sync"** performs a direct REST upload (`/library/metadata/{rating_key}/posters`) and updates the internal cache (`database/plex_push_cache.db`). This is completely manual and opt-in, so your Kometa configurations remain fully respected unless you explicitly push.
+
+## Plex: Can I schedule automated artwork pushes for only specific asset types?
+
+**Question:** I want Posterizarr to automatically push only my custom **Collection** posters to Plex on a schedule, while letting Kometa manage movie and TV show posters. Is that possible?
+
+**Answer:**
+**Yes!** In the WebUI under **Scheduler** (`/scheduler`), you can create a job with the execution mode set to **`Plex Sync (Lightweight)`**.
+When setting up the schedule:
+1. Select the library (or `All Libraries`).
+2. In the **Asset Types** selector, check only **Collections** (and uncheck Posters, Seasons, Title Cards, Backgrounds).
+3. Set your cron schedule or interval (e.g., daily).
+
+This job runs as a fast Python task without invoking PowerShell or ImageMagick, inspects local files for changes against `database/plex_push_cache.db`, and pushes only your selected asset types to Plex.
+
+> [!WARNING]
+> **Warning for Kometa Users:** Never schedule Plex Sync for asset types (like movie/show posters or seasons) that are also managed by Kometa. Because Kometa applies its own overlays directly to Plex, Posterizarr will detect that the server image differs from the local file and will repeatedly attempt to re-upload it, leading to a continuous overwrite war. If you use Kometa, only sync asset types (such as custom **Collections**) that Kometa does not touch.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   RefreshCw,
@@ -23,6 +23,7 @@ function TestGallery() {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
   const [images, setImages] = useState([]);
+  const wasRunningRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null); // Local error state for loading display
   const [searchTerm, setSearchTerm] = useState("");
@@ -150,6 +151,19 @@ function TestGallery() {
     const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-refresh gallery when a running test script completes
+  useEffect(() => {
+    if (status.running) {
+      wasRunningRef.current = true;
+    } else if (wasRunningRef.current && !status.running) {
+      wasRunningRef.current = false;
+      fetchImages(true);
+      showSuccess(
+        t("testGallery.success.testComplete", "Test run completed! Test assets refreshed.")
+      );
+    }
+  }, [status.running]);
 
   // Filter images based on search term
   const filteredImages = images.filter(

@@ -388,6 +388,9 @@ function Gallery() {
     const name = imageName.toLowerCase();
 
     // Check the folder structure
+    if (path.includes("/collections/") || path.includes("\\collections\\")) {
+      return "Collection";
+    }
     if (path.includes("/seasons/") || path.includes("\\seasons\\")) {
       return "Season";
     }
@@ -426,6 +429,8 @@ function Gallery() {
   // Get color for media type badge
   const getTypeColor = (type) => {
     switch (type) {
+      case "Collection":
+        return "bg-amber-500/20 text-amber-400 border-amber-500/50";
       case "Movie":
         return "bg-blue-500/20 text-blue-400 border-blue-500/50";
       case "Show":

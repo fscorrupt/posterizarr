@@ -1,24 +1,3 @@
-## Brief Overview of Key Settings
-
-🖼️Layout and Styling Definitions
-![poster_description](images/poster_description.png)
-
-## Images from Testing Mode
-
-🖼️Posters
-
-![testing](images/testing.png)
-
-🖼️Backgrounds
-
-![backgroundtesting](images/backgroundtesting.png)
-
-🖼️TitleCards
-
-![titlecardtesting](images/titlecardtesting.png)
-
-## Example Pictures
-
 ### 🖼️Assets after Posterizarr run
 
 #### Font - Colus-Regular.ttf

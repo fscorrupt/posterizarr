@@ -248,7 +248,17 @@ function Send-UptimeKumaWebhook {
         [int]$ping = 0
     )
 
-    $uri = $global:UptimeKumaUrl + "?status=$status&msg=$msg&ping=$ping"
+    if ([string]::IsNullOrWhiteSpace($global:UptimeKumaUrl)) {
+        return
+    }
+
+    $baseUrl = "$global:UptimeKumaUrl".Trim().Trim('"', "'")
+    if ($baseUrl -match '\?') {
+        $baseUrl = $baseUrl.Split('?')[0]
+    }
+    $baseUrl = $baseUrl.Trim().TrimEnd('/')
+    $encodedMsg = [System.Uri]::EscapeDataString($msg)
+    $uri = "$($baseUrl)?status=$status&msg=$encodedMsg&ping=$ping"
     try {
         $null = Invoke-RestMethod -Uri $uri
         Write-Entry -Message "Uptime Kuma webhook sent: Status=$status, Msg=$msg, Ping=$ping" -Path $global:configLogging -Color White -log Info

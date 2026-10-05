@@ -105,7 +105,10 @@
       "logoUpdater": {
         "title": "Logo-Updater",
         "description": "Plex/Jellyfin/Emby ClearLogos automatisch abrufen"
-      }
+      },
+      "resetPrompts": "Modaldialoge zurücksetzen",
+      "resetPromptsTooltip": "Alle Bestätigungsdialoge wiederherstellen",
+      "promptsReset": "Bestätigungsdialoge für Ausführungsmodi wiederhergestellt."
     },
     "logoUpdater": {
       "title": "Logo-Updater-Modus",
@@ -236,6 +239,41 @@
       "step2Text": "Dies ist nützlich, um einen zweiten Asset-Ordner mit Kometa/TCM EXIF-Daten zu erstellen, der dann von Jellyfin oder Emby verwendet werden kann.",
       "cancel": "Abbrechen",
       "start": "Backup starten"
+    },
+    "normal": {
+      "title": "Normaler Modus",
+      "info": "Posterizarr über konfigurierte Medienbibliotheken ausführen",
+      "description": "Dieser Modus verarbeitet Filme, Serien und Staffeln basierend auf deiner Konfiguration und benutzerdefinierten Blueprints. Grafiken werden generiert und direkt auf deinen Medienserver hochgeladen.",
+      "howItWorks": "So funktioniert der normale Modus:",
+      "step1Title": "Medienbibliothek-Scan",
+      "step1Text": "Scannt konfigurierte Bibliotheken (Plex, Jellyfin, Emby) nach Medien, die Aktualisierungen benötigen.",
+      "step2Title": "Grafik- & Overlay-Verarbeitung",
+      "step2Text": "Ruft Quellbilder ab und wendet konfigurierte Rahmen, Overlays, Verläufe und Blueprints an.",
+      "step3Title": "Medienserver-Sync & lokale Backups",
+      "step3Text": "Überträgt die erstellten Grafiken auf deinen Medienserver und speichert lokale Backups, falls aktiviert.",
+      "tip": "Tipp: Überprüfe Konfiguration und aktive Blueprints vor dem Start eines normalen Laufs.",
+      "cancel": "Abbrechen",
+      "start": "Normalen Lauf starten"
+    },
+    "testing": {
+      "title": "Test-Modus",
+      "info": "Sicherer Vorschau-Lauf (Keine Server-Uploads)",
+      "description": "Generiert Beispiel-Poster und Grafiken nach deinen Regeln und Einstellungen, ohne deinen Medienserver oder Live-Bibliotheken zu verändern. Ideal zum sicheren Testen von Schriftarten, Rahmen, Overlays und Blueprints.",
+      "howItWorks": "So funktioniert der Test-Modus:",
+      "step1Title": "Beispiel-Verarbeitung",
+      "step1Text": "Verarbeitet eine Testauswahl von Elementen mit deinen aktiven Einstellungen, Overlays und Rahmen.",
+      "step2Title": "Keine Änderungen am Medienserver",
+      "step2Text": "Poster werden im Test-Modus niemals auf deine Live-Plex-, Jellyfin- oder Emby-Server hochgeladen.",
+      "step3Title": "In Test-Assets gespeichert",
+      "step3Text": "Alle erstellten Assets landen in deinem lokalen Test-Ordner, völlig isoliert von Produktionsbibliotheken.",
+      "assetLocationTitle": "Wo erstellte Assets landen",
+      "assetLocationText": "Alle während des Tests erstellten Beispielposter, Hintergründe und Staffel-Karten werden in deinem Testordner gespeichert und erscheinen direkt in der",
+      "openGalleryBtn": "Test-Galerie öffnen",
+      "autoRedirect": "Nach Abschluss des Testlaufs zur Test-Galerie weiterleiten",
+      "autoRedirectDesc": "Beobachtet den Testlauf im LogViewer und navigiert nach Fertigstellung automatisch zu /test-gallery.",
+      "cancel": "Abbrechen",
+      "start": "Testlauf starten",
+      "startAndGoToGallery": "Starten & zur Galerie wechseln"
     },
     "status": {
       "running": "Skript läuft",
@@ -771,6 +809,11 @@
       "reconnecting": "Verbindung wird wiederhergestellt...",
       "disconnected": "Getrennt"
     },
+    "testCompletedTitle": "Testlauf abgeschlossen!",
+    "redirectingIn": "Weiterleitung zur Test-Galerie in {{count}}s...",
+    "testAssetsReady": "Test-Assets stehen in der Test-Galerie bereit.",
+    "stayOnLogs": "In Logs bleiben",
+    "viewTestGalleryNow": "Jetzt zur Test-Galerie",
     "scriptRunning": "Skript läuft",
     "mode": "Modus",
     "stopBeforeRunning": "Stoppen Sie das Skript, bevor Sie einen anderen Modus ausführen",
@@ -1270,7 +1313,8 @@
   "testGallery": {
     "success": {
       "filesLoaded": "{{count}} Testdateien geladen",
-      "testModeStarted": "Test-Modus erfolgreich gestartet!"
+      "testModeStarted": "Test-Modus erfolgreich gestartet!",
+      "testComplete": "Testlauf abgeschlossen! Test-Assets aktualisiert."
     },
     "errors": {
       "scriptRunning": "Skript läuft bereits! Bitte zuerst stoppen.",
@@ -1820,6 +1864,7 @@
     "skippedInfoDesc": "Diese Ansicht zeigt alle Assets, denen in Ihrem Medienserver das Label 'skip_posterizarr' zugewiesen wurde, sowie Elemente, die manuell über die Posterizarr-Benutzeroberfläche übersprungen wurden. Die hier aufgelisteten Elemente werden von Posterizarr bei Hintergrundsynchronisierungen ignoriert."
   },
   "common": {
+    "dontShowAgain": "Nicht mehr anzeigen",
     "view": "Ansehen",
     "save": "Speichern",
     "cancel": "Abbrechen",

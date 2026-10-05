@@ -1989,7 +1989,87 @@ Save the generated collection poster locally in the Assets directory.
 Upload a poster directly to the connected Media Server (Plex, Jellyfin, Emby).
 
 ### `POST /api/media-server/collections`
-Fetch collections directly from the configured media server.
+Fetch collections directly from the configured media server. When querying Plex, collections are automatically enriched with local asset diff tracking (`syncStatus`: `synced`, `update_available`, `missing_server`, `missing_local`), local image URLs (`local_asset_url`), and disk paths (`local_asset_path`).
+
+### `POST /api/plex/collections/push-item`
+Uploads a single local collection poster directly to Plex via PMS REST API and updates the local push cache database (`database/plex_push_cache.db`).
+
+??? example "View Request"
+    ```json
+    {
+      "rating_key": "12345",
+      "local_path": "/assets/Collections/Star Wars Collection.png",
+      "url": "http://192.168.1.50:32400",
+      "token": "plex-token",
+      "title": "Star Wars Collection"
+    }
+    ```
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "message": "Pushed poster for 'Star Wars Collection' to Plex",
+      "rating_key": "12345",
+      "status": "synced"
+    }
+    ```
+
+### `POST /api/plex/collections/push-batch`
+Concurrently uploads multiple out-of-sync collection posters to Plex. Uses a controlled concurrency semaphore to prevent overwhelming the Plex Media Server.
+
+??? example "View Request"
+    ```json
+    {
+      "items": [
+        {
+          "rating_key": "12345",
+          "local_path": "/assets/Collections/Star Wars Collection.png",
+          "title": "Star Wars Collection"
+        }
+      ],
+      "url": "http://192.168.1.50:32400",
+      "token": "plex-token"
+    }
+    ```
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "total": 1,
+      "pushed": 1,
+      "failed": 0,
+      "results": [
+        {
+          "rating_key": "12345",
+          "title": "Star Wars Collection",
+          "status": "synced"
+        }
+      ]
+    }
+    ```
+
+### `POST /api/plex/sync/run`
+Triggers an on-demand, lightweight background Plex artwork sync in Python (without invoking PowerShell). Scans for modified or missing assets according to specified library and asset types, pushes them to Plex, and writes execution logs to `UILogs/PlexSync.log`.
+
+??? example "View Request"
+    ```json
+    {
+      "library": "all",
+      "asset_types": ["collection", "poster", "season", "titlecard", "background"]
+    }
+    ```
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "message": "Plex sync started in background",
+      "library": "all",
+      "asset_types": ["collection", "poster", "season", "titlecard", "background"]
+    }
+    ```
 
 ### `GET /api/studio-logos`
 Get the list of available studio logos from the GitHub repository, caching them locally.
@@ -2056,10 +2136,29 @@ Fetch paginated items from a connected media server (Plex, Jellyfin, Emby) with 
 Batch checks a list of item IDs (`rating_keys`) against Plex to verify which items already have clearLogo artwork.
 
 ### `GET /api/media-server/image`
-Securely proxies image streams directly from Plex, Jellyfin, or Emby servers without exposing authentication tokens in frontend image URLs.
+Securely proxies image streams directly from Plex, Jellyfin, or Emby servers without exposing authentication tokens in frontend image URLs. Features persistent local disk caching (`Cache/server_thumbs/`) and public HTTP cache headers (`Cache-Control: public, max-age=604800`) to eliminate redundant server polling and optimize UI load speeds.
 
 ### `POST /api/media-server/upload-logo`
 Downloads a selected logo (from URL or data URI), applies Posterizarr metadata tags using Pillow/ImageMagick, and uploads it directly to the media server as a clearLogo.
+
+---
+
+## 🖼️ Media Server Collections & Artwork Push
+
+### `POST /api/media-server/collections`
+Fetches collections from the media server with diff status detection (Plex) comparing local collection assets against server artwork. Returns `syncStatus` (`synced`, `update_available`, `missing_server`, `missing_local`), `localPosterUrl`, and server poster URLs.
+
+### `POST /api/plex/collections/mark-synced`
+Marks a local collection poster as In-Sync with Plex in the persistent SQLite cache (`database/plex_push_cache.db`) without performing a re-upload, updating the status badge immediately.
+
+### `POST /api/plex/collections/push-item`
+Pushes a local collection poster or backdrop directly to Plex Media Server via REST API (`/library/metadata/{rating_key}/posters` or `/arts`) and records the updated timestamp and size in the cache.
+
+### `POST /api/plex/collections/push-batch`
+Batches multiple collection poster pushes to Plex with rate limiting and concurrency management.
+
+### `POST /api/plex/sync/run`
+Triggers an on-demand background Plex Push Sync job across configured libraries and asset types.
 
 ---
 
