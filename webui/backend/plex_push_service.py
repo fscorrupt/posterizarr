@@ -93,48 +93,39 @@ def safe_resolve_asset_path(
         return None
     try:
         user_str = str(user_path).strip().replace("\\", "/")
-        if "\x00" in user_str:
-            logger.warning(f"[Security] Null byte detected in path: {user_path}")
-            return None
-
-        # Reject directory traversal tokens
-        if any(part in ("..", "~") for part in user_str.split("/")):
+        path_parts = [p for p in user_str.split("/") if p]
+        if (
+            "\x00" in user_str
+            or any(part in ("..", "~") for part in path_parts)
+        ):
             logger.warning(f"[Security] Directory traversal detected in path: {user_path}")
             return None
 
-        base_abs = os.path.abspath(str(base_dir))
-        base_prefix = base_abs if base_abs.endswith(os.sep) else base_abs + os.sep
+        base_resolved = Path(base_dir).resolve(strict=False)
 
-        # If user_str is an absolute path, verify it is directly under base_abs
-        if os.path.isabs(user_str):
-            clean_path = os.path.normpath(user_str)
-            target_abs = os.path.abspath(clean_path)
+        if os.path.isabs(user_str) or Path(user_str).is_absolute():
+            cand = Path(user_str)
+            try:
+                rel_path = cand.resolve(strict=False).relative_to(base_resolved)
+            except ValueError:
+                logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {base_dir}")
+                return None
         else:
-            clean_rel = re.sub(r'^[a-zA-Z]:', '', user_str).lstrip("/")
-            target_abs = os.path.normpath(os.path.abspath(os.path.join(base_abs, clean_rel)))
+            clean_parts = [p for p in re.sub(r'^[a-zA-Z]:', '', user_str).split("/") if p and p not in ("..", "~", ".")]
+            candidate = (base_resolved / Path(*clean_parts)).resolve(strict=False)
+            try:
+                rel_path = candidate.relative_to(base_resolved)
+            except ValueError:
+                logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {base_dir}")
+                return None
 
-        # Verify containment using both startswith prefix and commonpath
-        if not (target_abs == base_abs or target_abs.startswith(base_prefix)):
-            logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {base_dir}")
+        safe_path = (base_resolved / rel_path).resolve(strict=False)
+
+        if allowed_extensions and safe_path.suffix.lower() not in allowed_extensions:
+            logger.warning(f"[Security] Disallowed file extension: {safe_path.suffix} in {user_path}")
             return None
 
-        if os.path.commonpath([base_abs, target_abs]) != base_abs:
-            logger.warning(f"[Security] Path traversal attempt blocked by commonpath: {user_path}")
-            return None
-
-        try:
-            base_resolved = Path(base_dir).resolve(strict=False)
-            path_resolved = Path(target_abs).resolve(strict=False)
-            path_resolved.relative_to(base_resolved)
-        except ValueError:
-            logger.warning(f"[Security] Path traversal attempt blocked by relative_to: {user_path}")
-            return None
-
-        if allowed_extensions and path_resolved.suffix.lower() not in allowed_extensions:
-            logger.warning(f"[Security] Disallowed file extension: {path_resolved.suffix} in {user_path}")
-            return None
-
-        return path_resolved
+        return safe_path
     except Exception as e:
         logger.warning(f"[Security] Error resolving safe path for {user_path}: {e}")
         return None
@@ -795,12 +786,12 @@ async def push_collection_artwork_to_plex(
 
     try:
         base_resolved = Path(allowed_base_dir).resolve(strict=False)
-        path_resolved = Path(validated_path).resolve(strict=False)
+        path_resolved = validated_path.resolve(strict=False)
         try:
-            path_resolved.relative_to(base_resolved)
+            rel_path = path_resolved.relative_to(base_resolved)
+            local_image_path = (base_resolved / rel_path).resolve(strict=False)
         except ValueError:
             return {"success": False, "error": "Resolved path escapes allowed base directory"}
-        local_image_path = path_resolved
     except Exception as e:
         return {"success": False, "error": f"Could not validate resolved path: {e}"}
 
@@ -907,14 +898,14 @@ async def push_batch_collections_to_plex(
 
         try:
             base_resolved = Path(assets_dir).resolve(strict=False)
-            path_resolved = Path(full_path).resolve(strict=False)
+            path_resolved = full_path.resolve(strict=False)
             try:
-                path_resolved.relative_to(base_resolved)
+                rel_path = path_resolved.relative_to(base_resolved)
+                full_path = (base_resolved / rel_path).resolve(strict=False)
             except ValueError:
                 failed_count += 1
                 errors.append(f"{title}: Path traversal detected")
                 return
-            full_path = path_resolved
         except Exception as e:
             failed_count += 1
             errors.append(f"{title}: Path validation failed: {e}")

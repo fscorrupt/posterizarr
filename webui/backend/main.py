@@ -241,35 +241,26 @@ def get_safe_path(base_dir: Path, user_path: str) -> Path:
     if not user_path:
         raise HTTPException(status_code=400, detail="Path cannot be empty")
 
-    base_abs = os.path.abspath(str(base_dir))
-    base_prefix = base_abs if base_abs.endswith(os.sep) else base_abs + os.sep
-
     user_str = str(user_path).strip().replace("\\", "/")
-    if "\x00" in user_str:
+    path_parts = [p for p in user_str.split("/") if p]
+    if (
+        "\x00" in user_str
+        or user_str.startswith("/")
+        or any(part in ("..", "~") for part in path_parts)
+    ):
         logger.warning(f"Path traversal attempt detected in get_safe_path: {user_path}")
         raise HTTPException(status_code=403, detail="Path traversal attempt detected")
 
-    # Reject direct traversal patterns
-    if any(part in ("..", "~") for part in user_str.split("/")):
-        logger.warning(f"Path traversal attempt detected in get_safe_path: {user_path}")
-        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
-
-    clean_user = re.sub(r'^[a-zA-Z]:', '', user_str).lstrip("/")
-    target_abs = os.path.normpath(os.path.abspath(os.path.join(base_abs, clean_user)))
-
-    if not (target_abs == base_abs or target_abs.startswith(base_prefix)):
-        logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
-        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
-
+    clean_parts = [p for p in re.sub(r'^[a-zA-Z]:', '', user_str).split("/") if p and p not in ("..", "~", ".")]
     try:
         base_resolved = Path(base_dir).resolve(strict=False)
-        path_resolved = Path(target_abs).resolve(strict=False)
-        path_resolved.relative_to(base_resolved)
-    except ValueError:
+        resolved_candidate = (base_resolved / Path(*clean_parts)).resolve(strict=False)
+        rel_path = resolved_candidate.relative_to(base_resolved)
+        safe_path = (base_resolved / rel_path).resolve(strict=False)
+        return safe_path
+    except (ValueError, Exception):
         logger.warning(f"Path traversal attempt detected via relative_to: {user_path}")
         raise HTTPException(status_code=403, detail="Path traversal attempt detected")
-
-    return path_resolved
 
 
 
@@ -9258,9 +9249,9 @@ async def get_thumbnail(path: str = Query(..., description="Path to the image"),
     real_path = get_safe_path(Path(base_dir), suffix)
     try:
         base_resolved = Path(base_dir).resolve(strict=False)
-        path_resolved = Path(real_path).resolve(strict=False)
-        path_resolved.relative_to(base_resolved)
-        real_path = path_resolved
+        path_resolved = real_path.resolve(strict=False)
+        rel_path = path_resolved.relative_to(base_resolved)
+        real_path = (base_resolved / rel_path).resolve(strict=False)
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied: Invalid path")
 
@@ -18349,14 +18340,24 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
 
         local_file = None
         if request.local_path:
-            cand = safe_resolve_asset_path(ASSETS_DIR, request.local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+            user_local_path = str(request.local_path).strip().replace("\\", "/")
+            path_parts = [p for p in user_local_path.split("/") if p]
+            if (
+                "\x00" in user_local_path
+                or user_local_path.startswith("/")
+                or Path(user_local_path).is_absolute()
+                or any(part in ("..", "~") for part in path_parts)
+            ):
+                raise HTTPException(status_code=400, detail="Invalid local_path")
+            cand = safe_resolve_asset_path(ASSETS_DIR, user_local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
             if cand:
                 try:
                     base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                    cand_resolved = Path(cand).resolve(strict=False)
-                    cand_resolved.relative_to(base_resolved)
-                    if cand_resolved.is_file():
-                        local_file = cand_resolved
+                    cand_resolved = cand.resolve(strict=False)
+                    rel_path = cand_resolved.relative_to(base_resolved)
+                    cand_anchored = (base_resolved / rel_path).resolve(strict=False)
+                    if cand_anchored.is_file():
+                        local_file = cand_anchored
                 except ValueError:
                     pass
 
@@ -18369,19 +18370,28 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
                 if cand:
                     try:
                         base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                        cand_resolved = Path(cand).resolve(strict=False)
-                        cand_resolved.relative_to(base_resolved)
-                        if cand_resolved.is_file():
-                            local_file = cand_resolved
+                        cand_resolved = cand.resolve(strict=False)
+                        rel_path = cand_resolved.relative_to(base_resolved)
+                        cand_anchored = (base_resolved / rel_path).resolve(strict=False)
+                        if cand_anchored.is_file():
+                            local_file = cand_anchored
                     except ValueError:
                         pass
 
         if not local_file or not local_file.is_file():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
 
-        stat = local_file.stat()
+        try:
+            base_resolved_strict = Path(ASSETS_DIR).resolve(strict=True)
+            local_file_resolved_strict = local_file.resolve(strict=True)
+            rel_path_strict = local_file_resolved_strict.relative_to(base_resolved_strict)
+            local_file_safe = (base_resolved_strict / rel_path_strict).resolve(strict=True)
+        except (FileNotFoundError, ValueError):
+            return {"success": False, "error": "Resolved asset path is not allowed"}
+
+        stat = local_file_safe.stat()
         cache.record_push(
-            asset_path=str(local_file),
+            asset_path=str(local_file_safe),
             file_mtime=stat.st_mtime,
             file_size=stat.st_size,
             rating_key=safe_rating_key,
@@ -18432,14 +18442,24 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
 
         local_file = None
         if request.local_path:
-            cand = safe_resolve_asset_path(ASSETS_DIR, request.local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+            user_local_path = str(request.local_path).strip().replace("\\", "/")
+            path_parts = [p for p in user_local_path.split("/") if p]
+            if (
+                "\x00" in user_local_path
+                or user_local_path.startswith("/")
+                or Path(user_local_path).is_absolute()
+                or any(part in ("..", "~") for part in path_parts)
+            ):
+                raise HTTPException(status_code=400, detail="Invalid local_path")
+            cand = safe_resolve_asset_path(ASSETS_DIR, user_local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
             if cand:
                 try:
                     base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                    cand_resolved = Path(cand).resolve(strict=False)
-                    cand_resolved.relative_to(base_resolved)
-                    if cand_resolved.is_file():
-                        local_file = cand_resolved
+                    cand_resolved = cand.resolve(strict=False)
+                    rel_path = cand_resolved.relative_to(base_resolved)
+                    cand_anchored = (base_resolved / rel_path).resolve(strict=False)
+                    if cand_anchored.is_file():
+                        local_file = cand_anchored
                 except ValueError:
                     pass
 
@@ -18452,10 +18472,11 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
                 if cand:
                     try:
                         base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                        cand_resolved = Path(cand).resolve(strict=False)
-                        cand_resolved.relative_to(base_resolved)
-                        if cand_resolved.is_file():
-                            local_file = cand_resolved
+                        cand_resolved = cand.resolve(strict=False)
+                        rel_path = cand_resolved.relative_to(base_resolved)
+                        cand_anchored = (base_resolved / rel_path).resolve(strict=False)
+                        if cand_anchored.is_file():
+                            local_file = cand_anchored
                     except ValueError:
                         pass
 
