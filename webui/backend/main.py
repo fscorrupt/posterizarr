@@ -262,14 +262,14 @@ def get_safe_path(base_dir: Path, user_path: str) -> Path:
         raise HTTPException(status_code=403, detail="Path traversal attempt detected")
 
     try:
-        if os.path.commonpath([base_abs, target_abs]) != base_abs:
-            logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
-            raise HTTPException(status_code=403, detail="Path traversal attempt detected")
-    except (ValueError, Exception):
-        logger.warning(f"Path traversal attempt detected: {user_path} tried to exit {base_dir}")
+        base_resolved = Path(base_dir).resolve(strict=False)
+        path_resolved = Path(target_abs).resolve(strict=False)
+        path_resolved.relative_to(base_resolved)
+    except ValueError:
+        logger.warning(f"Path traversal attempt detected via relative_to: {user_path}")
         raise HTTPException(status_code=403, detail="Path traversal attempt detected")
 
-    return Path(target_abs)
+    return path_resolved
 
 
 
@@ -9256,6 +9256,14 @@ async def get_thumbnail(path: str = Query(..., description="Path to the image"),
         raise HTTPException(status_code=400, detail="Invalid path prefix")
 
     real_path = get_safe_path(Path(base_dir), suffix)
+    try:
+        base_resolved = Path(base_dir).resolve(strict=False)
+        path_resolved = Path(real_path).resolve(strict=False)
+        path_resolved.relative_to(base_resolved)
+        real_path = path_resolved
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied: Invalid path")
+
     if not real_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
 
@@ -18342,8 +18350,15 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
         local_file = None
         if request.local_path:
             cand = safe_resolve_asset_path(ASSETS_DIR, request.local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-            if cand and cand.is_file():
-                local_file = cand
+            if cand:
+                try:
+                    base_resolved = Path(ASSETS_DIR).resolve(strict=False)
+                    cand_resolved = Path(cand).resolve(strict=False)
+                    cand_resolved.relative_to(base_resolved)
+                    if cand_resolved.is_file():
+                        local_file = cand_resolved
+                except ValueError:
+                    pass
 
         if not local_file:
             from plex_push_service import scan_local_collection_assets, normalize_collection_name
@@ -18351,8 +18366,15 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
             norm = normalize_collection_name(request.collection_name)
             if norm in local_assets:
                 cand = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-                if cand and cand.is_file():
-                    local_file = cand
+                if cand:
+                    try:
+                        base_resolved = Path(ASSETS_DIR).resolve(strict=False)
+                        cand_resolved = Path(cand).resolve(strict=False)
+                        cand_resolved.relative_to(base_resolved)
+                        if cand_resolved.is_file():
+                            local_file = cand_resolved
+                    except ValueError:
+                        pass
 
         if not local_file or not local_file.is_file():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
@@ -18411,8 +18433,15 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
         local_file = None
         if request.local_path:
             cand = safe_resolve_asset_path(ASSETS_DIR, request.local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-            if cand and cand.is_file():
-                local_file = cand
+            if cand:
+                try:
+                    base_resolved = Path(ASSETS_DIR).resolve(strict=False)
+                    cand_resolved = Path(cand).resolve(strict=False)
+                    cand_resolved.relative_to(base_resolved)
+                    if cand_resolved.is_file():
+                        local_file = cand_resolved
+                except ValueError:
+                    pass
 
         if not local_file:
             from plex_push_service import scan_local_collection_assets, normalize_collection_name
@@ -18420,8 +18449,15 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
             norm = normalize_collection_name(request.collection_name)
             if norm in local_assets:
                 cand = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-                if cand and cand.is_file():
-                    local_file = cand
+                if cand:
+                    try:
+                        base_resolved = Path(ASSETS_DIR).resolve(strict=False)
+                        cand_resolved = Path(cand).resolve(strict=False)
+                        cand_resolved.relative_to(base_resolved)
+                        if cand_resolved.is_file():
+                            local_file = cand_resolved
+                    except ValueError:
+                        pass
 
         if not local_file or not local_file.is_file():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}

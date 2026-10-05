@@ -122,12 +122,19 @@ def safe_resolve_asset_path(
             logger.warning(f"[Security] Path traversal attempt blocked by commonpath: {user_path}")
             return None
 
-        candidate = Path(target_abs)
-        if allowed_extensions and candidate.suffix.lower() not in allowed_extensions:
-            logger.warning(f"[Security] Disallowed file extension: {candidate.suffix} in {user_path}")
+        try:
+            base_resolved = Path(base_dir).resolve(strict=False)
+            path_resolved = Path(target_abs).resolve(strict=False)
+            path_resolved.relative_to(base_resolved)
+        except ValueError:
+            logger.warning(f"[Security] Path traversal attempt blocked by relative_to: {user_path}")
             return None
 
-        return candidate
+        if allowed_extensions and path_resolved.suffix.lower() not in allowed_extensions:
+            logger.warning(f"[Security] Disallowed file extension: {path_resolved.suffix} in {user_path}")
+            return None
+
+        return path_resolved
     except Exception as e:
         logger.warning(f"[Security] Error resolving safe path for {user_path}: {e}")
         return None
@@ -779,11 +786,23 @@ async def push_collection_artwork_to_plex(
     if not safe_key:
         return {"success": False, "error": f"Invalid rating_key: {rating_key}"}
 
-    if allowed_base_dir:
-        validated_path = safe_resolve_asset_path(allowed_base_dir, local_image_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-        if not validated_path:
-            return {"success": False, "error": "Path traversal attempt blocked or disallowed file extension"}
-        local_image_path = validated_path
+    if not allowed_base_dir:
+        return {"success": False, "error": "Server misconfiguration: allowed_base_dir is required for safe path validation"}
+
+    validated_path = safe_resolve_asset_path(allowed_base_dir, local_image_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+    if not validated_path:
+        return {"success": False, "error": "Path traversal attempt blocked or disallowed file extension"}
+
+    try:
+        base_resolved = Path(allowed_base_dir).resolve(strict=False)
+        path_resolved = Path(validated_path).resolve(strict=False)
+        try:
+            path_resolved.relative_to(base_resolved)
+        except ValueError:
+            return {"success": False, "error": "Resolved path escapes allowed base directory"}
+        local_image_path = path_resolved
+    except Exception as e:
+        return {"success": False, "error": f"Could not validate resolved path: {e}"}
 
     if not local_image_path.is_file():
         return {"success": False, "error": f"Local file not found: {local_image_path.name}"}
@@ -881,9 +900,29 @@ async def push_batch_collections_to_plex(
             return
 
         full_path = safe_resolve_asset_path(assets_dir, local_rel, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-        if not full_path or not full_path.is_file():
+        if not full_path:
             failed_count += 1
             errors.append(f"{title}: Path traversal or invalid artwork path blocked")
+            return
+
+        try:
+            base_resolved = Path(assets_dir).resolve(strict=False)
+            path_resolved = Path(full_path).resolve(strict=False)
+            try:
+                path_resolved.relative_to(base_resolved)
+            except ValueError:
+                failed_count += 1
+                errors.append(f"{title}: Path traversal detected")
+                return
+            full_path = path_resolved
+        except Exception as e:
+            failed_count += 1
+            errors.append(f"{title}: Path validation failed: {e}")
+            return
+
+        if not full_path.is_file():
+            failed_count += 1
+            errors.append(f"{title}: Local artwork file not found")
             return
 
         async with semaphore:
