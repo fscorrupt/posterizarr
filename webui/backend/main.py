@@ -18349,49 +18349,21 @@ async def api_plex_mark_collection_synced(request: PlexMarkSyncedRequest):
                 or any(part in ("..", "~") for part in path_parts)
             ):
                 raise HTTPException(status_code=400, detail="Invalid local_path")
-            cand = safe_resolve_asset_path(ASSETS_DIR, user_local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-            if cand:
-                try:
-                    base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                    cand_resolved = cand.resolve(strict=False)
-                    rel_path = cand_resolved.relative_to(base_resolved)
-                    cand_anchored = (base_resolved / rel_path).resolve(strict=False)
-                    if cand_anchored.is_file():
-                        local_file = cand_anchored
-                except ValueError:
-                    pass
+            local_file = safe_resolve_asset_path(ASSETS_DIR, user_local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
 
         if not local_file:
             from plex_push_service import scan_local_collection_assets, normalize_collection_name
             local_assets = scan_local_collection_assets(ASSETS_DIR)
             norm = normalize_collection_name(request.collection_name)
             if norm in local_assets:
-                cand = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-                if cand:
-                    try:
-                        base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                        cand_resolved = cand.resolve(strict=False)
-                        rel_path = cand_resolved.relative_to(base_resolved)
-                        cand_anchored = (base_resolved / rel_path).resolve(strict=False)
-                        if cand_anchored.is_file():
-                            local_file = cand_anchored
-                    except ValueError:
-                        pass
+                local_file = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
 
         if not local_file or not local_file.is_file():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}
 
-        try:
-            base_resolved_strict = Path(ASSETS_DIR).resolve(strict=True)
-            local_file_resolved_strict = local_file.resolve(strict=True)
-            rel_path_strict = local_file_resolved_strict.relative_to(base_resolved_strict)
-            local_file_safe = (base_resolved_strict / rel_path_strict).resolve(strict=True)
-        except (FileNotFoundError, ValueError):
-            return {"success": False, "error": "Resolved asset path is not allowed"}
-
-        stat = local_file_safe.stat()
+        stat = local_file.stat()
         cache.record_push(
-            asset_path=str(local_file_safe),
+            asset_path=str(local_file),
             file_mtime=stat.st_mtime,
             file_size=stat.st_size,
             rating_key=safe_rating_key,
@@ -18451,34 +18423,14 @@ async def api_plex_push_single_collection(request: PlexPushSingleRequest):
                 or any(part in ("..", "~") for part in path_parts)
             ):
                 raise HTTPException(status_code=400, detail="Invalid local_path")
-            cand = safe_resolve_asset_path(ASSETS_DIR, user_local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-            if cand:
-                try:
-                    base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                    cand_resolved = cand.resolve(strict=False)
-                    rel_path = cand_resolved.relative_to(base_resolved)
-                    cand_anchored = (base_resolved / rel_path).resolve(strict=False)
-                    if cand_anchored.is_file():
-                        local_file = cand_anchored
-                except ValueError:
-                    pass
+            local_file = safe_resolve_asset_path(ASSETS_DIR, user_local_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
 
         if not local_file:
             from plex_push_service import scan_local_collection_assets, normalize_collection_name
             local_assets = scan_local_collection_assets(ASSETS_DIR)
             norm = normalize_collection_name(request.collection_name)
             if norm in local_assets:
-                cand = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-                if cand:
-                    try:
-                        base_resolved = Path(ASSETS_DIR).resolve(strict=False)
-                        cand_resolved = cand.resolve(strict=False)
-                        rel_path = cand_resolved.relative_to(base_resolved)
-                        cand_anchored = (base_resolved / rel_path).resolve(strict=False)
-                        if cand_anchored.is_file():
-                            local_file = cand_anchored
-                    except ValueError:
-                        pass
+                local_file = safe_resolve_asset_path(ASSETS_DIR, local_assets[norm]["poster_rel_path"], allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
 
         if not local_file or not local_file.is_file():
             return {"success": False, "error": f"No local asset found for '{request.collection_name}'"}

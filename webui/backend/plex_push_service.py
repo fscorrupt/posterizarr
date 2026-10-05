@@ -92,32 +92,37 @@ def safe_resolve_asset_path(
     if not user_path:
         return None
     try:
-        user_str = str(user_path).strip().replace("\\", "/")
+        base_resolved = Path(base_dir).resolve(strict=False)
+
+        if isinstance(user_path, Path) and user_path.is_absolute():
+            try:
+                rel = user_path.relative_to(base_resolved)
+                user_str = str(rel).replace("\\", "/")
+            except ValueError:
+                logger.warning(f"[Security] Path outside base directory: {user_path}")
+                return None
+        else:
+            user_str = str(user_path).strip().replace("\\", "/")
+
         path_parts = [p for p in user_str.split("/") if p]
         if (
             "\x00" in user_str
+            or user_str.startswith("/")
             or any(part in ("..", "~") for part in path_parts)
         ):
             logger.warning(f"[Security] Directory traversal detected in path: {user_path}")
             return None
 
-        base_resolved = Path(base_dir).resolve(strict=False)
+        clean_parts = [p for p in re.sub(r'^[a-zA-Z]:', '', user_str).split("/") if p and p not in ("..", "~", ".")]
+        if not clean_parts:
+            return None
 
-        if os.path.isabs(user_str) or Path(user_str).is_absolute():
-            cand = Path(user_str)
-            try:
-                rel_path = cand.resolve(strict=False).relative_to(base_resolved)
-            except ValueError:
-                logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {base_dir}")
-                return None
-        else:
-            clean_parts = [p for p in re.sub(r'^[a-zA-Z]:', '', user_str).split("/") if p and p not in ("..", "~", ".")]
-            candidate = (base_resolved / Path(*clean_parts)).resolve(strict=False)
-            try:
-                rel_path = candidate.relative_to(base_resolved)
-            except ValueError:
-                logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {base_dir}")
-                return None
+        resolved_candidate = (base_resolved / Path(*clean_parts)).resolve(strict=False)
+        try:
+            rel_path = resolved_candidate.relative_to(base_resolved)
+        except ValueError:
+            logger.warning(f"[Security] Path traversal attempt blocked: {user_path} outside {base_dir}")
+            return None
 
         safe_path = (base_resolved / rel_path).resolve(strict=False)
 
@@ -781,22 +786,10 @@ async def push_collection_artwork_to_plex(
         return {"success": False, "error": "Server misconfiguration: allowed_base_dir is required for safe path validation"}
 
     validated_path = safe_resolve_asset_path(allowed_base_dir, local_image_path, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-    if not validated_path:
-        return {"success": False, "error": "Path traversal attempt blocked or disallowed file extension"}
+    if not validated_path or not validated_path.is_file():
+        return {"success": False, "error": "Local artwork file not found or path blocked"}
 
-    try:
-        base_resolved = Path(allowed_base_dir).resolve(strict=False)
-        path_resolved = validated_path.resolve(strict=False)
-        try:
-            rel_path = path_resolved.relative_to(base_resolved)
-            local_image_path = (base_resolved / rel_path).resolve(strict=False)
-        except ValueError:
-            return {"success": False, "error": "Resolved path escapes allowed base directory"}
-    except Exception as e:
-        return {"success": False, "error": f"Could not validate resolved path: {e}"}
-
-    if not local_image_path.is_file():
-        return {"success": False, "error": f"Local file not found: {local_image_path.name}"}
+    local_image_path = validated_path
 
     ext = local_image_path.suffix.lower()
     allowed_exts = {".jpg", ".jpeg", ".png", ".webp"}
@@ -891,29 +884,9 @@ async def push_batch_collections_to_plex(
             return
 
         full_path = safe_resolve_asset_path(assets_dir, local_rel, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-        if not full_path:
+        if not full_path or not full_path.is_file():
             failed_count += 1
-            errors.append(f"{title}: Path traversal or invalid artwork path blocked")
-            return
-
-        try:
-            base_resolved = Path(assets_dir).resolve(strict=False)
-            path_resolved = full_path.resolve(strict=False)
-            try:
-                rel_path = path_resolved.relative_to(base_resolved)
-                full_path = (base_resolved / rel_path).resolve(strict=False)
-            except ValueError:
-                failed_count += 1
-                errors.append(f"{title}: Path traversal detected")
-                return
-        except Exception as e:
-            failed_count += 1
-            errors.append(f"{title}: Path validation failed: {e}")
-            return
-
-        if not full_path.is_file():
-            failed_count += 1
-            errors.append(f"{title}: Local artwork file not found")
+            errors.append(f"{title}: Local artwork file not found or invalid path")
             return
 
         async with semaphore:
