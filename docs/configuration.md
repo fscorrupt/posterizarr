@@ -166,14 +166,14 @@
     - `TC4k`: 4K TitleCard overlay file name. (overlay has to match the Poster dimensions 3840x2160)
     - `TC1080p` : 1080p TitleCard overlay file name. (overlay has to match the Poster dimensions 3840x2160)
     - `4KDoVi`: Specific overlay for 4K Dolby Vision posters. (2000x3000)
-    - `4KHDR10`: Specific overlay for 4K HDR10 posters. (2000x3000)
-    - `4KDoViHDR10`: Specific overlay for 4K DoVi & HDR10 posters. (2000x3000)
+    - `4KHDR10`: Specific overlay for 4K HDR10 & HDR10+ posters. (2000x3000)
+    - `4KDoViHDR10`: Specific overlay for 4K DoVi & HDR10/HDR10+ posters. (2000x3000)
     - `4KDoViBackground`: Specific overlay for 4K Dolby Vision backgrounds. (3840x2160)
-    - `4KHDR10Background`: Specific overlay for 4K HDR10 backgrounds. (3840x2160)
-    - `4KDoViHDR10Background`: Specific overlay for 4K DoVi & HDR10 backgrounds. (3840x2160)
+    - `4KHDR10Background`: Specific overlay for 4K HDR10 & HDR10+ backgrounds. (3840x2160)
+    - `4KDoViHDR10Background`: Specific overlay for 4K DoVi & HDR10/HDR10+ backgrounds. (3840x2160)
     - `4KDoViTC`: Specific overlay for 4K Dolby Vision TitleCards. (3840x2160)
-    - `4KHDR10TC`: Specific overlay for 4K HDR10 TitleCards. (3840x2160)
-    - `4KDoViHDR10TC`: Specific overlay for 4K DoVi & HDR10 TitleCards. (3840x2160)
+    - `4KHDR10TC`: Specific overlay for 4K HDR10 & HDR10+ TitleCards. (3840x2160)
+    - `4KDoViHDR10TC`: Specific overlay for 4K DoVi & HDR10/HDR10+ TitleCards. (3840x2160)
     - `UsePosterResolutionOverlays`: Set to `true` to apply specific overlay with resolution for 4k/1080p posters [4K Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/poster-4k.png)/[1080p Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/poster-1080p.png).
         - if you only want 4k just add your default overlay file also for `Poster1080p`.
     - `UseBackgroundResolutionOverlays`: Set to `true` to apply specific overlay with resolution for 4k/1080p posters [4K Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/background-4k.png)/[1080p Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/background-1080p.png).

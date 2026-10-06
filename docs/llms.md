@@ -492,9 +492,9 @@ The configuration file `config.json` (modeled by `config.example.json`) contains
 - `font` / `collectionfont` / `RTLfont` / `backgroundfont` / `titlecardfont` (str): Font filenames in `Overlayfiles/`.
 - `overlayfile` / `showoverlayfile` / `seasonoverlayfile` / `collectionoverlayfile` / `backgroundoverlayfile` / `titlecardoverlayfile` (str): Overlay PNG files.
 - `poster4k` / `Poster1080p` / `Background4k` / `Background1080p` / `TC4k` / `TC1080p` (str): Resolution badge overlays.
-- `4KDoVi` / `4KHDR10` / `4KDoViHDR10` (str): HDR badge overlays for posters.
-- `4KDoViBackground` / `4KHDR10Background` / `4KDoViHDR10Background` (str): HDR badges for backgrounds.
-- `4KDoViTC` / `4KHDR10TC` / `4KDoViHDR10TC` (str): HDR badges for title cards.
+- `4KDoVi` / `4KHDR10` / `4KDoViHDR10` (str): HDR badge overlays for posters (supports HDR10 and HDR10+).
+- `4KDoViBackground` / `4KHDR10Background` / `4KDoViHDR10Background` (str): HDR badges for backgrounds (supports HDR10 and HDR10+).
+- `4KDoViTC` / `4KHDR10TC` / `4KDoViHDR10TC` (str): HDR badges for title cards (supports HDR10 and HDR10+).
 - `UsePosterResolutionOverlays` / `UseBackgroundResolutionOverlays` / `UseTCResolutionOverlays` (bool): Apply resolution-specific overlays.
 - `LibraryFolders` (bool): Structure output by library folders (Kometa style).
 - `Posters` / `SeasonPosters` / `BackgroundPosters` / `TitleCards` (bool): Enable generation per asset category.

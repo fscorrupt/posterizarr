@@ -447,14 +447,15 @@ function Invoke-MoviePosterCreation {
                                     InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                     if ($global:ImageMagickError -ne 'true') {
                                         if ($UsePosterResolutionOverlays -eq 'true') {
-                                            switch ($entry.Resolution) {
-                                                '4K DoVi/HDR10' { $Posteroverlay = $4KDoViHDR10 }
-                                                '4K DoVi' { $Posteroverlay = $4KDoVi }
-                                                '4K HDR10' { $Posteroverlay = $4KHDR10 }
-                                                '4K' { $Posteroverlay = $4kposter }
-                                                '1080p' { $Posteroverlay = $1080pPoster }
-                                                Default { $Posteroverlay = $DefaultPosteroverlay }
+                                            switch -Regex ($entry.Resolution) {
+                                                '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))' { $Posteroverlay = $4KDoViHDR10; break }
+                                                '(4K|2160).*(DoVi|Dolby)'                          { $Posteroverlay = $4KDoVi; break }
+                                                '(4K|2160).*HDR'                                   { $Posteroverlay = $4KHDR10; break }
+                                                '4K|2160'                                          { $Posteroverlay = $4kposter; break }
+                                                '1080'                                             { $Posteroverlay = $1080pPoster; break }
+                                                Default                                            { $Posteroverlay = $DefaultPosteroverlay }
                                             }
+                                            Write-Entry -Subtext "  Matched Resolution [$($entry.Resolution)] -> Poster overlay: [$([System.IO.Path]::GetFileName("$Posteroverlay"))]" -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         Else {
                                             $Posteroverlay = $DefaultPosteroverlay
@@ -1241,14 +1242,15 @@ function Invoke-MoviePosterCreation {
                                     InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                     if ($global:ImageMagickError -ne 'true') {
                                         if ($UseBackgroundResolutionOverlays -eq 'true') {
-                                            switch ($entry.Resolution) {
-                                                '4K DoVi/HDR10' { $backgroundoverlay = $4KDoViHDR10Background }
-                                                '4K DoVi' { $backgroundoverlay = $4KDoViBackground }
-                                                '4K HDR10' { $backgroundoverlay = $4KHDR10Background }
-                                                '4K' { $backgroundoverlay = $4kBackground }
-                                                '1080p' { $backgroundoverlay = $1080pBackground }
-                                                Default { $backgroundoverlay = $Defaultbackgroundoverlay }
+                                            switch -Regex ($entry.Resolution) {
+                                                '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))' { $backgroundoverlay = $4KDoViHDR10Background; break }
+                                                '(4K|2160).*(DoVi|Dolby)'                          { $backgroundoverlay = $4KDoViBackground; break }
+                                                '(4K|2160).*HDR'                                   { $backgroundoverlay = $4KHDR10Background; break }
+                                                '4K|2160'                                          { $backgroundoverlay = $4kBackground; break }
+                                                '1080'                                             { $backgroundoverlay = $1080pBackground; break }
+                                                Default                                            { $backgroundoverlay = $Defaultbackgroundoverlay }
                                             }
+                                            Write-Entry -Subtext "  Matched Resolution [$($entry.Resolution)] -> Background overlay: [$([System.IO.Path]::GetFileName("$backgroundoverlay"))]" -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         Else {
                                             $backgroundoverlay = $Defaultbackgroundoverlay
@@ -2177,14 +2179,15 @@ function Invoke-ShowPosterCreation {
                                 InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                 if ($global:ImageMagickError -ne 'true') {
                                     if ($UsePosterResolutionOverlays -eq 'true') {
-                                        switch ($entry.Resolution) {
-                                            '4K DoVi/HDR10' { $Posteroverlay = $4KDoViHDR10 }
-                                            '4K DoVi' { $Posteroverlay = $4KDoVi }
-                                            '4K HDR10' { $Posteroverlay = $4KHDR10 }
-                                            '4K' { $Posteroverlay = $4kposter }
-                                            '1080p' { $Posteroverlay = $1080pPoster }
-                                            Default { $Posteroverlay = $DefaultShowPosteroverlay }
+                                        switch -Regex ($entry.Resolution) {
+                                            '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))' { $Posteroverlay = $4KDoViHDR10; break }
+                                            '(4K|2160).*(DoVi|Dolby)'                          { $Posteroverlay = $4KDoVi; break }
+                                            '(4K|2160).*HDR'                                   { $Posteroverlay = $4KHDR10; break }
+                                            '4K|2160'                                          { $Posteroverlay = $4kposter; break }
+                                            '1080'                                             { $Posteroverlay = $1080pPoster; break }
+                                            Default                                            { $Posteroverlay = $DefaultShowPosteroverlay }
                                         }
+                                        Write-Entry -Subtext "  Matched Resolution [$($entry.Resolution)] -> Show Poster overlay: [$([System.IO.Path]::GetFileName("$Posteroverlay"))]" -Path $global:configLogging -Color Cyan -log Debug
                                     }
                                     Else {
                                         $Posteroverlay = $DefaultShowPosteroverlay
@@ -3025,14 +3028,15 @@ function Invoke-ShowPosterCreation {
                                 InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                 if ($global:ImageMagickError -ne 'true') {
                                     if ($UseBackgroundResolutionOverlays -eq 'true') {
-                                        switch ($entry.Resolution) {
-                                            '4K DoVi/HDR10' { $backgroundoverlay = $4KDoViHDR10Background }
-                                            '4K DoVi' { $backgroundoverlay = $4KDoViBackground }
-                                            '4K HDR10' { $backgroundoverlay = $4KHDR10Background }
-                                            '4K' { $backgroundoverlay = $4kBackground }
-                                            '1080p' { $backgroundoverlay = $1080pBackground }
-                                            Default { $backgroundoverlay = $DefaultShowBackgroundoverlay }
+                                        switch -Regex ($entry.Resolution) {
+                                            '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))' { $backgroundoverlay = $4KDoViHDR10Background; break }
+                                            '(4K|2160).*(DoVi|Dolby)'                          { $backgroundoverlay = $4KDoViBackground; break }
+                                            '(4K|2160).*HDR'                                   { $backgroundoverlay = $4KHDR10Background; break }
+                                            '4K|2160'                                          { $backgroundoverlay = $4kBackground; break }
+                                            '1080'                                             { $backgroundoverlay = $1080pBackground; break }
+                                            Default                                            { $backgroundoverlay = $DefaultShowBackgroundoverlay }
                                         }
+                                        Write-Entry -Subtext "  Matched Resolution [$($entry.Resolution)] -> Show Background overlay: [$([System.IO.Path]::GetFileName("$backgroundoverlay"))]" -Path $global:configLogging -Color Cyan -log Debug
                                     }
                                     Else {
                                         $backgroundoverlay = $DefaultShowBackgroundoverlay
@@ -4997,14 +5001,15 @@ function Invoke-TitleCardCreation {
                                         InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                         if ($global:ImageMagickError -ne 'true') {
                                             if ($UseTCResolutionOverlays -eq 'true') {
-                                                switch ($global:EPResolution) {
-                                                    '4K DoVi/HDR10' { $TitleCardoverlay = $4KDoViHDR10TC }
-                                                    '4K DoVi' { $TitleCardoverlay = $4KDoViTC }
-                                                    '4K HDR10' { $TitleCardoverlay = $4KHDR10TC }
-                                                    '4K' { $TitleCardoverlay = $4kTC }
-                                                    '1080p' { $TitleCardoverlay = $1080pTC }
-                                                    Default { $TitleCardoverlay = $DefaultTitleCardoverlay }
+                                                switch -Regex ($global:EPResolution) {
+                                                    '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))' { $TitleCardoverlay = $4KDoViHDR10TC; break }
+                                                    '(4K|2160).*(DoVi|Dolby)'                          { $TitleCardoverlay = $4KDoViTC; break }
+                                                    '(4K|2160).*HDR'                                   { $TitleCardoverlay = $4KHDR10TC; break }
+                                                    '4K|2160'                                          { $TitleCardoverlay = $4kTC; break }
+                                                    '1080'                                             { $TitleCardoverlay = $1080pTC; break }
+                                                    Default                                            { $TitleCardoverlay = $DefaultTitleCardoverlay }
                                                 }
+                                                Write-Entry -Subtext "  Matched Resolution [$($global:EPResolution)] -> TitleCard overlay: [$([System.IO.Path]::GetFileName("$TitleCardoverlay"))]" -Path $global:configLogging -Color Cyan -log Debug
                                             }
                                             Else {
                                                 $TitleCardoverlay = $DefaultTitleCardoverlay
@@ -5707,14 +5712,15 @@ function Invoke-TitleCardCreation {
                                     InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                     if ($global:ImageMagickError -ne 'true') {
                                         if ($UseTCResolutionOverlays -eq 'true') {
-                                            switch ($global:EPResolution) {
-                                                '4K DoVi/HDR10' { $TitleCardoverlay = $4KDoViHDR10TC }
-                                                '4K DoVi' { $TitleCardoverlay = $4KDoViTC }
-                                                '4K HDR10' { $TitleCardoverlay = $4KHDR10TC }
-                                                '4K' { $TitleCardoverlay = $4kTC }
-                                                '1080p' { $TitleCardoverlay = $1080pTC }
-                                                Default { $TitleCardoverlay = $DefaultTitleCardoverlay }
+                                            switch -Regex ($global:EPResolution) {
+                                                '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))' { $TitleCardoverlay = $4KDoViHDR10TC; break }
+                                                '(4K|2160).*(DoVi|Dolby)'                          { $TitleCardoverlay = $4KDoViTC; break }
+                                                '(4K|2160).*HDR'                                   { $TitleCardoverlay = $4KHDR10TC; break }
+                                                '4K|2160'                                          { $TitleCardoverlay = $4kTC; break }
+                                                '1080'                                             { $TitleCardoverlay = $1080pTC; break }
+                                                Default                                            { $TitleCardoverlay = $DefaultTitleCardoverlay }
                                             }
+                                            Write-Entry -Subtext "  Matched Resolution [$($global:EPResolution)] -> TitleCard overlay: [$([System.IO.Path]::GetFileName("$TitleCardoverlay"))]" -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         Else {
                                             $TitleCardoverlay = $DefaultTitleCardoverlay
@@ -6490,14 +6496,15 @@ function Invoke-TitleCardCreation {
                                                         InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                                                         if ($global:ImageMagickError -ne 'true') {
                                                             if ($UseTCResolutionOverlays -eq 'true') {
-                                                                switch ($global:EPResolution) {
-                                                                    '4K DoVi/HDR10' { $TitleCardoverlay = $4KDoViHDR10TC }
-                                                                    '4K DoVi' { $TitleCardoverlay = $4KDoViTC }
-                                                                    '4K HDR10' { $TitleCardoverlay = $4KHDR10TC }
-                                                                    '4K' { $TitleCardoverlay = $4kTC }
-                                                                    '1080p' { $TitleCardoverlay = $1080pTC }
-                                                                    Default { $TitleCardoverlay = $DefaultTitleCardoverlay }
+                                                                switch -Regex ($global:EPResolution) {
+                                                                    '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))' { $TitleCardoverlay = $4KDoViHDR10TC; break }
+                                                                    '(4K|2160).*(DoVi|Dolby)'                          { $TitleCardoverlay = $4KDoViTC; break }
+                                                                    '(4K|2160).*HDR'                                   { $TitleCardoverlay = $4KHDR10TC; break }
+                                                                    '4K|2160'                                          { $TitleCardoverlay = $4kTC; break }
+                                                                    '1080'                                             { $TitleCardoverlay = $1080pTC; break }
+                                                                    Default                                            { $TitleCardoverlay = $DefaultTitleCardoverlay }
                                                                 }
+                                                                Write-Entry -Subtext "  Matched Resolution [$($global:EPResolution)] -> TitleCard overlay: [$([System.IO.Path]::GetFileName("$TitleCardoverlay"))]" -Path $global:configLogging -Color Cyan -log Debug
                                                             }
                                                             Else {
                                                                 $TitleCardoverlay = $DefaultTitleCardoverlay
