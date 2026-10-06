@@ -953,13 +953,21 @@ public class PlexSyncTask : IScheduledTask
     {
         try
         {
-            var col = item.GetAncestorIds()
+            var ancestors = item.GetAncestorIds()
                 .Select(id => _libraryManager.GetItemById(id))
-                .OfType<CollectionFolder>()
-                .FirstOrDefault();
+                .Where(p => p != null)
+                .ToList();
+
+            var col = ancestors.OfType<CollectionFolder>().FirstOrDefault();
             if (col != null && !string.IsNullOrWhiteSpace(col.Name))
             {
                 return col.Name;
+            }
+
+            var rootFolder = ancestors.FirstOrDefault(p => p != null && p.ParentId != Guid.Empty && _libraryManager.GetItemById(p.ParentId)?.ParentId == Guid.Empty);
+            if (rootFolder != null && !string.IsNullOrWhiteSpace(rootFolder.Name))
+            {
+                return rootFolder.Name;
             }
         }
         catch { }
