@@ -160,6 +160,14 @@
 
                     <div class="inputContainer">
                         <label class="checkboxContainerLabel">
+                            <input type="checkbox" id="chkPlexSyncTitlecards" name="chkPlexSyncTitlecards" is="emby-checkbox" />
+                            <span>Sync Episode Title Cards</span>
+                        </label>
+                        <div class="fieldDescription">Mirror individual episode title cards/thumbnails from Plex.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="checkboxContainerLabel">
                             <input type="checkbox" id="chkPlexSyncBackdrops" name="chkPlexSyncBackdrops" is="emby-checkbox" />
                             <span>Sync Backdrops (Fanart)</span>
                         </label>
@@ -244,11 +252,13 @@
                     const chkPlexMovies = page.querySelector('#chkPlexSyncMovies');
                     const chkPlexShows = page.querySelector('#chkPlexSyncShows');
                     const chkPlexSeasons = page.querySelector('#chkPlexSyncSeasons');
+                    const chkPlexTitlecards = page.querySelector('#chkPlexSyncTitlecards');
                     const chkPlexBackdrops = page.querySelector('#chkPlexSyncBackdrops');
 
                     if (chkPlexMovies) chkPlexMovies.checked = config.PlexSyncMovies !== false;
                     if (chkPlexShows) chkPlexShows.checked = config.PlexSyncShows !== false;
                     if (chkPlexSeasons) chkPlexSeasons.checked = config.PlexSyncSeasons !== false;
+                    if (chkPlexTitlecards) chkPlexTitlecards.checked = config.PlexSyncTitlecards !== false;
                     if (chkPlexBackdrops) chkPlexBackdrops.checked = config.PlexSyncBackdrops || false;
 
                     configLoaded = true;
@@ -435,11 +445,13 @@
                         const chkPlexMovies = view.querySelector('#chkPlexSyncMovies');
                         const chkPlexShows = view.querySelector('#chkPlexSyncShows');
                         const chkPlexSeasons = view.querySelector('#chkPlexSyncSeasons');
+                        const chkPlexTitlecards = view.querySelector('#chkPlexSyncTitlecards');
                         const chkPlexBackdrops = view.querySelector('#chkPlexSyncBackdrops');
 
                         if (chkPlexMovies) config.PlexSyncMovies = chkPlexMovies.checked;
                         if (chkPlexShows) config.PlexSyncShows = chkPlexShows.checked;
                         if (chkPlexSeasons) config.PlexSyncSeasons = chkPlexSeasons.checked;
+                        if (chkPlexTitlecards) config.PlexSyncTitlecards = chkPlexTitlecards.checked;
                         if (chkPlexBackdrops) config.PlexSyncBackdrops = chkPlexBackdrops.checked;
 
                         if (!config.EnablePlexSync && config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {

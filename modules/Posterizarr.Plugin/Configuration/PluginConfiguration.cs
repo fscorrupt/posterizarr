@@ -24,6 +24,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool PlexSyncMovies { get; set; }
     public bool PlexSyncShows { get; set; }
     public bool PlexSyncSeasons { get; set; }
+    public bool PlexSyncTitlecards { get; set; }
     public bool PlexSyncBackdrops { get; set; }
     public string PlexLibrariesToInclude { get; set; }
 
@@ -49,6 +50,7 @@ public class PluginConfiguration : BasePluginConfiguration
         PlexSyncMovies = true;
         PlexSyncShows = true;
         PlexSyncSeasons = true;
+        PlexSyncTitlecards = true;
         PlexSyncBackdrops = false;
         PlexLibrariesToInclude = string.Empty;
     }

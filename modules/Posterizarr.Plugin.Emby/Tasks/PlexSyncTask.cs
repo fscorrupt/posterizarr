@@ -127,9 +127,15 @@ namespace Posterizarr.Plugin.Tasks
 
                 // 2. Query all Emby Items into Memory
                 _logger.Info("[Posterizarr PlexSync] Indexing Emby libraries in memory...");
+                var itemTypes = new List<string> { typeof(Movie).Name, typeof(Series).Name, typeof(Season).Name };
+                if (config.PlexSyncTitlecards)
+                {
+                    itemTypes.Add(typeof(Episode).Name);
+                }
+
                 var embyItems = _libraryManager.GetItemList(new InternalItemsQuery
                 {
-                    IncludeItemTypes = new[] { typeof(Movie).Name, typeof(Series).Name, typeof(Season).Name },
+                    IncludeItemTypes = itemTypes.ToArray(),
                     Recursive = true,
                     IsVirtualItem = false
                 });
@@ -145,6 +151,7 @@ namespace Posterizarr.Plugin.Tasks
                 var seriesByTitleYear = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
 
                 var seasonsBySeriesAndIndex = new Dictionary<string, Season>(StringComparer.OrdinalIgnoreCase);
+                var episodesBySeriesAndIndex = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var item in embyItems)
                 {
@@ -185,10 +192,19 @@ namespace Posterizarr.Plugin.Tasks
                             seasonsBySeriesAndIndex[key] = season;
                         }
                     }
+                    else if (item is Episode episode && episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue)
+                    {
+                        var parentSeries = episode.FindParent<Series>() ?? episode.Series;
+                        if (parentSeries != null)
+                        {
+                            var key = $"{parentSeries.Id:N}_{episode.ParentIndexNumber.Value}_{episode.IndexNumber.Value}";
+                            episodesBySeriesAndIndex[key] = episode;
+                        }
+                    }
                 }
 
-                _logger.Info("[Posterizarr PlexSync] Indexed {0} movies, {1} series, and {2} seasons in Emby.",
-                    moviesByTmdb.Count + moviesByTitleYear.Count, seriesByTvdb.Count + seriesByTitleYear.Count, seasonsBySeriesAndIndex.Count);
+                _logger.Info("[Posterizarr PlexSync] Indexed {0} movies, {1} series, {2} seasons, and {3} episodes in Emby.",
+                    moviesByTmdb.Count + moviesByTitleYear.Count, seriesByTvdb.Count + seriesByTitleYear.Count, seasonsBySeriesAndIndex.Count, episodesBySeriesAndIndex.Count);
 
                 double currentSectionIndex = 0;
 
@@ -260,7 +276,7 @@ namespace Posterizarr.Plugin.Tasks
                     }
                     else if (section.Type.Equals("show", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!config.PlexSyncShows && !config.PlexSyncSeasons && !config.PlexSyncBackdrops) continue;
+                        if (!config.PlexSyncShows && !config.PlexSyncSeasons && !config.PlexSyncBackdrops && !config.PlexSyncTitlecards) continue;
 
                         _logger.Info("[Posterizarr PlexSync] Bulk fetching shows from Plex library '{0}'...", section.Title);
                         var plexShows = await FetchPlexShowsAsync(plexBaseUrl, plexToken, section.Key, cancellationToken).ConfigureAwait(false);
@@ -315,8 +331,10 @@ namespace Posterizarr.Plugin.Tasks
                             }
                         }
 
+                        var plexSeasonRatingKeyToSeriesRatingKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
                         // Sync Seasons
-                        if (config.PlexSyncSeasons)
+                        if (config.PlexSyncSeasons || config.PlexSyncTitlecards)
                         {
                             _logger.Info("[Posterizarr PlexSync] Bulk fetching all seasons from Plex library '{0}'...", section.Title);
                             var plexSeasons = await FetchPlexSeasonsAsync(plexBaseUrl, plexToken, section.Key, cancellationToken).ConfigureAwait(false);
@@ -326,7 +344,11 @@ namespace Posterizarr.Plugin.Tasks
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
 
-                                if (string.IsNullOrEmpty(pSeason.ParentRatingKey) || !pSeason.Index.HasValue) continue;
+                                if (string.IsNullOrEmpty(pSeason.ParentRatingKey)) continue;
+                                plexSeasonRatingKeyToSeriesRatingKey[pSeason.RatingKey] = pSeason.ParentRatingKey;
+
+                                if (!config.PlexSyncSeasons) continue;
+                                if (!pSeason.Index.HasValue) continue;
                                 if (!plexRatingKeyToEmbySeries.TryGetValue(pSeason.ParentRatingKey, out var embySeries)) continue;
 
                                 var seasonKey = $"{embySeries.Id:N}_{pSeason.Index.Value}";
@@ -344,6 +366,44 @@ namespace Posterizarr.Plugin.Tasks
                                     if (updated) updatedCount++;
                                     else cacheHits++;
                                 }
+                            }
+                        }
+
+                        // Sync Episode Title Cards if enabled
+                        if (config.PlexSyncTitlecards)
+                        {
+                            _logger.Info("[Posterizarr PlexSync] Bulk fetching all episode title cards from Plex library '{0}'...", section.Title);
+                            var plexEpisodes = await FetchPlexEpisodesAsync(plexBaseUrl, plexToken, section.Key, cancellationToken).ConfigureAwait(false);
+                            totalPlexItems += plexEpisodes.Count;
+
+                            foreach (var pEp in plexEpisodes)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+
+                                if (!pEp.ParentIndex.HasValue || !pEp.Index.HasValue || string.IsNullOrEmpty(pEp.Thumb)) continue;
+
+                                BaseItem? embySeries = null;
+                                if (!string.IsNullOrEmpty(pEp.GrandparentRatingKey) && plexRatingKeyToEmbySeries.TryGetValue(pEp.GrandparentRatingKey, out embySeries))
+                                {
+                                }
+                                else if (!string.IsNullOrEmpty(pEp.ParentRatingKey) && plexSeasonRatingKeyToSeriesRatingKey.TryGetValue(pEp.ParentRatingKey, out var sKey) && plexRatingKeyToEmbySeries.TryGetValue(sKey, out embySeries))
+                                {
+                                }
+
+                                if (embySeries == null) continue;
+
+                                var epKey = $"{embySeries.Id:N}_{pEp.ParentIndex.Value}_{pEp.Index.Value}";
+                                if (!episodesBySeriesAndIndex.TryGetValue(epKey, out var embyEpisode))
+                                {
+                                    continue;
+                                }
+
+                                bool updated = await SyncItemArtworkAsync(
+                                    embyEpisode, ImageType.Primary, pEp.Thumb, plexBaseUrl, plexToken,
+                                    artworkStorageDir, plexCache, cancellationToken).ConfigureAwait(false);
+
+                                if (updated) updatedCount++;
+                                else cacheHits++;
                             }
                         }
                     }
@@ -579,6 +639,50 @@ namespace Posterizarr.Plugin.Tasks
             return list;
         }
 
+        private static async Task<List<PlexEpisodeItem>> FetchPlexEpisodesAsync(string plexBaseUrl, string plexToken, string sectionKey, CancellationToken ct)
+        {
+            var url = $"{plexBaseUrl}/library/sections/{sectionKey}/all?type=4";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Add("Accept", "application/json");
+            req.Headers.Add("X-Plex-Token", plexToken);
+
+            using var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+
+            using var jsonDoc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), default, ct).ConfigureAwait(false);
+            var list = new List<PlexEpisodeItem>();
+
+            if (jsonDoc.RootElement.TryGetProperty("MediaContainer", out var mc) &&
+                mc.TryGetProperty("Metadata", out var metaProp) && metaProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var elem in metaProp.EnumerateArray())
+                {
+                    var ratingKey = elem.TryGetProperty("ratingKey", out var rk) ? rk.GetString() : null;
+                    var gpRatingKey = elem.TryGetProperty("grandparentRatingKey", out var gprk) ? gprk.GetString() : null;
+                    var pRatingKey = elem.TryGetProperty("parentRatingKey", out var prk) ? prk.GetString() : null;
+                    int? parentIndex = ParseIntProperty(elem, "parentIndex");
+                    int? index = ParseIntProperty(elem, "index");
+                    var thumb = elem.TryGetProperty("thumb", out var th) ? th.GetString() : null;
+
+                    if (string.IsNullOrEmpty(ratingKey)) continue;
+
+                    list.Add(new PlexEpisodeItem(ratingKey, gpRatingKey, pRatingKey, parentIndex, index, thumb));
+                }
+            }
+
+            return list;
+        }
+
+        private static int? ParseIntProperty(JsonElement elem, string propName)
+        {
+            if (elem.TryGetProperty(propName, out var p))
+            {
+                if (p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var val)) return val;
+                if (p.ValueKind == JsonValueKind.String && int.TryParse(p.GetString(), out var sVal)) return sVal;
+            }
+            return null;
+        }
+
         private static (string? tmdb, string? imdb, string? tvdb) ExtractProviderIds(JsonElement elem)
         {
             string? tmdb = null;
@@ -659,5 +763,6 @@ namespace Posterizarr.Plugin.Tasks
         private record PlexMovieItem(string RatingKey, string Title, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId);
         private record PlexShowItem(string RatingKey, string Title, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId);
         private record PlexSeasonItem(string RatingKey, string ParentRatingKey, int? Index, string? Thumb);
+        private record PlexEpisodeItem(string RatingKey, string? GrandparentRatingKey, string? ParentRatingKey, int? ParentIndex, int? Index, string? Thumb);
     }
 }

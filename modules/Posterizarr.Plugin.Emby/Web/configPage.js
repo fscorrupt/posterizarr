@@ -68,11 +68,13 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             var chkPlexMovies = view.querySelector('#chkPlexSyncMovies');
             var chkPlexShows = view.querySelector('#chkPlexSyncShows');
             var chkPlexSeasons = view.querySelector('#chkPlexSyncSeasons');
+            var chkPlexTitlecards = view.querySelector('#chkPlexSyncTitlecards');
             var chkPlexBackdrops = view.querySelector('#chkPlexSyncBackdrops');
 
             if (chkPlexMovies) chkPlexMovies.checked = config.PlexSyncMovies !== false;
             if (chkPlexShows) chkPlexShows.checked = config.PlexSyncShows !== false;
             if (chkPlexSeasons) chkPlexSeasons.checked = config.PlexSyncSeasons !== false;
+            if (chkPlexTitlecards) chkPlexTitlecards.checked = config.PlexSyncTitlecards !== false;
             if (chkPlexBackdrops) chkPlexBackdrops.checked = config.PlexSyncBackdrops || false;
 
             loading.hide();
@@ -129,11 +131,13 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             var chkPlexMovies = view.querySelector('#chkPlexSyncMovies');
             var chkPlexShows = view.querySelector('#chkPlexSyncShows');
             var chkPlexSeasons = view.querySelector('#chkPlexSyncSeasons');
+            var chkPlexTitlecards = view.querySelector('#chkPlexSyncTitlecards');
             var chkPlexBackdrops = view.querySelector('#chkPlexSyncBackdrops');
 
             if (chkPlexMovies) config.PlexSyncMovies = chkPlexMovies.checked;
             if (chkPlexShows) config.PlexSyncShows = chkPlexShows.checked;
             if (chkPlexSeasons) config.PlexSyncSeasons = chkPlexSeasons.checked;
+            if (chkPlexTitlecards) config.PlexSyncTitlecards = chkPlexTitlecards.checked;
             if (chkPlexBackdrops) config.PlexSyncBackdrops = chkPlexBackdrops.checked;
 
             if (!config.EnablePlexSync && config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {

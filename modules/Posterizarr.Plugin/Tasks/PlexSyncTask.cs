@@ -124,9 +124,15 @@ public class PlexSyncTask : IScheduledTask
 
             // 2. Query all Jellyfin Items into Memory
             _logger.LogInformation("[Posterizarr PlexSync] Indexing Jellyfin libraries in memory...");
+            var itemKinds = new List<BaseItemKind> { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Season };
+            if (config.PlexSyncTitlecards)
+            {
+                itemKinds.Add(BaseItemKind.Episode);
+            }
+
             var jfItemsQuery = new InternalItemsQuery
             {
-                IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Season },
+                IncludeItemTypes = itemKinds.ToArray(),
                 Recursive = true,
                 IsVirtualItem = false
             };
@@ -143,6 +149,7 @@ public class PlexSyncTask : IScheduledTask
             var seriesByTitleYear = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
 
             var seasonsBySeriesAndIndex = new Dictionary<string, Season>(StringComparer.OrdinalIgnoreCase);
+            var episodesBySeriesAndIndex = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var item in jfItems)
             {
@@ -179,10 +186,19 @@ public class PlexSyncTask : IScheduledTask
                     var key = $"{season.SeriesId:N}_{season.IndexNumber.Value}";
                     seasonsBySeriesAndIndex[key] = season;
                 }
+                else if (item is Episode episode && episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue)
+                {
+                    var seriesId = episode.SeriesId != Guid.Empty ? episode.SeriesId : (episode.Series?.Id ?? Guid.Empty);
+                    if (seriesId != Guid.Empty)
+                    {
+                        var key = $"{seriesId:N}_{episode.ParentIndexNumber.Value}_{episode.IndexNumber.Value}";
+                        episodesBySeriesAndIndex[key] = episode;
+                    }
+                }
             }
 
-            _logger.LogInformation("[Posterizarr PlexSync] Indexed {0} movies, {1} series, and {2} seasons in Jellyfin.",
-                moviesByTmdb.Count + moviesByTitleYear.Count, seriesByTvdb.Count + seriesByTitleYear.Count, seasonsBySeriesAndIndex.Count);
+            _logger.LogInformation("[Posterizarr PlexSync] Indexed {0} movies, {1} series, {2} seasons, and {3} episodes in Jellyfin.",
+                moviesByTmdb.Count + moviesByTitleYear.Count, seriesByTvdb.Count + seriesByTitleYear.Count, seasonsBySeriesAndIndex.Count, episodesBySeriesAndIndex.Count);
 
             double currentSectionIndex = 0;
 
@@ -254,7 +270,7 @@ public class PlexSyncTask : IScheduledTask
                 }
                 else if (section.Type.Equals("show", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!config.PlexSyncShows && !config.PlexSyncSeasons && !config.PlexSyncBackdrops) continue;
+                    if (!config.PlexSyncShows && !config.PlexSyncSeasons && !config.PlexSyncBackdrops && !config.PlexSyncTitlecards) continue;
 
                     _logger.LogInformation("[Posterizarr PlexSync] Bulk fetching shows from Plex library '{0}'...", section.Title);
                     var plexShows = await FetchPlexShowsAsync(plexBaseUrl, plexToken, section.Key, cancellationToken).ConfigureAwait(false);
@@ -309,8 +325,10 @@ public class PlexSyncTask : IScheduledTask
                         }
                     }
 
+                    var plexSeasonRatingKeyToSeriesRatingKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
                     // Sync Seasons if enabled
-                    if (config.PlexSyncSeasons)
+                    if (config.PlexSyncSeasons || config.PlexSyncTitlecards)
                     {
                         _logger.LogInformation("[Posterizarr PlexSync] Bulk fetching all seasons from Plex library '{0}'...", section.Title);
                         var plexSeasons = await FetchPlexSeasonsAsync(plexBaseUrl, plexToken, section.Key, cancellationToken).ConfigureAwait(false);
@@ -320,7 +338,11 @@ public class PlexSyncTask : IScheduledTask
                         {
                             cancellationToken.ThrowIfCancellationRequested();
 
-                            if (string.IsNullOrEmpty(pSeason.ParentRatingKey) || !pSeason.Index.HasValue) continue;
+                            if (string.IsNullOrEmpty(pSeason.ParentRatingKey)) continue;
+                            plexSeasonRatingKeyToSeriesRatingKey[pSeason.RatingKey] = pSeason.ParentRatingKey;
+
+                            if (!config.PlexSyncSeasons) continue;
+                            if (!pSeason.Index.HasValue) continue;
                             if (!plexRatingKeyToJfSeries.TryGetValue(pSeason.ParentRatingKey, out var jfSeries)) continue;
 
                             var seasonKey = $"{jfSeries.Id:N}_{pSeason.Index.Value}";
@@ -338,6 +360,44 @@ public class PlexSyncTask : IScheduledTask
                                 if (updated) updatedCount++;
                                 else cacheHits++;
                             }
+                        }
+                    }
+
+                    // Sync Episode Title Cards if enabled
+                    if (config.PlexSyncTitlecards)
+                    {
+                        _logger.LogInformation("[Posterizarr PlexSync] Bulk fetching all episode title cards from Plex library '{0}'...", section.Title);
+                        var plexEpisodes = await FetchPlexEpisodesAsync(plexBaseUrl, plexToken, section.Key, cancellationToken).ConfigureAwait(false);
+                        totalPlexItems += plexEpisodes.Count;
+
+                        foreach (var pEp in plexEpisodes)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+
+                            if (!pEp.ParentIndex.HasValue || !pEp.Index.HasValue || string.IsNullOrEmpty(pEp.Thumb)) continue;
+
+                            BaseItem? jfSeries = null;
+                            if (!string.IsNullOrEmpty(pEp.GrandparentRatingKey) && plexRatingKeyToJfSeries.TryGetValue(pEp.GrandparentRatingKey, out jfSeries))
+                            {
+                            }
+                            else if (!string.IsNullOrEmpty(pEp.ParentRatingKey) && plexSeasonRatingKeyToSeriesRatingKey.TryGetValue(pEp.ParentRatingKey, out var sKey) && plexRatingKeyToJfSeries.TryGetValue(sKey, out jfSeries))
+                            {
+                            }
+
+                            if (jfSeries == null) continue;
+
+                            var epKey = $"{jfSeries.Id:N}_{pEp.ParentIndex.Value}_{pEp.Index.Value}";
+                            if (!episodesBySeriesAndIndex.TryGetValue(epKey, out var jfEpisode))
+                            {
+                                continue;
+                            }
+
+                            bool updated = await SyncItemArtworkAsync(
+                                jfEpisode, ImageType.Primary, pEp.Thumb, plexBaseUrl, plexToken,
+                                plexCache, cancellationToken).ConfigureAwait(false);
+
+                            if (updated) updatedCount++;
+                            else cacheHits++;
                         }
                     }
                 }
@@ -556,6 +616,50 @@ public class PlexSyncTask : IScheduledTask
         return list;
     }
 
+    private static async Task<List<PlexEpisodeItem>> FetchPlexEpisodesAsync(string plexBaseUrl, string plexToken, string sectionKey, CancellationToken ct)
+    {
+        var url = $"{plexBaseUrl}/library/sections/{sectionKey}/all?type=4";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("Accept", "application/json");
+        req.Headers.Add("X-Plex-Token", plexToken);
+
+        using var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+
+        using var jsonDoc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), default, ct).ConfigureAwait(false);
+        var list = new List<PlexEpisodeItem>();
+
+        if (jsonDoc.RootElement.TryGetProperty("MediaContainer", out var mc) &&
+            mc.TryGetProperty("Metadata", out var metaProp) && metaProp.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var elem in metaProp.EnumerateArray())
+            {
+                var ratingKey = elem.TryGetProperty("ratingKey", out var rk) ? rk.GetString() : null;
+                var gpRatingKey = elem.TryGetProperty("grandparentRatingKey", out var gprk) ? gprk.GetString() : null;
+                var pRatingKey = elem.TryGetProperty("parentRatingKey", out var prk) ? prk.GetString() : null;
+                int? parentIndex = ParseIntProperty(elem, "parentIndex");
+                int? index = ParseIntProperty(elem, "index");
+                var thumb = elem.TryGetProperty("thumb", out var th) ? th.GetString() : null;
+
+                if (string.IsNullOrEmpty(ratingKey)) continue;
+
+                list.Add(new PlexEpisodeItem(ratingKey, gpRatingKey, pRatingKey, parentIndex, index, thumb));
+            }
+        }
+
+        return list;
+    }
+
+    private static int? ParseIntProperty(JsonElement elem, string propName)
+    {
+        if (elem.TryGetProperty(propName, out var p))
+        {
+            if (p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var val)) return val;
+            if (p.ValueKind == JsonValueKind.String && int.TryParse(p.GetString(), out var sVal)) return sVal;
+        }
+        return null;
+    }
+
     private static (string? tmdb, string? imdb, string? tvdb) ExtractProviderIds(JsonElement elem)
     {
         string? tmdb = null;
@@ -636,4 +740,5 @@ public class PlexSyncTask : IScheduledTask
     private record PlexMovieItem(string RatingKey, string Title, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId);
     private record PlexShowItem(string RatingKey, string Title, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId);
     private record PlexSeasonItem(string RatingKey, string ParentRatingKey, int? Index, string? Thumb);
+    private record PlexEpisodeItem(string RatingKey, string? GrandparentRatingKey, string? ParentRatingKey, int? ParentIndex, int? Index, string? Thumb);
 }

@@ -19,7 +19,7 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
 *   **Local Asset Mapping:** Maps local files to library items without replacing original metadata permanently in some configurations.
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds (Fanart), and Title Cards.
-*   **Plex Direct Sync (Kometa Mirroring):** High-speed direct mirroring of active Plex artwork into Emby. Bulk-queries Plex metadata in seconds and detects changes via Plex artwork version timestamps (disabled by default, enabled via plugin settings).
+*   **Plex Direct Sync (Kometa Mirroring):** High-speed direct mirroring of active Plex artwork into Emby for movies, TV series, seasons, episode title cards, and backdrops. Bulk-queries Plex metadata in seconds and detects changes via Plex artwork version timestamps (disabled by default, enabled via plugin settings).
 *   **Scheduled Sync Tasks:** 
     *   *Sync Posterizarr Assets* (local asset sync)
     *   *Sync Artwork from Plex* (direct Plex mass query)
