@@ -134,9 +134,9 @@ namespace Posterizarr.Plugin.Services
             while (!ct.IsCancellationRequested)
             {
                 var config = Plugin.Instance?.Configuration;
-                if (config == null || !config.EnableRealtimeSync || string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) || string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
+                if (config == null || config.EnablePlexSync || !config.EnableRealtimeSync || string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) || string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
                 {
-                    if (config != null && config.EnableRealtimeSync && !string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) && string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
+                    if (config != null && !config.EnablePlexSync && config.EnableRealtimeSync && !string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) && string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
                     {
                         if (!_hasLoggedMissingApiKey)
                         {
@@ -386,6 +386,12 @@ namespace Posterizarr.Plugin.Services
 
         private void HandleAssetUpdatedEvent(AssetEventPayload payload, PluginConfiguration config)
         {
+            if (config.EnablePlexSync)
+            {
+                _logger.Info("[Posterizarr WS] Real-time asset event ignored because Plex Direct Sync is active.");
+                return;
+            }
+
             _logger.Info("[Posterizarr WS] Received real-time update event: {0} for '{1}' (Folder: '{2}')",
                 payload.AssetType ?? "poster", payload.Title ?? payload.FolderName, payload.FolderName);
 

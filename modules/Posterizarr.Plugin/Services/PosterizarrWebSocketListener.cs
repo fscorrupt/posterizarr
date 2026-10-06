@@ -166,9 +166,9 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
         while (!ct.IsCancellationRequested)
         {
             var config = Plugin.Instance?.Configuration;
-            if (config == null || !config.EnableRealtimeSync || string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) || string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
+            if (config == null || config.EnablePlexSync || !config.EnableRealtimeSync || string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) || string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
             {
-                if (config != null && config.EnableRealtimeSync && !string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) && string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
+                if (config != null && !config.EnablePlexSync && config.EnableRealtimeSync && !string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) && string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
                 {
                     if (!_hasLoggedMissingApiKey)
                     {
@@ -404,6 +404,12 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
 
     private async Task HandleAssetUpdatedEventAsync(AssetEventPayload payload, PluginConfiguration config, CancellationToken ct)
     {
+        if (config.EnablePlexSync)
+        {
+            _logger.LogInformation("[Posterizarr WS] Real-time asset event ignored because Plex Direct Sync is active.");
+            return;
+        }
+
         _logger.LogInformation("[Posterizarr WS] Received real-time update event: {0} for '{1}' (Folder: '{2}')",
             payload.AssetType ?? "poster", payload.Title ?? payload.FolderName, payload.FolderName);
 

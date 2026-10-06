@@ -56,7 +56,15 @@ namespace Posterizarr.Plugin.Tasks
         public Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
             var config = Plugin.Instance?.Configuration;
-            if (config == null || string.IsNullOrEmpty(config.AssetFolderPath)) return Task.CompletedTask;
+            if (config == null) return Task.CompletedTask;
+
+            if (config.EnablePlexSync)
+            {
+                _logger.Info("[Posterizarr] Plex Direct Sync is enabled. Skipping local asset sync task to prevent overwriting Plex artwork.");
+                return Task.CompletedTask;
+            }
+
+            if (string.IsNullOrEmpty(config.AssetFolderPath)) return Task.CompletedTask;
 
             var provider = new PosterizarrImageProvider(_libraryManager, _logManager, _appHost);
 

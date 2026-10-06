@@ -84,7 +84,7 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasItemChangeMoni
     public bool HasChanged(BaseItem item, IDirectoryService directoryService)
     {
         var config = Plugin.Instance?.Configuration;
-        if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
+        if (config == null || config.EnablePlexSync || string.IsNullOrEmpty(config.AssetFolderPath))
         {
             return false;
         }
@@ -112,6 +112,12 @@ public class PosterizarrImageProvider : IRemoteImageProvider, IHasItemChangeMoni
     public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance?.Configuration;
+        if (config?.EnablePlexSync == true)
+        {
+            LogDebug("Plex Direct Sync is active. Bypassing local image lookup for '{0}' to prevent overwrite.", item.Name);
+            return Enumerable.Empty<RemoteImageInfo>();
+        }
+
         _logger.LogInformation("[Posterizarr] Searching images for '{0}' (Type: {1})", item.Name, item.GetType().Name);
 
         if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))

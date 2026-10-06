@@ -31,6 +31,50 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             var txtKey = view.querySelector('#txtPosterizarrApiKey');
             if (txtKey) txtKey.value = config.PosterizarrApiKey || '';
 
+            // Plex Direct Sync bindings & mutual exclusivity
+            var chkPlexSync = view.querySelector('#chkEnablePlexSync');
+            var plexSection = view.querySelector('#plexSyncSettingsSection');
+            var plexNotice = view.querySelector('#plexSyncWarningNotice');
+
+            function updateSyncExclusivity(isPlexActive) {
+                if (plexSection) plexSection.style.display = isPlexActive ? 'block' : 'none';
+                if (plexNotice) plexNotice.style.display = isPlexActive ? 'block' : 'none';
+                if (chkRealtime) {
+                    if (isPlexActive) {
+                        chkRealtime.checked = false;
+                        chkRealtime.disabled = true;
+                    } else {
+                        chkRealtime.disabled = false;
+                        chkRealtime.checked = config.EnableRealtimeSync || false;
+                    }
+                }
+            }
+
+            if (chkPlexSync) {
+                chkPlexSync.checked = config.EnablePlexSync || false;
+                updateSyncExclusivity(chkPlexSync.checked);
+                chkPlexSync.onchange = function () {
+                    updateSyncExclusivity(this.checked);
+                };
+            }
+
+            var txtPlexUrl = view.querySelector('#txtPlexServerUrl');
+            if (txtPlexUrl) txtPlexUrl.value = config.PlexServerUrl || '';
+            var txtPlexToken = view.querySelector('#txtPlexToken');
+            if (txtPlexToken) txtPlexToken.value = config.PlexToken || '';
+            var txtPlexLibs = view.querySelector('#txtPlexLibrariesToInclude');
+            if (txtPlexLibs) txtPlexLibs.value = config.PlexLibrariesToInclude || '';
+
+            var chkPlexMovies = view.querySelector('#chkPlexSyncMovies');
+            var chkPlexShows = view.querySelector('#chkPlexSyncShows');
+            var chkPlexSeasons = view.querySelector('#chkPlexSyncSeasons');
+            var chkPlexBackdrops = view.querySelector('#chkPlexSyncBackdrops');
+
+            if (chkPlexMovies) chkPlexMovies.checked = config.PlexSyncMovies !== false;
+            if (chkPlexShows) chkPlexShows.checked = config.PlexSyncShows !== false;
+            if (chkPlexSeasons) chkPlexSeasons.checked = config.PlexSyncSeasons !== false;
+            if (chkPlexBackdrops) chkPlexBackdrops.checked = config.PlexSyncBackdrops || false;
+
             loading.hide();
         }).catch(function (err) {
             console.error('[Posterizarr] Error loading configuration:', err);
@@ -59,17 +103,51 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
             if (chkUpdateCollection) config.UpdateCollection = chkUpdateCollection.checked;
 
-            var chkRealtime = view.querySelector('#chkEnableRealtimeSync');
-            config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;
+            var chkEnablePlex = view.querySelector('#chkEnablePlexSync');
+            config.EnablePlexSync = chkEnablePlex ? chkEnablePlex.checked : false;
+
+            if (config.EnablePlexSync) {
+                // Enforce mutual exclusivity to prevent overwriting Plex artwork
+                config.EnableRealtimeSync = false;
+            } else {
+                var chkRealtime = view.querySelector('#chkEnableRealtimeSync');
+                config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;
+            }
+
             var txtUrl = view.querySelector('#txtPosterizarrApiUrl');
             config.PosterizarrApiUrl = txtUrl ? (txtUrl.value || '').trim() : '';
             var txtKey = view.querySelector('#txtPosterizarrApiKey');
             config.PosterizarrApiKey = txtKey ? (txtKey.value || '').trim() : '';
 
-            if (config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {
+            var txtPlexUrl = view.querySelector('#txtPlexServerUrl');
+            config.PlexServerUrl = txtPlexUrl ? (txtPlexUrl.value || '').trim() : '';
+            var txtPlexToken = view.querySelector('#txtPlexToken');
+            config.PlexToken = txtPlexToken ? (txtPlexToken.value || '').trim() : '';
+            var txtPlexLibs = view.querySelector('#txtPlexLibrariesToInclude');
+            config.PlexLibrariesToInclude = txtPlexLibs ? (txtPlexLibs.value || '').trim() : '';
+
+            var chkPlexMovies = view.querySelector('#chkPlexSyncMovies');
+            var chkPlexShows = view.querySelector('#chkPlexSyncShows');
+            var chkPlexSeasons = view.querySelector('#chkPlexSyncSeasons');
+            var chkPlexBackdrops = view.querySelector('#chkPlexSyncBackdrops');
+
+            if (chkPlexMovies) config.PlexSyncMovies = chkPlexMovies.checked;
+            if (chkPlexShows) config.PlexSyncShows = chkPlexShows.checked;
+            if (chkPlexSeasons) config.PlexSyncSeasons = chkPlexSeasons.checked;
+            if (chkPlexBackdrops) config.PlexSyncBackdrops = chkPlexBackdrops.checked;
+
+            if (!config.EnablePlexSync && config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {
                 loading.hide();
                 Dashboard.alert({
                     message: "Both Posterizarr URL and API Key are required when Real-Time Sync is enabled."
+                });
+                return;
+            }
+
+            if (config.EnablePlexSync && (!config.PlexServerUrl || !config.PlexToken)) {
+                loading.hide();
+                Dashboard.alert({
+                    message: "Both Plex Server URL and Plex Token are required when Plex Direct Sync is enabled."
                 });
                 return;
             }
@@ -152,6 +230,70 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
                         }
                         resultDiv.textContent = 'Cannot reach Posterizarr at ' + rawUrl + ' from browser. Click "Save Settings" if the server connects directly over LAN/Docker.';
                         resultDiv.style.color = '#e63946';
+                    });
+            });
+        }
+
+        var btnTestPlex = view.querySelector('#btnTestPlex');
+        var plexResultDiv = view.querySelector('#testPlexConnectionResult');
+        if (btnTestPlex) {
+            btnTestPlex.addEventListener('click', function (e) {
+                e.preventDefault();
+                var rawUrl = (view.querySelector('#txtPlexServerUrl').value || '').trim();
+                var token = (view.querySelector('#txtPlexToken').value || '').trim();
+
+                if (!rawUrl) {
+                    if (plexResultDiv) {
+                        plexResultDiv.textContent = 'Please enter a Plex Server URL first.';
+                        plexResultDiv.style.color = '#e5a00d';
+                    }
+                    return;
+                }
+
+                if (!token) {
+                    if (plexResultDiv) {
+                        plexResultDiv.textContent = 'Please enter your Plex Token (required).';
+                        plexResultDiv.style.color = '#e5a00d';
+                    }
+                    return;
+                }
+
+                if (plexResultDiv) {
+                    plexResultDiv.textContent = 'Testing connection to Plex...';
+                    plexResultDiv.style.color = '#aaa';
+                }
+
+                var probeUrl = rawUrl.replace(/\/+$/, '') + '/identity';
+                var headers = { 'X-Plex-Token': token, 'Accept': 'application/json' };
+
+                fetch(probeUrl, { method: 'GET', headers: headers })
+                    .then(function (res) {
+                        if (!plexResultDiv) return;
+                        if (res.ok || res.status === 200) {
+                            plexResultDiv.textContent = 'Connected! Plex Media Server is reachable and authenticated.';
+                            plexResultDiv.style.color = '#52b788';
+                        } else if (res.status === 401 || res.status === 403) {
+                            plexResultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please verify your Plex Token.';
+                            plexResultDiv.style.color = '#e63946';
+                        } else {
+                            plexResultDiv.textContent = 'Plex returned HTTP status ' + res.status;
+                            plexResultDiv.style.color = '#e5a00d';
+                        }
+                    })
+                    .catch(function (err) {
+                        if (!plexResultDiv) return;
+                        if (window.location.protocol === 'https:' && rawUrl.toLowerCase().startsWith('http://')) {
+                            plexResultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Browser blocked direct test (Mixed Content: HTTPS to HTTP).</span><br/>' +
+                                '<span style="color: #aaa; font-size: 0.9em;">However, Emby connects directly in the background! Click <b>Save Settings</b> to use.</span>';
+                            return;
+                        }
+                        if (!rawUrl.includes('.') && !rawUrl.includes('localhost') && !rawUrl.includes('127.0.0.1')) {
+                            plexResultDiv.innerHTML = '<span style="color: #52b788;">ℹ️ Internal Docker hostname detected.</span><br/>' +
+                                '<span style="color: #aaa; font-size: 0.9em;">Your browser cannot resolve Docker hostnames, but the Emby container can! Click <b>Save Settings</b> to connect.</span>';
+                            return;
+                        }
+                        plexResultDiv.textContent = 'Cannot reach Plex at ' + rawUrl + ' from browser. Click "Save Settings" if Emby connects directly over LAN/Docker.';
+                        plexResultDiv.style.color = '#e63946';
                     });
             });
         }

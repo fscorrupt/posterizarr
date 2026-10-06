@@ -15,10 +15,9 @@ The Posterizarr Plugin acts as a local asset proxy for Jellyfin. It is designed 
 *   **Local Asset Mapping:** Maps local files to library items without replacing original metadata permanently in some configurations.
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds (Fanart), and Title Cards.
+*   **Plex Direct Sync (Kometa Mirroring):** High-speed direct mirroring of active Plex artwork into Jellyfin. Bulk-queries Plex metadata in seconds and detects changes via Plex artwork version timestamps (disabled by default, enabled via plugin settings).
+*   **Real-Time WebSocket Sync:** Listens for live asset events from Posterizarr to immediately apply changes.
 *   **Broad Version Compatibility:** Multi-targeted for **Jellyfin 10.11.x** (.NET 9) and **Jellyfin 12.0.x** (.NET 10). The plugin repository manifest automatically serves the appropriate build for your server version.
-
-> [!WARNING]
-> Only use this if you are not syncing from Plex, as it will overwrite your synced items with locally created assets from Posterizarr.
 
 ## Installation
 
@@ -48,16 +47,22 @@ The Posterizarr Plugin acts as a local asset proxy for Jellyfin. It is designed 
 
 ## Scheduled Tasks & Automation
 
-The plugin registers a scheduled background task (default: daily at 02:00 AM) that automatically syncs and refreshes your libraries against local assets.
+The plugin registers two scheduled background tasks under **Scheduled Tasks**:
+
+*   **Posterizarr Sync Task** (default: daily at 02:00 AM): Automatically syncs and refreshes your libraries against your local curated asset directory.
+*   **Sync Artwork from Plex** (default: daily at 03:00 AM): High-speed direct query and mirroring of active artwork from Plex (only runs when *Enable Plex Direct Sync* is enabled).
+
+> [!NOTE]
+> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are automatically bypassed so local asset files will never overwrite Kometa/Plex overlays.
 
 ### Configuring the Sync Schedule
 
 1. Open your Jellyfin **Dashboard**.
 2. In the left sidebar under the **Server** section, navigate to **Scheduled Tasks**.
-3. Locate the **Posterizarr Sync Task** in the list.
-4. Click on the task to customize its triggers:
+3. Locate **Posterizarr Sync Task** or **Sync Artwork from Plex** in the list.
+4. Click on either task to customize its triggers:
     * You can configure the task to run on an interval, at a specific time of day (e.g., daily at 3:00 AM), on system startup, or on a weekly schedule.
-5. You can also trigger the task manually at any time by clicking the **Play (Run)** button next to it.
+5. You can also trigger either task manually at any time by clicking the **Play (Run)** button next to it.
 
 ## Building from Source
 

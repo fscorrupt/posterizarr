@@ -104,6 +104,81 @@
                 <div id="testConnectionResult" style="margin-top: 8px; font-weight: 500; font-size: 0.95em; min-height: 1.2em;"></div>
             </div>
 
+            <h2 class="sectionTitle" style="margin-top: 2em;">Plex Direct Sync (Kometa / Asset Mirroring)</h2>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkEnablePlexSync" />
+                    <span>Enable Plex Direct Sync</span>
+                </label>
+                <div class="fieldDescription checkboxFieldDescription">Directly mirror artwork from a Plex instance (including Kometa overlays) to Emby using high-performance Plex bulk queries. (Disabled by default).</div>
+            </div>
+
+            <div id="plexSyncWarningNotice" style="display: none; margin: 10px 0 15px 0; padding: 12px 14px; background: rgba(82, 183, 136, 0.12); border-left: 4px solid #52b788; border-radius: 4px;">
+                <div style="font-weight: bold; color: #52b788; margin-bottom: 4px;">ℹ️ Plex Direct Sync Active</div>
+                <div style="font-size: 0.9em; color: #ccc; line-height: 1.4;">
+                    When Plex Direct Sync is enabled, local asset scheduled sync, local image provider matching, and Posterizarr WebSocket real-time sync are automatically deactivated to ensure Plex and Kometa artwork are never overwritten by local files.
+                </div>
+            </div>
+
+            <div id="plexSyncSettingsSection" style="display: none; padding-left: 10px; border-left: 3px solid #52b788; margin-bottom: 1.5em;">
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="txtPlexServerUrl">Plex Server URL</label>
+                    <input is="emby-input" type="text" id="txtPlexServerUrl" placeholder="http://192.168.1.50:32400" />
+                    <div class="fieldDescription">The base URL of your Plex server (e.g., http://192.168.1.50:32400 or http://plex:32400).</div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="txtPlexToken">Plex Token (X-Plex-Token)</label>
+                    <input is="emby-input" type="password" id="txtPlexToken" />
+                    <div class="fieldDescription">Your Plex authentication token.</div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="txtPlexLibrariesToInclude">Include Specific Libraries (Optional)</label>
+                    <input is="emby-input" type="text" id="txtPlexLibrariesToInclude" placeholder="e.g. Movies, 4K Movies, TV Shows" />
+                    <div class="fieldDescription">Comma-separated list of Plex library names to sync. Leave empty to sync all movie and TV show libraries.</div>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkPlexSyncMovies" />
+                        <span>Sync Movie Posters</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror primary movie posters from Plex.</div>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkPlexSyncShows" />
+                        <span>Sync TV Series Posters</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror primary TV show posters from Plex.</div>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkPlexSyncSeasons" />
+                        <span>Sync TV Season Posters</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror individual season posters from Plex.</div>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkPlexSyncBackdrops" />
+                        <span>Sync Backdrops (Fanart)</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror backdrops/fanart from Plex.</div>
+                </div>
+
+                <div class="inputContainer" style="margin-top: 1em; margin-bottom: 1.5em;">
+                    <button is="emby-button" type="button" id="btnTestPlex" class="raised" style="margin-right: 1em;">
+                        <span>Test Plex Connection</span>
+                    </button>
+                    <div id="testPlexConnectionResult" style="margin-top: 8px; font-weight: 500; font-size: 0.95em; min-height: 1.2em;"></div>
+                </div>
+            </div>
+
             <div style="margin-top: 2em;">
                 <button is="emby-button" type="submit" class="raised button-submit block">
                     <i class="md-icon">save</i>

@@ -62,7 +62,18 @@ public class PosterizarrSyncTask : IScheduledTask
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance?.Configuration;
-        if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
+        if (config == null)
+        {
+            return;
+        }
+
+        if (config.EnablePlexSync)
+        {
+            _logger.LogInformation("[Posterizarr] Plex Direct Sync is enabled. Skipping local asset sync task to prevent overwriting Plex artwork.");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(config.AssetFolderPath))
         {
             _logger.LogWarning("[Posterizarr] AssetFolderPath is not configured. Aborting sync.");
             return;

@@ -78,7 +78,7 @@ namespace Posterizarr.Plugin.Providers
         public bool HasChanged(BaseItem item, LibraryOptions libraryOptions, IDirectoryService directoryService)
         {
             var config = Plugin.Instance?.Configuration;
-            if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
+            if (config == null || config.EnablePlexSync || string.IsNullOrEmpty(config.AssetFolderPath))
                 return false;
 
             try
@@ -104,6 +104,12 @@ namespace Posterizarr.Plugin.Providers
         public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, LibraryOptions libraryOptions, CancellationToken cancellationToken)
         {
             var config = Plugin.Instance?.Configuration;
+            if (config?.EnablePlexSync == true)
+            {
+                LogDebug("Plex Direct Sync is active. Bypassing local image provider for '{0}' to prevent overwrite.", item.Name);
+                return Task.FromResult(Enumerable.Empty<RemoteImageInfo>());
+            }
+
             _logger.Info("[Posterizarr] Searching images for '{0}' ({1})", item.Name, item.GetType().Name);
 
             if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
