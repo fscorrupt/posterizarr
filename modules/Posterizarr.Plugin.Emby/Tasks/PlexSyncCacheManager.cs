@@ -13,6 +13,7 @@ namespace Posterizarr.Plugin.Tasks
     {
         public string PlexArtworkUrl { get; set; } = string.Empty;
         public long LastSyncUtcTicks { get; set; }
+        public bool Is4K { get; set; }
     }
 
     /// <summary>
@@ -89,6 +90,12 @@ namespace Posterizarr.Plugin.Tasks
             }
         }
 
+        public bool TryGetRecord(Guid itemId, ImageType type, out PlexSyncRecord? record)
+        {
+            var key = BuildKey(itemId, type);
+            return _records.TryGetValue(key, out record);
+        }
+
         public bool IsMatch(Guid itemId, ImageType type, string currentPlexArtworkUrl)
         {
             var key = BuildKey(itemId, type);
@@ -99,13 +106,14 @@ namespace Posterizarr.Plugin.Tasks
             return false;
         }
 
-        public void Update(Guid itemId, ImageType type, string currentPlexArtworkUrl)
+        public void Update(Guid itemId, ImageType type, string currentPlexArtworkUrl, bool is4K = false)
         {
             var key = BuildKey(itemId, type);
             _records[key] = new PlexSyncRecord
             {
                 PlexArtworkUrl = currentPlexArtworkUrl,
-                LastSyncUtcTicks = DateTime.UtcNow.Ticks
+                LastSyncUtcTicks = DateTime.UtcNow.Ticks,
+                Is4K = is4K
             };
             _isDirty = true;
         }

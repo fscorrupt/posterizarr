@@ -144,11 +144,13 @@ namespace Posterizarr.Plugin.Tasks
                 var moviesByImdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
                 var moviesByTvdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
                 var moviesByTitleYear = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
+                var moviesByCleanFileName = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
 
                 var seriesByTvdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
                 var seriesByTmdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
                 var seriesByImdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
                 var seriesByTitleYear = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
+                var seriesByCleanFileName = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
 
                 var seasonsBySeriesAndIndex = new Dictionary<string, Season>(StringComparer.OrdinalIgnoreCase);
                 var episodesBySeriesAndIndex = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
@@ -161,13 +163,25 @@ namespace Posterizarr.Plugin.Tasks
                         if (tmdb != null) moviesByTmdb[tmdb] = movie;
 
                         var imdb = GetProviderId(movie, "Imdb");
-                        if (imdb != null) moviesByImdb[imdb] = movie;
+                        if (imdb != null) moviesByImdb[NormalizeImdbId(imdb)] = movie;
 
                         var tvdb = GetProviderId(movie, "Tvdb");
                         if (tvdb != null) moviesByTvdb[tvdb] = movie;
 
                         var titleYearKey = BuildTitleYearKey(movie.Name, movie.ProductionYear);
                         if (!string.IsNullOrEmpty(titleYearKey)) moviesByTitleYear[titleYearKey] = movie;
+
+                        if (!string.IsNullOrEmpty(movie.OriginalTitle))
+                        {
+                            var origKey = BuildTitleYearKey(movie.OriginalTitle, movie.ProductionYear);
+                            if (!string.IsNullOrEmpty(origKey)) moviesByTitleYear[origKey] = movie;
+                        }
+
+                        if (!string.IsNullOrEmpty(movie.Path))
+                        {
+                            var cleanFile = BuildCleanFileKey(movie.Path);
+                            if (!string.IsNullOrEmpty(cleanFile)) moviesByCleanFileName[cleanFile] = movie;
+                        }
                     }
                     else if (item is Series series)
                     {
@@ -178,10 +192,22 @@ namespace Posterizarr.Plugin.Tasks
                         if (tmdb != null) seriesByTmdb[tmdb] = series;
 
                         var imdb = GetProviderId(series, "Imdb");
-                        if (imdb != null) seriesByImdb[imdb] = series;
+                        if (imdb != null) seriesByImdb[NormalizeImdbId(imdb)] = series;
 
                         var titleYearKey = BuildTitleYearKey(series.Name, series.ProductionYear);
                         if (!string.IsNullOrEmpty(titleYearKey)) seriesByTitleYear[titleYearKey] = series;
+
+                        if (!string.IsNullOrEmpty(series.OriginalTitle))
+                        {
+                            var origKey = BuildTitleYearKey(series.OriginalTitle, series.ProductionYear);
+                            if (!string.IsNullOrEmpty(origKey)) seriesByTitleYear[origKey] = series;
+                        }
+
+                        if (!string.IsNullOrEmpty(series.Path))
+                        {
+                            var cleanFile = BuildCleanFileKey(series.Path);
+                            if (!string.IsNullOrEmpty(cleanFile)) seriesByCleanFileName[cleanFile] = series;
+                        }
                     }
                     else if (item is Season season && season.IndexNumber.HasValue)
                     {
@@ -208,18 +234,28 @@ namespace Posterizarr.Plugin.Tasks
 
                 double currentSectionIndex = 0;
 
+                // Process 4K libraries first so that items with Kometa 4K overlays are synced and registered with priority.
+                // Non-4K / 1080p libraries will not overwrite items that belong to a 4K library.
+                var sortedSections = sections
+                    .OrderByDescending(s => Is4KLibrary(s.Title))
+                    .ToList();
+
+                var itemsIn4KLibrary = new HashSet<Guid>();
+
                 // 3. Process Each Plex Library Section
-                foreach (var section in sections)
+                foreach (var section in sortedSections)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     currentSectionIndex++;
-                    progress.Report(currentSectionIndex / sections.Count * 90);
+                    progress.Report(currentSectionIndex / sortedSections.Count * 90);
 
                     if (allowedLibraries.Count > 0 && !allowedLibraries.Contains(section.Title))
                     {
                         LogDebug("Skipping library '{0}' (not in PlexLibrariesToInclude).", section.Title);
                         continue;
                     }
+
+                    bool is4KSection = Is4KLibrary(section.Title);
 
                     if (section.Type.Equals("movie", StringComparison.OrdinalIgnoreCase))
                     {
@@ -235,19 +271,30 @@ namespace Posterizarr.Plugin.Tasks
 
                             BaseItem? matchedMovie = null;
                             if (pMovie.TmdbId != null && moviesByTmdb.TryGetValue(pMovie.TmdbId, out matchedMovie)) { }
-                            else if (pMovie.ImdbId != null && moviesByImdb.TryGetValue(pMovie.ImdbId, out matchedMovie)) { }
+                            else if (pMovie.ImdbId != null && moviesByImdb.TryGetValue(NormalizeImdbId(pMovie.ImdbId), out matchedMovie)) { }
                             else if (pMovie.TvdbId != null && moviesByTvdb.TryGetValue(pMovie.TvdbId, out matchedMovie)) { }
-                            else if (!string.IsNullOrEmpty(pMovie.Title))
-                            {
-                                var key = BuildTitleYearKey(pMovie.Title, pMovie.Year);
-                                moviesByTitleYear.TryGetValue(key, out matchedMovie);
-                            }
+                            else if (!string.IsNullOrEmpty(pMovie.Title) && moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year), out matchedMovie)) { }
+                            else if (!string.IsNullOrEmpty(pMovie.OriginalTitle) && moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.OriginalTitle, pMovie.Year), out matchedMovie)) { }
+                            else if (!string.IsNullOrEmpty(pMovie.FileName) && moviesByCleanFileName.TryGetValue(BuildCleanFileKey(pMovie.FileName), out matchedMovie)) { }
+                            else if (!string.IsNullOrEmpty(pMovie.Title) && pMovie.Year.HasValue &&
+                                     (moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year.Value - 1), out matchedMovie) ||
+                                      moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year.Value + 1), out matchedMovie))) { }
 
                             if (matchedMovie == null)
                             {
                                 unmatchedCount++;
-                                LogDebug("Unmatched movie in Emby: '{0}' ({1}) [TMDB: {2}, IMDB: {3}]",
-                                    pMovie.Title, pMovie.Year, pMovie.TmdbId, pMovie.ImdbId);
+                                _logger.Warn("[Posterizarr PlexSync] Unmatched movie in Emby: '{0}' (Year: {1}, TMDB: {2}, IMDB: {3}, File: {4})",
+                                    pMovie.Title, pMovie.Year, pMovie.TmdbId ?? "none", pMovie.ImdbId ?? "none", pMovie.FileName ?? "none");
+                                continue;
+                            }
+
+                            if (is4KSection)
+                            {
+                                itemsIn4KLibrary.Add(matchedMovie.Id);
+                            }
+                            else if (itemsIn4KLibrary.Contains(matchedMovie.Id))
+                            {
+                                LogDebug("Skipping movie '{0}' in library '{1}' because it was already matched from a 4K library.", matchedMovie.Name, section.Title);
                                 continue;
                             }
 
@@ -256,7 +303,7 @@ namespace Posterizarr.Plugin.Tasks
                             {
                                 bool updated = await SyncItemArtworkAsync(
                                     matchedMovie, ImageType.Primary, pMovie.Thumb, plexBaseUrl, plexToken,
-                                    artworkStorageDir, plexCache, cancellationToken).ConfigureAwait(false);
+                                    artworkStorageDir, plexCache, is4KSection, cancellationToken).ConfigureAwait(false);
 
                                 if (updated) updatedCount++;
                                 else cacheHits++;
@@ -267,7 +314,7 @@ namespace Posterizarr.Plugin.Tasks
                             {
                                 bool updated = await SyncItemArtworkAsync(
                                     matchedMovie, ImageType.Backdrop, pMovie.Art, plexBaseUrl, plexToken,
-                                    artworkStorageDir, plexCache, cancellationToken).ConfigureAwait(false);
+                                    artworkStorageDir, plexCache, is4KSection, cancellationToken).ConfigureAwait(false);
 
                                 if (updated) updatedCount++;
                                 else cacheHits++;
@@ -291,18 +338,29 @@ namespace Posterizarr.Plugin.Tasks
                             BaseItem? matchedSeries = null;
                             if (pShow.TvdbId != null && seriesByTvdb.TryGetValue(pShow.TvdbId, out matchedSeries)) { }
                             else if (pShow.TmdbId != null && seriesByTmdb.TryGetValue(pShow.TmdbId, out matchedSeries)) { }
-                            else if (pShow.ImdbId != null && seriesByImdb.TryGetValue(pShow.ImdbId, out matchedSeries)) { }
-                            else if (!string.IsNullOrEmpty(pShow.Title))
-                            {
-                                var key = BuildTitleYearKey(pShow.Title, pShow.Year);
-                                seriesByTitleYear.TryGetValue(key, out matchedSeries);
-                            }
+                            else if (pShow.ImdbId != null && seriesByImdb.TryGetValue(NormalizeImdbId(pShow.ImdbId), out matchedSeries)) { }
+                            else if (!string.IsNullOrEmpty(pShow.Title) && seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year), out matchedSeries)) { }
+                            else if (!string.IsNullOrEmpty(pShow.OriginalTitle) && seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.OriginalTitle, pShow.Year), out matchedSeries)) { }
+                            else if (!string.IsNullOrEmpty(pShow.FileName) && seriesByCleanFileName.TryGetValue(BuildCleanFileKey(pShow.FileName), out matchedSeries)) { }
+                            else if (!string.IsNullOrEmpty(pShow.Title) && pShow.Year.HasValue &&
+                                     (seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year.Value - 1), out matchedSeries) ||
+                                      seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year.Value + 1), out matchedSeries))) { }
 
                             if (matchedSeries == null)
                             {
                                 unmatchedCount++;
-                                LogDebug("Unmatched show in Emby: '{0}' ({1}) [TVDB: {2}, TMDB: {3}]",
-                                    pShow.Title, pShow.Year, pShow.TvdbId, pShow.TmdbId);
+                                _logger.Warn("[Posterizarr PlexSync] Unmatched show in Emby: '{0}' (Year: {1}, TVDB: {2}, TMDB: {3})",
+                                    pShow.Title, pShow.Year, pShow.TvdbId ?? "none", pShow.TmdbId ?? "none");
+                                continue;
+                            }
+
+                            if (is4KSection)
+                            {
+                                itemsIn4KLibrary.Add(matchedSeries.Id);
+                            }
+                            else if (itemsIn4KLibrary.Contains(matchedSeries.Id))
+                            {
+                                LogDebug("Skipping series '{0}' in library '{1}' because it was already matched from a 4K library.", matchedSeries.Name, section.Title);
                                 continue;
                             }
 
@@ -313,7 +371,7 @@ namespace Posterizarr.Plugin.Tasks
                             {
                                 bool updated = await SyncItemArtworkAsync(
                                     matchedSeries, ImageType.Primary, pShow.Thumb, plexBaseUrl, plexToken,
-                                    artworkStorageDir, plexCache, cancellationToken).ConfigureAwait(false);
+                                    artworkStorageDir, plexCache, is4KSection, cancellationToken).ConfigureAwait(false);
 
                                 if (updated) updatedCount++;
                                 else cacheHits++;
@@ -324,7 +382,7 @@ namespace Posterizarr.Plugin.Tasks
                             {
                                 bool updated = await SyncItemArtworkAsync(
                                     matchedSeries, ImageType.Backdrop, pShow.Art, plexBaseUrl, plexToken,
-                                    artworkStorageDir, plexCache, cancellationToken).ConfigureAwait(false);
+                                    artworkStorageDir, plexCache, is4KSection, cancellationToken).ConfigureAwait(false);
 
                                 if (updated) updatedCount++;
                                 else cacheHits++;
@@ -361,7 +419,7 @@ namespace Posterizarr.Plugin.Tasks
                                 {
                                     bool updated = await SyncItemArtworkAsync(
                                         embySeason, ImageType.Primary, pSeason.Thumb, plexBaseUrl, plexToken,
-                                        artworkStorageDir, plexCache, cancellationToken).ConfigureAwait(false);
+                                        artworkStorageDir, plexCache, is4KSection, cancellationToken).ConfigureAwait(false);
 
                                     if (updated) updatedCount++;
                                     else cacheHits++;
@@ -400,7 +458,7 @@ namespace Posterizarr.Plugin.Tasks
 
                                 bool updated = await SyncItemArtworkAsync(
                                     embyEpisode, ImageType.Primary, pEp.Thumb, plexBaseUrl, plexToken,
-                                    artworkStorageDir, plexCache, cancellationToken).ConfigureAwait(false);
+                                    artworkStorageDir, plexCache, is4KSection, cancellationToken).ConfigureAwait(false);
 
                                 if (updated) updatedCount++;
                                 else cacheHits++;
@@ -429,6 +487,7 @@ namespace Posterizarr.Plugin.Tasks
             string plexToken,
             string storageDirectory,
             PlexSyncCacheManager cache,
+            bool is4KSection,
             CancellationToken ct)
         {
             var existingImage = item.GetImageInfo(imageType, 0);
@@ -437,6 +496,14 @@ namespace Posterizarr.Plugin.Tasks
             if (existingImage != null && !string.IsNullOrEmpty(existingImage.Path) && File.Exists(existingImage.Path) &&
                 cache.IsMatch(item.Id, imageType, plexArtworkPath))
             {
+                return false;
+            }
+
+            // 4K protection: If this item was already synced from a 4K library (which has Kometa 4K overlays),
+            // and the current library is a standard/non-4K library, do NOT overwrite it!
+            if (!is4KSection && cache.TryGetRecord(item.Id, imageType, out var existingRecord) && existingRecord != null && existingRecord.Is4K)
+            {
+                LogDebug("Preserving 4K artwork for '{0}' ({1}) - skipping non-4K library update.", item.Name, imageType);
                 return false;
             }
 
@@ -476,7 +543,7 @@ namespace Posterizarr.Plugin.Tasks
                 }, 0);
 
                 _libraryManager.UpdateItem(item, item.GetParent(), ItemUpdateType.ImageUpdate);
-                cache.Update(item.Id, imageType, plexArtworkPath);
+                cache.Update(item.Id, imageType, plexArtworkPath, is4KSection);
 
                 LogDebug("Updated {0} for '{1}' from Plex thumb '{2}'", imageType, item.Name, plexArtworkPath);
                 return true;
@@ -559,14 +626,16 @@ namespace Posterizarr.Plugin.Tasks
                 {
                     var ratingKey = elem.TryGetProperty("ratingKey", out var rk) ? rk.GetString() : null;
                     var title = elem.TryGetProperty("title", out var t) ? t.GetString() : null;
+                    var originalTitle = elem.TryGetProperty("originalTitle", out var ot) ? ot.GetString() : null;
                     int? year = elem.TryGetProperty("year", out var y) && y.TryGetInt32(out var yi) ? yi : null;
                     var thumb = elem.TryGetProperty("thumb", out var th) ? th.GetString() : null;
                     var art = elem.TryGetProperty("art", out var a) ? a.GetString() : null;
+                    var fileName = ExtractMediaFileName(elem);
 
                     if (string.IsNullOrEmpty(ratingKey) || string.IsNullOrEmpty(title)) continue;
 
                     var (tmdb, imdb, tvdb) = ExtractProviderIds(elem);
-                    list.Add(new PlexMovieItem(ratingKey, title, year, thumb, art, tmdb, imdb, tvdb));
+                    list.Add(new PlexMovieItem(ratingKey, title, originalTitle, year, thumb, art, tmdb, imdb, tvdb, fileName));
                 }
             }
 
@@ -593,14 +662,16 @@ namespace Posterizarr.Plugin.Tasks
                 {
                     var ratingKey = elem.TryGetProperty("ratingKey", out var rk) ? rk.GetString() : null;
                     var title = elem.TryGetProperty("title", out var t) ? t.GetString() : null;
+                    var originalTitle = elem.TryGetProperty("originalTitle", out var ot) ? ot.GetString() : null;
                     int? year = elem.TryGetProperty("year", out var y) && y.TryGetInt32(out var yi) ? yi : null;
                     var thumb = elem.TryGetProperty("thumb", out var th) ? th.GetString() : null;
                     var art = elem.TryGetProperty("art", out var a) ? a.GetString() : null;
+                    var fileName = ExtractLocationOrFileName(elem);
 
                     if (string.IsNullOrEmpty(ratingKey) || string.IsNullOrEmpty(title)) continue;
 
                     var (tmdb, imdb, tvdb) = ExtractProviderIds(elem);
-                    list.Add(new PlexShowItem(ratingKey, title, year, thumb, art, tmdb, imdb, tvdb));
+                    list.Add(new PlexShowItem(ratingKey, title, originalTitle, year, thumb, art, tmdb, imdb, tvdb, fileName));
                 }
             }
 
@@ -695,73 +766,187 @@ namespace Posterizarr.Plugin.Tasks
                 val = val.Trim();
 
                 if (val.StartsWith("imdb://", StringComparison.OrdinalIgnoreCase))
-                    imdb ??= val.Substring(7);
+                    imdb ??= NormalizeImdbId(val.Substring(7));
                 else if (val.StartsWith("tmdb://", StringComparison.OrdinalIgnoreCase))
-                    tmdb ??= val.Substring(7);
+                    tmdb ??= val.Substring(7).Trim();
                 else if (val.StartsWith("tvdb://", StringComparison.OrdinalIgnoreCase))
-                    tvdb ??= val.Substring(7);
+                    tvdb ??= val.Substring(7).Trim();
                 else if (val.Contains("agents.imdb://", StringComparison.OrdinalIgnoreCase))
                 {
                     var match = Regex.Match(val, @"agents\.imdb://(tt\d+)", RegexOptions.IgnoreCase);
-                    if (match.Success) imdb ??= match.Groups[1].Value;
+                    if (match.Success) imdb ??= NormalizeImdbId(match.Groups[1].Value);
                 }
                 else if (val.Contains("agents.themoviedb://", StringComparison.OrdinalIgnoreCase))
                 {
                     var match = Regex.Match(val, @"agents\.themoviedb://(\d+)", RegexOptions.IgnoreCase);
-                    if (match.Success) tmdb ??= match.Groups[1].Value;
+                    if (match.Success) tmdb ??= match.Groups[1].Value.Trim();
                 }
                 else if (val.Contains("agents.thetvdb://", StringComparison.OrdinalIgnoreCase))
                 {
                     var match = Regex.Match(val, @"agents\.thetvdb://(\d+)", RegexOptions.IgnoreCase);
-                    if (match.Success) tvdb ??= match.Groups[1].Value;
+                    if (match.Success) tvdb ??= match.Groups[1].Value.Trim();
                 }
             }
 
-            if (elem.TryGetProperty("Guid", out var guidElem))
+            foreach (var prop in elem.EnumerateObject())
             {
-                if (guidElem.ValueKind == JsonValueKind.Array)
+                if (prop.Name.Equals("Guid", StringComparison.OrdinalIgnoreCase) ||
+                    prop.Name.Equals("Guids", StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (var g in guidElem.EnumerateArray())
+                    if (prop.Value.ValueKind == JsonValueKind.Array)
                     {
-                        if (g.TryGetProperty("id", out var idProp))
+                        foreach (var g in prop.Value.EnumerateArray())
+                        {
+                            if (g.ValueKind == JsonValueKind.Object && g.TryGetProperty("id", out var idProp))
+                                ProcessId(idProp.GetString());
+                            else if (g.ValueKind == JsonValueKind.String)
+                                ProcessId(g.GetString());
+                        }
+                    }
+                    else if (prop.Value.ValueKind == JsonValueKind.Object)
+                    {
+                        if (prop.Value.TryGetProperty("id", out var idProp))
                             ProcessId(idProp.GetString());
                     }
+                    else if (prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        ProcessId(prop.Value.GetString());
+                    }
                 }
-                else if (guidElem.ValueKind == JsonValueKind.Object)
+                else if (prop.Name.Equals("guid", StringComparison.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.String)
                 {
-                    if (guidElem.TryGetProperty("id", out var idProp))
-                        ProcessId(idProp.GetString());
+                    ProcessId(prop.Value.GetString());
                 }
-            }
-
-            if (elem.TryGetProperty("guid", out var singleGuidProp))
-            {
-                ProcessId(singleGuidProp.GetString());
             }
 
             return (tmdb, imdb, tvdb);
         }
 
+        private static string? ExtractMediaFileName(JsonElement elem)
+        {
+            if (elem.TryGetProperty("Media", out var mediaArr) && mediaArr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var m in mediaArr.EnumerateArray())
+                {
+                    if (m.TryGetProperty("Part", out var partArr) && partArr.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var p in partArr.EnumerateArray())
+                        {
+                            if (p.TryGetProperty("file", out var fProp) && !string.IsNullOrWhiteSpace(fProp.GetString()))
+                            {
+                                return Path.GetFileName(fProp.GetString());
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static string? ExtractLocationOrFileName(JsonElement elem)
+        {
+            if (elem.TryGetProperty("Location", out var locArr) && locArr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var loc in locArr.EnumerateArray())
+                {
+                    if (loc.TryGetProperty("path", out var pProp))
+                    {
+                        var pStr = pProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(pStr))
+                        {
+                            return Path.GetFileName(pStr.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
         private static string? GetProviderId(BaseItem item, string providerName)
         {
             if (item.ProviderIds == null) return null;
-            if (item.ProviderIds.TryGetValue(providerName, out var id) && !string.IsNullOrWhiteSpace(id))
-                return id.Trim();
-            if (item.ProviderIds.TryGetValue(providerName.ToLowerInvariant(), out var idLower) && !string.IsNullOrWhiteSpace(idLower))
-                return idLower.Trim();
+
+            foreach (var kvp in item.ProviderIds)
+            {
+                if (kvp.Key.Equals(providerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrWhiteSpace(kvp.Value)) return kvp.Value.Trim();
+                }
+                if (providerName.Equals("Tmdb", StringComparison.OrdinalIgnoreCase) &&
+                    (kvp.Key.Equals("TheMovieDb", StringComparison.OrdinalIgnoreCase) ||
+                     kvp.Key.Equals("Themoviedb", StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (!string.IsNullOrWhiteSpace(kvp.Value)) return kvp.Value.Trim();
+                }
+                if (providerName.Equals("Tvdb", StringComparison.OrdinalIgnoreCase) &&
+                    (kvp.Key.Equals("TheTVDB", StringComparison.OrdinalIgnoreCase) ||
+                     kvp.Key.Equals("TheTvdb", StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (!string.IsNullOrWhiteSpace(kvp.Value)) return kvp.Value.Trim();
+                }
+            }
             return null;
+        }
+
+        private static string NormalizeImdbId(string? imdbId)
+        {
+            if (string.IsNullOrWhiteSpace(imdbId)) return string.Empty;
+            var trimmed = imdbId.Trim().ToLowerInvariant();
+            if (trimmed.StartsWith("tt")) return trimmed;
+            return "tt" + trimmed;
+        }
+
+        private static string BuildCleanFileKey(string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath)) return string.Empty;
+            try
+            {
+                var name = Path.GetFileNameWithoutExtension(filePath);
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    name = Path.GetFileName(filePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+                if (string.IsNullOrWhiteSpace(name)) return string.Empty;
+                var normalized = name
+                    .Replace("³", "3")
+                    .Replace("²", "2")
+                    .Replace("¹", "1")
+                    .Replace("&", "and");
+                return Regex.Replace(normalized.ToLowerInvariant(), @"[^a-z0-9]", "");
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         private static string BuildTitleYearKey(string? title, int? year)
         {
             if (string.IsNullOrWhiteSpace(title)) return string.Empty;
-            var cleanTitle = Regex.Replace(title.ToLowerInvariant(), @"[^a-z0-9]", "");
+            var normalized = title
+                .Replace("³", "3")
+                .Replace("²", "2")
+                .Replace("¹", "1")
+                .Replace("Ⅳ", "4")
+                .Replace("Ⅲ", "3")
+                .Replace("Ⅱ", "2")
+                .Replace("Ⅰ", "1")
+                .Replace("&", "and")
+                .Replace("+", "and");
+            var cleanTitle = Regex.Replace(normalized.ToLowerInvariant(), @"[^a-z0-9]", "");
             return $"{cleanTitle}_{year ?? 0}";
         }
 
+        private static bool Is4KLibrary(string? sectionTitle)
+        {
+            if (string.IsNullOrWhiteSpace(sectionTitle)) return false;
+            var lower = sectionTitle.ToLowerInvariant();
+            return lower.Contains("4k") || lower.Contains("uhd") || lower.Contains("2160p") || lower.Contains("ultra hd");
+        }
+
         private record PlexSection(string Key, string Type, string Title);
-        private record PlexMovieItem(string RatingKey, string Title, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId);
-        private record PlexShowItem(string RatingKey, string Title, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId);
+        private record PlexMovieItem(string RatingKey, string Title, string? OriginalTitle, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId, string? FileName);
+        private record PlexShowItem(string RatingKey, string Title, string? OriginalTitle, int? Year, string? Thumb, string? Art, string? TmdbId, string? ImdbId, string? TvdbId, string? FileName);
         private record PlexSeasonItem(string RatingKey, string ParentRatingKey, int? Index, string? Thumb);
         private record PlexEpisodeItem(string RatingKey, string? GrandparentRatingKey, string? ParentRatingKey, int? ParentIndex, int? Index, string? Thumb);
     }
