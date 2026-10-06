@@ -138,17 +138,17 @@ public class PlexSyncTask : IScheduledTask
             };
             var jfItems = _libraryManager.GetItemList(jfItemsQuery);
 
-            var moviesByTmdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var moviesByImdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var moviesByTvdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var moviesByTitleYear = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var moviesByCleanFileName = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
+            var moviesByTmdb = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var moviesByImdb = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var moviesByTvdb = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var moviesByTitleYear = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var moviesByCleanFileName = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
 
-            var seriesByTvdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var seriesByTmdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var seriesByImdb = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var seriesByTitleYear = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
-            var seriesByCleanFileName = new Dictionary<string, BaseItem>(StringComparer.OrdinalIgnoreCase);
+            var seriesByTvdb = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var seriesByTmdb = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var seriesByImdb = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var seriesByTitleYear = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
+            var seriesByCleanFileName = new Dictionary<string, List<BaseItem>>(StringComparer.OrdinalIgnoreCase);
 
             var seasonsBySeriesAndIndex = new Dictionary<string, Season>(StringComparer.OrdinalIgnoreCase);
             var episodesBySeriesAndIndex = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
@@ -158,53 +158,53 @@ public class PlexSyncTask : IScheduledTask
                 if (item is Movie movie)
                 {
                     var tmdb = GetProviderId(movie, "Tmdb");
-                    if (tmdb != null) moviesByTmdb[tmdb] = movie;
+                    if (tmdb != null) AddToMap(moviesByTmdb, tmdb, movie);
 
                     var imdb = GetProviderId(movie, "Imdb");
-                    if (imdb != null) moviesByImdb[NormalizeImdbId(imdb)] = movie;
+                    if (imdb != null) AddToMap(moviesByImdb, NormalizeImdbId(imdb), movie);
 
                     var tvdb = GetProviderId(movie, "Tvdb");
-                    if (tvdb != null) moviesByTvdb[tvdb] = movie;
+                    if (tvdb != null) AddToMap(moviesByTvdb, tvdb, movie);
 
                     var titleYearKey = BuildTitleYearKey(movie.Name, movie.ProductionYear);
-                    if (!string.IsNullOrEmpty(titleYearKey)) moviesByTitleYear[titleYearKey] = movie;
+                    if (!string.IsNullOrEmpty(titleYearKey)) AddToMap(moviesByTitleYear, titleYearKey, movie);
 
                     if (!string.IsNullOrEmpty(movie.OriginalTitle))
                     {
                         var origKey = BuildTitleYearKey(movie.OriginalTitle, movie.ProductionYear);
-                        if (!string.IsNullOrEmpty(origKey)) moviesByTitleYear[origKey] = movie;
+                        if (!string.IsNullOrEmpty(origKey)) AddToMap(moviesByTitleYear, origKey, movie);
                     }
 
                     if (!string.IsNullOrEmpty(movie.Path))
                     {
                         var cleanFile = BuildCleanFileKey(movie.Path);
-                        if (!string.IsNullOrEmpty(cleanFile)) moviesByCleanFileName[cleanFile] = movie;
+                        if (!string.IsNullOrEmpty(cleanFile)) AddToMap(moviesByCleanFileName, cleanFile, movie);
                     }
                 }
                 else if (item is Series series)
                 {
                     var tvdb = GetProviderId(series, "Tvdb");
-                    if (tvdb != null) seriesByTvdb[tvdb] = series;
+                    if (tvdb != null) AddToMap(seriesByTvdb, tvdb, series);
 
                     var tmdb = GetProviderId(series, "Tmdb");
-                    if (tmdb != null) seriesByTmdb[tmdb] = series;
+                    if (tmdb != null) AddToMap(seriesByTmdb, tmdb, series);
 
                     var imdb = GetProviderId(series, "Imdb");
-                    if (imdb != null) seriesByImdb[NormalizeImdbId(imdb)] = series;
+                    if (imdb != null) AddToMap(seriesByImdb, NormalizeImdbId(imdb), series);
 
                     var titleYearKey = BuildTitleYearKey(series.Name, series.ProductionYear);
-                    if (!string.IsNullOrEmpty(titleYearKey)) seriesByTitleYear[titleYearKey] = series;
+                    if (!string.IsNullOrEmpty(titleYearKey)) AddToMap(seriesByTitleYear, titleYearKey, series);
 
                     if (!string.IsNullOrEmpty(series.OriginalTitle))
                     {
                         var origKey = BuildTitleYearKey(series.OriginalTitle, series.ProductionYear);
-                        if (!string.IsNullOrEmpty(origKey)) seriesByTitleYear[origKey] = series;
+                        if (!string.IsNullOrEmpty(origKey)) AddToMap(seriesByTitleYear, origKey, series);
                     }
 
                     if (!string.IsNullOrEmpty(series.Path))
                     {
                         var cleanFile = BuildCleanFileKey(series.Path);
-                        if (!string.IsNullOrEmpty(cleanFile)) seriesByCleanFileName[cleanFile] = series;
+                        if (!string.IsNullOrEmpty(cleanFile)) AddToMap(seriesByCleanFileName, cleanFile, series);
                     }
                 }
                 else if (item is Season season && season.IndexNumber.HasValue)
@@ -264,15 +264,22 @@ public class PlexSyncTask : IScheduledTask
                         cancellationToken.ThrowIfCancellationRequested();
 
                         BaseItem? matchedJfMovie = null;
-                        if (pMovie.TmdbId != null && moviesByTmdb.TryGetValue(pMovie.TmdbId, out matchedJfMovie)) { }
-                        else if (pMovie.ImdbId != null && moviesByImdb.TryGetValue(NormalizeImdbId(pMovie.ImdbId), out matchedJfMovie)) { }
-                        else if (pMovie.TvdbId != null && moviesByTvdb.TryGetValue(pMovie.TvdbId, out matchedJfMovie)) { }
-                        else if (!string.IsNullOrEmpty(pMovie.Title) && moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year), out matchedJfMovie)) { }
-                        else if (!string.IsNullOrEmpty(pMovie.OriginalTitle) && moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.OriginalTitle, pMovie.Year), out matchedJfMovie)) { }
-                        else if (!string.IsNullOrEmpty(pMovie.FileName) && moviesByCleanFileName.TryGetValue(BuildCleanFileKey(pMovie.FileName), out matchedJfMovie)) { }
+                        List<BaseItem>? candidates = null;
+
+                        if (pMovie.TmdbId != null && moviesByTmdb.TryGetValue(pMovie.TmdbId, out candidates)) { }
+                        else if (pMovie.ImdbId != null && moviesByImdb.TryGetValue(NormalizeImdbId(pMovie.ImdbId), out candidates)) { }
+                        else if (pMovie.TvdbId != null && moviesByTvdb.TryGetValue(pMovie.TvdbId, out candidates)) { }
+                        else if (!string.IsNullOrEmpty(pMovie.Title) && moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year), out candidates)) { }
+                        else if (!string.IsNullOrEmpty(pMovie.OriginalTitle) && moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.OriginalTitle, pMovie.Year), out candidates)) { }
+                        else if (!string.IsNullOrEmpty(pMovie.FileName) && moviesByCleanFileName.TryGetValue(BuildCleanFileKey(pMovie.FileName), out candidates)) { }
                         else if (!string.IsNullOrEmpty(pMovie.Title) && pMovie.Year.HasValue &&
-                                 (moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year.Value - 1), out matchedJfMovie) ||
-                                  moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year.Value + 1), out matchedJfMovie))) { }
+                                 (moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year.Value - 1), out candidates) ||
+                                  moviesByTitleYear.TryGetValue(BuildTitleYearKey(pMovie.Title, pMovie.Year.Value + 1), out candidates))) { }
+
+                        if (candidates != null && candidates.Count > 0)
+                        {
+                            matchedJfMovie = DisambiguateCandidate(candidates, section.Title, is4KSection);
+                        }
 
                         if (matchedJfMovie == null)
                         {
@@ -330,15 +337,22 @@ public class PlexSyncTask : IScheduledTask
                         cancellationToken.ThrowIfCancellationRequested();
 
                         BaseItem? matchedJfSeries = null;
-                        if (pShow.TvdbId != null && seriesByTvdb.TryGetValue(pShow.TvdbId, out matchedJfSeries)) { }
-                        else if (pShow.TmdbId != null && seriesByTmdb.TryGetValue(pShow.TmdbId, out matchedJfSeries)) { }
-                        else if (pShow.ImdbId != null && seriesByImdb.TryGetValue(NormalizeImdbId(pShow.ImdbId), out matchedJfSeries)) { }
-                        else if (!string.IsNullOrEmpty(pShow.Title) && seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year), out matchedJfSeries)) { }
-                        else if (!string.IsNullOrEmpty(pShow.OriginalTitle) && seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.OriginalTitle, pShow.Year), out matchedJfSeries)) { }
-                        else if (!string.IsNullOrEmpty(pShow.FileName) && seriesByCleanFileName.TryGetValue(BuildCleanFileKey(pShow.FileName), out matchedJfSeries)) { }
+                        List<BaseItem>? candidates = null;
+
+                        if (pShow.TvdbId != null && seriesByTvdb.TryGetValue(pShow.TvdbId, out candidates)) { }
+                        else if (pShow.TmdbId != null && seriesByTmdb.TryGetValue(pShow.TmdbId, out candidates)) { }
+                        else if (pShow.ImdbId != null && seriesByImdb.TryGetValue(NormalizeImdbId(pShow.ImdbId), out candidates)) { }
+                        else if (!string.IsNullOrEmpty(pShow.Title) && seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year), out candidates)) { }
+                        else if (!string.IsNullOrEmpty(pShow.OriginalTitle) && seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.OriginalTitle, pShow.Year), out candidates)) { }
+                        else if (!string.IsNullOrEmpty(pShow.FileName) && seriesByCleanFileName.TryGetValue(BuildCleanFileKey(pShow.FileName), out candidates)) { }
                         else if (!string.IsNullOrEmpty(pShow.Title) && pShow.Year.HasValue &&
-                                 (seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year.Value - 1), out matchedJfSeries) ||
-                                  seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year.Value + 1), out matchedJfSeries))) { }
+                                 (seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year.Value - 1), out candidates) ||
+                                  seriesByTitleYear.TryGetValue(BuildTitleYearKey(pShow.Title, pShow.Year.Value + 1), out candidates))) { }
+
+                        if (candidates != null && candidates.Count > 0)
+                        {
+                            matchedJfSeries = DisambiguateCandidate(candidates, section.Title, is4KSection);
+                        }
 
                         if (matchedJfSeries == null)
                         {
@@ -495,8 +509,11 @@ public class PlexSyncTask : IScheduledTask
         // and the current library is a standard/non-4K library, do NOT overwrite it!
         if (!is4KSection && cache.TryGetRecord(item.Id, imageType, out var existingRecord) && existingRecord != null && existingRecord.Is4K)
         {
-            LogDebug("Preserving 4K artwork for '{0}' ({1}) - skipping non-4K library update.", item.Name, imageType);
-            return false;
+            if (Is4KLibrary(GetItemLibraryName(item)) || Is4KLibrary(item.Path))
+            {
+                LogDebug("Preserving 4K artwork for '{0}' ({1}) - skipping non-4K library update.", item.Name, imageType);
+                return false;
+            }
         }
 
         // Modified or new: Stream image from Plex
@@ -919,6 +936,67 @@ public class PlexSyncTask : IScheduledTask
         if (string.IsNullOrWhiteSpace(sectionTitle)) return false;
         var lower = sectionTitle.ToLowerInvariant();
         return lower.Contains("4k") || lower.Contains("uhd") || lower.Contains("2160p") || lower.Contains("ultra hd");
+    }
+
+    private static void AddToMap(Dictionary<string, List<BaseItem>> map, string? key, BaseItem item)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        if (!map.TryGetValue(key, out var list))
+        {
+            list = new List<BaseItem>();
+            map[key] = list;
+        }
+        list.Add(item);
+    }
+
+    private string GetItemLibraryName(BaseItem item)
+    {
+        try
+        {
+            var col = item.GetAncestorIds()
+                .Select(id => _libraryManager.GetItemById(id))
+                .OfType<CollectionFolder>()
+                .FirstOrDefault();
+            if (col != null && !string.IsNullOrWhiteSpace(col.Name))
+            {
+                return col.Name;
+            }
+        }
+        catch { }
+
+        return item.Path ?? string.Empty;
+    }
+
+    private BaseItem DisambiguateCandidate(List<BaseItem> candidates, string sectionTitle, bool is4KSection)
+    {
+        if (candidates.Count == 1) return candidates[0];
+
+        // 1. Exact library name match
+        var exact = candidates.FirstOrDefault(c => string.Equals(GetItemLibraryName(c), sectionTitle, StringComparison.OrdinalIgnoreCase));
+        if (exact != null) return exact;
+
+        // 2. Partial match on library name or path
+        var partial = candidates.FirstOrDefault(c =>
+        {
+            var lib = GetItemLibraryName(c);
+            return lib.IndexOf(sectionTitle, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   (!string.IsNullOrEmpty(c.Path) && c.Path.IndexOf(sectionTitle, StringComparison.OrdinalIgnoreCase) >= 0);
+        });
+        if (partial != null) return partial;
+
+        // 3. Resolution match: If section is 4K, prefer candidate whose library or path is 4K
+        if (is4KSection)
+        {
+            var match4k = candidates.FirstOrDefault(c => Is4KLibrary(GetItemLibraryName(c)) || Is4KLibrary(c.Path));
+            if (match4k != null) return match4k;
+        }
+        else
+        {
+            var matchNon4k = candidates.FirstOrDefault(c => !Is4KLibrary(GetItemLibraryName(c)) && !Is4KLibrary(c.Path));
+            if (matchNon4k != null) return matchNon4k;
+        }
+
+        return candidates[0];
     }
 
     private record PlexSection(string Key, string Type, string Title);
