@@ -11,21 +11,21 @@
     <form id="PosterizarrConfigForm" class="auto-center" style="max-width: 800px; width: 100%;">
         <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
             <h1 class="pageTitle" style="margin-top:0;">Posterizarr Settings</h1>
-            <p>Map your local /assets folder to your libraries using fuzzy folder matching.</p>
+            <p>Match artwork from your local assets folder to your media libraries.</p>
 
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtAssetPath">Root Asset Folder Path</label>
+                <label class="inputLabel inputLabelUnfocused" for="txtAssetPath">Asset Folder Path</label>
                 <input is="emby-input" type="text" id="txtAssetPath" />
-                <div class="fieldDescription">The path where your library folders live (e.g., /assets).</div>
+                <div class="fieldDescription">The root directory containing your library asset folders (e.g., /assets).</div>
             </div>
 
-            <h2 class="sectionTitle">Image Target Types</h2>
+            <h2 class="sectionTitle">Artwork Types</h2>
             <div class="checkboxContainer checkboxContainer-withDescription">
                 <label>
                     <input is="emby-checkbox" type="checkbox" id="chkUpdatePoster" />
                     <span>Update Posters</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Apply the Posterizarr image as the Movie/Series primary poster.</div>
+                <div class="fieldDescription checkboxFieldDescription">Set primary posters for movies and series.</div>
             </div>
 
             <div class="checkboxContainer checkboxContainer-withDescription">
@@ -33,15 +33,15 @@
                     <input is="emby-checkbox" type="checkbox" id="chkUpdateSeason" />
                     <span>Update Season Posters</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Apply the Posterizarr image as the Season primary poster.</div>
+                <div class="fieldDescription checkboxFieldDescription">Set primary posters for TV seasons.</div>
             </div>
 
             <div class="checkboxContainer checkboxContainer-withDescription">
                 <label>
                     <input is="emby-checkbox" type="checkbox" id="chkUpdateTitlecard" />
-                    <span>Update Episode Titlecards</span>
+                    <span>Update Episode Title Cards</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Apply the Posterizarr image as the Episode primary image (titlecard).</div>
+                <div class="fieldDescription checkboxFieldDescription">Set title cards for episodes.</div>
             </div>
 
             <div class="checkboxContainer checkboxContainer-withDescription">
@@ -49,7 +49,7 @@
                     <input is="emby-checkbox" type="checkbox" id="chkUpdateBackdrop" />
                     <span>Update Backdrops</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Apply the Posterizarr background image as the Movie/Series Backdrop.</div>
+                <div class="fieldDescription checkboxFieldDescription">Set background fanart for movies and series.</div>
             </div>
 
             <div class="checkboxContainer checkboxContainer-withDescription">
@@ -57,7 +57,7 @@
                     <input is="emby-checkbox" type="checkbox" id="chkUpdateThumbnail" />
                     <span>Update Thumbnails</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Apply the Posterizarr background image as the Movie/Series Thumbnail instead of using the primary poster.</div>
+                <div class="fieldDescription checkboxFieldDescription">Set landscape thumbnails using background artwork.</div>
             </div>
 
             <div class="checkboxContainer checkboxContainer-withDescription">
@@ -65,7 +65,7 @@
                     <input is="emby-checkbox" type="checkbox" id="chkUpdateCollection" />
                     <span>Update Collections</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Apply local collection assets (posters and backdrops) to Collections/BoxSets.</div>
+                <div class="fieldDescription checkboxFieldDescription">Set posters and backdrops for collections.</div>
             </div>
 
             <div class="checkboxContainer checkboxContainer-withDescription">
@@ -73,28 +73,28 @@
                     <input is="emby-checkbox" type="checkbox" id="chkDebugMode" />
                     <span>Enable Debug Mode</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Enable detailed logging for troubleshooting file lookups.</div>
+                <div class="fieldDescription checkboxFieldDescription">Log detailed file lookup and matching details to the server log.</div>
             </div>
 
-            <h2 class="sectionTitle" style="margin-top: 2em;">Real-Time Sync (WebSocket)</h2>
+            <h2 class="sectionTitle" style="margin-top: 2em;">Real-Time Sync</h2>
             <div class="checkboxContainer checkboxContainer-withDescription">
                 <label>
                     <input is="emby-checkbox" type="checkbox" id="chkEnableRealtimeSync" />
-                    <span>Enable Real-Time Sync (WebSocket)</span>
+                    <span>Enable Real-Time Sync</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Connect directly to Posterizarr's event stream. Automatically refreshes media items immediately when an asset is created or edited, without waiting for scheduled tasks.</div>
+                <div class="fieldDescription checkboxFieldDescription">Automatically update media artwork when Posterizarr creates or edits files.</div>
             </div>
 
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtPosterizarrApiUrl">Posterizarr URL</label>
+                <label class="inputLabel inputLabelUnfocused" for="txtPosterizarrApiUrl">Posterizarr Server URL</label>
                 <input is="emby-input" type="text" id="txtPosterizarrApiUrl" placeholder="http://192.168.1.50:8000" />
-                <div class="fieldDescription">The base URL of your Posterizarr server (e.g., http://localhost:8000 or http://posterizarr:8000).</div>
+                <div class="fieldDescription">Base URL of your Posterizarr server (e.g., http://localhost:8000).</div>
             </div>
 
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtPosterizarrApiKey">Posterizarr API Key (Required for Real-Time Sync)</label>
+                <label class="inputLabel inputLabelUnfocused" for="txtPosterizarrApiKey">Posterizarr API Key</label>
                 <input is="emby-input" type="password" id="txtPosterizarrApiKey" />
-                <div class="fieldDescription">Mandatory for real-time WebSocket connection. Sent securely via X-API-Key HTTP header (never in URL).</div>
+                <div class="fieldDescription">Required for real-time sync. Found in your Posterizarr configuration.</div>
             </div>
 
             <div class="inputContainer" style="margin-top: 1em; margin-bottom: 1.5em;">
@@ -104,19 +104,19 @@
                 <div id="testConnectionResult" style="margin-top: 8px; font-weight: 500; font-size: 0.95em; min-height: 1.2em;"></div>
             </div>
 
-            <h2 class="sectionTitle" style="margin-top: 2em;">Plex Direct Sync (Kometa / Asset Mirroring)</h2>
+            <h2 class="sectionTitle" style="margin-top: 2em;">Plex Direct Sync</h2>
             <div class="checkboxContainer checkboxContainer-withDescription">
                 <label>
                     <input is="emby-checkbox" type="checkbox" id="chkEnablePlexSync" />
                     <span>Enable Plex Direct Sync</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Directly mirror artwork from a Plex instance (including Kometa overlays) to Emby using high-performance Plex bulk queries. (Disabled by default).</div>
+                <div class="fieldDescription checkboxFieldDescription">Mirror artwork (including Kometa overlays) directly from Plex to Emby.</div>
             </div>
 
             <div id="plexSyncWarningNotice" style="display: none; margin: 10px 0 15px 0; padding: 12px 14px; background: rgba(82, 183, 136, 0.12); border-left: 4px solid #52b788; border-radius: 4px;">
                 <div style="font-weight: bold; color: #52b788; margin-bottom: 4px;">ℹ️ Plex Direct Sync Active</div>
                 <div style="font-size: 0.9em; color: #ccc; line-height: 1.4;">
-                    When Plex Direct Sync is enabled, local asset scheduled sync, local image provider matching, and Posterizarr WebSocket real-time sync are automatically deactivated to ensure Plex and Kometa artwork are never overwritten by local files.
+                    Scheduled sweeps of local asset folders are paused to prevent overwriting Plex artwork. If Real-Time Sync is enabled, new Posterizarr artwork applies immediately, and subsequent Plex sync tasks will update it if Kometa overlays differ.
                 </div>
             </div>
 
@@ -124,19 +124,19 @@
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="txtPlexServerUrl">Plex Server URL</label>
                     <input is="emby-input" type="text" id="txtPlexServerUrl" placeholder="http://192.168.1.50:32400" />
-                    <div class="fieldDescription">The base URL of your Plex server (e.g., http://192.168.1.50:32400 or http://plex:32400).</div>
+                    <div class="fieldDescription">Base URL of your Plex server (e.g., http://192.168.1.50:32400).</div>
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="txtPlexToken">Plex Token (X-Plex-Token)</label>
+                    <label class="inputLabel inputLabelUnfocused" for="txtPlexToken">Plex Token</label>
                     <input is="emby-input" type="password" id="txtPlexToken" />
-                    <div class="fieldDescription">Your Plex authentication token.</div>
+                    <div class="fieldDescription">Your Plex authentication token (X-Plex-Token).</div>
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="txtPlexLibrariesToInclude">Include Specific Libraries (Optional)</label>
+                    <label class="inputLabel inputLabelUnfocused" for="txtPlexLibrariesToInclude">Libraries to Sync (Optional)</label>
                     <input is="emby-input" type="text" id="txtPlexLibrariesToInclude" placeholder="e.g. Movies, 4K Movies, TV Shows" />
-                    <div class="fieldDescription">Comma-separated list of Plex library names to sync. Leave empty to sync all movie and TV show libraries.</div>
+                    <div class="fieldDescription">Comma-separated list of library names. Leave empty to sync all libraries.</div>
                 </div>
 
                 <div class="checkboxContainer checkboxContainer-withDescription">
@@ -144,7 +144,7 @@
                         <input is="emby-checkbox" type="checkbox" id="chkPlexSyncMovies" />
                         <span>Sync Movie Posters</span>
                     </label>
-                    <div class="fieldDescription checkboxFieldDescription">Mirror primary movie posters from Plex.</div>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror movie posters from Plex.</div>
                 </div>
 
                 <div class="checkboxContainer checkboxContainer-withDescription">
@@ -152,7 +152,7 @@
                         <input is="emby-checkbox" type="checkbox" id="chkPlexSyncShows" />
                         <span>Sync TV Series Posters</span>
                     </label>
-                    <div class="fieldDescription checkboxFieldDescription">Mirror primary TV show posters from Plex.</div>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror series posters from Plex.</div>
                 </div>
 
                 <div class="checkboxContainer checkboxContainer-withDescription">
@@ -160,7 +160,7 @@
                         <input is="emby-checkbox" type="checkbox" id="chkPlexSyncSeasons" />
                         <span>Sync TV Season Posters</span>
                     </label>
-                    <div class="fieldDescription checkboxFieldDescription">Mirror individual season posters from Plex.</div>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror season posters from Plex.</div>
                 </div>
 
                 <div class="checkboxContainer checkboxContainer-withDescription">
@@ -168,7 +168,7 @@
                         <input is="emby-checkbox" type="checkbox" id="chkPlexSyncTitlecards" />
                         <span>Sync Episode Title Cards</span>
                     </label>
-                    <div class="fieldDescription checkboxFieldDescription">Mirror individual episode title cards/thumbnails from Plex.</div>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror episode title cards from Plex.</div>
                 </div>
 
                 <div class="checkboxContainer checkboxContainer-withDescription">
@@ -176,7 +176,7 @@
                         <input is="emby-checkbox" type="checkbox" id="chkPlexSyncBackdrops" />
                         <span>Sync Backdrops (Fanart)</span>
                     </label>
-                    <div class="fieldDescription checkboxFieldDescription">Mirror backdrops/fanart from Plex.</div>
+                    <div class="fieldDescription checkboxFieldDescription">Mirror backdrops and fanart from Plex.</div>
                 </div>
 
                 <div class="inputContainer" style="margin-top: 1em; margin-bottom: 1.5em;">

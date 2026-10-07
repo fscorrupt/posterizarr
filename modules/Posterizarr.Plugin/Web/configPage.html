@@ -4,24 +4,24 @@
             <form id="PosterizarrConfigForm">
                 <div class="verticalSection">
                     <div class="sectionTitleContainer">
-                        <h2 class="sectionTitle">Posterizarr Local Middleware</h2>
-                        <p class="sectionDescription">Map your local /assets folder to your libraries using fuzzy folder matching.</p>
+                        <h2 class="sectionTitle">Posterizarr Settings</h2>
+                        <p class="sectionDescription">Match artwork from your local assets folder to your media libraries.</p>
                     </div>
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel" for="txtAssetPath">Root Asset Folder Path</label>
+                    <label class="inputLabel" for="txtAssetPath">Asset Folder Path</label>
                     <input type="text" id="txtAssetPath" name="txtAssetPath" is="emby-input" required />
-                    <div class="fieldDescription">The path where your '4K Movies' and '4K TV Shows' folders live (e.g., /assets).</div>
+                    <div class="fieldDescription">The root directory containing your library asset folders (e.g., /assets).</div>
                 </div>
 
-                <h2 class="sectionTitle">Image Target Types</h2>
+                <h2 class="sectionTitle">Artwork Types</h2>
                 <div class="inputContainer">
                     <label class="checkboxContainerLabel">
                         <input type="checkbox" id="chkUpdatePoster" name="chkUpdatePoster" is="emby-checkbox" />
                         <span>Update Posters</span>
                     </label>
-                    <div class="fieldDescription">Apply the Posterizarr image as the Movie/Series primary poster.</div>
+                    <div class="fieldDescription">Set primary posters for movies and series.</div>
                 </div>
 
                 <div class="inputContainer">
@@ -29,15 +29,15 @@
                         <input type="checkbox" id="chkUpdateSeason" name="chkUpdateSeason" is="emby-checkbox" />
                         <span>Update Season Posters</span>
                     </label>
-                    <div class="fieldDescription">Apply the Posterizarr image as the Season primary poster.</div>
+                    <div class="fieldDescription">Set primary posters for TV seasons.</div>
                 </div>
 
                 <div class="inputContainer">
                     <label class="checkboxContainerLabel">
                         <input type="checkbox" id="chkUpdateTitlecard" name="chkUpdateTitlecard" is="emby-checkbox" />
-                        <span>Update Episode Titlecards</span>
+                        <span>Update Episode Title Cards</span>
                     </label>
-                    <div class="fieldDescription">Apply the Posterizarr image as the Episode primary image (titlecard).</div>
+                    <div class="fieldDescription">Set title cards for episodes.</div>
                 </div>
 
                 <div class="inputContainer">
@@ -45,7 +45,7 @@
                         <input type="checkbox" id="chkUpdateBackdrop" name="chkUpdateBackdrop" is="emby-checkbox" />
                         <span>Update Backdrops</span>
                     </label>
-                    <div class="fieldDescription">Apply the Posterizarr background image as the Movie/Series Backdrop.</div>
+                    <div class="fieldDescription">Set background fanart for movies and series.</div>
                 </div>
 
                 <div class="inputContainer">
@@ -53,7 +53,7 @@
                         <input type="checkbox" id="chkUpdateThumbnail" name="chkUpdateThumbnail" is="emby-checkbox" />
                         <span>Update Thumbnails</span>
                     </label>
-                    <div class="fieldDescription">Apply the Posterizarr background image as the Movie/Series Thumbnail instead of using the primary poster.</div>
+                    <div class="fieldDescription">Set landscape thumbnails using background artwork.</div>
                 </div>
 
                 <div class="inputContainer">
@@ -61,7 +61,7 @@
                         <input type="checkbox" id="chkUpdateCollection" name="chkUpdateCollection" is="emby-checkbox" />
                         <span>Update Collections</span>
                     </label>
-                    <div class="fieldDescription">Apply local collection assets (posters and backdrops) to Collections/BoxSets.</div>
+                    <div class="fieldDescription">Set posters and backdrops for collections.</div>
                 </div>
 
                 <div class="inputContainer">
@@ -69,27 +69,28 @@
                         <input type="checkbox" id="chkDebugMode" name="chkDebugMode" is="emby-checkbox" />
                         <span>Enable Debug Mode</span>
                     </label>
+                    <div class="fieldDescription">Log detailed file lookup and matching details to the server log.</div>
                 </div>
 
-                <h2 class="sectionTitle">Real-Time Sync (WebSocket)</h2>
+                <h2 class="sectionTitle">Real-Time Sync</h2>
                 <div class="inputContainer">
                     <label class="checkboxContainerLabel">
                         <input type="checkbox" id="chkEnableRealtimeSync" name="chkEnableRealtimeSync" is="emby-checkbox" />
-                        <span>Enable Real-Time Sync (WebSocket)</span>
+                        <span>Enable Real-Time Sync</span>
                     </label>
-                    <div class="fieldDescription">Connect directly to Posterizarr's event stream. Automatically refreshes media items immediately when an asset is created or edited, without waiting for scheduled tasks.</div>
+                    <div class="fieldDescription">Automatically update media artwork when Posterizarr creates or edits files.</div>
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel" for="txtPosterizarrApiUrl">Posterizarr URL</label>
+                    <label class="inputLabel" for="txtPosterizarrApiUrl">Posterizarr Server URL</label>
                     <input type="text" id="txtPosterizarrApiUrl" name="txtPosterizarrApiUrl" is="emby-input" placeholder="http://192.168.1.50:8000" />
-                    <div class="fieldDescription">The base URL of your Posterizarr server (e.g., http://localhost:8000 or http://posterizarr:8000).</div>
+                    <div class="fieldDescription">Base URL of your Posterizarr server (e.g., http://localhost:8000).</div>
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel" for="txtPosterizarrApiKey">Posterizarr API Key (Required for Real-Time Sync)</label>
+                    <label class="inputLabel" for="txtPosterizarrApiKey">Posterizarr API Key</label>
                     <input type="password" id="txtPosterizarrApiKey" name="txtPosterizarrApiKey" is="emby-input" />
-                    <div class="fieldDescription">Mandatory for real-time WebSocket connection. Sent securely via X-API-Key HTTP header (never in URL).</div>
+                    <div class="fieldDescription">Required for real-time sync. Found in your Posterizarr configuration.</div>
                 </div>
 
                 <div class="inputContainer" style="margin-top: 1em; margin-bottom: 1.5em;">
@@ -99,19 +100,19 @@
                     <div id="testConnectionResult" style="margin-top: 8px; font-weight: 500; font-size: 0.95em; min-height: 1.2em;"></div>
                 </div>
 
-                <h2 class="sectionTitle">Plex Direct Sync (Kometa / Asset Mirroring)</h2>
+                <h2 class="sectionTitle">Plex Direct Sync</h2>
                 <div class="inputContainer">
                     <label class="checkboxContainerLabel">
                         <input type="checkbox" id="chkEnablePlexSync" name="chkEnablePlexSync" is="emby-checkbox" />
                         <span>Enable Plex Direct Sync</span>
                     </label>
-                    <div class="fieldDescription">Directly mirror artwork from a Plex instance (including Kometa overlays) to Jellyfin using high-performance Plex bulk queries. (Disabled by default).</div>
+                    <div class="fieldDescription">Mirror artwork (including Kometa overlays) directly from Plex to Jellyfin.</div>
                 </div>
 
                 <div id="plexSyncWarningNotice" style="display: none; margin: 10px 0 15px 0; padding: 12px 14px; background: rgba(0, 164, 220, 0.12); border-left: 4px solid #00a4dc; border-radius: 4px;">
                     <div style="font-weight: bold; color: #00a4dc; margin-bottom: 4px;">ℹ️ Plex Direct Sync Active</div>
                     <div style="font-size: 0.9em; color: #ccc; line-height: 1.4;">
-                        When Plex Direct Sync is enabled, local asset scheduled sync, local image provider matching, and Posterizarr WebSocket real-time sync are automatically deactivated to ensure Plex and Kometa artwork are never overwritten by local files.
+                        Scheduled sweeps of local asset folders are paused to prevent overwriting Plex artwork. If Real-Time Sync is enabled, new Posterizarr artwork applies immediately, and subsequent Plex sync tasks will update it if Kometa overlays differ.
                     </div>
                 </div>
 
@@ -119,19 +120,19 @@
                     <div class="inputContainer">
                         <label class="inputLabel" for="txtPlexServerUrl">Plex Server URL</label>
                         <input type="text" id="txtPlexServerUrl" name="txtPlexServerUrl" is="emby-input" placeholder="http://192.168.1.50:32400" />
-                        <div class="fieldDescription">The base URL of your Plex server (e.g., http://192.168.1.50:32400 or http://plex:32400).</div>
+                        <div class="fieldDescription">Base URL of your Plex server (e.g., http://192.168.1.50:32400).</div>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel" for="txtPlexToken">Plex Token (X-Plex-Token)</label>
+                        <label class="inputLabel" for="txtPlexToken">Plex Token</label>
                         <input type="password" id="txtPlexToken" name="txtPlexToken" is="emby-input" />
-                        <div class="fieldDescription">Your Plex authentication token.</div>
+                        <div class="fieldDescription">Your Plex authentication token (X-Plex-Token).</div>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel" for="txtPlexLibrariesToInclude">Include Specific Libraries (Optional)</label>
+                        <label class="inputLabel" for="txtPlexLibrariesToInclude">Libraries to Sync (Optional)</label>
                         <input type="text" id="txtPlexLibrariesToInclude" name="txtPlexLibrariesToInclude" is="emby-input" placeholder="e.g. Movies, 4K Movies, TV Shows" />
-                        <div class="fieldDescription">Comma-separated list of Plex library names to sync. Leave empty to sync all movie and TV show libraries.</div>
+                        <div class="fieldDescription">Comma-separated list of library names. Leave empty to sync all libraries.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -139,7 +140,7 @@
                             <input type="checkbox" id="chkPlexSyncMovies" name="chkPlexSyncMovies" is="emby-checkbox" />
                             <span>Sync Movie Posters</span>
                         </label>
-                        <div class="fieldDescription">Mirror primary movie posters from Plex.</div>
+                        <div class="fieldDescription">Mirror movie posters from Plex.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -147,7 +148,7 @@
                             <input type="checkbox" id="chkPlexSyncShows" name="chkPlexSyncShows" is="emby-checkbox" />
                             <span>Sync TV Series Posters</span>
                         </label>
-                        <div class="fieldDescription">Mirror primary TV show posters from Plex.</div>
+                        <div class="fieldDescription">Mirror series posters from Plex.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -155,7 +156,7 @@
                             <input type="checkbox" id="chkPlexSyncSeasons" name="chkPlexSyncSeasons" is="emby-checkbox" />
                             <span>Sync TV Season Posters</span>
                         </label>
-                        <div class="fieldDescription">Mirror individual season posters from Plex.</div>
+                        <div class="fieldDescription">Mirror season posters from Plex.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -163,7 +164,7 @@
                             <input type="checkbox" id="chkPlexSyncTitlecards" name="chkPlexSyncTitlecards" is="emby-checkbox" />
                             <span>Sync Episode Title Cards</span>
                         </label>
-                        <div class="fieldDescription">Mirror individual episode title cards/thumbnails from Plex.</div>
+                        <div class="fieldDescription">Mirror episode title cards from Plex.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -171,7 +172,7 @@
                             <input type="checkbox" id="chkPlexSyncBackdrops" name="chkPlexSyncBackdrops" is="emby-checkbox" />
                             <span>Sync Backdrops (Fanart)</span>
                         </label>
-                        <div class="fieldDescription">Mirror backdrops/fanart from Plex.</div>
+                        <div class="fieldDescription">Mirror backdrops and fanart from Plex.</div>
                     </div>
 
                     <div class="inputContainer" style="margin-top: 1em; margin-bottom: 1.5em;">
@@ -227,15 +228,6 @@
                     function updateSyncExclusivity(isPlexActive) {
                         if (plexSection) plexSection.style.display = isPlexActive ? 'block' : 'none';
                         if (plexNotice) plexNotice.style.display = isPlexActive ? 'block' : 'none';
-                        if (chkRealtime) {
-                            if (isPlexActive) {
-                                chkRealtime.checked = false;
-                                chkRealtime.disabled = true;
-                            } else {
-                                chkRealtime.disabled = false;
-                                chkRealtime.checked = config.EnableRealtimeSync || false;
-                            }
-                        }
                     }
 
                     if (chkPlexSync) {
@@ -283,7 +275,7 @@
 
                         if (!rawUrl) {
                             if (resultDiv) {
-                                resultDiv.textContent = 'Please enter a Posterizarr URL first.';
+                                resultDiv.textContent = 'Please enter a Posterizarr URL.';
                                 resultDiv.style.color = '#e5a00d';
                             }
                             return;
@@ -291,14 +283,14 @@
 
                         if (!apiKey) {
                             if (resultDiv) {
-                                resultDiv.textContent = 'Please enter your Posterizarr API Key (required).';
+                                resultDiv.textContent = 'Please enter a Posterizarr API key.';
                                 resultDiv.style.color = '#e5a00d';
                             }
                             return;
                         }
 
                         if (resultDiv) {
-                            resultDiv.textContent = 'Testing connection to Posterizarr...';
+                            resultDiv.textContent = 'Testing connection...';
                             resultDiv.style.color = '#aaa';
                         }
 
@@ -309,32 +301,32 @@
                             .then(function (res) {
                                 if (!resultDiv) return;
                                 if (res.ok || res.status === 200) {
-                                    resultDiv.textContent = 'Connected! Posterizarr WebSocket event stream is active.';
+                                    resultDiv.textContent = 'Connected successfully.';
                                     resultDiv.style.color = '#52b788';
                                 } else if (res.status === 404) {
-                                    resultDiv.textContent = 'Posterizarr is reachable, but /ws/events was not found (HTTP 404). Posterizarr may need to be updated to the latest dev build with WebSocket support.';
+                                    resultDiv.textContent = 'Connected, but /ws/events was not found (HTTP 404). Ensure Posterizarr supports WebSockets.';
                                     resultDiv.style.color = '#e5a00d';
                                 } else if (res.status === 401 || res.status === 403) {
-                                    resultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please verify your API Key.';
+                                    resultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please check your API key.';
                                     resultDiv.style.color = '#e63946';
                                 } else {
-                                    resultDiv.textContent = 'Posterizarr returned HTTP status ' + res.status;
+                                    resultDiv.textContent = 'Posterizarr returned HTTP ' + res.status;
                                     resultDiv.style.color = '#e5a00d';
                                 }
                             })
                             .catch(function (err) {
                                 if (!resultDiv) return;
                                 if (window.location.protocol === 'https:' && rawUrl.toLowerCase().startsWith('http://')) {
-                                    resultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Browser blocked direct test (Mixed Content: HTTPS to HTTP).</span><br/>' +
-                                        '<span style="color: #aaa; font-size: 0.9em;">However, the server connects directly in the background! Click <b>Save Settings</b> below and check the server log.</span>';
+                                    resultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Direct test blocked by browser (mixed HTTPS/HTTP content).</span><br/>' +
+                                        '<span style="color: #aaa; font-size: 0.9em;">The server connects directly in the background. Save settings and check server logs.</span>';
                                     return;
                                 }
                                 if (!rawUrl.includes('.') && !rawUrl.includes('localhost') && !rawUrl.includes('127.0.0.1')) {
                                     resultDiv.innerHTML = '<span style="color: #52b788;">ℹ️ Internal Docker hostname detected.</span><br/>' +
-                                        '<span style="color: #aaa; font-size: 0.9em;">Your browser cannot resolve Docker hostnames, but the server container can! Click <b>Save Settings</b> to connect.</span>';
+                                        '<span style="color: #aaa; font-size: 0.9em;">The browser cannot resolve container hostnames directly, but Jellyfin can. Save settings to connect.</span>';
                                     return;
                                 }
-                                resultDiv.textContent = 'Cannot reach Posterizarr at ' + rawUrl + ' from browser. Click "Save Settings" if the server connects directly over LAN/Docker.';
+                                resultDiv.textContent = 'Cannot reach Posterizarr from browser. If running on LAN or Docker, save settings to test server-side.';
                                 resultDiv.style.color = '#e63946';
                             });
                     });
@@ -350,7 +342,7 @@
 
                         if (!rawUrl) {
                             if (plexResultDiv) {
-                                plexResultDiv.textContent = 'Please enter a Plex Server URL first.';
+                                plexResultDiv.textContent = 'Please enter a Plex server URL.';
                                 plexResultDiv.style.color = '#e5a00d';
                             }
                             return;
@@ -358,14 +350,14 @@
 
                         if (!token) {
                             if (plexResultDiv) {
-                                plexResultDiv.textContent = 'Please enter your Plex Token (required).';
+                                plexResultDiv.textContent = 'Please enter a Plex token.';
                                 plexResultDiv.style.color = '#e5a00d';
                             }
                             return;
                         }
 
                         if (plexResultDiv) {
-                            plexResultDiv.textContent = 'Testing connection to Plex...';
+                            plexResultDiv.textContent = 'Testing connection...';
                             plexResultDiv.style.color = '#aaa';
                         }
 
@@ -376,29 +368,29 @@
                             .then(function (res) {
                                 if (!plexResultDiv) return;
                                 if (res.ok || res.status === 200) {
-                                    plexResultDiv.textContent = 'Connected! Plex Media Server is reachable and authenticated.';
+                                    plexResultDiv.textContent = 'Connected to Plex successfully.';
                                     plexResultDiv.style.color = '#52b788';
                                 } else if (res.status === 401 || res.status === 403) {
-                                    plexResultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please verify your Plex Token.';
+                                    plexResultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please check your Plex token.';
                                     plexResultDiv.style.color = '#e63946';
                                 } else {
-                                    plexResultDiv.textContent = 'Plex returned HTTP status ' + res.status;
+                                    plexResultDiv.textContent = 'Plex returned HTTP ' + res.status;
                                     plexResultDiv.style.color = '#e5a00d';
                                 }
                             })
                             .catch(function (err) {
                                 if (!plexResultDiv) return;
                                 if (window.location.protocol === 'https:' && rawUrl.toLowerCase().startsWith('http://')) {
-                                    plexResultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Browser blocked direct test (Mixed Content: HTTPS to HTTP).</span><br/>' +
-                                        '<span style="color: #aaa; font-size: 0.9em;">However, Jellyfin connects directly in the background! Click <b>Save Settings</b> to use.</span>';
+                                    plexResultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Direct test blocked by browser (mixed HTTPS/HTTP content).</span><br/>' +
+                                        '<span style="color: #aaa; font-size: 0.9em;">The server connects directly in the background. Save settings and check server logs.</span>';
                                     return;
                                 }
                                 if (!rawUrl.includes('.') && !rawUrl.includes('localhost') && !rawUrl.includes('127.0.0.1')) {
                                     plexResultDiv.innerHTML = '<span style="color: #52b788;">ℹ️ Internal Docker hostname detected.</span><br/>' +
-                                        '<span style="color: #aaa; font-size: 0.9em;">Your browser cannot resolve Docker hostnames, but the Jellyfin container can! Click <b>Save Settings</b> to connect.</span>';
+                                        '<span style="color: #aaa; font-size: 0.9em;">The browser cannot resolve container hostnames directly, but Jellyfin can. Save settings to connect.</span>';
                                     return;
                                 }
-                                plexResultDiv.textContent = 'Cannot reach Plex at ' + rawUrl + ' from browser. Click "Save Settings" if Jellyfin connects directly over LAN/Docker.';
+                                plexResultDiv.textContent = 'Cannot reach Plex from browser. If running on LAN or Docker, save settings to test server-side.';
                                 plexResultDiv.style.color = '#e63946';
                             });
                     });
@@ -430,13 +422,8 @@
                         const chkEnablePlex = view.querySelector('#chkEnablePlexSync');
                         config.EnablePlexSync = chkEnablePlex ? chkEnablePlex.checked : false;
 
-                        if (config.EnablePlexSync) {
-                            // Enforce mutual exclusivity to prevent overwriting Plex artwork
-                            config.EnableRealtimeSync = false;
-                        } else {
-                            const chkRealtime = view.querySelector('#chkEnableRealtimeSync');
-                            config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;
-                        }
+                        const chkRealtime = view.querySelector('#chkEnableRealtimeSync');
+                        config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;
 
                         config.PlexServerUrl = (view.querySelector('#txtPlexServerUrl').value || "").trim();
                         config.PlexToken = (view.querySelector('#txtPlexToken').value || "").trim();
@@ -454,10 +441,10 @@
                         if (chkPlexTitlecards) config.PlexSyncTitlecards = chkPlexTitlecards.checked;
                         if (chkPlexBackdrops) config.PlexSyncBackdrops = chkPlexBackdrops.checked;
 
-                        if (!config.EnablePlexSync && config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {
+                        if (config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {
                             Dashboard.hideLoadingMsg();
                             Dashboard.alert({
-                                message: "Both Posterizarr URL and API Key are required when Real-Time Sync is enabled."
+                                message: "Posterizarr URL and API key are required when Real-Time Sync is enabled."
                             });
                             return;
                         }
@@ -465,7 +452,7 @@
                         if (config.EnablePlexSync && (!config.PlexServerUrl || !config.PlexToken)) {
                             Dashboard.hideLoadingMsg();
                             Dashboard.alert({
-                                message: "Both Plex Server URL and Plex Token are required when Plex Direct Sync is enabled."
+                                message: "Plex Server URL and Plex Token are required when Plex Direct Sync is enabled."
                             });
                             return;
                         }

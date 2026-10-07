@@ -547,10 +547,33 @@ namespace Posterizarr.Plugin.Tasks
                 };
 
                 var targetFilePath = Path.Combine(storageDirectory, $"{item.Id:N}_{imageType}{ext}");
-                await using (var fileStream = new FileStream(targetFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true))
+                byte[] plexBytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+
+                // Compare against existing image on disk: if identical, skip re-saving and update cache.
+                // If different (e.g. Kometa overlays added in Plex), Plex wins and replaces the image.
+                if (existingImage != null && !string.IsNullOrEmpty(existingImage.Path) && File.Exists(existingImage.Path))
                 {
-                    await resp.Content.CopyToAsync(fileStream, ct).ConfigureAwait(false);
+                    try
+                    {
+                        var existingFileInfo = new FileInfo(existingImage.Path);
+                        if (existingFileInfo.Length == plexBytes.Length)
+                        {
+                            byte[] existingBytes = await File.ReadAllBytesAsync(existingImage.Path, ct).ConfigureAwait(false);
+                            if (existingBytes.AsSpan().SequenceEqual(plexBytes))
+                            {
+                                cache.Update(item.Id, imageType, plexArtworkPath, is4KSection);
+                                LogDebug("Artwork for '{0}' ({1}) is identical to Plex thumb, cache updated without re-saving.", item.Name, imageType);
+                                return false;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogDebug("Error comparing existing image for '{0}': {1}", item.Name, ex.Message);
+                    }
                 }
+
+                await File.WriteAllBytesAsync(targetFilePath, plexBytes, ct).ConfigureAwait(false);
 
                 item.SetImage(new ItemImageInfo
                 {
@@ -562,7 +585,7 @@ namespace Posterizarr.Plugin.Tasks
                 _libraryManager.UpdateItem(item, item.GetParent(), ItemUpdateType.ImageUpdate);
                 cache.Update(item.Id, imageType, plexArtworkPath, is4KSection);
 
-                LogDebug("Updated {0} for '{1}' from Plex thumb '{2}'", imageType, item.Name, plexArtworkPath);
+                LogDebug("Updated {0} for '{1}' from Plex thumb '{2}' (Plex sync win)", imageType, item.Name, plexArtworkPath);
                 return true;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

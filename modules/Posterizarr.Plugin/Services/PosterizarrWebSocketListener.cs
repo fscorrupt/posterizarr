@@ -166,9 +166,9 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
         while (!ct.IsCancellationRequested)
         {
             var config = Plugin.Instance?.Configuration;
-            if (config == null || config.EnablePlexSync || !config.EnableRealtimeSync || string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) || string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
+            if (config == null || !config.EnableRealtimeSync || string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) || string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
             {
-                if (config != null && !config.EnablePlexSync && config.EnableRealtimeSync && !string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) && string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
+                if (config != null && config.EnableRealtimeSync && !string.IsNullOrWhiteSpace(config.PosterizarrApiUrl) && string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
                 {
                     if (!_hasLoggedMissingApiKey)
                     {
@@ -404,12 +404,6 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
 
     private async Task HandleAssetUpdatedEventAsync(AssetEventPayload payload, PluginConfiguration config, CancellationToken ct)
     {
-        if (config.EnablePlexSync)
-        {
-            _logger.LogInformation("[Posterizarr WS] Real-time asset event ignored because Plex Direct Sync is active.");
-            return;
-        }
-
         _logger.LogInformation("[Posterizarr WS] Received real-time update event: {0} for '{1}' (Folder: '{2}')",
             payload.AssetType ?? "poster", payload.Title ?? payload.FolderName, payload.FolderName);
 
@@ -555,6 +549,23 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
 
                     var parent = boxSet.ParentId != Guid.Empty ? _libraryManager.GetItemById(boxSet.ParentId) : null;
                     await _libraryManager.UpdateItemAsync(boxSet, parent ?? boxSet, ItemUpdateType.ImageUpdate, ct).ConfigureAwait(false);
+
+                    if (config.EnablePlexSync)
+                    {
+                        try
+                        {
+                            var plexCache = new PlexSyncCacheManager(dataFolderColl, _loggerFactory.CreateLogger<PlexSyncCacheManager>());
+                            plexCache.Load();
+                            if (plexCache.Invalidate(boxSet.Id, collImageType))
+                            {
+                                plexCache.Save();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Posterizarr WS] Failed to invalidate Plex sync cache for BoxSet {0}", boxSet.Id);
+                        }
+                    }
                 }
 
                 syncCacheColl.Save();
@@ -711,6 +722,24 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
                 if (updatedImage != null)
                 {
                     syncCache.Update(targetItem.Id, imageType, sourceFileInfo, updatedImage);
+                }
+
+                if (config.EnablePlexSync)
+                {
+                    try
+                    {
+                        var plexCache = new PlexSyncCacheManager(dataFolder, _loggerFactory.CreateLogger<PlexSyncCacheManager>());
+                        plexCache.Load();
+                        if (plexCache.Invalidate(targetItem.Id, imageType))
+                        {
+                            plexCache.Save();
+                            LogDebug("Invalidated Plex sync cache for '{0}' ({1}) to allow Plex/Kometa sync override.", targetItem.Name, imageType);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Posterizarr WS] Failed to invalidate Plex sync cache for item {0}", targetItem.Id);
+                    }
                 }
 
                 _logger.LogInformation("[Posterizarr WS] SUCCESS: Real-time image update applied to '{0}' ({1}) in Jellyfin!",

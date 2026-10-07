@@ -39,15 +39,6 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             function updateSyncExclusivity(isPlexActive) {
                 if (plexSection) plexSection.style.display = isPlexActive ? 'block' : 'none';
                 if (plexNotice) plexNotice.style.display = isPlexActive ? 'block' : 'none';
-                if (chkRealtime) {
-                    if (isPlexActive) {
-                        chkRealtime.checked = false;
-                        chkRealtime.disabled = true;
-                    } else {
-                        chkRealtime.disabled = false;
-                        chkRealtime.checked = config.EnableRealtimeSync || false;
-                    }
-                }
             }
 
             if (chkPlexSync) {
@@ -108,13 +99,8 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             var chkEnablePlex = view.querySelector('#chkEnablePlexSync');
             config.EnablePlexSync = chkEnablePlex ? chkEnablePlex.checked : false;
 
-            if (config.EnablePlexSync) {
-                // Enforce mutual exclusivity to prevent overwriting Plex artwork
-                config.EnableRealtimeSync = false;
-            } else {
-                var chkRealtime = view.querySelector('#chkEnableRealtimeSync');
-                config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;
-            }
+            var chkRealtime = view.querySelector('#chkEnableRealtimeSync');
+            config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;
 
             var txtUrl = view.querySelector('#txtPosterizarrApiUrl');
             config.PosterizarrApiUrl = txtUrl ? (txtUrl.value || '').trim() : '';
@@ -140,10 +126,10 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             if (chkPlexTitlecards) config.PlexSyncTitlecards = chkPlexTitlecards.checked;
             if (chkPlexBackdrops) config.PlexSyncBackdrops = chkPlexBackdrops.checked;
 
-            if (!config.EnablePlexSync && config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {
+            if (config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {
                 loading.hide();
                 Dashboard.alert({
-                    message: "Both Posterizarr URL and API Key are required when Real-Time Sync is enabled."
+                    message: "Posterizarr URL and API key are required when Real-Time Sync is enabled."
                 });
                 return;
             }
@@ -151,7 +137,7 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             if (config.EnablePlexSync && (!config.PlexServerUrl || !config.PlexToken)) {
                 loading.hide();
                 Dashboard.alert({
-                    message: "Both Plex Server URL and Plex Token are required when Plex Direct Sync is enabled."
+                    message: "Plex Server URL and Plex Token are required when Plex Direct Sync is enabled."
                 });
                 return;
             }
@@ -181,7 +167,7 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
 
                 if (!rawUrl) {
                     if (resultDiv) {
-                        resultDiv.textContent = 'Please enter a Posterizarr URL first.';
+                        resultDiv.textContent = 'Please enter a Posterizarr URL.';
                         resultDiv.style.color = '#e5a00d';
                     }
                     return;
@@ -189,14 +175,14 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
 
                 if (!apiKey) {
                     if (resultDiv) {
-                        resultDiv.textContent = 'Please enter your Posterizarr API Key (required).';
+                        resultDiv.textContent = 'Please enter a Posterizarr API key.';
                         resultDiv.style.color = '#e5a00d';
                     }
                     return;
                 }
 
                 if (resultDiv) {
-                    resultDiv.textContent = 'Testing connection to Posterizarr...';
+                    resultDiv.textContent = 'Testing connection...';
                     resultDiv.style.color = '#aaa';
                 }
 
@@ -207,32 +193,32 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
                     .then(function (res) {
                         if (!resultDiv) return;
                         if (res.ok || res.status === 200) {
-                            resultDiv.textContent = 'Connected! Posterizarr WebSocket event stream is active.';
+                            resultDiv.textContent = 'Connected successfully.';
                             resultDiv.style.color = '#52b788';
                         } else if (res.status === 404) {
-                            resultDiv.textContent = 'Posterizarr is reachable, but /ws/events was not found (HTTP 404). Posterizarr may need to be updated to the latest dev build with WebSocket support.';
+                            resultDiv.textContent = 'Connected, but /ws/events was not found (HTTP 404). Ensure Posterizarr supports WebSockets.';
                             resultDiv.style.color = '#e5a00d';
                         } else if (res.status === 401 || res.status === 403) {
-                            resultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please verify your API Key.';
+                            resultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please check your API key.';
                             resultDiv.style.color = '#e63946';
                         } else {
-                            resultDiv.textContent = 'Posterizarr returned HTTP status ' + res.status;
+                            resultDiv.textContent = 'Posterizarr returned HTTP ' + res.status;
                             resultDiv.style.color = '#e5a00d';
                         }
                     })
                     .catch(function (err) {
                         if (!resultDiv) return;
                         if (window.location.protocol === 'https:' && rawUrl.toLowerCase().startsWith('http://')) {
-                            resultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Browser blocked direct test (Mixed Content: HTTPS to HTTP).</span><br/>' +
-                                '<span style="color: #aaa; font-size: 0.9em;">However, the server connects directly in the background! Click <b>Save Settings</b> below and check the server log.</span>';
+                            resultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Direct test blocked by browser (mixed HTTPS/HTTP content).</span><br/>' +
+                                '<span style="color: #aaa; font-size: 0.9em;">The server connects directly in the background. Save settings and check server logs.</span>';
                             return;
                         }
                         if (!rawUrl.includes('.') && !rawUrl.includes('localhost') && !rawUrl.includes('127.0.0.1')) {
                             resultDiv.innerHTML = '<span style="color: #52b788;">ℹ️ Internal Docker hostname detected.</span><br/>' +
-                                '<span style="color: #aaa; font-size: 0.9em;">Your browser cannot resolve Docker hostnames, but the server container can! Click <b>Save Settings</b> to connect.</span>';
+                                '<span style="color: #aaa; font-size: 0.9em;">The browser cannot resolve container hostnames directly, but Emby can. Save settings to connect.</span>';
                             return;
                         }
-                        resultDiv.textContent = 'Cannot reach Posterizarr at ' + rawUrl + ' from browser. Click "Save Settings" if the server connects directly over LAN/Docker.';
+                        resultDiv.textContent = 'Cannot reach Posterizarr from browser. If running on LAN or Docker, save settings to test server-side.';
                         resultDiv.style.color = '#e63946';
                     });
             });
@@ -248,7 +234,7 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
 
                 if (!rawUrl) {
                     if (plexResultDiv) {
-                        plexResultDiv.textContent = 'Please enter a Plex Server URL first.';
+                        plexResultDiv.textContent = 'Please enter a Plex server URL.';
                         plexResultDiv.style.color = '#e5a00d';
                     }
                     return;
@@ -256,14 +242,14 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
 
                 if (!token) {
                     if (plexResultDiv) {
-                        plexResultDiv.textContent = 'Please enter your Plex Token (required).';
+                        plexResultDiv.textContent = 'Please enter a Plex token.';
                         plexResultDiv.style.color = '#e5a00d';
                     }
                     return;
                 }
 
                 if (plexResultDiv) {
-                    plexResultDiv.textContent = 'Testing connection to Plex...';
+                    plexResultDiv.textContent = 'Testing connection...';
                     plexResultDiv.style.color = '#aaa';
                 }
 
@@ -274,29 +260,29 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
                     .then(function (res) {
                         if (!plexResultDiv) return;
                         if (res.ok || res.status === 200) {
-                            plexResultDiv.textContent = 'Connected! Plex Media Server is reachable and authenticated.';
+                            plexResultDiv.textContent = 'Connected to Plex successfully.';
                             plexResultDiv.style.color = '#52b788';
                         } else if (res.status === 401 || res.status === 403) {
-                            plexResultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please verify your Plex Token.';
+                            plexResultDiv.textContent = 'Authentication failed (HTTP ' + res.status + '). Please check your Plex token.';
                             plexResultDiv.style.color = '#e63946';
                         } else {
-                            plexResultDiv.textContent = 'Plex returned HTTP status ' + res.status;
+                            plexResultDiv.textContent = 'Plex returned HTTP ' + res.status;
                             plexResultDiv.style.color = '#e5a00d';
                         }
                     })
                     .catch(function (err) {
                         if (!plexResultDiv) return;
                         if (window.location.protocol === 'https:' && rawUrl.toLowerCase().startsWith('http://')) {
-                            plexResultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Browser blocked direct test (Mixed Content: HTTPS to HTTP).</span><br/>' +
-                                '<span style="color: #aaa; font-size: 0.9em;">However, Emby connects directly in the background! Click <b>Save Settings</b> to use.</span>';
+                            plexResultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Direct test blocked by browser (mixed HTTPS/HTTP content).</span><br/>' +
+                                '<span style="color: #aaa; font-size: 0.9em;">The server connects directly in the background. Save settings and check server logs.</span>';
                             return;
                         }
                         if (!rawUrl.includes('.') && !rawUrl.includes('localhost') && !rawUrl.includes('127.0.0.1')) {
                             plexResultDiv.innerHTML = '<span style="color: #52b788;">ℹ️ Internal Docker hostname detected.</span><br/>' +
-                                '<span style="color: #aaa; font-size: 0.9em;">Your browser cannot resolve Docker hostnames, but the Emby container can! Click <b>Save Settings</b> to connect.</span>';
+                                '<span style="color: #aaa; font-size: 0.9em;">The browser cannot resolve container hostnames directly, but Emby can. Save settings to connect.</span>';
                             return;
                         }
-                        plexResultDiv.textContent = 'Cannot reach Plex at ' + rawUrl + ' from browser. Click "Save Settings" if Emby connects directly over LAN/Docker.';
+                        plexResultDiv.textContent = 'Cannot reach Plex from browser. If running on LAN or Docker, save settings to test server-side.';
                         plexResultDiv.style.color = '#e63946';
                     });
             });

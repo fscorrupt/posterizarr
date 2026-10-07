@@ -118,6 +118,17 @@ namespace Posterizarr.Plugin.Tasks
             _isDirty = true;
         }
 
+        public bool Invalidate(Guid itemId, ImageType type)
+        {
+            var key = BuildKey(itemId, type);
+            if (_records.TryRemove(key, out _))
+            {
+                _isDirty = true;
+                return true;
+            }
+            return false;
+        }
+
         private static string BuildKey(Guid itemId, ImageType type) => $"{itemId:N}_{type}";
     }
 }

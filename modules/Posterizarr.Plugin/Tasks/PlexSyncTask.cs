@@ -531,15 +531,42 @@ public class PlexSyncTask : IScheduledTask
             }
 
             var mimeType = resp.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            byte[] plexBytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
 
-            await _providerManager.SaveImage(item, stream, mimeType, imageType, 0, ct).ConfigureAwait(false);
+            // Compare against existing image on disk: if identical, skip re-saving and update cache.
+            // If different (e.g. Kometa overlays added in Plex), Plex wins and replaces the image.
+            if (existingImage != null && !string.IsNullOrEmpty(existingImage.Path) && File.Exists(existingImage.Path))
+            {
+                try
+                {
+                    var existingFileInfo = new FileInfo(existingImage.Path);
+                    if (existingFileInfo.Length == plexBytes.Length)
+                    {
+                        byte[] existingBytes = await File.ReadAllBytesAsync(existingImage.Path, ct).ConfigureAwait(false);
+                        if (existingBytes.AsSpan().SequenceEqual(plexBytes))
+                        {
+                            cache.Update(item.Id, imageType, plexArtworkPath, is4KSection);
+                            LogDebug("Artwork for '{0}' ({1}) is identical to Plex thumb, cache updated without re-saving.", item.Name, imageType);
+                            return false;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogDebug("Error comparing existing image for '{0}': {1}", item.Name, ex.Message);
+                }
+            }
+
+            using (var stream = new MemoryStream(plexBytes))
+            {
+                await _providerManager.SaveImage(item, stream, mimeType, imageType, 0, ct).ConfigureAwait(false);
+            }
 
             var parent = item.ParentId != Guid.Empty ? _libraryManager.GetItemById(item.ParentId) : null;
             await _libraryManager.UpdateItemAsync(item, parent ?? item, ItemUpdateType.ImageUpdate, ct).ConfigureAwait(false);
 
             cache.Update(item.Id, imageType, plexArtworkPath, is4KSection);
-            LogDebug("Updated {0} for '{1}' from Plex thumb '{2}'", imageType, item.Name, plexArtworkPath);
+            LogDebug("Updated {0} for '{1}' from Plex thumb '{2}' (Plex sync win)", imageType, item.Name, plexArtworkPath);
             return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
