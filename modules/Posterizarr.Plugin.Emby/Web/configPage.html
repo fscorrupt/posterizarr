@@ -82,7 +82,7 @@
                     <input is="emby-checkbox" type="checkbox" id="chkEnableRealtimeSync" />
                     <span>Enable Real-Time Sync</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Automatically update media artwork when Posterizarr creates or edits files.</div>
+                <div class="fieldDescription checkboxFieldDescription">Automatically update media artwork when Posterizarr creates or edits files. Can be used together with Plex Direct Sync for instant artwork updates.</div>
             </div>
 
             <div class="inputContainer">
@@ -110,13 +110,17 @@
                     <input is="emby-checkbox" type="checkbox" id="chkEnablePlexSync" />
                     <span>Enable Plex Direct Sync</span>
                 </label>
-                <div class="fieldDescription checkboxFieldDescription">Mirror artwork (including Kometa overlays) directly from Plex to Emby.</div>
+                <div class="fieldDescription checkboxFieldDescription">Mirror artwork (including Kometa overlays) directly from Plex to Emby. Can be used alongside Real-Time Sync.</div>
             </div>
 
             <div id="plexSyncWarningNotice" style="display: none; margin: 10px 0 15px 0; padding: 12px 14px; background: rgba(82, 183, 136, 0.12); border-left: 4px solid #52b788; border-radius: 4px;">
-                <div style="font-weight: bold; color: #52b788; margin-bottom: 4px;">ℹ️ Plex Direct Sync Active</div>
+                <div style="font-weight: bold; color: #52b788; margin-bottom: 4px;">💡 Combining Real-Time Sync &amp; Plex Direct Sync</div>
                 <div style="font-size: 0.9em; color: #ccc; line-height: 1.4;">
-                    Scheduled sweeps of local asset folders are paused to prevent overwriting Plex artwork. If Real-Time Sync is enabled, new Posterizarr artwork applies immediately, and subsequent Plex sync tasks will update it if Kometa overlays differ.
+                    You can use both features together:
+                    <ul style="margin: 6px 0 0 18px; padding: 0;">
+                        <li><b>Real-Time Sync:</b> Delivers newly generated Posterizarr artwork immediately so you don't have to wait for scheduled tasks.</li>
+                        <li><b>Plex Direct Sync:</b> Runs on schedule and takes precedence if artwork in Plex differs (e.g. Kometa overlays added in Plex).</li>
+                    </ul>
                 </div>
             </div>
 

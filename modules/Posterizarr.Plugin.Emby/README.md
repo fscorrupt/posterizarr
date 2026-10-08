@@ -23,7 +23,7 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
 *   **Scheduled Sync Tasks:** 
     *   *Sync Posterizarr Assets* (local asset sync)
     *   *Sync Artwork from Plex* (direct Plex mass query)
-*   **Mutual Exclusivity Protection:** Activating Plex Direct Sync automatically deactivates local asset sync and real-time listeners so Kometa artwork is never overwritten.
+*   **Hybrid Sync Support:** Real-Time Sync and Plex Direct Sync can be used together. New Posterizarr assets apply immediately via WebSocket, and scheduled Plex sync runs will replace them if Kometa overlays differ in Plex.
 
 ## Installation
 
@@ -50,7 +50,7 @@ The plugin registers two scheduled background tasks under **Scheduled Tasks**:
 *   **Sync Artwork from Plex** (default: daily at 03:00 AM): High-speed direct query and mirroring of active artwork from Plex (only runs when *Enable Plex Direct Sync* is enabled).
 
 > [!NOTE]
-> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are automatically bypassed so local asset files will never overwrite Kometa/Plex overlays.
+> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are automatically bypassed so local asset files will never overwrite Kometa/Plex overlays. Real-Time Sync remains active to deliver new assets immediately, with Plex Direct Sync taking precedence when overlays differ.
 
 ### Configuring the Sync Schedule
 

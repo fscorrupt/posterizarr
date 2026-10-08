@@ -21,12 +21,14 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds, Seasons, and Title Cards.
 *   **Real-Time WebSocket Sync:** Connects directly to Posterizarr's event stream. Automatically refreshes Emby library items immediately when artwork is created, edited, or overlay-processed in Posterizarr.
+*   **Plex Direct Sync (Kometa Mirroring):** High-speed direct mirroring of active Plex artwork into Emby for movies, TV series, seasons, episode title cards, and backdrops. Detects changes via Plex artwork version timestamps.
+*   **Hybrid Sync (Combined Real-Time & Plex Sync):** Run real-time WebSocket sync and Plex Direct Sync together. New Posterizarr artwork applies instantly, while scheduled Plex sync runs will replace it whenever Kometa overlays differ in Plex.
 *   **Scheduled Sync Task:** Registers a background task to keep library images in sync with your local assets automatically on a customized schedule.
 
 ## Installation
 
-!!! warning
-    Only use this if you are not syncing from Plex, as it will overwrite your synced items with locally created assets from Posterizarr.
+!!! tip "Plex & Kometa Compatibility"
+    If you sync metadata or overlays from Plex (such as Kometa overlays), you can enable **Plex Direct Sync** in the plugin settings to mirror artwork directly from Plex. You can also combine it with **Real-Time Sync** for instant updates.
 
 1.  Download the latest version of `Posterizarr.Plugin.Emby.dll` from the [GitHub Releases](https://github.com/fscorrupt/posterizarr/releases).
 2.  Copy `Posterizarr.Plugin.Emby.dll` into your Emby Server's plugin directory:
@@ -44,12 +46,41 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
     *   **Enable Real-Time Sync (WebSocket):** Check this box to enable instant updates.
     *   **Posterizarr URL:** Enter your Posterizarr server URL (e.g., `http://192.168.1.50:8000` or `http://localhost:8000`).
     *   **Posterizarr API Key (Required):** Enter your Posterizarr API key. The key is transmitted securely via the `X-API-Key` HTTP header and is mandatory for WebSocket authentication.
-6. Click **Save**.
-7. Go to your **Dashboard** → **Libraries**.
-8. Manage a library (e.g., Movies).
-9. Enable **Posterizarr** under the **Image Fetchers** settings.
-10. Ensure it is prioritized according to your preferences.
-11. Refresh metadata (**Search for missing metadata** → **Replace existing images**) for your library to pick up local assets for the first time.
+6. **Plex Direct Sync Settings (Optional):**
+    *   **Enable Plex Direct Sync:** Check this box to mirror artwork directly from Plex.
+    *   **Plex Server URL:** Base URL of your Plex server (e.g., `http://192.168.1.50:32400`).
+    *   **Plex Token:** Your Plex authentication token (`X-Plex-Token`).
+    *   **Libraries to Sync (Optional):** Comma-separated list of Plex libraries to sync, or leave blank for all.
+    *   **Artwork Types:** Choose which artwork types to mirror (Posters, TV Shows, Seasons, Titlecards, Backdrops).
+7. Click **Save**.
+8. Go to your **Dashboard** → **Libraries**.
+9. Manage a library (e.g., Movies).
+10. Enable **Posterizarr** under the **Image Fetchers** settings.
+11. Ensure it is prioritized according to your preferences.
+12. Refresh metadata (**Search for missing metadata** → **Replace existing images**) for your library to pick up local assets for the first time.
+
+## Combining Real-Time Sync & Plex Direct Sync (Hybrid Mode)
+
+You can enable both **Real-Time Sync** and **Plex Direct Sync** simultaneously to get the best of both worlds:
+
+```mermaid
+flowchart TD
+    subgraph Instant["1. Instant Real-Time Sync"]
+        A[Posterizarr finishes rendering] -->|WebSocket event| B[Emby Plugin applies artwork immediately]
+        B --> C[Plex sync cache invalidated for item]
+    end
+
+    subgraph Scheduled["2. Scheduled Plex Direct Sync"]
+        D[Scheduled Plex Sync runs] --> E{Compare Plex artwork with Emby}
+        E -->|Different e.g. Kometa overlays| F[Plex sync wins: applies Kometa overlay]
+        E -->|Identical| G[Skips re-save & updates cache]
+    end
+
+    Instant -.-> Scheduled
+```
+
+* **Instant Updates:** You don't have to wait for a daily or scheduled Plex sync task to see fresh artwork in Emby. The WebSocket listener updates Emby immediately upon rendering.
+* **Kometa Priority:** When the scheduled Plex Sync task runs, it evaluates the item. If Kometa added overlays (borders, badges, ratings) in Plex, **Plex sync takes precedence and updates the artwork**. If the artwork is identical, it avoids redundant downloads and disk writes.
 
 ## Real-Time Synchronization (WebSocket)
 
