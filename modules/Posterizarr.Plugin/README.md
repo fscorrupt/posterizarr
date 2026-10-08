@@ -54,7 +54,7 @@ The plugin registers two scheduled background tasks under **Scheduled Tasks**:
 *   **Sync Artwork from Plex** (default: daily at 03:00 AM): High-speed direct query and mirroring of active artwork from Plex (only runs when *Enable Plex Direct Sync* is enabled).
 
 > [!NOTE]
-> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are automatically bypassed so local asset files will never overwrite Kometa/Plex overlays. Real-Time Sync remains active to deliver new assets immediately, with Plex Direct Sync taking precedence when overlays differ.
+> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are bypassed for movies and TV series so local asset files will never overwrite Kometa/Plex overlays. If **Update Collections** is enabled, the scheduled task will exclusively sync **Collections (BoxSets)** from collection asset folders (`/assets/Collections`). Real-Time Sync remains active to deliver new assets immediately, with Plex Direct Sync taking precedence when overlays differ.
 
 ### Configuring the Sync Schedule
 

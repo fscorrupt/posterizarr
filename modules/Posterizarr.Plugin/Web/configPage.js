@@ -160,12 +160,24 @@
                     const chkUpdateThumbnail = view.querySelector('#chkUpdateThumbnail');
                     const chkUpdateCollection = view.querySelector('#chkUpdateCollection');
 
-                    if (chkUpdatePoster) config.UpdatePoster = chkUpdatePoster.checked;
-                    if (chkUpdateSeason) config.UpdateSeason = chkUpdateSeason.checked;
-                    if (chkUpdateTitlecard) config.UpdateTitlecard = chkUpdateTitlecard.checked;
-                    if (chkUpdateBackdrop) config.UpdateBackdrop = chkUpdateBackdrop.checked;
-                    if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
-                    if (chkUpdateCollection) config.UpdateCollection = chkUpdateCollection.checked;
+                    const chkEnablePlex = view.querySelector('#chkEnablePlexSync');
+                    config.EnablePlexSync = chkEnablePlex ? chkEnablePlex.checked : false;
+
+                    if (config.EnablePlexSync) {
+                        config.UpdatePoster = false;
+                        config.UpdateSeason = false;
+                        config.UpdateTitlecard = false;
+                        config.UpdateBackdrop = false;
+                        config.UpdateThumbnail = false;
+                        config.UpdateCollection = chkUpdateCollection ? chkUpdateCollection.checked : false;
+                    } else {
+                        if (chkUpdatePoster) config.UpdatePoster = chkUpdatePoster.checked;
+                        if (chkUpdateSeason) config.UpdateSeason = chkUpdateSeason.checked;
+                        if (chkUpdateTitlecard) config.UpdateTitlecard = chkUpdateTitlecard.checked;
+                        if (chkUpdateBackdrop) config.UpdateBackdrop = chkUpdateBackdrop.checked;
+                        if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
+                        if (chkUpdateCollection) config.UpdateCollection = chkUpdateCollection.checked;
+                    }
 
                     const chkRealtime = view.querySelector('#chkEnableRealtimeSync');
                     config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;

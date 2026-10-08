@@ -36,9 +36,45 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             var plexSection = view.querySelector('#plexSyncSettingsSection');
             var plexNotice = view.querySelector('#plexSyncWarningNotice');
 
+            var nonCollectionCheckboxes = [
+                view.querySelector('#chkUpdatePoster'),
+                view.querySelector('#chkUpdateSeason'),
+                view.querySelector('#chkUpdateTitlecard'),
+                view.querySelector('#chkUpdateBackdrop'),
+                view.querySelector('#chkUpdateThumbnail')
+            ];
+
             function updateSyncExclusivity(isPlexActive) {
                 if (plexSection) plexSection.style.display = isPlexActive ? 'block' : 'none';
                 if (plexNotice) plexNotice.style.display = isPlexActive ? 'block' : 'none';
+                var atNotice = view.querySelector('#artworkTypesPlexNotice');
+                if (atNotice) atNotice.style.display = isPlexActive ? 'block' : 'none';
+
+                nonCollectionCheckboxes.forEach(function (chk) {
+                    if (!chk) return;
+                    var container = chk.closest('.inputContainer') || chk.closest('.checkboxContainer');
+                    if (isPlexActive) {
+                        if (chk.dataset.savedChecked === undefined) {
+                            chk.dataset.savedChecked = chk.checked ? 'true' : 'false';
+                        }
+                        chk.checked = false;
+                        chk.disabled = true;
+                        if (container) {
+                            container.style.opacity = '0.45';
+                            container.style.pointerEvents = 'none';
+                        }
+                    } else {
+                        chk.disabled = false;
+                        if (chk.dataset.savedChecked !== undefined) {
+                            chk.checked = chk.dataset.savedChecked === 'true';
+                            delete chk.dataset.savedChecked;
+                        }
+                        if (container) {
+                            container.style.opacity = '1';
+                            container.style.pointerEvents = 'auto';
+                        }
+                    }
+                });
             }
 
             if (chkPlexSync) {
@@ -89,15 +125,24 @@ define(['loading', 'emby-input', 'emby-button', 'emby-checkbox'], function (load
             var chkUpdateThumbnail = view.querySelector('#chkUpdateThumbnail');
             var chkUpdateCollection = view.querySelector('#chkUpdateCollection');
 
-            if (chkUpdatePoster) config.UpdatePoster = chkUpdatePoster.checked;
-            if (chkUpdateSeason) config.UpdateSeason = chkUpdateSeason.checked;
-            if (chkUpdateTitlecard) config.UpdateTitlecard = chkUpdateTitlecard.checked;
-            if (chkUpdateBackdrop) config.UpdateBackdrop = chkUpdateBackdrop.checked;
-            if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
-            if (chkUpdateCollection) config.UpdateCollection = chkUpdateCollection.checked;
-
             var chkEnablePlex = view.querySelector('#chkEnablePlexSync');
             config.EnablePlexSync = chkEnablePlex ? chkEnablePlex.checked : false;
+
+            if (config.EnablePlexSync) {
+                config.UpdatePoster = false;
+                config.UpdateSeason = false;
+                config.UpdateTitlecard = false;
+                config.UpdateBackdrop = false;
+                config.UpdateThumbnail = false;
+                config.UpdateCollection = chkUpdateCollection ? chkUpdateCollection.checked : false;
+            } else {
+                if (chkUpdatePoster) config.UpdatePoster = chkUpdatePoster.checked;
+                if (chkUpdateSeason) config.UpdateSeason = chkUpdateSeason.checked;
+                if (chkUpdateTitlecard) config.UpdateTitlecard = chkUpdateTitlecard.checked;
+                if (chkUpdateBackdrop) config.UpdateBackdrop = chkUpdateBackdrop.checked;
+                if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
+                if (chkUpdateCollection) config.UpdateCollection = chkUpdateCollection.checked;
+            }
 
             var chkRealtime = view.querySelector('#chkEnableRealtimeSync');
             config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;

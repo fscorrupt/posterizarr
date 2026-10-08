@@ -16,6 +16,9 @@
                 </div>
 
                 <h2 class="sectionTitle">Artwork Types</h2>
+                <div id="artworkTypesPlexNotice" style="display: none; margin-bottom: 12px; font-size: 0.9em; color: #00a4dc;">
+                    ℹ️ Plex Direct Sync active: Movies, TV shows, seasons, title cards, and backdrops are mirrored from Plex. Only <b>Collections</b> can be updated from your local /assets directory.
+                </div>
                 <div class="inputContainer">
                     <label class="checkboxContainerLabel">
                         <input type="checkbox" id="chkUpdatePoster" name="chkUpdatePoster" is="emby-checkbox" />
@@ -228,10 +231,46 @@
                     const chkPlexSync = page.querySelector('#chkEnablePlexSync');
                     const plexSection = page.querySelector('#plexSyncSettingsSection');
                     const plexNotice = page.querySelector('#plexSyncWarningNotice');
+                    const atNotice = page.querySelector('#artworkTypesPlexNotice');
+
+                    const nonCollectionCheckboxes = [
+                        chkUpdatePoster,
+                        chkUpdateSeason,
+                        chkUpdateTitlecard,
+                        chkUpdateBackdrop,
+                        chkUpdateThumbnail
+                    ];
 
                     function updateSyncExclusivity(isPlexActive) {
                         if (plexSection) plexSection.style.display = isPlexActive ? 'block' : 'none';
                         if (plexNotice) plexNotice.style.display = isPlexActive ? 'block' : 'none';
+                        if (atNotice) atNotice.style.display = isPlexActive ? 'block' : 'none';
+
+                        nonCollectionCheckboxes.forEach(function (chk) {
+                            if (!chk) return;
+                            const container = chk.closest('.inputContainer') || chk.closest('.checkboxContainer');
+                            if (isPlexActive) {
+                                if (chk.dataset.savedChecked === undefined) {
+                                    chk.dataset.savedChecked = chk.checked ? 'true' : 'false';
+                                }
+                                chk.checked = false;
+                                chk.disabled = true;
+                                if (container) {
+                                    container.style.opacity = '0.45';
+                                    container.style.pointerEvents = 'none';
+                                }
+                            } else {
+                                chk.disabled = false;
+                                if (chk.dataset.savedChecked !== undefined) {
+                                    chk.checked = chk.dataset.savedChecked === 'true';
+                                    delete chk.dataset.savedChecked;
+                                }
+                                if (container) {
+                                    container.style.opacity = '1';
+                                    container.style.pointerEvents = 'auto';
+                                }
+                            }
+                        });
                     }
 
                     if (chkPlexSync) {
@@ -416,15 +455,24 @@
                         const chkUpdateThumbnail = view.querySelector('#chkUpdateThumbnail');
                         const chkUpdateCollection = view.querySelector('#chkUpdateCollection');
 
-                        if (chkUpdatePoster) config.UpdatePoster = chkUpdatePoster.checked;
-                        if (chkUpdateSeason) config.UpdateSeason = chkUpdateSeason.checked;
-                        if (chkUpdateTitlecard) config.UpdateTitlecard = chkUpdateTitlecard.checked;
-                        if (chkUpdateBackdrop) config.UpdateBackdrop = chkUpdateBackdrop.checked;
-                        if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
-                        if (chkUpdateCollection) config.UpdateCollection = chkUpdateCollection.checked;
-
                         const chkEnablePlex = view.querySelector('#chkEnablePlexSync');
                         config.EnablePlexSync = chkEnablePlex ? chkEnablePlex.checked : false;
+
+                        if (config.EnablePlexSync) {
+                            config.UpdatePoster = false;
+                            config.UpdateSeason = false;
+                            config.UpdateTitlecard = false;
+                            config.UpdateBackdrop = false;
+                            config.UpdateThumbnail = false;
+                            config.UpdateCollection = chkUpdateCollection ? chkUpdateCollection.checked : false;
+                        } else {
+                            if (chkUpdatePoster) config.UpdatePoster = chkUpdatePoster.checked;
+                            if (chkUpdateSeason) config.UpdateSeason = chkUpdateSeason.checked;
+                            if (chkUpdateTitlecard) config.UpdateTitlecard = chkUpdateTitlecard.checked;
+                            if (chkUpdateBackdrop) config.UpdateBackdrop = chkUpdateBackdrop.checked;
+                            if (chkUpdateThumbnail) config.UpdateThumbnail = chkUpdateThumbnail.checked;
+                            if (chkUpdateCollection) config.UpdateCollection = chkUpdateCollection.checked;
+                        }
 
                         const chkRealtime = view.querySelector('#chkEnableRealtimeSync');
                         config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;

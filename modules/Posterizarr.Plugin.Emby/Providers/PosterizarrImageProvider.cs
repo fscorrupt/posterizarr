@@ -78,7 +78,10 @@ namespace Posterizarr.Plugin.Providers
         public bool HasChanged(BaseItem item, LibraryOptions libraryOptions, IDirectoryService directoryService)
         {
             var config = Plugin.Instance?.Configuration;
-            if (config == null || config.EnablePlexSync || string.IsNullOrEmpty(config.AssetFolderPath))
+            if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
+                return false;
+
+            if (config.EnablePlexSync && (item is not BoxSet || !config.UpdateCollection))
                 return false;
 
             try
@@ -104,7 +107,7 @@ namespace Posterizarr.Plugin.Providers
         public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, LibraryOptions libraryOptions, CancellationToken cancellationToken)
         {
             var config = Plugin.Instance?.Configuration;
-            if (config?.EnablePlexSync == true)
+            if (config?.EnablePlexSync == true && (item is not BoxSet || !config.UpdateCollection))
             {
                 LogDebug("Plex Direct Sync is active. Bypassing local image provider for '{0}' to prevent overwrite.", item.Name);
                 return Task.FromResult(Enumerable.Empty<RemoteImageInfo>());
@@ -348,7 +351,7 @@ namespace Posterizarr.Plugin.Providers
                             if (match != null) return match;
                         }
 
-                        if (checkedDirs.Add(libraryDir))
+                        if (!config.EnablePlexSync && checkedDirs.Add(libraryDir))
                         {
                             var match = FindInDirectory(libraryDir, candidateNames, supportedExtensions, type);
                             if (match != null) return match;
@@ -366,7 +369,7 @@ namespace Posterizarr.Plugin.Providers
                         if (match != null) return match;
                     }
 
-                    if (checkedDirs.Add(rootDir))
+                    if (!config.EnablePlexSync && checkedDirs.Add(rootDir))
                     {
                         var match = FindInDirectory(rootDir, candidateNames, supportedExtensions, type);
                         if (match != null) return match;
@@ -375,8 +378,8 @@ namespace Posterizarr.Plugin.Providers
             }
             catch { }
 
-            // 4. Check root asset folder itself
-            if (checkedDirs.Add(assetRoot))
+            // 4. Check root asset folder itself (only if Plex Direct Sync is not restricting search to collection paths)
+            if (!config.EnablePlexSync && checkedDirs.Add(assetRoot))
             {
                 var match = FindInDirectory(assetRoot, candidateNames, supportedExtensions, type);
                 if (match != null) return match;

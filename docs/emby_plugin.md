@@ -82,6 +82,13 @@ flowchart TD
 * **Instant Updates:** You don't have to wait for a daily or scheduled Plex sync task to see fresh artwork in Emby. The WebSocket listener updates Emby immediately upon rendering.
 * **Kometa Priority:** When the scheduled Plex Sync task runs, it evaluates the item. If Kometa added overlays (borders, badges, ratings) in Plex, **Plex sync takes precedence and updates the artwork**. If the artwork is identical, it avoids redundant downloads and disk writes.
 
+### Local Collection Syncing in Plex Sync Mode
+
+Since Plex Direct Sync only mirrors movie, show, season, title card, and backdrop artwork (Plex does not sync collection artwork directly), Collections are managed locally:
+* When **Enable Plex Direct Sync** is active, the **Update Collections** checkbox remains active and selectable, while movie and TV checkboxes are disabled to prevent overwriting Plex artwork.
+* The scheduled **Posterizarr Sync Task** will automatically restrict its run exclusively to **Collections (BoxSets)**.
+* Image lookup is strictly confined to collection asset directories (`Collections/`, `Collections/<Library>`, `<Library>/Collections`), bypassing individual media folders.
+
 ## Real-Time Synchronization (WebSocket)
 
 The Emby plugin includes a real-time event listener service (`PosterizarrWebSocketListener`) that connects directly to Posterizarr's `/ws/events` WebSocket endpoint.

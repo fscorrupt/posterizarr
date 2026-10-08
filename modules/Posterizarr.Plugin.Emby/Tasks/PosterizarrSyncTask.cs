@@ -60,8 +60,13 @@ namespace Posterizarr.Plugin.Tasks
 
             if (config.EnablePlexSync)
             {
-                _logger.Info("[Posterizarr] Plex Direct Sync is enabled. Skipping local asset sync task to prevent overwriting Plex artwork.");
-                return Task.CompletedTask;
+                if (!config.UpdateCollection)
+                {
+                    _logger.Info("[Posterizarr] Plex Direct Sync is enabled and Collection sync is disabled. Skipping local asset sync task.");
+                    return Task.CompletedTask;
+                }
+
+                _logger.Info("[Posterizarr] Plex Direct Sync is enabled. Local asset sync will only process Collections (BoxSets).");
             }
 
             if (string.IsNullOrEmpty(config.AssetFolderPath)) return Task.CompletedTask;
@@ -70,7 +75,9 @@ namespace Posterizarr.Plugin.Tasks
 
             var items = _libraryManager.GetItemList(new InternalItemsQuery
             {
-                IncludeItemTypes = new[] { typeof(Movie).Name, typeof(Series).Name, typeof(Season).Name, typeof(Episode).Name, typeof(BoxSet).Name },
+                IncludeItemTypes = config.EnablePlexSync
+                    ? new[] { typeof(BoxSet).Name }
+                    : new[] { typeof(Movie).Name, typeof(Series).Name, typeof(Season).Name, typeof(Episode).Name, typeof(BoxSet).Name },
                 Recursive = true,
                 IsVirtualItem = false
             });
