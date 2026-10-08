@@ -117,8 +117,8 @@
                 $PlexHeaders['X-Plex-Container-Start'] = $searchsize
                 $PlexHeaders['X-Plex-Container-Size'] = '1000'
 
-                # Fetch content from Plex server (includeGuids=1 populates external GUIDs directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -182,6 +182,11 @@
                     }
                     if (-not $itemGuid -or -not $itemLocation) {
                         $needFullMetadata = $true
+                    }
+                    elseif ($contentquery -eq 'video' -and ($UsePosterResolutionOverlays -eq 'true' -or $UseBackgroundResolutionOverlays -eq 'true')) {
+                        if (-not $itemNode.media.part.stream) {
+                            $needFullMetadata = $true
+                        }
                     }
                 }
 
@@ -363,23 +368,13 @@
                     $Labels = ""
                 }
                 $FileMetadata = $Metadata.MediaContainer.$contentquery.media.part.stream
-                $Resolution = $null
-                # Get Resolution
-                if ($FileMetadata) {
-                    $FileMetadata | ForEach-Object {
-                        if ($_.streamType -eq '1') {
-                            $Resolution = $_.displayTitle
-                        }
-                    }
-                }
+                $Resolution = Get-MediaItemResolution -FileMetadata $FileMetadata -Media $Metadata.MediaContainer.$contentquery.media -Location $location -LibraryName $Library.Name -MatchedPath $Matchedpath -Type $Metadata.MediaContainer.$contentquery.type
                 $temp = New-Object psobject
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Name" -Value $Library.Name
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $Metadata.MediaContainer.$contentquery.type
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $($Library.language.split("-")[0])
                 $temp | Add-Member -MemberType NoteProperty -Name "title" -Value $($item.title)
-                if ($FileMetadata) {
-                    $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
-                }
+                $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
                 $temp | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $($item.originalTitle)
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $SeasonNames
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $SeasonNumbers
@@ -491,9 +486,7 @@
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "Title" -Value $($Seasondata.MediaContainer.video.title -join ';')
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "RatingKeys" -Value $($Seasondata.MediaContainer.video.ratingKey -join ',')
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "PlexTitleCardUrls" -Value $($Seasondata.MediaContainer.video.thumb -join ',')
-                if ($FileMetadata) {
-                    $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
-                }
+                $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
                 $Episodedata.Add($tempseasondata)
                 Write-Entry -Subtext "Found [$($tempseasondata.'Show Name')] of type $($tempseasondata.Type) for season $($tempseasondata.'Season Number')" -Path $global:configLogging -Color Cyan -log Debug
             }

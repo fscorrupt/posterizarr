@@ -95,8 +95,8 @@
 
                 Write-Entry -Subtext "Fetching Library ID: $($Library.ID) | Start: $searchsize | Total: $totalContentSize" -Path $global:configLogging -Color Cyan -log Debug
 
-                # Fetch content from Plex server (includeGuids=1 populates external GUIDs directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -168,6 +168,11 @@
                     }
                     if (-not $itemGuid -or -not $itemLocation) {
                         $needFullMetadata = $true
+                    }
+                    elseif ($contentquery -eq 'video' -and ($UsePosterResolutionOverlays -eq 'true' -or $UseBackgroundResolutionOverlays -eq 'true')) {
+                        if (-not $itemNode.media.part.stream) {
+                            $needFullMetadata = $true
+                        }
                     }
                 }
 
@@ -370,23 +375,13 @@
                     $Labels = ""
                 }
                 $FileMetadata = $Metadata.MediaContainer.$contentquery.media.part.stream
-                $Resolution = $null
-                # Get Resolution
-                if ($FileMetadata) {
-                    $FileMetadata | ForEach-Object {
-                        if ($_.streamType -eq '1') {
-                            $Resolution = $_.displayTitle
-                        }
-                    }
-                }
+                $Resolution = Get-MediaItemResolution -FileMetadata $FileMetadata -Media $Metadata.MediaContainer.$contentquery.media -Location $location -LibraryName $Library.Name -MatchedPath $Matchedpath -Type $Metadata.MediaContainer.$contentquery.type
                 $temp = New-Object psobject
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Name" -Value $Library.Name
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $Metadata.MediaContainer.$contentquery.type
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $($Library.language.split("-")[0])
                 $temp | Add-Member -MemberType NoteProperty -Name "title" -Value $($item.title)
-                if ($FileMetadata) {
-                    $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
-                }
+                $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
                 $temp | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $($item.originalTitle)
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $SeasonNames
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $SeasonNumbers
@@ -580,9 +575,7 @@
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "Path" -Value $showentry.Path
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "OtherMediaServerBackgroundUrl" -Value $showentry.OtherMediaServerBackgroundUrl
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "PlexBackgroundUrl" -Value $showentry.PlexBackgroundUrl
-                if ($FileMetadata) {
-                    $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
-                }
+                $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
                 $global:Episodedata.Add($tempseasondata)
                 Write-Entry -Subtext "  Found [$($tempseasondata.'Show Name')] of type $($tempseasondata.Type) for season $($tempseasondata.'Season Number')" -Path $global:configLogging -Color Cyan -log Debug
                 Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging -Color Cyan -log Debug
@@ -638,6 +631,7 @@
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "title" -Value $null
+        $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $null
@@ -649,10 +643,12 @@
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "ratingKey" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Path" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "RootFoldername" -Value $null
+        $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "extraFolder" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "MultipleVersions" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "PlexPosterUrl" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "PlexBackgroundUrl" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "PlexSeasonUrls" -Value $null
+        $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Labels" -Value $null
 
         $PlexLibDummycsv | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\PlexLibexport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
         Write-Entry -Message "No PlexLibexport.csv found, creating dummy file for you..." -Path $global:configLogging -Color White -log Info

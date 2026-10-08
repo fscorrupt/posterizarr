@@ -789,19 +789,162 @@ function Test-PathPermissions {
     }
 }
 function Get-Resolution {
-    param ($Width)
-    switch ($true) {
-        ($Width -ge 7680) { return "8K" }
-        ($Width -ge 5120) { return "5K" }
-        ($Width -ge 3840) { return "4K" }
-        ($Width -ge 2560) { return "1440p" }
-        ($Width -ge 1920) { return "1080p" }
-        ($Width -ge 1280) { return "720p" }
-        ($Width -ge 854) { return "480p" }
-        ($Width -ge 640) { return "360p" }
-        ($Width -ge 426) { return "240p" }
-        default { return "unknown" }
+    param ($Width, $Height, $videoResolution)
+    if ($videoResolution) {
+        switch -Regex ($videoResolution) {
+            '4k|2160' { return "4K" }
+            '1080'    { return "1080p" }
+            '720'     { return "720p" }
+            '480'     { return "480p" }
+            '576'     { return "576p" }
+        }
     }
+    if ($Width) {
+        $w = [int]$Width
+        switch ($true) {
+            ($w -ge 7600) { return "8K" }
+            ($w -ge 5000) { return "5K" }
+            ($w -ge 3800) { return "4K" }
+            ($w -ge 2500 -and (-not $Height -or [int]$Height -ge 1400)) { return "1440p" }
+            ($w -ge 1800) { return "1080p" }
+            ($w -ge 1200) { return "720p" }
+            ($w -ge 800)  { return "480p" }
+            ($w -ge 600)  { return "360p" }
+            ($w -ge 400)  { return "240p" }
+            default { return "unknown" }
+        }
+    }
+    if ($Height) {
+        $h = [int]$Height
+        switch ($true) {
+            ($h -ge 4000) { return "8K" }
+            ($h -ge 2800) { return "5K" }
+            ($h -ge 1600) { return "4K" }
+            ($h -ge 1300) { return "1440p" }
+            ($h -ge 800)  { return "1080p" }
+            ($h -ge 540)  { return "720p" }
+            ($h -ge 400)  { return "480p" }
+            default { return "unknown" }
+        }
+    }
+    return "unknown"
+}
+function Get-MediaItemResolution {
+    param(
+        $FileMetadata,
+        $Media,
+        $Location,
+        $LibraryName = $null,
+        $MatchedPath = $null,
+        $Type = $null
+    )
+
+    $Resolution = $null
+    $hasDoVi = $false
+    $hasHDR = $false
+    $streamRes = $null
+
+    # 1. Inspect Stream if present
+    if ($FileMetadata) {
+        $streams = @($FileMetadata)
+        foreach ($s in $streams) {
+            if ($s.streamType -eq '1') {
+                if ($s.displayTitle) {
+                    $streamRes = $s.displayTitle
+                }
+                if ($s.DOVIPresent -eq '1' -or $s.DOVIProfile -or $s.displayTitle -match '(?i)(DoVi|Dolby[-. ]?Vision|\bDV\b)' -or $s.title -match '(?i)(DoVi|Dolby[-. ]?Vision|\bDV\b)') {
+                    $hasDoVi = $true
+                }
+                if ($s.colorTransfer -match '(?i)(smpte2084|arib|hdr)' -or $s.colorPrimaries -match '(?i)bt2020' -or $s.displayTitle -match '(?i)HDR' -or $s.title -match '(?i)HDR') {
+                    $hasHDR = $true
+                }
+            }
+        }
+    }
+
+    # 2. Determine base resolution
+    $baseResolution = $null
+    if ($streamRes -match '^(4K|2160)') {
+        $baseResolution = '4K'
+    }
+    elseif ($streamRes -match '^1080') {
+        $baseResolution = '1080p'
+    }
+    elseif ($streamRes -match '^720') {
+        $baseResolution = '720p'
+    }
+
+    if (-not $baseResolution -and $Media) {
+        $mediaObj = if ($Media -is [System.Collections.IList] -or $Media.Count -gt 1) { $Media[0] } else { $Media }
+        if ($mediaObj.videoResolution) {
+            switch -Regex ($mediaObj.videoResolution) {
+                '4k|2160' { $baseResolution = '4K' }
+                '1080'    { $baseResolution = '1080p' }
+                '720'     { $baseResolution = '720p' }
+                '480'     { $baseResolution = '480p' }
+                '576'     { $baseResolution = '576p' }
+            }
+        }
+        if (-not $baseResolution -and $mediaObj.width) {
+            $baseResolution = Get-Resolution -Width $mediaObj.width -Height $mediaObj.height
+            if ($baseResolution -eq "unknown") { $baseResolution = $null }
+        }
+    }
+
+    # Fallback to Location / filename
+    if (-not $baseResolution -and $Location) {
+        if ($Location -match '(?i)(2160p?|4K|UHD)') { $baseResolution = '4K' }
+        elseif ($Location -match '(?i)(1080p?|FHD)') { $baseResolution = '1080p' }
+        elseif ($Location -match '(?i)720p?') { $baseResolution = '720p' }
+        elseif ($Location -match '(?i)(480p?|SD)') { $baseResolution = '480p' }
+    }
+
+    # If Show / Directory type with no base resolution yet, check LibraryName and MatchedPath
+    if (-not $baseResolution -and ($Type -eq 'show' -or -not $Location)) {
+        $combinedContext = "$LibraryName $MatchedPath"
+        if ($combinedContext -match '(?i)(4K|2160|UHD)') { $baseResolution = '4K' }
+        elseif ($combinedContext -match '(?i)1080') { $baseResolution = '1080p' }
+        elseif ($combinedContext -match '(?i)720') { $baseResolution = '720p' }
+    }
+
+    # 3. Check Location for HDR / DoVi tokens
+    if ($Location) {
+        if ($Location -match '(?i)(\bDV\b|\bDoVi\b|Dolby[-. ]?Vision)') {
+            $hasDoVi = $true
+        }
+        if ($Location -match '(?i)(\bHDR10Plus\b|\bHDR10\+\b|\bHDR10\b|\bHDR\b|\bPQ\b|\bHLG\b)') {
+            $hasHDR = $true
+        }
+    }
+
+    # 4. Construct final Resolution string compatible with CoreGeneration overlay matching
+    if ($streamRes -match '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))') {
+        $Resolution = $streamRes
+    }
+    elseif ($hasDoVi -and $hasHDR -and $baseResolution -eq '4K') {
+        $Resolution = "$baseResolution DoVi/HDR10"
+    }
+    elseif ($hasDoVi -and $baseResolution -eq '4K') {
+        $Resolution = "$baseResolution DoVi"
+    }
+    elseif ($hasHDR -and $baseResolution -eq '4K') {
+        $Resolution = "$baseResolution HDR10"
+    }
+    elseif ($baseResolution) {
+        $Resolution = $baseResolution
+    }
+    elseif ($streamRes) {
+        $Resolution = $streamRes
+    }
+    else {
+        $Resolution = $null
+    }
+
+    if ($Resolution -and $global:configLogging) {
+        Write-Entry -Subtext "Resolved media resolution: [$Resolution] for [$(Split-Path $Location -Leaf)]" -Path $global:configLogging -Color Cyan -log Debug
+    }
+
+    return $Resolution
 }
 function Get-CPUModel {
     if ($Platform -eq 'Docker') {
