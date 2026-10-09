@@ -407,20 +407,37 @@
                 $computedSeasonTitle = if ($null -ne $seasonNum) { "Season $seasonNum" } else { "Season" }
             }
 
-            # Apply capitalization for Season text
-            if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
-                $joinedTitle = $computedSeasonTitle.ToUpper()
+            # Handle Season Text vs Show Title on Season
+            if ($MainPSBoundParameters.ContainsKey('Titletext') -and [string]::IsNullOrWhiteSpace($Titletext)) {
+                Write-Entry -Subtext "Skipping Season Poster text because Titletext was explicitly left blank/empty." -Path $global:configLogging -Color Yellow -log Info
+                $computedSeasonTitle = ""
+                $joinedTitle = ""
+                $ShowjoinedTitle = ""
+            }
+            elseif ($MainPSBoundParameters.ContainsKey('Titletext') -and -not [string]::IsNullOrWhiteSpace($Titletext) -and $AddShowTitletoSeason -ne 'true') {
+                $computedSeasonTitle = $Titletext
+                if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
+                    $joinedTitle = $computedSeasonTitle.ToUpper()
+                }
+                else {
+                    $joinedTitle = $computedSeasonTitle
+                }
+                $ShowjoinedTitle = ""
             }
             else {
-                $joinedTitle = $computedSeasonTitle
-            }
+                if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
+                    $joinedTitle = $computedSeasonTitle.ToUpper()
+                }
+                else {
+                    $joinedTitle = $computedSeasonTitle
+                }
 
-            # Show Title on Season text
-            if ($ShowOnSeasonfontAllCaps -eq 'true') {
-                $ShowjoinedTitle = $titletext.ToUpper()
-            }
-            else {
-                $ShowjoinedTitle = $titletext
+                if ($ShowOnSeasonfontAllCaps -eq 'true') {
+                    $ShowjoinedTitle = $titletext.ToUpper()
+                }
+                else {
+                    $ShowjoinedTitle = $titletext
+                }
             }
         }
         elseif ($CollectionCard) {
@@ -488,7 +505,11 @@
             }
         }
         if ($SeasonPoster) {
-            Write-Entry -Subtext "Processing Season Poster for: `"$Titletext | $joinedTitle`"" -Path $global:configLogging -Color White -log Info
+            if ([string]::IsNullOrWhiteSpace($joinedTitle)) {
+                Write-Entry -Subtext "Processing Season Poster (Textless)" -Path $global:configLogging -Color White -log Info
+            } else {
+                Write-Entry -Subtext "Processing Season Poster for: `"$Titletext | $joinedTitle`"" -Path $global:configLogging -Color White -log Info
+            }
         }
         elseif ($Titletext -match '^(http|https)://' -or $Titletext -match '\.(png|jpg|jpeg|webp)$') {
             Write-Entry -Subtext "Processing Poster/Logo for: `"$FolderName`"" -Path $global:configLogging -Color White -log Info

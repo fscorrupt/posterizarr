@@ -1713,7 +1713,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {metadata.asset_type !== "titlecard" && (
                           <div>
                             <label className="block text-xs font-medium text-theme-text mb-1">
-                              Title Text
+                              {metadata.asset_type === "season"
+                                ? t("assetReplacer.seasonTitleLabel", "Season Text (optional, leave blank for textless)")
+                                : t("assetReplacer.titleText", "Title Text")}
                             </label>
                             <div className="flex gap-2">
                               <input
@@ -1725,7 +1727,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     titletext: e.target.value,
                                   })
                                 }
-                                placeholder="Enter text or Browse for Logo..."
+                                placeholder={
+                                  metadata.asset_type === "season"
+                                    ? t("assetReplacer.seasonTitlePlaceholder", "e.g., Season 1 (leave blank for textless)")
+                                    : "Enter text or Browse for Logo..."
+                                }
                                 className="flex-1 px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                               <button
