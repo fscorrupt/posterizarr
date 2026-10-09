@@ -156,7 +156,7 @@
                     if ($ForceReplace) {
                         Write-Entry -Message "[$title] Logo exists but ForceReplace is enabled. Attempting to fetch..." -Path $global:configLogging -Color Yellow -log Info
                     }
-                    elseif ($LogoExifCheck -or $global:LogoExifCheck -eq 'true') {
+                    elseif ($LogoExifCheck -or $global:LogoExifCheck -eq $true -or "$($global:LogoExifCheck)".ToLower() -eq 'true') {
                         $existingLogoUrl = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
                         $safeFileName = $ratingKey -replace '[^a-zA-Z0-9]', '_'
                         $checkLogoPath = Join-Path $global:ScriptRoot -ChildPath "temp\check_logo_$safeFileName.png"
@@ -397,7 +397,7 @@
                 if ($ForceReplace) {
                     Write-Entry -Message "[$title] Logo exists but ForceReplace is enabled. Attempting to fetch..." -Path $global:configLogging -Color Yellow -log Info
                 }
-                elseif ($LogoExifCheck -or $global:LogoExifCheck -eq 'true') {
+                elseif ($LogoExifCheck -or $global:LogoExifCheck -eq $true -or "$($global:LogoExifCheck)".ToLower() -eq 'true') {
                     $logosUrl = "$PlexUrl/library/metadata/$ratingKey/clearLogos"
                     $hasPosterizarrLogo = $false
                     try {

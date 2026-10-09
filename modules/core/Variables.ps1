@@ -452,7 +452,7 @@ $TextFallback = "$($config.PrerequisitePart.LogoTextFallback)".ToLower()
 $global:UseClearlogo = "$($config.PrerequisitePart.UseClearlogo)".ToLower()
 $global:UseClearart = "$($config.PrerequisitePart.UseClearart)".ToLower()
 $TextlessPosterBypass = "$($config.PrerequisitePart.TextlessPosterBypass)".ToLower()
-$global:LogoExifCheck = if ($LogoExifCheck -or ($MainPSBoundParameters -and $MainPSBoundParameters.ContainsKey('LogoExifCheck') -and $MainPSBoundParameters['LogoExifCheck'])) { 'true' } elseif ($config.PrerequisitePart.LogoExifCheck) { "$($config.PrerequisitePart.LogoExifCheck)".ToLower() } else { 'false' }
+$global:LogoExifCheck = [bool]$(if ($LogoExifCheck -or ($MainPSBoundParameters -and $MainPSBoundParameters.ContainsKey('LogoExifCheck') -and $MainPSBoundParameters['LogoExifCheck'])) { $true } elseif ($config.PrerequisitePart.LogoExifCheck -and "$($config.PrerequisitePart.LogoExifCheck)".ToLower() -eq 'true') { $true } else { $false })
 
 # Check if its a Network Share
 if ($AssetPath.StartsWith("\")) {
