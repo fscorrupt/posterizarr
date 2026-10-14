@@ -181,7 +181,7 @@ function Invoke-MoviePosterCreation {
                                         }
                                     }
                                     if ($tempLogoUrl) { $tempLogoAvailable = $true }
-                                    
+
                                     if (-not $tempLogoAvailable) {
                                         Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                         $global:OriginalPreferTextless = $global:PosterPreferTextless
@@ -574,6 +574,7 @@ function Invoke-MoviePosterCreation {
                                                     else {
                                                         $Arguments = "`"$PosterImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                                                     }
+                                                    Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                     Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
                                                     $logEntry = "`"$magick`" $Arguments"
                                                     $logEntry | Write-MagickLog
@@ -695,7 +696,7 @@ function Invoke-MoviePosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    
+
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "PosterImage: $PosterImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -824,12 +825,12 @@ function Invoke-MoviePosterCreation {
                                         GetPlexArtwork -Type "$Titletext Artwork." -ArtUrl $Arturl -TempImage $PosterImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            
+
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "PosterImage: $PosterImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                             $uri = "$PlexUrl/library/metadata/$($entry.ratingkey)/posters"
                                             Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                             # Try uploading, capturing the response in detail
@@ -840,7 +841,7 @@ function Invoke-MoviePosterCreation {
 -ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
-    
+
                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                                 Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -855,7 +856,7 @@ function Invoke-MoviePosterCreation {
                                     }
                                     catch {
                                         Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                         $global:errorCount = Increment-GlobalStat 'errorCount'
                                         Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                     }
@@ -997,7 +998,7 @@ function Invoke-MoviePosterCreation {
                                         }
                                     }
                                     if ($tempLogoUrl) { $tempLogoAvailable = $true }
-                                    
+
                                     if (-not $tempLogoAvailable) {
                                         Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                         $global:OriginalPreferTextless = $global:BackgroundPreferTextless
@@ -1370,6 +1371,7 @@ function Invoke-MoviePosterCreation {
                                                     else {
                                                         $Arguments = "`"$backgroundImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                     }
+                                                    Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                     Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
                                                     $logEntry = "`"$magick`" $Arguments"
                                                     $logEntry | Write-MagickLog
@@ -1490,7 +1492,7 @@ function Invoke-MoviePosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    
+
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "BackgroundImage: $backgroundImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -1618,12 +1620,12 @@ function Invoke-MoviePosterCreation {
                                         GetPlexArtwork -Type " $Titletext | Backgound Artwork." -ArtUrl $Arturl -TempImage $backgroundImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            
+
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "BackgroundImage: $backgroundImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                             $uri = "$PlexUrl/library/metadata/$($entry.ratingkey)/arts"
                                             Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                             # Try uploading, capturing the response in detail
@@ -1634,7 +1636,7 @@ function Invoke-MoviePosterCreation {
 -ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
-    
+
                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                                 Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -1648,7 +1650,7 @@ function Invoke-MoviePosterCreation {
                                     }
                                     catch {
                                         Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                         $global:errorCount = Increment-GlobalStat 'errorCount'
                                         Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                     }
@@ -1899,7 +1901,7 @@ function Invoke-ShowPosterCreation {
                                     }
                                 }
                                 if ($tempLogoUrl) { $tempLogoAvailable = $true }
-                                
+
                                 if (-not $tempLogoAvailable) {
                                     Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                     $global:OriginalPreferTextless = $global:PosterPreferTextless
@@ -2307,6 +2309,7 @@ function Invoke-ShowPosterCreation {
                                                 else {
                                                     $Arguments = "`"$PosterImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                                                 }
+                                                Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                 Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
                                                 $logEntry = "`"$magick`" $Arguments"
                                                 $logEntry | Write-MagickLog
@@ -2427,7 +2430,7 @@ function Invoke-ShowPosterCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                
+
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "PosterImage: $PosterImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -2555,12 +2558,12 @@ function Invoke-ShowPosterCreation {
                                     GetPlexArtwork -Type "$Titletext Artwork." -ArtUrl $Arturl -TempImage $PosterImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        
+
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "PosterImage: $PosterImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                         $uri = "$PlexUrl/library/metadata/$($entry.ratingkey)/posters"
                                         Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                         # Try uploading, capturing the response in detail
@@ -2571,7 +2574,7 @@ function Invoke-ShowPosterCreation {
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
-    
+
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                             Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -2586,7 +2589,7 @@ function Invoke-ShowPosterCreation {
                                 }
                                 catch {
                                     Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                     $global:errorCount = Increment-GlobalStat 'errorCount'
                                     Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                 }
@@ -2777,7 +2780,7 @@ function Invoke-ShowPosterCreation {
                                     }
                                 }
                                 if ($tempLogoUrl) { $tempLogoAvailable = $true }
-                                
+
                                 if (-not $tempLogoAvailable) {
                                     Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                     $global:OriginalPreferTextless = $global:BackgroundPreferTextless
@@ -3144,6 +3147,7 @@ function Invoke-ShowPosterCreation {
                                                 else {
                                                     $Arguments = "`"$backgroundImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                 }
+                                                Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                 Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
                                                 $logEntry = "`"$magick`" $Arguments"
                                                 $logEntry | Write-MagickLog
@@ -3264,7 +3268,7 @@ function Invoke-ShowPosterCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                
+
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "BackgroundImage: $backgroundImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -3392,12 +3396,12 @@ function Invoke-ShowPosterCreation {
                                     GetPlexArtwork -Type " $Titletext | Backgound Artwork." -ArtUrl $Arturl -TempImage $backgroundImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        
+
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "BackgroundImage: $backgroundImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($entry.ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                         $uri = "$PlexUrl/library/metadata/$($entry.ratingkey)/arts"
                                         Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                         # Try uploading, capturing the response in detail
@@ -3408,7 +3412,7 @@ function Invoke-ShowPosterCreation {
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
-    
+
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                             Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -3422,7 +3426,7 @@ function Invoke-ShowPosterCreation {
                                 }
                                 catch {
                                     Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                     $global:errorCount = Increment-GlobalStat 'errorCount'
                                     Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                 }
@@ -3668,7 +3672,7 @@ function Invoke-ShowPosterCreation {
                                             }
                                         }
                                         if ($tempLogoUrl) { $tempLogoAvailable = $true }
-                                        
+
                                         if (-not $tempLogoAvailable) {
                                             Write-Entry -Message "TextlessFallback (textposter): No logo available. Forcing standard Text Asset." -Path $global:configLogging -Color Cyan -log Info
                                             $global:OriginalPreferTextless = $global:SeasonPosterPreferTextless
@@ -4336,7 +4340,7 @@ function Invoke-ShowPosterCreation {
                                             if ($Upload2Plex -eq 'true') {
                                                 try {
                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                    
+
                                                     # Verify variables before uploading
                                                     Write-Entry -Subtext "SeasonImage: $SeasonImage" -Path $global:configLogging -Color Cyan -log Debug
                                                     Write-Entry -Subtext "RatingKey: $($global:SeasonRatingKey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -4465,12 +4469,12 @@ function Invoke-ShowPosterCreation {
                                         GetPlexArtwork -Type " $Titletext | $global:seasontmp Artwork."  -ArtUrl $Arturl -TempImage $SeasonImage
                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                            
+
                                             # Verify variables before uploading
                                             Write-Entry -Subtext "SeasonImage: $SeasonImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "RatingKey: $($global:SeasonRatingKey)" -Path $global:configLogging -Color Cyan -log Debug
                                             Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                             $uri = "$PlexUrl/library/metadata/$($global:SeasonRatingKey)/posters"
                                             Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                             # Try uploading, capturing the response in detail
@@ -4481,7 +4485,7 @@ function Invoke-ShowPosterCreation {
 -ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
-    
+
                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                                 Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -4496,7 +4500,7 @@ function Invoke-ShowPosterCreation {
                                     }
                                     catch {
                                         Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                         $global:errorCount = Increment-GlobalStat 'errorCount'
                                         Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                     }
@@ -5203,7 +5207,7 @@ function Invoke-TitleCardCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                
+
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -5334,12 +5338,12 @@ function Invoke-TitleCardCreation {
                                     GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        
+
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                         $uri = "$PlexUrl/library/metadata/$($global:episode_ratingkey)/posters"
                                         Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                         # Try uploading, capturing the response in detail
@@ -5350,7 +5354,7 @@ function Invoke-TitleCardCreation {
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
-    
+
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                             Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -5365,7 +5369,7 @@ function Invoke-TitleCardCreation {
                                 }
                                 catch {
                                     Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                     $global:errorCount = Increment-GlobalStat 'errorCount'
                                     Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                 }
@@ -5913,7 +5917,7 @@ function Invoke-TitleCardCreation {
                                         if ($Upload2Plex -eq 'true') {
                                             try {
                                                 Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                
+
                                                 # Verify variables before uploading
                                                 Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                 Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -6043,12 +6047,12 @@ function Invoke-TitleCardCreation {
                                     GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                     if ($global:PlexartworkDownloaded -eq 'true') {
                                         Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                        
+
                                         # Verify variables before uploading
                                         Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
                                         Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                         $uri = "$PlexUrl/library/metadata/$($global:episode_ratingkey)/posters"
                                         Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                         # Try uploading, capturing the response in detail
@@ -6059,7 +6063,7 @@ function Invoke-TitleCardCreation {
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
-    
+
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                             Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -6074,7 +6078,7 @@ function Invoke-TitleCardCreation {
                                 }
                                 catch {
                                     Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                     $global:errorCount = Increment-GlobalStat 'errorCount'
                                     Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                 }
@@ -6697,7 +6701,7 @@ function Invoke-TitleCardCreation {
                                                             if ($Upload2Plex -eq 'true') {
                                                                 try {
                                                                     Write-Entry -Subtext "Uploading Artwork to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info
-                                                                    
+
                                                                     # Verify variables before uploading
                                                                     Write-Entry -Subtext "EpisodeImage: $EpisodeImage" -Path $global:configLogging -Color Cyan -log Debug
                                                                     Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
@@ -6827,12 +6831,12 @@ function Invoke-TitleCardCreation {
                                                         GetPlexArtwork -Type " $Titletext | $global:FileNaming Artwork." -ArtUrl $Arturl -TempImage $EpisodeImage
                                                         if ($global:PlexartworkDownloaded -eq 'true') {
                                                             Write-Entry -Subtext "Uploading Existing Artwork for: $Titletext" -Path $global:configLogging -Color White -log Info
-                                                            
+
                                                             # Verify variables before uploading
                                                             Write-Entry -Subtext "EpisodeImage: $EpisodeImageoriginal" -Path $global:configLogging -Color Cyan -log Debug
                                                             Write-Entry -Subtext "RatingKey: $($global:episode_ratingkey)" -Path $global:configLogging -Color Cyan -log Debug
                                                             Write-Entry -Subtext "File size: $($fileContent.Length) bytes" -Path $global:configLogging -Color Cyan -log Debug
-    
+
                                                             $uri = "$PlexUrl/library/metadata/$($global:episode_ratingkey)/posters"
                                                             Write-Entry -Subtext "Upload URI: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                                                             # Try uploading, capturing the response in detail
@@ -6843,7 +6847,7 @@ function Invoke-TitleCardCreation {
 -ContentType 'image/jpeg' `
                                                                 -SkipHttpErrorCheck `
                                                                 -ErrorAction Stop
-    
+
                                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
                                                                 Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
@@ -6858,7 +6862,7 @@ function Invoke-TitleCardCreation {
                                                     }
                                                     catch {
                                                         Write-Entry -Subtext "Invoke-WebRequest failed at transport level: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-    
+
                                                         $global:errorCount = Increment-GlobalStat 'errorCount'
                                                         Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                                     }
