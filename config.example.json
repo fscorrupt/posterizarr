@@ -68,6 +68,11 @@
         "ApplyToPoster": true,
         "ApplyToSeason": true,
         "ApplyToBackground": true,
+        "EnableBackgroundLanguageOrderOverride": false,
+        "PreferredBackgroundLanguageOrder": [
+          "xx",
+          "de"
+        ],
         "EnableProviderOrderOverride": false,
         "ProviderOrder": [
           "TMDB",
