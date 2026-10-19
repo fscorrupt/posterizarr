@@ -608,11 +608,12 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
     return {"libraries": visual_libs}
 
 
-def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bool = True) -> Dict[str, Any]:
+def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bool = False) -> Dict[str, Any]:
     """
     Parses config.yml into a high-level, human-friendly JSON structure.
     Allows complete visual customization without touching YAML.
-    If no configuration exists, automatically seeds a clean, functional starter configuration.
+    If no configuration exists or libraries is empty, returns empty libraries by default.
+    Never automatically seeds or overwrites config.yml on read.
     """
     path = config_path or get_config_yml_path()
     if not path.exists():
@@ -626,13 +627,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             except Exception:
                 pass
         if auto_seed:
-            starter = generate_starter_visual_config()
-            save_visual_config(starter)
-            try:
-                compile_visual_to_config_yml(starter)
-            except Exception as ce:
-                logger.warning(f"Failed compiling starter visual config to YAML: {ce}")
-            return starter
+            return generate_starter_visual_config()
         return {"libraries": {}}
 
     try:
@@ -659,14 +654,10 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             logger.warning(f"Error extracting API keys from {path}: {ee}")
 
     raw_libs = raw.get("libraries", {})
-    if not raw_libs and auto_seed:
-        starter = generate_starter_visual_config()
-        save_visual_config(starter)
-        try:
-            compile_visual_to_config_yml(starter)
-        except Exception as ce:
-            logger.warning(f"Failed compiling starter visual config to YAML: {ce}")
-        return starter
+    if not raw_libs:
+        if auto_seed:
+            return generate_starter_visual_config()
+        return {"libraries": {}}
 
     visual_libs = {}
 

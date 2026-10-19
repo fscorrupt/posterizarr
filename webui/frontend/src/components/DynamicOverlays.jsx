@@ -1348,7 +1348,7 @@ export default function DynamicOverlays() {
         if (nextVal) {
           fetchVisualConfig();
           fetchAllData();
-          if (!hasCompletedWizard || Object.keys(libraries || {}).length === 0) {
+          if (!hasCompletedWizard) {
             setWizardStep(1);
             setIsWizardOpen(true);
           }
@@ -3923,11 +3923,11 @@ export default function DynamicOverlays() {
               </div>
               <div>
                 <div className="font-bold text-theme-text text-sm flex items-center gap-2">
-                  <span>New to Dynamic Overlays?</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-theme-primary/20 text-theme-primary font-semibold">60-Second Tour</span>
+                  <span>Getting Started with Dynamic Overlays</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-theme-primary/20 text-theme-primary font-semibold">Quick Guide</span>
                 </div>
                 <p className="text-theme-muted mt-0.5 leading-relaxed">
-                  Skip manual reading! Launch our quick visual wizard to see how clean in-memory compositing works, apply recommended presets in 1 click, and preview your artwork.
+                  Take a quick tour to see how badges work, choose recommended presets, and preview your artwork.
                 </p>
               </div>
             </div>
@@ -3941,7 +3941,7 @@ export default function DynamicOverlays() {
                 className="px-3.5 py-1.5 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white font-semibold flex items-center gap-1.5 shadow-sm transition-all"
               >
                 <Zap className="w-3.5 h-3.5 fill-current" />
-                <span>Launch Wizard</span>
+                <span>Open Guide</span>
               </button>
               <button
                 type="button"
@@ -12423,12 +12423,12 @@ export default function DynamicOverlays() {
                   <Sparkles className="w-5 h-5 text-amber-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-theme-text text-base sm:text-lg">Dynamic Overlays Setup Wizard</h3>
+                  <h3 className="font-bold text-theme-text text-base sm:text-lg">Dynamic Overlays Setup Guide</h3>
                   <p className="text-xs text-theme-muted">
-                    {wizardStep === 1 && "Step 1 of 4: The Core Concept (Zero-Footprint Overlays)"}
-                    {wizardStep === 2 && "Step 2 of 4: 1-Click Turnkey Configuration"}
-                    {wizardStep === 3 && "Step 3 of 4: Interactive Visual Studio & Drag-and-Drop"}
-                    {wizardStep === 4 && "Step 4 of 4: Syncing & Automatic Scheduling"}
+                    {wizardStep === 1 && "Step 1 of 4: How it works"}
+                    {wizardStep === 2 && "Step 2 of 4: Choose your setup"}
+                    {wizardStep === 3 && "Step 3 of 4: Customizing your badges"}
+                    {wizardStep === 4 && "Step 4 of 4: Sending to your server"}
                   </p>
                 </div>
               </div>
@@ -12444,10 +12444,10 @@ export default function DynamicOverlays() {
             {/* Step Progress Indicator */}
             <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
               {[
-                { step: 1, label: "Concept", icon: ShieldCheck },
-                { step: 2, label: "Presets", icon: Zap },
-                { step: 3, label: "Visual Studio", icon: Eye },
-                { step: 4, label: "Sync & Automate", icon: RefreshCw }
+                { step: 1, label: "How It Works", icon: ShieldCheck },
+                { step: 2, label: "Setup", icon: Zap },
+                { step: 3, label: "Customize", icon: Eye },
+                { step: 4, label: "Send to Server", icon: RefreshCw }
               ].map((s) => {
                 const StepIcon = s.icon;
                 const isCurrent = wizardStep === s.step;
@@ -12477,19 +12477,19 @@ export default function DynamicOverlays() {
               })}
             </div>
 
-            {/* STEP 1: Core Concept */}
+            {/* STEP 1: How it works */}
             {wizardStep === 1 && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="p-4 rounded-xl bg-gradient-to-r from-theme-primary/10 via-theme-bg to-theme-hover/20 border border-theme space-y-1.5">
                   <span className="text-xs font-bold text-theme-primary uppercase tracking-wider flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4" />
-                    Clean Assets Protected
+                    Safe & Non-Destructive
                   </span>
                   <h4 className="text-sm font-bold text-theme-text">
-                    Your clean posters, titlecards, and backgrounds on disk are NEVER modified.
+                    Your original posters and files on disk are never changed
                   </h4>
                   <p className="text-xs text-theme-muted leading-relaxed">
-                    Unlike traditional scripts that permanently watermark your artwork files, Posterizarr keeps your source images 100% pristine. Overlays are combined on the fly in RAM right before uploading to your media server.
+                    Posterizarr adds badges (such as 4K resolution, ratings, languages, or runtime) directly when sending artwork to your media server. Your original downloaded posters, titlecards, and backgrounds remain completely clean.
                   </p>
                 </div>
 
@@ -12499,10 +12499,10 @@ export default function DynamicOverlays() {
                       <div className="p-1 rounded bg-theme-primary/20 text-theme-primary">
                         <Layers className="w-3.5 h-3.5" />
                       </div>
-                      <span>In-Memory Compositing</span>
+                      <span>Easy to Turn Off</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Ratings, 4K badges, and status banners are rendered in RAM only when syncing. If you disable an overlay, your artwork remains untouched.
+                      You can turn badges on or off anytime. If you decide you do not want an overlay anymore, your artwork remains untouched.
                     </p>
                   </div>
 
@@ -12511,10 +12511,10 @@ export default function DynamicOverlays() {
                       <div className="p-1 rounded bg-amber-500/20 text-amber-400">
                         <Zap className="w-3.5 h-3.5" />
                       </div>
-                      <span>No Extra Containers</span>
+                      <span>All in One Tool</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Replaces separate Kometa (PMM) containers with native, high-performance Python PIL processing built directly into Posterizarr.
+                      Everything runs directly inside Posterizarr. You do not need to install or run separate software like Kometa.
                     </p>
                   </div>
 
@@ -12523,10 +12523,10 @@ export default function DynamicOverlays() {
                       <div className="p-1 rounded bg-blue-500/20 text-blue-400">
                         <Server className="w-3.5 h-3.5" />
                       </div>
-                      <span>Multi-Server Ready</span>
+                      <span>Works with Your Server</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Direct REST API support for Plex, Jellyfin, and Emby. No need to use Plex as an intermediary mirror server.
+                      Sends artwork directly to Plex, Jellyfin, or Emby using the server connection you already set up.
                     </p>
                   </div>
 
@@ -12535,10 +12535,10 @@ export default function DynamicOverlays() {
                       <div className="p-1 rounded bg-emerald-500/20 text-emerald-400">
                         <Database className="w-3.5 h-3.5" />
                       </div>
-                      <span>Fingerprint Caching</span>
+                      <span>Fast Updates</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Items with unchanged ratings and resolution are skipped instantly, cutting sync times down to mere seconds.
+                      Posterizarr remembers what was already updated, so future updates only take a few seconds.
                     </p>
                   </div>
                 </div>
@@ -12560,7 +12560,7 @@ export default function DynamicOverlays() {
                     }`}
                   >
                     <Zap className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Option A: 1-Click Recommended Presets</span>
+                    <span>Recommended Presets</span>
                   </button>
                   <button
                     type="button"
@@ -12572,17 +12572,17 @@ export default function DynamicOverlays() {
                     }`}
                   >
                     <FolderOpen className="w-3.5 h-3.5 text-theme-primary" />
-                    <span>Option B: Direct Upload Kometa Configs (Multiple)</span>
+                    <span>Import Existing Files</span>
                   </button>
                 </div>
 
-                {/* Sub-Mode A: Turnkey Presets */}
+                {/* Sub-Mode A: Presets */}
                 {wizardConfigMode === "presets" && (
                   <div className="space-y-4 animate-in fade-in duration-150">
                     <div className="p-4 rounded-xl bg-theme-hover/20 border border-theme space-y-1">
-                      <h4 className="text-sm font-bold text-theme-text">Turnkey Presets: 1-Click Setup</h4>
+                      <h4 className="text-sm font-bold text-theme-text">Start with popular badge layouts</h4>
                       <p className="text-xs text-theme-muted leading-relaxed">
-                        No need to learn complex YAML syntax. Apply battle-tested overlay presets tailored to movies, TV shows, and 16:9 backdrops.
+                        If you are starting fresh, you can apply our recommended badges for your libraries below. You can customize, move, or disable any badge at any time.
                       </p>
                     </div>
 
@@ -12595,19 +12595,19 @@ export default function DynamicOverlays() {
                         <ul className="text-theme-muted space-y-1 text-[11px]">
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>4K UHD Corner Badge / Top Banner</span>
+                            <span>4K resolution badge in the corner</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Audience Rating (IMDb / RT / TMDb)</span>
+                            <span>Ratings (IMDb, TMDb, Rotten Tomatoes)</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Duration runtime (e.g. 1h 58m)</span>
+                            <span>Movie runtime (e.g. 1h 58m)</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Age ratings (e.g. PG-13 / FSK 16)</span>
+                            <span>Age rating (e.g. PG-13, FSK 16)</span>
                           </li>
                         </ul>
                       </div>
@@ -12620,19 +12620,19 @@ export default function DynamicOverlays() {
                         <ul className="text-theme-muted space-y-1 text-[11px]">
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Series Status (Returning, Ended, Airing)</span>
+                            <span>Show status (Airing, Returning, Ended)</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Season Network Logos (HBO, Netflix)</span>
+                            <span>TV Network logo (HBO, Netflix, etc.)</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Episode Titlecard duration (e.g. 45 min)</span>
+                            <span>Episode runtime on titlecards</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>4K Titlecard resolution badge</span>
+                            <span>4K badge on titlecards</span>
                           </li>
                         </ul>
                       </div>
@@ -12640,24 +12640,24 @@ export default function DynamicOverlays() {
                       <div className="p-3.5 rounded-xl bg-theme-card border border-theme space-y-2">
                         <div className="flex items-center gap-2 font-bold text-theme-text">
                           <ImageIcon className="w-4 h-4 text-theme-primary" />
-                          <span>16:9 Backdrops</span>
+                          <span>Background Art (16:9)</span>
                         </div>
                         <ul className="text-theme-muted space-y-1 text-[11px]">
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Dynamic Multi-Source Ratings</span>
+                            <span>Rating scores with source logos</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>IMDb, Rotten Tomatoes, TMDb icons</span>
+                            <span>IMDb, Rotten Tomatoes, and TMDb</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Subtle dark contrast box</span>
+                            <span>Dark contrast box for clear text</span>
                           </li>
                           <li className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-                            <span>Native Plex rating resolution (Zero quota)</span>
+                            <span>Uses your media server ratings</span>
                           </li>
                         </ul>
                       </div>
@@ -12665,8 +12665,8 @@ export default function DynamicOverlays() {
 
                     <div className="p-4 rounded-xl bg-theme-hover/30 border border-theme flex flex-col sm:flex-row items-center justify-between gap-3">
                       <div>
-                        <span className="font-semibold text-xs text-theme-text block">Apply Recommended Setup</span>
-                        <span className="text-[11px] text-theme-muted">Automatically maps discovered server libraries to recommended overlays.</span>
+                        <span className="font-semibold text-xs text-theme-text block">Apply Recommended Presets</span>
+                        <span className="text-[11px] text-theme-muted">Sets up popular badges for your media libraries in one click.</span>
                       </div>
                       <button
                         type="button"
@@ -12684,7 +12684,7 @@ export default function DynamicOverlays() {
                         {isQuickStarting ? (
                           <>
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Auto-Configuring...</span>
+                            <span>Applying Presets...</span>
                           </>
                         ) : wizardQuickStartDone ? (
                           <>
@@ -12694,7 +12694,7 @@ export default function DynamicOverlays() {
                         ) : (
                           <>
                             <Zap className="w-3.5 h-3.5 fill-current" />
-                            <span>Auto-Configure Presets</span>
+                            <span>Apply Presets</span>
                           </>
                         )}
                       </button>
@@ -12708,10 +12708,10 @@ export default function DynamicOverlays() {
                     <div className="p-4 rounded-xl bg-theme-hover/20 border border-theme space-y-1">
                       <h4 className="text-sm font-bold text-theme-text flex items-center gap-2">
                         <FolderOpen className="w-4 h-4 text-theme-primary" />
-                        <span>Upload Existing Kometa / PMM Configurations</span>
+                        <span>Import existing Kometa or PMM files</span>
                       </h4>
                       <p className="text-xs text-theme-muted leading-relaxed">
-                        Migrating from Kometa or PMM? Directly select or drag-and-drop multiple YAML config files at once (e.g. <code className="text-theme-primary font-mono font-semibold">config.yml</code>, <code className="text-theme-primary font-mono font-semibold">overlays_tv.yml</code>, <code className="text-theme-primary font-mono font-semibold">overlays_movies.yml</code>, <code className="text-theme-primary font-mono font-semibold">anime_overlays.yml</code>).
+                        Already have YAML configuration files from Kometa or Plex Meta Manager? Drop them here (such as <code className="text-theme-primary font-mono font-semibold">config.yml</code> or <code className="text-theme-primary font-mono font-semibold">overlays_movies.yml</code>) to load them into the visual editor.
                       </p>
                     </div>
 
@@ -12743,17 +12743,17 @@ export default function DynamicOverlays() {
                         )}
                       </div>
                       <span className="text-sm font-bold text-theme-text group-hover:text-theme-primary transition-colors">
-                        {isWizardUploading ? "Uploading & Analyzing Configs..." : "Select or Drop Multiple YAML Files"}
+                        {isWizardUploading ? "Reading and loading files..." : "Select or Drop YAML Files Here"}
                       </span>
                       <span className="text-xs text-theme-muted mt-1 max-w-sm">
-                        Supports selecting multiple <span className="font-mono text-theme-text">.yml</span> / <span className="font-mono text-theme-text">.yaml</span> files simultaneously.
+                        You can select one or multiple <span className="font-mono text-theme-text">.yml</span> / <span className="font-mono text-theme-text">.yaml</span> files.
                       </span>
                       <button
                         type="button"
                         className="mt-4 px-4 py-2 rounded-xl bg-theme-primary text-white text-xs font-semibold shadow hover:bg-theme-primary/90 flex items-center gap-2 pointer-events-none"
                       >
                         <FolderOpen className="w-3.5 h-3.5" />
-                        <span>Browse Files (Multiple)</span>
+                        <span>Browse Files</span>
                       </button>
                     </div>
 
@@ -12763,14 +12763,14 @@ export default function DynamicOverlays() {
                         <div className="flex items-center justify-between text-xs font-bold text-emerald-400">
                           <span className="flex items-center gap-1.5">
                             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            <span>{wizardUploadedFiles.length} Config File{wizardUploadedFiles.length > 1 ? "s" : ""} Imported Successfully</span>
+                            <span>{wizardUploadedFiles.length} file{wizardUploadedFiles.length > 1 ? "s" : ""} imported successfully</span>
                           </span>
                           <button
                             type="button"
                             onClick={() => setWizardStep(3)}
                             className="text-[11px] underline text-emerald-300 hover:text-white"
                           >
-                            Proceed to Visual Studio &rarr;
+                            Proceed to Customize &rarr;
                           </button>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
@@ -12783,7 +12783,7 @@ export default function DynamicOverlays() {
                         </div>
                         {wizardExtractedKeys.length > 0 && (
                           <p className="text-[11px] text-emerald-300">
-                            Auto-detected API keys: <span className="font-semibold text-white">{wizardExtractedKeys.join(", ")}</span>
+                            Found API keys: <span className="font-semibold text-white">{wizardExtractedKeys.join(", ")}</span>
                           </p>
                         )}
                       </div>
@@ -12793,13 +12793,13 @@ export default function DynamicOverlays() {
               </div>
             )}
 
-            {/* STEP 3: Visual Studio */}
+            {/* STEP 3: Customize */}
             {wizardStep === 3 && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="p-4 rounded-xl bg-theme-hover/20 border border-theme space-y-1">
-                  <h4 className="text-sm font-bold text-theme-text">Live Preview & Visual Drag-and-Drop</h4>
+                  <h4 className="text-sm font-bold text-theme-text">Visual Editor & Live Preview</h4>
                   <p className="text-xs text-theme-muted leading-relaxed">
-                    You never have to guess coordinates. Open the Live Preview tab to customize every badge visually.
+                    You can easily customize badge positions and appearance visually without writing any code.
                   </p>
                 </div>
 
@@ -12807,53 +12807,53 @@ export default function DynamicOverlays() {
                   <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme space-y-1.5">
                     <div className="flex items-center gap-2 font-semibold text-theme-text">
                       <Move className="w-4 h-4 text-theme-primary" />
-                      <span>Drag Badges Anywhere</span>
+                      <span>Drag and Drop</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Click directly on any badge on the canvas (4K badge, ratings, status ribbon, duration) and drag it to reposition it with pixel precision.
+                      Click directly on any badge on the preview poster (ratings, 4K logo, duration) and drag it to where you want it to appear.
                     </p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme space-y-1.5">
                     <div className="flex items-center gap-2 font-semibold text-theme-text">
                       <Magnet className="w-4 h-4 text-theme-primary" />
-                      <span>Snap Guides & Thirds</span>
+                      <span>Grid & Alignment Guides</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Toggle rule-of-thirds grids, center crosshairs, and corner bounds to easily achieve perfect balance across your media library.
+                      Turn on alignment guides and grid lines to snap badges neatly into corners or center them.
                     </p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme space-y-1.5">
                     <div className="flex items-center gap-2 font-semibold text-theme-text">
                       <Sliders className="w-4 h-4 text-theme-primary" />
-                      <span>Offset & Contrast Sliders</span>
+                      <span>Simple Sliders</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Adjust corner offsets, background pill contrast boxes (contrast color, radius), and font sizes directly from the sidebar.
+                      Adjust badge distances, text size, and background boxes using straightforward sliders on the side.
                     </p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme space-y-1.5">
                     <div className="flex items-center gap-2 font-semibold text-theme-text">
                       <LayoutGrid className="w-4 h-4 text-theme-primary" />
-                      <span>Format Switching</span>
+                      <span>All Artwork Types</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Switch seamlessly between Movie Posters (2:3), TV Show Posters, Season Posters, Titlecards (16:9), and Backdrops (16:9).
+                      Easily switch between Movie Posters (2:3), TV Shows, Season Posters, Episode Titlecards, and Backgrounds.
                     </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* STEP 4: Automation & Sync */}
+            {/* STEP 4: Send to server */}
             {wizardStep === 4 && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="p-4 rounded-xl bg-theme-hover/20 border border-theme space-y-1">
-                  <h4 className="text-sm font-bold text-theme-text">Pushing Artwork to Your Media Server</h4>
+                  <h4 className="text-sm font-bold text-theme-text">Sending Artwork to Your Media Server</h4>
                   <p className="text-xs text-theme-muted leading-relaxed">
-                    Once you're satisfied with your overlay rules, sending them to your server is simple and automated.
+                    When you are happy with your badges, sending them to your server is quick and straightforward.
                   </p>
                 </div>
 
@@ -12861,20 +12861,20 @@ export default function DynamicOverlays() {
                   <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme space-y-1.5">
                     <div className="flex items-center gap-2 font-semibold text-theme-text">
                       <Play className="w-4 h-4 text-theme-primary fill-current" />
-                      <span>Instant Manual Sync</span>
+                      <span>Manual Update</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Click <strong className="text-theme-text">Apply Overlays / Sync</strong> anytime in the header. Choose <strong className="text-theme-text">Changes Only</strong> for ultra-fast incremental updates, or Full Sync.
+                      Click <strong className="text-theme-text">Apply Overlays</strong> in the top bar anytime. Choose <strong className="text-theme-text">Changes Only</strong> for a quick update of new items, or Full Sync.
                     </p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme space-y-1.5">
                     <div className="flex items-center gap-2 font-semibold text-theme-text">
                       <Clock className="w-4 h-4 text-theme-primary" />
-                      <span>Automated Scheduling</span>
+                      <span>Automatic Schedule</span>
                     </div>
                     <p className="text-theme-muted leading-relaxed">
-                      Enable scheduled syncs in the Scheduler tab (daily or weekly). Newly added movies and episodes are badged automatically in the background.
+                      Turn on scheduled updates in the Scheduler tab (daily or weekly). Newly added movies and episodes are badged automatically in the background.
                     </p>
                   </div>
                 </div>
@@ -12882,10 +12882,10 @@ export default function DynamicOverlays() {
                 <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs space-y-1">
                   <span className="font-bold text-emerald-400 flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4" />
-                    You're All Set!
+                    You are all set!
                   </span>
                   <p className="text-theme-muted leading-relaxed">
-                    You can reopen this setup wizard at any time by clicking the <strong className="text-theme-text">Setup Wizard</strong> button in the Dynamic Overlays header.
+                    You can reopen this guide anytime by clicking the <strong className="text-theme-text">Setup Wizard</strong> button at the top of the Dynamic Overlays page.
                   </p>
                 </div>
               </div>
@@ -12900,7 +12900,7 @@ export default function DynamicOverlays() {
                   onChange={(e) => setDontShowWizardAgain(e.target.checked)}
                   className="rounded border-theme bg-theme-hover text-theme-primary focus:ring-0"
                 />
-                <span>Don't show welcome banner automatically</span>
+                <span>Do not show this welcome guide automatically</span>
               </label>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -12928,11 +12928,7 @@ export default function DynamicOverlays() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (dontShowWizardAgain) {
-                        dismissWizardInDb();
-                      } else {
-                        setHasCompletedWizard(true);
-                      }
+                      dismissWizardInDb();
                       setIsWizardOpen(false);
                       handleTabChange("preview");
                     }}

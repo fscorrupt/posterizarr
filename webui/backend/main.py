@@ -20862,7 +20862,7 @@ async def get_dynamic_overlays_visual_config_endpoint():
     """
     try:
         from dynamic_overlays_service import parse_config_yml_to_visual
-        vis = parse_config_yml_to_visual()
+        vis = parse_config_yml_to_visual(auto_seed=False)
         return {"success": True, "config": vis}
     except Exception as e:
         return {"success": False, "error": str(e)}
