@@ -83,4 +83,4 @@ webui/backend/test_banner.py
 scratch*
 Posterizarr-Logs/
 container_logs/
-
+*.har

@@ -2414,6 +2414,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/onboarding/status")
+async def get_onboarding_status():
+    """Return whether onboarding has been completed without exposing configuration or secrets."""
+    onboarding_completed = False
+    if CONFIG_DATABASE_AVAILABLE and config_db:
+        val = config_db.get_value('_root', 'onboarding_completed')
+        if val is not None:
+            onboarding_completed = bool(val)
+    return {"success": True, "onboarding_completed": onboarding_completed}
+
+
 @app.post("/api/onboarding/complete")
 async def complete_onboarding():
     """Mark onboarding as completed."""
@@ -2714,6 +2725,9 @@ async def get_config(request: Request):
 
         if CONFIG_MAPPER_AVAILABLE:
             flat_config = flatten_config(grouped_config)
+            # Never expose basicAuthPassword hash in the returned config
+            if "basicAuthPassword" in flat_config:
+                flat_config["basicAuthPassword"] = ""
 
             display_names_dict = {}
             for key in flat_config.keys():
@@ -2729,6 +2743,8 @@ async def get_config(request: Request):
                 "using_flat_structure": True,
             }
         else:
+            if "WebUI" in grouped_config and isinstance(grouped_config["WebUI"], dict) and "basicAuthPassword" in grouped_config["WebUI"]:
+                grouped_config["WebUI"]["basicAuthPassword"] = ""
             return {
                 "success": True,
                 "config": grouped_config,  # Actual values returned
@@ -2865,9 +2881,12 @@ async def update_config(data: ConfigUpdate):
 
         # Check if basicAuthPassword is being updated
         if "basicAuthPassword" in data.config:
-            new_pass = data.config["basicAuthPassword"]
+            new_pass = str(data.config["basicAuthPassword"]).strip()
+            # If empty/blank, don't overwrite the existing hashed password
+            if not new_pass:
+                del data.config["basicAuthPassword"]
             # Only hash if it's not already a hash (user entered a new plain password)
-            if new_pass and not new_pass.startswith(("$2b$", "$2a$", "$2y$")):
+            elif not new_pass.startswith(("$2b$", "$2a$", "$2y$")):
                 logger.info("Hashing new password provided in config update...")
                 hashed = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                 data.config["basicAuthPassword"] = hashed
