@@ -1345,10 +1345,13 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (res.ok && data.success) {
         setFeatureSettings(data.settings);
-        showSuccess(nextVal ? "Dynamic Overlays enabled!" : "Dynamic Overlays disabled.");
         if (nextVal) {
           fetchVisualConfig();
           fetchAllData();
+          if (!hasCompletedWizard || Object.keys(libraries || {}).length === 0) {
+            setWizardStep(1);
+            setIsWizardOpen(true);
+          }
         }
       } else {
         showError(data.error || "Failed to update master setting.");
@@ -4013,19 +4016,31 @@ export default function DynamicOverlays() {
             </p>
           </div>
 
-          <div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
-              onClick={() => handleToggleMasterEnabled(true)}
+              onClick={() => {
+                handleToggleMasterEnabled(true);
+                setWizardStep(1);
+                setIsWizardOpen(true);
+              }}
               disabled={isUpdatingFeatureSettings}
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-theme-primary hover:bg-theme-primary/90 text-white font-semibold text-sm shadow-sm transition-all disabled:opacity-50"
             >
               {isUpdatingFeatureSettings ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <CheckCircle2 className="w-4 h-4" />
+                <Sparkles className="w-4 h-4 text-amber-300" />
               )}
-              Turn On Dynamic Overlays
+              <span>Turn On & Launch Setup Wizard</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleMasterEnabled(true)}
+              disabled={isUpdatingFeatureSettings}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-theme-hover hover:bg-theme-hover/80 border border-theme text-theme-text font-semibold text-sm shadow-sm transition-all disabled:opacity-50"
+            >
+              <span>Turn On Only</span>
             </button>
           </div>
 
@@ -6518,7 +6533,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* TAB 2: ACTIVE LIBRARIES & RULES (INTERACTIVE EDITING & REMOVAL) */}
       {/* ========================================================================= */}
-      {activeTab === "rules" && (
+      {featureSettings?.enabled && activeTab === "rules" && (
         <div className="space-y-6">
           {/* TOOLBAR */}
           <div className="bg-theme-card border border-theme rounded-xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -6830,7 +6845,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* TAB 3: LIVE PREVIEW & DRAG-AND-DROP LAYOUT EDITOR */}
       {/* ========================================================================= */}
-      {activeTab === "preview" && (
+      {featureSettings?.enabled && activeTab === "preview" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* CONTROLS COLUMN */}
           <div className="lg:col-span-5 xl:col-span-4 space-y-4">
