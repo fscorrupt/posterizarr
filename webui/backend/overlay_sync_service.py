@@ -266,7 +266,7 @@ def resolve_library_rules(
             return "kids movies", library_rules_map["kids movies"]
         if is_anime and "anime" in library_rules_map:
             return "anime", library_rules_map["anime"]
-        if "movies" in library_rules_map:
+        if not is_kids and not is_anime and not is_4k and "movies" in library_rules_map:
             return "movies", library_rules_map["movies"]
 
     if media_type == "show" or "show" in clean_lib or "series" in clean_lib or "tv" in clean_lib:
@@ -274,19 +274,19 @@ def resolve_library_rules(
             return "4k tv shows", library_rules_map["4k tv shows"]
         if is_anime and "anime" in library_rules_map:
             return "anime", library_rules_map["anime"]
-        if "tv shows" in library_rules_map:
+        if not is_anime and not is_4k and "tv shows" in library_rules_map:
             return "tv shows", library_rules_map["tv shows"]
 
-    # 3. Substring matching
+    # 3. Substring matching (only if match key is specific enough)
     for k, v in library_rules_map.items():
-        if k in clean_lib or clean_lib in k:
+        if k and (k == clean_lib or (len(k) >= 3 and (k in clean_lib or clean_lib in k))):
             return k, v
 
-    # Fallback to default
+    # Fallback to default only if explicitly configured
     if "default" in library_rules_map:
         return "default", library_rules_map["default"]
 
-    return "default", []
+    return "none", []
 
 
 # ==============================================================================
@@ -1654,6 +1654,27 @@ async def run_overlay_sync_task(
 
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def write_log(msg: str):
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{now_str}] {msg}\n"
+        try:
+            with open(log_file_path, "a", encoding="utf-8") as lf:
+                lf.write(line)
+        except Exception:
+            pass
+        logger.info(f"[OverlaySync] {msg}")
+
+    # Check Master Feature Toggle (Disabled by default)
+    try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            write_log("Notice: Dynamic Overlays is currently disabled. Enable it in the WebUI to run sync.")
+            res = {"success": False, "error": "Dynamic Overlays is disabled in settings.", "is_enabled": False}
+            _last_sync_result = res
+            return res
+    except Exception as check_err:
+        logger.debug(f"Could not verify dynamic overlays enabled state: {check_err}")
+
     # Pre-sync: if AniMetaFill is enabled, trigger quick anime classification first
     try:
         from animetafill_service import is_animetafill_enabled, run_animetafill_sync
@@ -1681,27 +1702,6 @@ async def run_overlay_sync_task(
                 log_file_path.rename(old_log)
         except Exception:
             pass
-
-    def write_log(msg: str):
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        line = f"[{now_str}] {msg}\n"
-        try:
-            with open(log_file_path, "a", encoding="utf-8") as lf:
-                lf.write(line)
-        except Exception:
-            pass
-        logger.info(f"[OverlaySync] {msg}")
-
-    # Check Master Feature Toggle (Disabled by default)
-    try:
-        from dynamic_overlays_service import is_dynamic_overlays_enabled
-        if not is_dynamic_overlays_enabled():
-            write_log("Notice: Dynamic Overlays is currently disabled. Enable it in the WebUI to run sync.")
-            res = {"success": False, "error": "Dynamic Overlays is disabled in settings.", "is_enabled": False}
-            _last_sync_result = res
-            return res
-    except Exception as check_err:
-        logger.debug(f"Could not verify dynamic overlays enabled state: {check_err}")
 
     try:
         write_log("=" * 70)
@@ -1733,12 +1733,30 @@ async def run_overlay_sync_task(
                     raw_libs = raw_cfg.get("libraries", {})
                     for l_name, l_data in raw_libs.items():
                         if isinstance(l_data, dict):
-                            library_rules_map[l_name.lower()] = (
-                                l_data.get("overlay_files") or l_data.get("overlays") or []
-                            )
+                            rules = l_data.get("overlay_files") or l_data.get("overlays") or []
+                            if rules:
+                                library_rules_map[l_name.lower()] = rules
                 write_log(f"Loaded dynamic overlay rules for {len(library_rules_map)} library(ies) from config.yml.")
             except Exception as ye:
                 write_log(f"Warning loading config.yml: {ye}")
+
+        if not library_rules_map:
+            msg = "No libraries configured with dynamic overlay rules in config.yml. Sync skipped."
+            write_log(f"Notice: {msg}")
+            write_log("=" * 70)
+            res = {"success": True, "message": msg, "stats": {"synced": 0, "skipped": 0, "failed": 0}}
+            _last_sync_result = res
+            return res
+
+        if library != "all":
+            matched_k, matched_rules = resolve_library_rules(library, "movie", library_rules_map)
+            if matched_k == "none" or not matched_rules:
+                msg = f"Target library '{library}' has no dynamic overlay rules configured. Sync skipped."
+                write_log(f"Notice: {msg}")
+                write_log("=" * 70)
+                res = {"success": True, "message": msg, "stats": {"synced": 0, "skipped": 0, "failed": 0}}
+                _last_sync_result = res
+                return res
 
         # 3. Determine active servers
         servers_to_run = []
@@ -1789,6 +1807,10 @@ async def run_overlay_sync_task(
                                 if library != "all" and sec_title.lower() != library.lower():
                                     continue
                                 if library == "all" and sec_title in excluded:
+                                    continue
+                                matched_k, matched_rules = resolve_library_rules(sec_title, sec_type, library_rules_map)
+                                if matched_k == "none" or not matched_rules:
+                                    write_log(f"  [>] Library '{sec_title}' is not configured for dynamic overlays. Skipping.")
                                     continue
 
                                 # Query section items
@@ -1887,6 +1909,10 @@ async def run_overlay_sync_task(
                                     continue
                                 if library == "all" and any(lib_name.lower() == str(ex).lower() for ex in excluded):
                                     write_log(f"  [>] Library '{lib_name}' is in exclude list. Skipping.")
+                                    continue
+                                matched_k, matched_rules = resolve_library_rules(lib_name, "movie", library_rules_map)
+                                if matched_k == "none" or not matched_rules:
+                                    write_log(f"  [>] Library '{lib_name}' is not configured for dynamic overlays. Skipping.")
                                     continue
 
                                 # Query items with media streams, ratings, studios, and provider IDs
@@ -2259,6 +2285,9 @@ async def run_overlay_sync_task(
                     item["multi_ratings"] = multi_ratings
 
                     matched_rule_key, lib_rules = resolve_library_rules(lib_name, m_type, library_rules_map)
+                    if matched_rule_key == "none" or not lib_rules:
+                        await _inc_stats(skipped=1)
+                        return
 
                     # -------------------------------------------------------------
                     # 2A. PROCESS POSTER OVERLAYS
@@ -2307,6 +2336,29 @@ async def run_overlay_sync_task(
                                         item_label=f"{item_label} (Poster)"
                                     )
                                 else:
+                                    # Check if this item previously had an overlay applied by us
+                                    cached_entry = cache.get_entry(s_type, str(item_id), "poster")
+                                    was_previously_overlaid = (
+                                        cached_entry
+                                        and cached_entry.get("status") == "synced"
+                                        and cached_entry.get("overlay_recipe_hash") not in (None, "", "none")
+                                    )
+                                    if not was_previously_overlaid:
+                                        # Never overlaid and no overlays apply -> leave server completely untouched!
+                                        await _inc_stats(skipped=1)
+                                        cache.record_push(
+                                            server_type=s_type,
+                                            item_id=str(item_id),
+                                            asset_type="poster",
+                                            clean_asset_hash=clean_asset_hash,
+                                            clean_asset_mtime=mtime,
+                                            clean_asset_size=size,
+                                            overlay_recipe_hash="none",
+                                            metadata_hash=meta_hash,
+                                            status="skipped",
+                                            server_updated_at=item.get("server_updated_at")
+                                        )
+                                        return
                                     composited_jpeg = base_bytes
 
                                 upload_success = False
@@ -2355,7 +2407,10 @@ async def run_overlay_sync_task(
                                         detected_resolution=item.get("resolution")
                                     )
                                     await _inc_stats(synced=1)
-                                    write_log(f"  [+] {w_tag}Overlaid & Synced: '{title}' ({lib_name}) -> {s_type.upper()}")
+                                    if overlay_layers:
+                                        write_log(f"  [+] {w_tag}Overlaid & Synced: '{title}' ({lib_name}) -> {s_type.upper()}")
+                                    else:
+                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()}")
                                 else:
                                     await _inc_stats(failed=1)
                                     write_log(f"  [-] {w_tag}Failed uploading '{title}' to {s_type.upper()}: Status {getattr(resp, 'status_code', 'error')}")
@@ -2406,14 +2461,37 @@ async def run_overlay_sync_task(
                                 with open(clean_backdrop, "rb") as bf:
                                     b_base_bytes = bf.read()
 
-                                b_comp = DynamicOverlayCompositor.composite_overlays(
-                                    base_image_bytes=b_base_bytes,
-                                    layers=b_layers,
-                                    canvas_type="landscape",
-                                    debug_logging=debug_log_enabled,
-                                    debug_callback=write_log,
-                                    item_label=f"{item_label} (Backdrop)"
-                                ) if b_layers else b_base_bytes
+                                if b_layers:
+                                    b_comp = DynamicOverlayCompositor.composite_overlays(
+                                        base_image_bytes=b_base_bytes,
+                                        layers=b_layers,
+                                        canvas_type="landscape",
+                                        debug_logging=debug_log_enabled,
+                                        debug_callback=write_log,
+                                        item_label=f"{item_label} (Backdrop)"
+                                    )
+                                else:
+                                    b_cached_entry = cache.get_entry(s_type, str(item_id), "background")
+                                    b_was_previously_overlaid = (
+                                        b_cached_entry
+                                        and b_cached_entry.get("status") == "synced"
+                                        and b_cached_entry.get("overlay_recipe_hash") not in (None, "", "none")
+                                    )
+                                    if not b_was_previously_overlaid:
+                                        cache.record_push(
+                                            server_type=s_type,
+                                            item_id=str(item_id),
+                                            asset_type="background",
+                                            clean_asset_hash=bclean_hash,
+                                            clean_asset_mtime=bmtime,
+                                            clean_asset_size=bsize,
+                                            overlay_recipe_hash="none",
+                                            metadata_hash=b_recipe_hash,
+                                            status="skipped",
+                                            server_updated_at=item.get("server_updated_at")
+                                        )
+                                        return
+                                    b_comp = b_base_bytes
 
                                 b_upload_success = False
                                 if s_type == "plex":
@@ -2461,7 +2539,10 @@ async def run_overlay_sync_task(
                                         detected_resolution=item.get("resolution")
                                     )
                                     await _inc_stats(synced=1)
-                                    write_log(f"  [+] {w_tag}Overlaid & Synced Backdrop: '{title}' ({lib_name}) -> {s_type.upper()}")
+                                    if b_layers:
+                                        write_log(f"  [+] {w_tag}Overlaid & Synced Backdrop: '{title}' ({lib_name}) -> {s_type.upper()}")
+                                    else:
+                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Backdrop Restored: '{title}' ({lib_name}) -> {s_type.upper()}")
                                 else:
                                     await _inc_stats(failed=1)
                                     write_log(f"  [-] {w_tag}Failed uploading backdrop for '{title}' to {s_type.upper()}: Status {getattr(b_resp, 'status_code', 'error')}")
@@ -3000,26 +3081,6 @@ async def detect_media_changes(
     real_asset_path = server_info.get("asset_path") or resolve_configured_asset_path(base_dir / "assets")
     cache = OverlayCache(base_dir / "database" / "overlay_cache.db")
 
-    creds_map = {}
-    for s_name in ["plex", "jellyfin", "emby"]:
-        s_data = server_info.get(s_name)
-        if s_data and s_data.get("url"):
-            creds_map[s_name] = {
-                "url": s_data.get("url"),
-                "token": s_data.get("token"),
-                "api_key": s_data.get("api_key"),
-                "excluded": s_data.get("excluded_libs", [])
-            }
-
-    servers_to_scan = []
-    if target_server == "all":
-        servers_to_scan = [s for s in ["plex", "jellyfin", "emby"] if s in creds_map]
-    elif target_server.lower() in creds_map:
-        servers_to_scan = [target_server.lower()]
-
-    changed_items = []
-    total_scanned = 0
-    dir_cache = {"subdirs": {}}
     summary = {
         "languages": 0,
         "editions": 0,
@@ -3028,6 +3089,72 @@ async def detect_media_changes(
         "new": 0,
         "asset_modified": 0
     }
+
+    try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled in Master Switch.",
+                "total_scanned": 0,
+                "changed_count": 0,
+                "changes": [],
+                "summary": summary
+            }
+    except Exception:
+        pass
+
+    creds_map = {}
+    for s_name in ["plex", "jellyfin", "emby"]:
+        s_data = server_info.get(s_name)
+        if s_data and s_data.get("url") and s_data.get("enabled"):
+            creds_map[s_name] = {
+                "url": s_data.get("url"),
+                "token": s_data.get("token"),
+                "api_key": s_data.get("api_key"),
+                "excluded": s_data.get("excluded_libs", [])
+            }
+
+    # Load dynamic overlay rules from config.yml
+    library_rules_map = {}
+    overlays_dir = base_dir / "Overlayfiles" / "dynamic_overlays"
+    if not overlays_dir.exists():
+        legacy = base_dir / "Overlayfiles" / "kometa"
+        if legacy.exists():
+            overlays_dir = legacy
+    config_yml = overlays_dir / "configs" / "config.yml"
+    if config_yml.exists():
+        try:
+            import yaml
+            with open(config_yml, "r", encoding="utf-8") as yf:
+                raw_cfg = yaml.safe_load(yf) or {}
+                raw_libs = raw_cfg.get("libraries", {})
+                for l_name, l_data in raw_libs.items():
+                    if isinstance(l_data, dict):
+                        rules = l_data.get("overlay_files") or l_data.get("overlays") or []
+                        if rules:
+                            library_rules_map[l_name.lower()] = rules
+        except Exception as ye:
+            logger.debug(f"[DetectChanges] Error loading config.yml: {ye}")
+
+    if not library_rules_map:
+        return {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "target_server": target_server,
+            "library": library,
+            "total_scanned": 0,
+            "changed_count": 0,
+            "unchanged_count": 0,
+            "changes": [],
+            "summary": summary
+        }
+
+    servers_to_scan = []
+    if target_server == "all":
+        servers_to_scan = [s for s in ["plex", "jellyfin", "emby"] if s in creds_map]
+    elif target_server.lower() in creds_map:
+        servers_to_scan = [target_server.lower()]
 
     async with httpx.AsyncClient(timeout=15.0, verify=False) as http_client:
         for s_type in servers_to_scan:
@@ -3053,6 +3180,9 @@ async def detect_media_changes(
                             if library != "all" and sec_title.lower() != library.lower():
                                 continue
                             if library == "all" and sec_title.lower() in excluded:
+                                continue
+                            matched_k, matched_rules = resolve_library_rules(sec_title, sec_type, library_rules_map)
+                            if matched_k == "none" or not matched_rules:
                                 continue
 
                             items_resp = await http_client.get(
@@ -3093,7 +3223,7 @@ async def detect_media_changes(
                                     item_changes = []
                                     detail_notes = []
 
-                                    if not cached or cached.get("status") != "synced":
+                                    if not cached or cached.get("status") not in ("synced", "skipped"):
                                         summary["new"] += 1
                                         changed_items.append({
                                             "id": str(rk),
@@ -3237,6 +3367,9 @@ async def detect_media_changes(
                                 continue
                             if library == "all" and any(lib_name.lower() == str(ex).lower() for ex in excluded):
                                 continue
+                            matched_k, matched_rules = resolve_library_rules(lib_name, "movie", library_rules_map)
+                            if matched_k == "none" or not matched_rules:
+                                continue
 
                             items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
                             it_resp = await http_client.get(items_url, headers=headers)
@@ -3322,7 +3455,7 @@ async def detect_media_changes(
                                     item_changes = []
                                     detail_notes = []
 
-                                    if not cached or cached.get("status") != "synced":
+                                    if not cached or cached.get("status") not in ("synced", "skipped"):
                                         summary["new"] += 1
                                         changed_items.append({
                                             "id": str(it_id),
@@ -3479,7 +3612,7 @@ def _background_change_detector_loop(
     if not config_path:
         config_path = base_dir / "config.json"
     if not logs_dir:
-        logs_dir = base_dir / "logs"
+        logs_dir = base_dir / "UILogs"
 
     from dynamic_overlays_service import save_dynamic_overlays_settings
 
@@ -3493,12 +3626,45 @@ def _background_change_detector_loop(
                     time.sleep(1)
                 continue
 
+            # Verify that libraries are actually configured in config.yml
+            overlays_dir = base_dir / "Overlayfiles" / "dynamic_overlays"
+            if not overlays_dir.exists():
+                legacy = base_dir / "Overlayfiles" / "kometa"
+                if legacy.exists():
+                    overlays_dir = legacy
+            config_yml = overlays_dir / "configs" / "config.yml"
+            has_configured_libs = False
+            if config_yml.exists():
+                try:
+                    import yaml
+                    with open(config_yml, "r", encoding="utf-8") as yf:
+                        raw_cfg = yaml.safe_load(yf) or {}
+                        raw_libs = raw_cfg.get("libraries", {})
+                        if isinstance(raw_libs, dict):
+                            for _, l_data in raw_libs.items():
+                                if isinstance(l_data, dict) and (l_data.get("overlay_files") or l_data.get("overlays")):
+                                    has_configured_libs = True
+                                    break
+                except Exception:
+                    pass
+
+            if not has_configured_libs:
+                for _ in range(30):
+                    if not _change_detector_running:
+                        break
+                    time.sleep(1)
+                continue
+
             interval_mins = max(5, int(settings.get("change_detection_interval_minutes", 60)))
             last_run_str = settings.get("last_change_detection_at")
             should_run = False
 
             if not last_run_str:
-                should_run = True
+                # First run after enabling: record timestamp so we do not trigger an immediate sync
+                save_dynamic_overlays_settings({
+                    "last_change_detection_at": datetime.now().isoformat()
+                })
+                should_run = False
             else:
                 try:
                     last_run_dt = datetime.fromisoformat(last_run_str)

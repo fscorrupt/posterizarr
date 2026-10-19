@@ -9,7 +9,7 @@
  * ==============================================================================
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -637,16 +637,90 @@ export default function DynamicOverlays() {
 
   // Dedicated Dynamic Overlay Sync state
   const [syncScope, setSyncScope] = useState("incremental"); // "incremental" or "all"
-  const [syncServer, setSyncServer] = useState("all"); // "all", "plex", "jellyfin", "emby"
-  const [syncLibrary, setSyncLibrary] = useState("all"); // "all" or specific
+  const [syncServer, setSyncServer] = useState(""); // dynamically set based on enabledServers
+  const [syncLibrary, setSyncLibrary] = useState(""); // dynamically set based on configuredLibraries
   const [isOverlaySyncRunning, setIsOverlaySyncRunning] = useState(false);
   const [overlaySyncStatus, setOverlaySyncStatus] = useState(null);
-  const [autoOverlaySync, setAutoOverlaySync] = useState(true);
+  const [autoOverlaySync, setAutoOverlaySync] = useState(false);
   const [isSavingAutoSync, setIsSavingAutoSync] = useState(false);
   const [overlaySyncLogs, setOverlaySyncLogs] = useState([]);
   const [isSyncLogExpanded, setIsSyncLogExpanded] = useState(false);
   const [isAutoScrollLogs, setIsAutoScrollLogs] = useState(true);
   const syncLogsRef = useRef(null);
+
+  // Dynamically compute enabled media servers from Posterizarr server configuration
+  const enabledServers = useMemo(() => {
+    if (!serverConfig) return [];
+    const list = [];
+
+    // Plex
+    const plexUse = serverConfig.UsePlex ?? serverConfig.PlexPart?.UsePlex;
+    const plexUrl = serverConfig.PlexUrl || serverConfig.PlexPart?.PlexUrl;
+    const isPlexEnabled = (plexUse === true || String(plexUse).toLowerCase() === "true" || plexUse === 1) && Boolean(plexUrl);
+    if (isPlexEnabled) {
+      list.push({ id: "plex", name: "Plex Media Server" });
+    }
+
+    // Jellyfin
+    const jfUse = serverConfig.UseJellyfin ?? serverConfig.JellyfinPart?.UseJellyfin;
+    const jfUrl = serverConfig.JellyfinUrl || serverConfig.JellyfinPart?.JellyfinUrl;
+    const isJfEnabled = (jfUse === true || String(jfUse).toLowerCase() === "true" || jfUse === 1) && Boolean(jfUrl);
+    if (isJfEnabled) {
+      list.push({ id: "jellyfin", name: "Jellyfin" });
+    }
+
+    // Emby
+    const embyUse = serverConfig.UseEmby ?? serverConfig.EmbyPart?.UseEmby;
+    const embyUrl = serverConfig.EmbyUrl || serverConfig.EmbyPart?.EmbyUrl;
+    const isEmbyEnabled = (embyUse === true || String(embyUse).toLowerCase() === "true" || embyUse === 1) && Boolean(embyUrl);
+    if (isEmbyEnabled) {
+      list.push({ id: "emby", name: "Emby" });
+    }
+
+    return list;
+  }, [serverConfig]);
+
+  // Dynamically compute user-configured libraries from visual studio and scanned rules
+  const configuredLibraries = useMemo(() => {
+    const libSet = new Set();
+    if (visualConfig?.libraries && typeof visualConfig.libraries === "object") {
+      Object.keys(visualConfig.libraries).forEach((k) => {
+        if (k && k.trim()) libSet.add(k.trim());
+      });
+    }
+    if (scanData?.libraries && typeof scanData.libraries === "object") {
+      Object.keys(scanData.libraries).forEach((k) => {
+        if (k && k.trim()) libSet.add(k.trim());
+      });
+    }
+    return Array.from(libSet).sort();
+  }, [visualConfig, scanData]);
+
+  // Sync server auto-selection: default to single enabled server or 'all' if multiple
+  useEffect(() => {
+    if (enabledServers.length === 0) {
+      setSyncServer("");
+    } else if (enabledServers.length === 1) {
+      setSyncServer(enabledServers[0].id);
+    } else {
+      if (syncServer !== "all" && !enabledServers.some((s) => s.id === syncServer)) {
+        setSyncServer("all");
+      }
+    }
+  }, [enabledServers]);
+
+  // Sync library auto-selection: default to single configured library or 'all' if multiple
+  useEffect(() => {
+    if (configuredLibraries.length === 0) {
+      setSyncLibrary("");
+    } else if (configuredLibraries.length === 1) {
+      setSyncLibrary(configuredLibraries[0]);
+    } else {
+      if (syncLibrary !== "all" && !configuredLibraries.includes(syncLibrary)) {
+        setSyncLibrary("all");
+      }
+    }
+  }, [configuredLibraries]);
 
   useEffect(() => {
     if (isAutoScrollLogs && syncLogsRef.current) {
@@ -725,20 +799,30 @@ export default function DynamicOverlays() {
   };
 
   const handleTriggerOverlaySync = async (targetScope = syncScope, targetServer = syncServer, targetLib = syncLibrary) => {
+    if (configuredLibraries.length === 0) {
+      showError("No libraries configured in Dynamic Overlays yet. Please configure a library before syncing.");
+      return;
+    }
+    if (enabledServers.length === 0) {
+      showError("No media server is configured or enabled in Posterizarr settings.");
+      return;
+    }
+    const finalServer = targetServer || (enabledServers.length === 1 ? enabledServers[0].id : "all");
+    const finalLib = targetLib || (configuredLibraries.length === 1 ? configuredLibraries[0] : "all");
     try {
       setIsOverlaySyncRunning(true);
       const res = await fetch("/api/dynamic-overlays/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          target_server: targetServer,
+          target_server: finalServer,
           scope: targetScope,
-          library: targetLib
+          library: finalLib
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showSuccess(`Started Dynamic Overlay Sync (${targetScope.toUpperCase()}) for ${targetServer.toUpperCase()}!`);
+        showSuccess(`Started Dynamic Overlay Sync (${targetScope.toUpperCase()}) for ${finalServer.toUpperCase()}!`);
         setIsApplyModalOpen(false);
         fetchOverlaySyncStatus();
       } else {
@@ -784,11 +868,21 @@ export default function DynamicOverlays() {
   };
 
   const handleDetectChanges = async (targetServer = syncServer, targetLib = syncLibrary) => {
+    if (configuredLibraries.length === 0) {
+      showError("No libraries configured in Dynamic Overlays yet. Please configure a library before scanning.");
+      return;
+    }
+    if (enabledServers.length === 0) {
+      showError("No media server is configured or enabled in Posterizarr settings.");
+      return;
+    }
+    const finalServer = targetServer || (enabledServers.length === 1 ? enabledServers[0].id : "all");
+    const finalLib = targetLib || (configuredLibraries.length === 1 ? configuredLibraries[0] : "all");
     try {
       setIsDetectingChanges(true);
       const params = new URLSearchParams({
-        target_server: targetServer || "all",
-        library: targetLib || "all"
+        target_server: finalServer,
+        library: finalLib
       });
       const res = await fetch(`/api/dynamic-overlays/detect-changes?${params.toString()}`);
       const data = await res.json();
@@ -811,19 +905,29 @@ export default function DynamicOverlays() {
   };
 
   const handleSyncChangedOnly = async (targetServer = syncServer, targetLib = syncLibrary) => {
+    if (configuredLibraries.length === 0) {
+      showError("No libraries configured in Dynamic Overlays yet. Please configure a library before syncing.");
+      return;
+    }
+    if (enabledServers.length === 0) {
+      showError("No media server is configured or enabled in Posterizarr settings.");
+      return;
+    }
+    const finalServer = targetServer || (enabledServers.length === 1 ? enabledServers[0].id : "all");
+    const finalLib = targetLib || (configuredLibraries.length === 1 ? configuredLibraries[0] : "all");
     try {
       setIsSyncingChanged(true);
       const res = await fetch("/api/dynamic-overlays/sync-changed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          target_server: targetServer || "all",
-          library: targetLib || "all"
+          target_server: finalServer,
+          library: finalLib
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showSuccess(`Sync started for modified media items (${(targetServer || "all").toUpperCase()})!`);
+        showSuccess(`Sync started for modified media items (${finalServer.toUpperCase()})!`);
         setIsChangeModalOpen(false);
         setIsOverlaySyncRunning(true);
         fetchOverlaySyncStatus();
@@ -1352,6 +1456,14 @@ export default function DynamicOverlays() {
             setWizardStep(1);
             setIsWizardOpen(true);
           }
+        } else {
+          setIsApplyModalOpen(false);
+          setIsChangeModalOpen(false);
+          setIsWizardOpen(false);
+          setIsOverlayCacheModalOpen(false);
+          setIsRatingsCacheModalOpen(false);
+          setIsClearCacheModalOpen(false);
+          setIsAddAnimeModalOpen(false);
         }
       } else {
         showError(data.error || "Failed to update master setting.");
@@ -8292,7 +8404,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* TAB 4: CACHE & SYNC */}
       {/* ========================================================================= */}
-      {(activeTab === "sync" || activeTab === "cache") && (
+      {featureSettings?.enabled && (activeTab === "sync" || activeTab === "cache") && (
         <div className="space-y-6">
           {/* AUTOMATED RUN ON NEW MEDIA CARD */}
           <div className="bg-theme-card border border-theme rounded-xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -8349,7 +8461,7 @@ export default function DynamicOverlays() {
                 <button
                   type="button"
                   onClick={() => handleDetectChanges()}
-                  disabled={isDetectingChanges || isOverlaySyncRunning}
+                  disabled={isDetectingChanges || isOverlaySyncRunning || configuredLibraries.length === 0 || enabledServers.length === 0}
                   className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text text-xs font-medium transition-all shadow-sm disabled:opacity-50"
                   title="Quick bulk check for audio language updates, edition cuts, runtime changes, and show status"
                 >
@@ -8362,14 +8474,15 @@ export default function DynamicOverlays() {
                 </button>
                 <button
                   onClick={() => setIsApplyModalOpen(true)}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text text-xs font-medium transition-all shadow-sm"
+                  disabled={configuredLibraries.length === 0 || enabledServers.length === 0}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text text-xs font-medium transition-all shadow-sm disabled:opacity-50"
                 >
                   <Sliders className="w-3.5 h-3.5 text-theme-primary" />
                   Sync Wizard
                 </button>
                 <button
                   onClick={() => handleTriggerOverlaySync()}
-                  disabled={isOverlaySyncRunning}
+                  disabled={isOverlaySyncRunning || configuredLibraries.length === 0 || enabledServers.length === 0}
                   className="flex items-center gap-2 px-5 py-2 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
                 >
                   {isOverlaySyncRunning ? (
@@ -8381,6 +8494,24 @@ export default function DynamicOverlays() {
                 </button>
               </div>
             </div>
+
+            {/* Warnings when no libraries or servers configured */}
+            {configuredLibraries.length === 0 && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>
+                  No libraries are configured in Dynamic Overlays yet. Configure a library in <strong>Libraries &amp; Rules</strong> or <strong>Visual Badges</strong> before syncing.
+                </span>
+              </div>
+            )}
+            {enabledServers.length === 0 && (
+              <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>
+                  No media server is configured or enabled. Please enable Plex, Jellyfin, or Emby in Settings before running sync.
+                </span>
+              </div>
+            )}
 
             {/* Scope, Server, and Library Selectors */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -8433,12 +8564,22 @@ export default function DynamicOverlays() {
                 <select
                   value={syncServer}
                   onChange={(e) => setSyncServer(e.target.value)}
-                  className="w-full bg-theme-hover/60 border border-theme rounded-xl px-3 py-2.5 text-xs text-theme-text font-medium"
+                  disabled={enabledServers.length === 0}
+                  className="w-full bg-theme-hover/60 border border-theme rounded-xl px-3 py-2.5 text-xs text-theme-text font-medium disabled:opacity-50"
                 >
-                  <option value="all">All Configured Servers (Plex, Jellyfin, Emby)</option>
-                  <option value="plex">Plex Media Server</option>
-                  <option value="jellyfin">Jellyfin</option>
-                  <option value="emby">Emby</option>
+                  {enabledServers.length === 0 && (
+                    <option value="">No Media Server Configured / Enabled</option>
+                  )}
+                  {enabledServers.length > 1 && (
+                    <option value="all">
+                      All Configured Servers ({enabledServers.map((s) => s.name).join(", ")})
+                    </option>
+                  )}
+                  {enabledServers.map((srv) => (
+                    <option key={srv.id} value={srv.id}>
+                      {srv.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -8451,19 +8592,22 @@ export default function DynamicOverlays() {
                 <select
                   value={syncLibrary}
                   onChange={(e) => setSyncLibrary(e.target.value)}
-                  className="w-full bg-theme-hover/60 border border-theme rounded-xl px-3 py-2.5 text-xs text-theme-text font-medium"
+                  disabled={configuredLibraries.length === 0}
+                  className="w-full bg-theme-hover/60 border border-theme rounded-xl px-3 py-2.5 text-xs text-theme-text font-medium disabled:opacity-50"
                 >
-                  <option value="all">All Included Libraries</option>
-                  {Object.keys(scanData?.libraries || {}).map((libName) => (
-                    <option key={libName} value={libName}>{libName}</option>
+                  {configuredLibraries.length === 0 && (
+                    <option value="">No Libraries Configured Yet</option>
+                  )}
+                  {configuredLibraries.length > 1 && (
+                    <option value="all">
+                      All Configured Libraries ({configuredLibraries.length})
+                    </option>
+                  )}
+                  {configuredLibraries.map((libName) => (
+                    <option key={libName} value={libName}>
+                      {libName}
+                    </option>
                   ))}
-                  {/* Fallback default library options */}
-                  {!scanData?.libraries?.PosterizarrTestMovies && (
-                    <option value="PosterizarrTestMovies">PosterizarrTestMovies</option>
-                  )}
-                  {!scanData?.libraries?.PosterizarrTestShows && (
-                    <option value="PosterizarrTestShows">PosterizarrTestShows</option>
-                  )}
                 </select>
               </div>
             </div>
@@ -8544,14 +8688,14 @@ export default function DynamicOverlays() {
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={() => handleTriggerOverlaySync("incremental")}
-                  disabled={isOverlaySyncRunning}
+                  disabled={isOverlaySyncRunning || configuredLibraries.length === 0 || enabledServers.length === 0}
                   className="px-3.5 py-1.5 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
                 >
                   Sync Changes Only
                 </button>
                 <button
                   onClick={() => handleSyncChangedOnly()}
-                  disabled={isOverlaySyncRunning || isSyncingChanged}
+                  disabled={isOverlaySyncRunning || isSyncingChanged || configuredLibraries.length === 0 || enabledServers.length === 0}
                   className="px-3.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text text-xs font-medium transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5"
                   title="Bulk resync only items with detected language, cut, runtime, or status changes"
                 >
@@ -8560,7 +8704,7 @@ export default function DynamicOverlays() {
                 </button>
                 <button
                   onClick={() => handleTriggerOverlaySync("all")}
-                  disabled={isOverlaySyncRunning}
+                  disabled={isOverlaySyncRunning || configuredLibraries.length === 0 || enabledServers.length === 0}
                   className="px-3.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text text-xs font-medium transition-all shadow-sm disabled:opacity-50"
                 >
                   Force Sync All Items
@@ -9120,7 +9264,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* TAB 5: ANIMETAFILL (ANIME OVERLAYS) */}
       {/* ========================================================================= */}
-      {activeTab === "anime" && (
+      {featureSettings?.enabled && activeTab === "anime" && (
         <div className="space-y-6 animate-in fade-in duration-300">
           {/* HEADER HERO */}
           <div className="p-5 rounded-xl bg-theme-card border border-theme flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
@@ -11032,7 +11176,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL 5: DYNAMIC OVERLAYS SYNC WIZARD */}
       {/* ========================================================================= */}
-      {isApplyModalOpen && (
+      {featureSettings?.enabled && isApplyModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-theme-card border border-theme w-full max-w-xl rounded-xl p-6 shadow-2xl flex flex-col space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-theme/60">
@@ -11063,6 +11207,24 @@ export default function DynamicOverlays() {
                 Your original artwork files stay clean and untouched in your folders. Overlays are placed on top only when uploading to your media server.
               </p>
             </div>
+
+            {/* Warnings when unconfigured */}
+            {configuredLibraries.length === 0 && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>
+                  No libraries are configured in Dynamic Overlays yet. Please configure a library before syncing.
+                </span>
+              </div>
+            )}
+            {enabledServers.length === 0 && (
+              <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>
+                  No media server is configured or enabled. Please enable Plex, Jellyfin, or Emby in Settings.
+                </span>
+              </div>
+            )}
 
             {/* Execution Scope Selection */}
             <div className="space-y-2">
@@ -11118,12 +11280,22 @@ export default function DynamicOverlays() {
                 <select
                   value={syncServer}
                   onChange={(e) => setSyncServer(e.target.value)}
-                  className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
+                  disabled={enabledServers.length === 0}
+                  className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium disabled:opacity-50"
                 >
-                  <option value="all">All Configured Servers</option>
-                  <option value="plex">Plex Media Server</option>
-                  <option value="jellyfin">Jellyfin</option>
-                  <option value="emby">Emby</option>
+                  {enabledServers.length === 0 && (
+                    <option value="">No Media Server Configured / Enabled</option>
+                  )}
+                  {enabledServers.length > 1 && (
+                    <option value="all">
+                      All Configured Servers ({enabledServers.map((s) => s.name).join(", ")})
+                    </option>
+                  )}
+                  {enabledServers.map((srv) => (
+                    <option key={srv.id} value={srv.id}>
+                      {srv.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -11134,18 +11306,20 @@ export default function DynamicOverlays() {
                 <select
                   value={syncLibrary}
                   onChange={(e) => setSyncLibrary(e.target.value)}
-                  className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
+                  disabled={configuredLibraries.length === 0}
+                  className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium disabled:opacity-50"
                 >
-                  <option value="all">All Configured Libraries</option>
-                  {Object.keys(scanData?.libraries || {}).map((libName) => (
+                  {configuredLibraries.length === 0 && (
+                    <option value="">No Libraries Configured Yet</option>
+                  )}
+                  {configuredLibraries.length > 1 && (
+                    <option value="all">
+                      All Configured Libraries ({configuredLibraries.length})
+                    </option>
+                  )}
+                  {configuredLibraries.map((libName) => (
                     <option key={libName} value={libName}>{libName}</option>
                   ))}
-                  {!scanData?.libraries?.PosterizarrTestMovies && (
-                    <option value="PosterizarrTestMovies">PosterizarrTestMovies</option>
-                  )}
-                  {!scanData?.libraries?.PosterizarrTestShows && (
-                    <option value="PosterizarrTestShows">PosterizarrTestShows</option>
-                  )}
                 </select>
               </div>
             </div>
@@ -11184,7 +11358,7 @@ export default function DynamicOverlays() {
                 <button
                   type="button"
                   onClick={() => handleTriggerOverlaySync(syncScope, syncServer, syncLibrary)}
-                  disabled={isOverlaySyncRunning}
+                  disabled={isOverlaySyncRunning || configuredLibraries.length === 0 || enabledServers.length === 0}
                   className="flex items-center gap-2 px-5 py-2 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white text-xs font-semibold shadow-sm disabled:opacity-50 transition-all"
                 >
                   {isOverlaySyncRunning ? (
@@ -11203,7 +11377,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL 6: ADD / OVERRIDE ANIME CLASSIFICATION */}
       {/* ========================================================================= */}
-      {isAddAnimeModalOpen && (
+      {featureSettings?.enabled && isAddAnimeModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-theme-card border border-theme rounded-xl w-full max-w-md shadow-2xl overflow-hidden space-y-4 p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
@@ -11310,7 +11484,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL: CLEAR / RESET OVERLAY CACHE CONFIRMATION */}
       {/* ========================================================================= */}
-      {isClearCacheModalOpen && (
+      {featureSettings?.enabled && isClearCacheModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-theme-card border border-theme rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3.5">
@@ -11361,7 +11535,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL 1: OVERLAY CACHE BROWSER */}
       {/* ========================================================================= */}
-      {isOverlayCacheModalOpen && (
+      {featureSettings?.enabled && isOverlayCacheModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
@@ -11715,7 +11889,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL 2: RATINGS CACHE & AUTO-REFRESH BROWSER */}
       {/* ========================================================================= */}
-      {isRatingsCacheModalOpen && (
+      {featureSettings?.enabled && isRatingsCacheModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
@@ -12184,7 +12358,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL 3: FAST MEDIA CHANGE AUTODETECTION RESULTS */}
       {/* ========================================================================= */}
-      {isChangeModalOpen && (
+      {featureSettings?.enabled && isChangeModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}

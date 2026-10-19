@@ -350,8 +350,8 @@ def load_webui_settings():
         "log_level": "INFO",
         "theme": "dark",
         "auto_refresh_interval": 180,
-        "auto_overlay_sync": True,
-        "auto_kometa_overlay_sync": True,
+        "auto_overlay_sync": False,
+        "auto_kometa_overlay_sync": False,
     }
 
     try:
@@ -2309,7 +2309,7 @@ async def lifespan(app: FastAPI):
     # Start Dynamic Overlays background change detector
     try:
         from overlay_sync_service import start_overlay_change_detector_background
-        start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=LOGS_DIR)
+        start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
     except Exception as e:
         logger.warning(f"Could not start dynamic overlays change detector: {e}")
 
@@ -5950,8 +5950,16 @@ async def get_upload_diagnostics():
 def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental"):
     """Auto-trigger Dynamic Overlays Sync in background when new media is created."""
     try:
+        # Check master Dynamic Overlays feature setting first
+        try:
+            from dynamic_overlays_service import is_dynamic_overlays_enabled
+            if not is_dynamic_overlays_enabled():
+                return
+        except Exception:
+            return
+
         webui_cfg = load_webui_settings()
-        if not webui_cfg.get("auto_overlay_sync", webui_cfg.get("auto_kometa_overlay_sync", True)):
+        if not webui_cfg.get("auto_overlay_sync", webui_cfg.get("auto_kometa_overlay_sync", False)):
             return
 
         try:
@@ -5977,7 +5985,7 @@ def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental"):
                         library="all",
                         base_dir=BASE_DIR,
                         config_path=CONFIG_PATH,
-                        log_file_path=LOGS_DIR / "DynamicOverlaysSync.log"
+                        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log"
                     )
                 )
             except Exception as task_err:
@@ -8706,9 +8714,15 @@ def get_safe_log_path(log_name: Optional[str]) -> Optional[Path]:
     if not LOG_FILENAME_RE.fullmatch(clean_name):
         return None
 
+    # Check known log targets first if present in KNOWN_LOG_FILES
+    if clean_name in KNOWN_LOG_FILES:
+        target_path = KNOWN_LOG_FILES[clean_name]
+        if target_path.exists():
+            return target_path.resolve(strict=False)
+
     # Build allowlist of existing log files from trusted directories
     allowed_logs: Dict[str, Path] = {}
-    for base_dir in (LOGS_DIR, UI_LOGS_DIR):
+    for base_dir in (UI_LOGS_DIR, LOGS_DIR):
         if not base_dir.exists():
             continue
         for candidate in base_dir.glob("*.log"):
@@ -20311,6 +20325,16 @@ async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
     - scope="all": Full sync (re-evaluates and pushes all assets).
     """
     try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled. Enable it in the Master Switch before syncing.",
+                "is_enabled": False
+            }
+    except Exception as e:
+        logger.debug(f"[OverlaySync] Check dynamic overlays enabled error: {e}")
+    try:
         from overlay_sync_service import (
             run_overlay_sync_task,
             is_overlay_sync_running
@@ -20334,7 +20358,7 @@ async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
                     library=req.library,
                     base_dir=BASE_DIR,
                     config_path=CONFIG_PATH,
-                    log_file_path=LOGS_DIR / "DynamicOverlaysSync.log"
+                    log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log"
                 )
             )
         except Exception as bg_err:
@@ -20364,7 +20388,7 @@ async def get_dynamic_overlays_sync_status():
         running = False
         last_res = None
 
-    log_path = LOGS_DIR / "DynamicOverlaysSync.log"
+    log_path = UI_LOGS_DIR / "DynamicOverlaysSync.log"
     recent_logs = []
     if log_path.exists():
         try:
@@ -20412,14 +20436,21 @@ async def detect_dynamic_overlays_changes_endpoint(
 ):
     """
     Lightning-fast bulk autodetection for media updates across Plex, Jellyfin, and Emby.
-    Detects:
-    - Audio language stream updates (e.g. ['en'] -> ['de', 'en'])
-    - Edition / Cut upgrades (e.g. Director's Cut, Extended Cut)
-    - Runtime / Duration modifications (e.g. 105m -> 135m)
-    - TV Show status transitions (e.g. returning -> ended / canceled / airing)
-    - Clean artwork modifications on disk
-    - Newly added media items
     """
+    try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled. Enable it in the Master Switch first.",
+                "is_enabled": False,
+                "total_scanned": 0,
+                "changed_count": 0,
+                "changes": [],
+                "summary": {}
+            }
+    except Exception as e:
+        logger.debug(f"[DetectChanges] Check dynamic overlays enabled error: {e}")
     try:
         from overlay_sync_service import detect_media_changes
         from dynamic_overlays_service import save_dynamic_overlays_settings
@@ -20459,6 +20490,16 @@ async def sync_changed_dynamic_overlays_endpoint(req: DynamicOverlaysSyncRequest
     Triggers an on-demand Dynamic Overlays Sync for ONLY media items with detected updates.
     """
     try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled. Enable it in the Master Switch before syncing.",
+                "is_enabled": False
+            }
+    except Exception as e:
+        logger.debug(f"[OverlaySync] Check dynamic overlays enabled error: {e}")
+    try:
         from overlay_sync_service import run_overlay_sync_task, is_overlay_sync_running
         if is_overlay_sync_running():
             return {
@@ -20476,7 +20517,7 @@ async def sync_changed_dynamic_overlays_endpoint(req: DynamicOverlaysSyncRequest
                         library=req.library,
                         base_dir=BASE_DIR,
                         config_path=CONFIG_PATH,
-                        log_file_path=LOGS_DIR / "DynamicOverlaysSync.log"
+                        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log"
                     )
                 )
             except Exception as bg_err:
@@ -20702,7 +20743,7 @@ async def save_dynamic_overlays_settings_endpoint(req: DynamicOverlaysSettingsRe
         saved = save_dynamic_overlays_settings(update_dict)
         if saved.get("enabled", False) and saved.get("change_detection_enabled", True):
             from overlay_sync_service import start_overlay_change_detector_background
-            start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=LOGS_DIR)
+            start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
         return {"success": True, "settings": saved, "message": "Settings saved."}
     except Exception as e:
         return {"success": False, "error": str(e)}
