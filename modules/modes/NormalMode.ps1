@@ -7,6 +7,7 @@
         $Mode = "normal"
         Write-Entry -Message "Normal Mode Started..." -Path $global:configLogging -Color White -log Info
     }
+    $global:Mode = $Mode
     Write-Entry -Message "Query plex libs..." -Path $global:configLogging -Color White -log Info
     $retryCount = 0
     $maxRetries = 3
@@ -685,13 +686,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-MoviePosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -705,13 +709,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-ShowPosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -726,13 +733,16 @@
                 foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
                 if ($state['FanartTvAPIKey']) {
                     Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
                 }
-
                 function Runspace-Initialized {}
             }
             $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
             & $StateAssignerSb
+
+            if ($state['FanartTvAPIKey']) {
+                Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+            }
 
             Invoke-TitleCardCreation -episode $_
         } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -975,6 +985,21 @@
     }
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "up" -ping $executionTime.TotalMilliseconds
+    }
+
+    # Notify Dynamic Overlays service to composite and push newly created artwork
+    if ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled) {
+        try {
+            $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
+            $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
+            $body = @{
+                target_server = "all"
+                scope = "incremental"
+                library = "all"
+            } | ConvertTo-Json
+            Invoke-RestMethod -Uri $syncUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction SilentlyContinue | Out-Null
+            Write-Entry -Subtext "Notified Dynamic Overlays service to composite and push new artwork." -Path $global:configLogging -Color DarkMagenta -log Info
+        } catch {}
     }
 
 

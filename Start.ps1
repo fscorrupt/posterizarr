@@ -379,6 +379,16 @@ function CopyAssetFiles {
             }
         }
 
+        # Seed Overlayfiles/dynamic_overlays directory structure if present in APP_ROOT
+        $srcDynOverlays = "$env:APP_ROOT/Overlayfiles/dynamic_overlays"
+        $destDynOverlays = Join-Path -Path $overlayDir -ChildPath "dynamic_overlays"
+        if (Test-Path $srcDynOverlays) {
+            if (-not (Test-Path $destDynOverlays)) {
+                Copy-Item -Path $srcDynOverlays -Destination $overlayDir -Recurse -Force -ErrorAction SilentlyContinue
+                Write-Host "Initialized dynamic_overlays in $overlayDir" -ForegroundColor Green
+            }
+        }
+
         # Summary
         Write-Host "Copied $copiedCount new asset files" -ForegroundColor Cyan
         Write-Host "Skipped $skippedCount files (already exist or not needed)" -ForegroundColor Gray
@@ -670,7 +680,7 @@ if ($CurrentUID -eq "0") {
 CompareScriptVersion
 
 # Creating Folder structure
-$folders = @("$env:APP_DATA/Logs", "$env:APP_DATA/temp", "$env:APP_DATA/watcher", "$env:APP_DATA/test", "$env:APP_DATA/Overlayfiles")
+$folders = @("$env:APP_DATA/Logs", "$env:APP_DATA/temp", "$env:APP_DATA/watcher", "$env:APP_DATA/test", "$env:APP_DATA/Overlayfiles", "$env:APP_DATA/dynamic_overlays")
 $createdFolders = @()
 $allPresent = $true
 
@@ -742,6 +752,22 @@ Else {
 
 # Ensure WebUI config
 Ensure-WebUIConfig -jsonFilePath $configFile
+
+# Ensure Dynamic Overlays configuration files in writable APP_DATA/dynamic_overlays
+$dynDir = Join-Path -Path $configDir -ChildPath "dynamic_overlays"
+if (-not (Test-Path $dynDir)) {
+    $null = New-Item -Path $dynDir -ItemType Directory -Force -ErrorAction SilentlyContinue
+}
+$dynSrcDir = if (Test-Path "$env:APP_ROOT/dynamic_overlays") { "$env:APP_ROOT/dynamic_overlays" } else { "$global:ScriptRoot/dynamic_overlays" }
+$dynFiles = @("dynamic_overlays_settings.json", "dynamic_overlays_visual_config.json", "animetafill_config.json")
+foreach ($dynFile in $dynFiles) {
+    $dynDest = Join-Path -Path $dynDir -ChildPath $dynFile
+    $dynSrc = Join-Path -Path $dynSrcDir -ChildPath $dynFile
+    if (-not (Test-Path $dynDest) -and (Test-Path $dynSrc)) {
+        Copy-Item -Path $dynSrc -Destination $dynDest -Force -ErrorAction SilentlyContinue
+        Write-Host "    Initialized $dynFile in $dynDir" -ForegroundColor Green
+    }
+}
 
 # Rest of your script continues here
 Write-Host "Config check complete. Proceeding with script..."

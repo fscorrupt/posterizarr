@@ -1249,7 +1249,13 @@
       "normal": "Standard-Durchlauf",
       "syncjelly": "Jellyfin synchronisieren",
       "syncemby": "Emby synchronisieren",
-      "backup": "Backup"
+      "backup": "Backup",
+      "logoupdater": "Logo-Updater",
+      "plexsync": "Plex synchronisieren",
+      "kometadefaults": "Overlay-Standardwerte (GitHub)",
+      "overlaydefaults": "Overlay-Standardwerte (GitHub)",
+      "dynamicoverlays": "Dynamische Overlays synchronisieren",
+      "animetafill": "AniMetaFill Anime-Synchronisation"
     },
     "updating": "Aktualisiere...",
     "enabled": "Aktiviert",

@@ -5,7 +5,7 @@ import {
   Activity, Play, Image, Settings, Clock, FileText, Info, Menu, X,
   ChevronDown, ChevronRight, Film, Layers, Tv, Database, Server,
   Palette, Bell, Lock, User, FileImage, Lightbulb, AlertTriangle,
-  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer
+  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer, Sparkles
 } from "lucide-react";
 import VersionBadge from "./VersionBadge";
 import { useSidebar } from "../context/SidebarContext";
@@ -147,6 +147,7 @@ const Sidebar = () => {
         { path: "/media-server-collections", label: "Collection Builder", icon: Layers },
         { path: "/media-server-logos", label: "Logo Builder", icon: Image },
         { path: "/assets-manager", label: "Overlay Builder", icon: Layers },
+        { path: "/dynamic-overlays", label: "Dynamic Overlays", icon: Sparkles },
         { path: "/blueprints", label: "Blueprint Builder", icon: Layers }
       ]
     },
@@ -183,7 +184,7 @@ const Sidebar = () => {
   const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
   const isInMediaServerSection = location.pathname.startsWith("/media-server-export");
   const isInConfigSection = location.pathname.startsWith("/config");
-  const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/blueprints");
+  const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/dynamic-overlays") || location.pathname.startsWith("/blueprints");
 
   return (
     <>

@@ -427,6 +427,16 @@ $AssetPath = RemoveTrailingSlash $config.PrerequisitePart.AssetPath
 $BackupPath = RemoveTrailingSlash $config.PrerequisitePart.BackupPath
 $ManualAssetPath = RemoveTrailingSlash $config.PrerequisitePart.ManualAssetPath
 $Upload2Plex = "$($config.PrerequisitePart.PlexUpload)".ToLower()
+
+# Check if Dynamic Overlays is enabled
+$global:DynamicOverlaysEnabled = Get-DynamicOverlaysEnabled
+$DynamicOverlaysEnabled = $global:DynamicOverlaysEnabled
+
+if ($global:DynamicOverlaysEnabled) {
+    $Upload2Plex = 'false'
+    $global:UploadExistingAssets = 'false'
+    Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct media server uploads (Upload2Plex=false, UploadExistingAssets=false). Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+}
 $SkipAddText = "$($config.PrerequisitePart.SkipAddText)".ToLower()
 $SkipLocalPosterTextAdd = "$($config.PrerequisitePart.SkipLocalPosterTextAdd)".ToLower()
 $SkipLocalBackgroundTextAdd = "$($config.PrerequisitePart.SkipLocalBackgroundTextAdd)".ToLower()

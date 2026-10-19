@@ -7,6 +7,11 @@ function UploadOtherMediaServerArtwork {
         [switch]$SkipExifCheck # Added optional parameter
     )
 
+    if ($global:DynamicOverlaysEnabled -eq $true -or $DynamicOverlaysEnabled -eq $true) {
+        Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct Jellyfin/Emby upload for item $itemId ($imageType). Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+        return
+    }
+
     $userAssetType = $imageType
     if ($imageType -eq 'Backdrop') {
         $userAssetType = "Background"
@@ -200,7 +205,7 @@ function Push-PlexAsset {
         Write-Entry -Subtext "Restoring $Type for $RatingKey from $AssetPath" -Path $global:configLogging -Color Cyan -log Info
         $uri = "$PlexUrl/library/metadata/$RatingKey/$Type"
         try {
-            Invoke-RestMethod -Uri $uri -Method Post -InFile $AssetPath -ContentType "image/jpeg" -Headers $PlexHeaders
+            Invoke-RestMethod -Uri $uri -Method Post -InFile ([Management.Automation.WildcardPattern]::Escape($AssetPath)) -ContentType "image/jpeg" -Headers $PlexHeaders
             Write-Entry -Subtext "$Type successfully restored for $RatingKey..." -Path $global:configLogging -Color Green -log Info
             return $true
         } catch {

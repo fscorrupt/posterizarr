@@ -4,6 +4,7 @@
     $matched = 0
     $OriginalLibraryName = $LibraryName
     $Mode = "logoupdater"
+    $global:Mode = "logoupdater"
     Write-Entry -Message "LogoUpdater Mode Started..." -Path $global:configLogging -Color White -log Info
 
 
@@ -574,7 +575,7 @@
                         $Upload = Invoke-WebRequest -Uri $uploadUri `
                             -Method Post `
                             -Headers $extraPlexHeaders `
-                            -InFile $tempLogo `
+                            -InFile ([Management.Automation.WildcardPattern]::Escape($tempLogo)) `
 -ContentType 'image/jpeg' `
                             -SkipHttpErrorCheck `
                             -ErrorAction Stop

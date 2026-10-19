@@ -1248,7 +1248,13 @@
       "normal": "Exécution standard",
       "syncjelly": "Synchroniser Jellyfin",
       "syncemby": "Synchroniser Emby",
-      "backup": "Sauvegarde"
+      "backup": "Sauvegarde",
+      "logoupdater": "Mise à jour des logos",
+      "plexsync": "Synchroniser Plex",
+      "kometadefaults": "Paramètres par défaut Overlay (GitHub)",
+      "overlaydefaults": "Paramètres par défaut Overlay (GitHub)",
+      "dynamicoverlays": "Synchronisation des overlays dynamiques",
+      "animetafill": "Synchronisation Anime AniMetaFill"
     },
     "updating": "Mise à jour...",
     "enabled": "Activé",

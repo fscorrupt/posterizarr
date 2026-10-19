@@ -1,5 +1,6 @@
 function MassDownloadPlexArtwork {
     $Mode = "backup"
+    $global:Mode = "backup"
     Write-Entry -Message "Backup Mode Started..." -Path $global:configLogging -Color White -log Info
     Write-Entry -Message "Query plex libs..." -Path $global:configLogging -Color White -log Info
     $Libsoverview = [System.Collections.Generic.List[object]]::new()
@@ -564,7 +565,7 @@ function MassDownloadPlexArtwork {
                 if ($global:Posters -eq 'true') {
                     $checkedItems.Add($hashtestpath)
 
-                    if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         # Define Global Variables
                         $SkippingText = 'false'
                         $global:tmdbid = $entry.tmdbid
@@ -687,7 +688,7 @@ function MassDownloadPlexArtwork {
                     $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                     $checkedItems.Add($hashtestpath)
 
-                    if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         # Define Global Variables
                         $SkippingText = 'false'
                         $global:tmdbid = $entry.tmdbid
@@ -889,7 +890,7 @@ function MassDownloadPlexArtwork {
             if ($global:Posters -eq 'true') {
                 $checkedItems.Add($hashtestpath)
 
-                if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                     $Arturl = $null
                     if ($entry.PlexPosterUrl -like "/library/*") {
                         $Arturl = $plexurl + $entry.PlexPosterUrl
@@ -1002,7 +1003,7 @@ function MassDownloadPlexArtwork {
                 $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                 $checkedItems.Add($hashtestpath)
 
-                if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                     # Define Global Variables
                     $SkippingText = 'false'
                     $global:tmdbid = $entry.tmdbid
@@ -1170,7 +1171,7 @@ function MassDownloadPlexArtwork {
                     $SeasonImage = $SeasonImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                     $checkedItems.Add($hashtestpath)
 
-                    if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         $Arturl = $null
                         if ($global:PlexSeasonUrl -like "/library/*") {
                             $Arturl = $plexurl + $global:PlexSeasonUrl
@@ -1332,7 +1333,7 @@ function MassDownloadPlexArtwork {
                             $cjkTitlePattern = '[\p{IsHiragana}\p{IsKatakana}\p{IsCJKUnifiedIdeographs}\p{IsThai}]'
                             $checkedItems.Add($hashtestpath)
 
-                            if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                            if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                                 $Arturl = $null
                                 if ($global:PlexTitleCardUrl -like "/library/*") {
                                     $Arturl = $plexurl + $global:PlexTitleCardUrl

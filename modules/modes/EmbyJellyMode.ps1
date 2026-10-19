@@ -28,6 +28,7 @@
         $Mode = "normal"
         Write-Entry -Message "Normal Mode Started..." -Path $global:configLogging -Color White -log Info
     }
+    $global:Mode = $Mode
 
     Write-Entry -Message "Query Jellyfin/Emby..." -Path $global:configLogging -Color White -log Info
     Write-Entry -Message "Query all items from all Libs, this can take a while..." -Path $global:configLogging -Color White -log Info
@@ -674,13 +675,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-MoviePosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -694,13 +698,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-ShowPosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -714,13 +721,16 @@
                 foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
                 if ($state['FanartTvAPIKey']) {
                     Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
                 }
-
                 function Runspace-Initialized {}
             }
             $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
             & $StateAssignerSb
+
+            if ($state['FanartTvAPIKey']) {
+                Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+            }
 
             Invoke-TitleCardCreation -episode $_
         } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })

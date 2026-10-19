@@ -44,6 +44,7 @@ class LogsWatcher:
         broadcast_callback=None,
         loop=None,
         assets_dir: Optional[Path] = None,
+        on_run_complete_callback=None,
     ):
         """
         Initialize the logs watcher
@@ -56,6 +57,7 @@ class LogsWatcher:
             broadcast_callback: Async callback to broadcast asset events to WebSocket clients
             loop: Running asyncio event loop for threadsafe dispatch
             assets_dir: Path to the assets directory
+            on_run_complete_callback: Callback triggered when a run completes (e.g. dynamic overlays sync)
         """
         self.logs_dir = Path(logs_dir)
         self.db = db_instance
@@ -64,6 +66,7 @@ class LogsWatcher:
         self.broadcast_callback = broadcast_callback
         self.loop = loop
         self.assets_dir = Path(assets_dir) if assets_dir else None
+        self.on_run_complete_callback = on_run_complete_callback
         self.csv_broadcast_lock = threading.Lock()
         self.last_csv_row_count = 0
         self.last_first_row_sig = ""
@@ -950,6 +953,14 @@ class LogsWatcher:
 
                     # Also check for any new image choices appended during this run
                     self._process_new_imagechoices_and_broadcast()
+
+                    # Auto-trigger Dynamic Overlays Sync if callback configured
+                    if getattr(self, "on_run_complete_callback", None):
+                        try:
+                            logger.info(f"[LogsWatcher] Auto-triggering Dynamic Overlays sync after {mode} completion...")
+                            self.on_run_complete_callback(source=f"watcher {mode} completion")
+                        except Exception as sync_err:
+                            logger.error(f"[LogsWatcher] Error triggering overlay sync: {sync_err}")
                 else:
                     logger.warning(f"[WARN]  No runtime data parsed from {json_path.name}")
 
@@ -1258,6 +1269,7 @@ def create_logs_watcher(
     broadcast_callback=None,
     loop=None,
     assets_dir: Optional[Path] = None,
+    on_run_complete_callback=None,
 ) -> LogsWatcher:
     """
     Factory function to create and configure a LogsWatcher
@@ -1270,6 +1282,7 @@ def create_logs_watcher(
         broadcast_callback: Async callback to broadcast asset events to WebSocket clients
         loop: Running asyncio event loop for threadsafe dispatch
         assets_dir: Path to the assets directory
+        on_run_complete_callback: Callback invoked when a background run finishes
 
     Returns:
         Configured LogsWatcher instance
@@ -1298,6 +1311,7 @@ def create_logs_watcher(
         broadcast_callback=broadcast_callback,
         loop=loop,
         assets_dir=assets_dir,
+        on_run_complete_callback=on_run_complete_callback,
     )
 
     logger.info("[OK] LogsWatcher instance created successfully")

@@ -37,6 +37,7 @@
 Posterizarr is a PowerShell script with a full Web UI that automates generating images for your media library. It fetches artwork from Fanart.tv, TMDB, TVDB, Plex, and IMDb, focusing on textless images and applying your own custom overlays and text.
 
 * **User-Friendly Web UI:** Manage settings, monitor activity, and trigger runs from a browser.
+* **Native Dynamic Overlays:** In-memory compositing for ratings, 4K resolution banners, language flags, and series status ribbons directly to Plex, Jellyfin, and Emby — without modifying clean artwork on disk or needing an external Kometa container.
 * **Logo Management:** Search, preview, and manually replace clearlogos directly from the Web UI.
 * **Multiple Media Servers:** Supports Plex, Jellyfin, and Emby.
 * **Kometa Integration:** Organizes assets in a Kometa-compatible folder structure.

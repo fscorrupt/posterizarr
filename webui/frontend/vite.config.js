@@ -27,6 +27,10 @@ export default defineConfig({
 
           // Split large components
           if (id.includes("/components/")) {
+            if (id.includes("DynamicOverlays")) {
+              return "dynamic-overlays";
+            }
+
             if (id.includes("Dashboard") || id.includes("Settings") || id.includes("Config")) {
               return "main-ui";
             }

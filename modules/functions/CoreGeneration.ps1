@@ -118,7 +118,7 @@ function Invoke-MoviePosterCreation {
                     # Now we can start the Poster Part
                     if ($global:Posters -eq 'true') {
                         $checkedItems.Add($hashtestpath)
-                        if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                        if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                             # Define Global Variables
                             $SkippingText = 'false'
                             $global:tmdbid = $entry.tmdbid
@@ -708,7 +708,7 @@ function Invoke-MoviePosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -InFile $PosterImage `
+                                                        -InFile ([Management.Automation.WildcardPattern]::Escape($PosterImage)) `
 -ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
@@ -837,7 +837,7 @@ function Invoke-MoviePosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -InFile $PosterImageoriginal `
+                                                -InFile ([Management.Automation.WildcardPattern]::Escape($PosterImageoriginal)) `
 -ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
@@ -933,7 +933,7 @@ function Invoke-MoviePosterCreation {
                         $backgroundImage = Join-Path -Path $global:ScriptRoot -ChildPath "temp\$($entry.ratingKey)_$($entry.RootFoldername)_background.jpg"
                         $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                         $checkedItems.Add($hashtestpath)
-                        if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                        if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                             # Define Global Variables
                             $SkippingText = 'false'
                             $global:tmdbid = $entry.tmdbid
@@ -1504,7 +1504,7 @@ function Invoke-MoviePosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -InFile $backgroundImage `
+                                                        -InFile ([Management.Automation.WildcardPattern]::Escape($backgroundImage)) `
 -ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
@@ -1632,7 +1632,7 @@ function Invoke-MoviePosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -InFile $backgroundImageoriginal `
+                                                -InFile ([Management.Automation.WildcardPattern]::Escape($backgroundImageoriginal)) `
 -ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
@@ -1863,7 +1863,7 @@ function Invoke-ShowPosterCreation {
                 # Now we can start the Poster Part
                 if ($global:Posters -eq 'true') {
                     $checkedItems.Add($hashtestpath)
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         $Arturl = $null
                         if ($entry.PlexPosterUrl -like "/library/*") {
                             $Arturl = $plexurl + $entry.PlexPosterUrl
@@ -2442,7 +2442,7 @@ function Invoke-ShowPosterCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -InFile $PosterImage `
+                                                    -InFile ([Management.Automation.WildcardPattern]::Escape($PosterImage)) `
 -ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
@@ -2570,7 +2570,7 @@ function Invoke-ShowPosterCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -InFile $PosterImageoriginal `
+                                            -InFile ([Management.Automation.WildcardPattern]::Escape($PosterImageoriginal)) `
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
@@ -2715,7 +2715,7 @@ function Invoke-ShowPosterCreation {
                     $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                     $checkedItems.Add($hashtestpath)
 
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         # Define Global Variables
                         $SkippingText = 'false'
                         $global:tmdbid = $entry.tmdbid
@@ -3280,7 +3280,7 @@ function Invoke-ShowPosterCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -InFile $backgroundImage `
+                                                    -InFile ([Management.Automation.WildcardPattern]::Escape($backgroundImage)) `
 -ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
@@ -3408,7 +3408,7 @@ function Invoke-ShowPosterCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -InFile $backgroundImageoriginal `
+                                            -InFile ([Management.Automation.WildcardPattern]::Escape($backgroundImageoriginal)) `
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
@@ -3615,7 +3615,7 @@ function Invoke-ShowPosterCreation {
                             }
                         }
 
-                        if ($needsRegen -or -not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                        if ($needsRegen -or (($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                             $Arturl = $null
                             if ($global:PlexSeasonUrl -like "/library/*") {
                                 $Arturl = $plexurl + $global:PlexSeasonUrl
@@ -4352,7 +4352,7 @@ function Invoke-ShowPosterCreation {
                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                         -Method Post `
                                                         -Headers $extraPlexHeaders `
-                                                        -InFile $SeasonImage `
+                                                        -InFile ([Management.Automation.WildcardPattern]::Escape($SeasonImage)) `
 -ContentType 'image/jpeg' `
                                                         -SkipHttpErrorCheck `
                                                         -ErrorAction Stop
@@ -4481,7 +4481,7 @@ function Invoke-ShowPosterCreation {
                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                 -Method Post `
                                                 -Headers $extraPlexHeaders `
-                                                -InFile $SeasonImageoriginal `
+                                                -InFile ([Management.Automation.WildcardPattern]::Escape($SeasonImageoriginal)) `
 -ContentType 'image/jpeg' `
                                                 -SkipHttpErrorCheck `
                                                 -ErrorAction Stop
@@ -4735,7 +4735,7 @@ function Invoke-TitleCardCreation {
                 Else {
                     $checkedItems.Add($hashtestpath)
 
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         $Arturl = $null
                         if ($global:PlexTitleCardUrl -like "/library/*") {
                             $Arturl = $plexurl + $global:PlexTitleCardUrl
@@ -5219,7 +5219,7 @@ function Invoke-TitleCardCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -InFile $EpisodeImage `
+                                                    -InFile ([Management.Automation.WildcardPattern]::Escape($EpisodeImage)) `
 -ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
@@ -5350,7 +5350,7 @@ function Invoke-TitleCardCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -InFile $EpisodeImageoriginal `
+                                            -InFile ([Management.Automation.WildcardPattern]::Escape($EpisodeImageoriginal)) `
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
@@ -5511,7 +5511,7 @@ function Invoke-TitleCardCreation {
                 }
                 Else {
                     $checkedItems.Add($hashtestpath)
-                    if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         $Arturl = $null
                         if ($global:PlexTitleCardUrl -like "/library/*") {
                             $Arturl = $plexurl + $global:PlexTitleCardUrl
@@ -5929,7 +5929,7 @@ function Invoke-TitleCardCreation {
                                                 $Upload = Invoke-WebRequest -Uri $uri `
                                                     -Method Post `
                                                     -Headers $extraPlexHeaders `
-                                                    -InFile $EpisodeImage `
+                                                    -InFile ([Management.Automation.WildcardPattern]::Escape($EpisodeImage)) `
 -ContentType 'image/jpeg' `
                                                     -SkipHttpErrorCheck `
                                                     -ErrorAction Stop
@@ -6059,7 +6059,7 @@ function Invoke-TitleCardCreation {
                                         $Upload = Invoke-WebRequest -Uri $uri `
                                             -Method Post `
                                             -Headers $extraPlexHeaders `
-                                            -InFile $EpisodeImageoriginal `
+                                            -InFile ([Management.Automation.WildcardPattern]::Escape($EpisodeImageoriginal)) `
 -ContentType 'image/jpeg' `
                                             -SkipHttpErrorCheck `
                                             -ErrorAction Stop
@@ -6224,7 +6224,7 @@ function Invoke-TitleCardCreation {
                                     Else {
                                         $checkedItems.Add($hashtestpath)
 
-                                        if (-not $directoryHashtable.ContainsKey("$hashtestpath")) {
+                                        if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                                             $Arturl = $null
                                             if ($global:PlexTitleCardUrl -like "/library/*") {
                                                 $Arturl = $plexurl + $global:PlexTitleCardUrl
@@ -6713,7 +6713,7 @@ function Invoke-TitleCardCreation {
                                                                     $Upload = Invoke-WebRequest -Uri $uri `
                                                                         -Method Post `
                                                                         -Headers $extraPlexHeaders `
-                                                                        -InFile $EpisodeImage `
+                                                                        -InFile ([Management.Automation.WildcardPattern]::Escape($EpisodeImage)) `
 -ContentType 'image/jpeg' `
                                                                         -SkipHttpErrorCheck `
                                                                         -ErrorAction Stop
@@ -6843,7 +6843,7 @@ function Invoke-TitleCardCreation {
                                                             $Upload = Invoke-WebRequest -Uri $uri `
                                                                 -Method Post `
                                                                 -Headers $extraPlexHeaders `
-                                                                -InFile $EpisodeImageoriginal `
+                                                                -InFile ([Management.Automation.WildcardPattern]::Escape($EpisodeImageoriginal)) `
 -ContentType 'image/jpeg' `
                                                                 -SkipHttpErrorCheck `
                                                                 -ErrorAction Stop

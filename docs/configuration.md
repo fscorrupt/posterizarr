@@ -56,7 +56,7 @@
     - `PreferredTCLanguageOrder`: Specify language preferences for TCs. Default is `PleaseFillMe` ( It will take your poster lang order / `xx` is Textless). Example configurations can be found in the config file. 2-digit language codes can be found here: [ISO 3166-1 Lang Codes](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
         - If you set it to `xx` you tell the script it should only search for textless, posters with text will be skipped.
     - `LogoLanguageOrder`: Specify language preferences for Logos. Default is `en,de`. Example configurations can be found in the config file. 2-digit language codes can be found here: [ISO 3166-1 Lang Codes](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
-    - `LibraryLanguageOverrides`: Override the language order and provider order on a per-library basis, for libraries where the server-wide settings don't fit (e.g. a single French or German library on an otherwise English server). Keyed by exact media server library name; each entry sets one `PreferredLanguageOrder` that can be applied to that library's posters, season posters and backgrounds using the `ApplyTo` flags. Title cards keep their own textless-first (`xx`) lead automatically unless the override itself already starts with `xx`. You can also configure a specific `ProviderOrder` for the library by setting `EnableProviderOrderOverride` to `true`. Libraries not listed here are unaffected and keep using the server-wide or media-type settings.
+    - `LibraryLanguageOverrides`: Override the language order and provider order on a per-library basis, for libraries where the server-wide settings don't fit (e.g. a single French or German library on an otherwise English server). Keyed by exact media server library name; each entry sets one `PreferredLanguageOrder` that can be applied to that library's posters, season posters and backgrounds using the `ApplyTo` flags. You can also define an optional separate `PreferredBackgroundLanguageOrder` (e.g. textless `xx` first) by enabling `EnableBackgroundLanguageOrderOverride`. Title cards keep their own textless-first (`xx`) lead automatically unless the override itself already starts with `xx`. You can also configure a specific `ProviderOrder` for the library by setting `EnableProviderOrderOverride` to `true`. Libraries not listed here are unaffected and keep using the server-wide or media-type settings.
         ```json
         "LibraryLanguageOverrides": {
           "German Movies": {
@@ -65,6 +65,8 @@
             "ApplyToSeason": true,
             "ApplyToBackground": true,
             "ApplyToLogo": true,
+            "EnableBackgroundLanguageOrderOverride": false,
+            "PreferredBackgroundLanguageOrder": ["xx", "de"],
             "EnableProviderOrderOverride": true,
             "ProviderOrder": ["TMDB", "TVDB", "Fanart", "Plex"]
           }

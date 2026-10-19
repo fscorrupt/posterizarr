@@ -45,7 +45,6 @@ Thumbs.db
 config/
 config.json
 scheduler.json
-MyPersonalConfig.json
 /Logs/
 /magick/
 /RotatedLogs/
@@ -64,3 +63,24 @@ MyPersonalConfig.json
 posteroverlay_0.7.png
 webui/backend/config_tooltips.py.backup
 posterizarr_master_alerts_export.csv
+
+# Kometa local source folder
+/_kometa/
+
+# Dynamic Overlays & AniMetaFill runtime and local config
+AniMetaFill/
+dynamic_overlays/
+animetafill_config.json
+webui/backend/animetafill_config.json
+dynamic_overlays_settings.json
+webui/backend/dynamic_overlays_settings.json
+dynamic_overlays_visual_config.json
+webui/backend/dynamic_overlays_visual_config.json
+database/
+fontpreviews/
+webui/backend/measure_pixels.py
+webui/backend/test_banner.py
+scratch*
+Posterizarr-Logs/
+container_logs/
+

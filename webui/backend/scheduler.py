@@ -308,6 +308,126 @@ class PosterizarrScheduler:
                 finally:
                     with self._lock:
                         self.is_running = False
+                        self.update_next_run()
+                return
+
+            if mode.lower() in ("dynamicoverlays", "dynamic_overlays", "overlay_sync", "overlaysync"):
+                logger.info(f"Executing scheduled Dynamic Overlays Sync: {schedule_config}")
+                try:
+                    from overlay_sync_service import run_overlay_sync_task, get_asset_path_from_config
+                    config_path = self.base_dir / "config.json"
+                    assets_dir = get_asset_path_from_config(config_path, self.base_dir)
+
+                    target_server = schedule_config.get("target_server", "all") if schedule_config else "all"
+                    scope = schedule_config.get("scope", "incremental") if schedule_config else "incremental"
+                    library = schedule_config.get("library", "all") if schedule_config else "all"
+
+                    res = await run_overlay_sync_task(
+                        target_server=target_server,
+                        scope=scope,
+                        library=library,
+                        base_dir=self.base_dir,
+                        assets_dir=assets_dir,
+                        config_path=config_path,
+                        log_file_path=self.base_dir / "UILogs" / "DynamicOverlaysSync.log"
+                    )
+                    if res.get("success"):
+                        self.update_schedule_status(schedule_config, "success")
+                    else:
+                        self.update_schedule_status(schedule_config, "failed")
+                except Exception as ex:
+                    logger.error(f"Error executing scheduled Dynamic Overlays Sync: {ex}", exc_info=True)
+                    self.update_schedule_status(schedule_config, "failed")
+                finally:
+                    with self._lock:
+                        self.is_running = False
+                        self.update_next_run()
+                return
+
+            if mode.lower() in ("animetafill", "anime"):
+                logger.info(f"Executing scheduled AniMetaFill Anime Sync: {schedule_config}")
+                try:
+                    from animetafill_service import run_animetafill_sync_task
+                    res = run_animetafill_sync_task(force=False)
+                    if res.get("success"):
+                        self.update_schedule_status(schedule_config, "success")
+                    else:
+                        self.update_schedule_status(schedule_config, "failed")
+                except Exception as ex:
+                    logger.error(f"Error executing scheduled AniMetaFill task: {ex}", exc_info=True)
+                    self.update_schedule_status(schedule_config, "failed")
+                finally:
+                    with self._lock:
+                        self.is_running = False
+                        self.update_next_run()
+                return
+
+            if mode.lower() in ("overlaydefaults", "overlay_defaults", "kometadefaults", "kometa_defaults"):
+                logger.info(f"Executing scheduled Overlay Defaults update from GitHub: {schedule_config}")
+                log_file_path = self.base_dir / "UILogs" / "OverlayDefaults.log"
+                log_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Automatic log rotation: rotate if log file exceeds 10MB
+                if log_file_path.exists():
+                    try:
+                        if log_file_path.stat().st_size > 10 * 1024 * 1024:
+                            old_log = log_file_path.with_name("OverlayDefaults.old.log")
+                            if old_log.exists():
+                                old_log.unlink()
+                            log_file_path.rename(old_log)
+                    except Exception:
+                        pass
+
+                def write_defaults_log(msg: str):
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    try:
+                        with open(log_file_path, "a", encoding="utf-8") as lf:
+                            lf.write(f"[{now_str}] {msg}\n")
+                    except Exception:
+                        pass
+                    logger.info(f"[OverlayDefaults] {msg}")
+
+                write_defaults_log("=" * 60)
+                write_defaults_log("STARTING SCHEDULED OVERLAY DEFAULTS UPDATE (GITHUB)")
+                try:
+                    from overlay_resolver import OverlayResolver
+                    resolver = OverlayResolver(self.base_dir)
+                    res = await resolver.import_defaults_from_github(overwrite=True)
+
+                    imported_cnt = res.get("count", 0)
+                    new_cnt = len(res.get("new", []))
+                    updated_cnt = len(res.get("updated", []))
+                    unchanged_cnt = len(res.get("unchanged", []))
+                    errors = res.get("errors", [])
+                    total = res.get("total_available", 0)
+                    new_list = res.get("new", [])
+                    updated_list = res.get("updated", [])
+
+                    write_defaults_log(
+                        f"Update completed: {new_cnt} new, {updated_cnt} updated, "
+                        f"{unchanged_cnt} up-to-date (total available: {total})."
+                    )
+                    if new_list:
+                        write_defaults_log(f"Newly added templates: {', '.join(new_list)}")
+                    if updated_list:
+                        write_defaults_log(f"Updated templates: {', '.join(updated_list)}")
+                    if errors:
+                        for err in errors:
+                            write_defaults_log(f"Warning: {err}")
+                    write_defaults_log("Overlay defaults update task finished successfully.")
+
+                    if res.get("success"):
+                        self.update_schedule_status(schedule_config, "success")
+                    else:
+                        self.update_schedule_status(schedule_config, "failed")
+                except Exception as ex:
+                    write_defaults_log(f"ERROR executing Overlay Defaults update: {ex}")
+                    logger.error(f"Error executing scheduled Overlay Defaults update: {ex}", exc_info=True)
+                    self.update_schedule_status(schedule_config, "failed")
+                finally:
+                    with self._lock:
+                        self.is_running = False
+                        self.update_next_run()
                 return
 
             mode_switches = {
@@ -393,7 +513,7 @@ class PosterizarrScheduler:
 
             for idx, schedule in enumerate(schedules):
                 mode = schedule.get("mode", "normal")
-                display_mode = "Plex Sync" if mode.lower() == "plexsync" else mode.title()
+                display_mode = "Plex Sync" if mode.lower() == "plexsync" else ("Overlay Defaults" if mode.lower() in ("overlaydefaults", "overlay_defaults", "kometadefaults", "kometa_defaults") else mode.title())
                 frequency = schedule.get("frequency", "daily")
                 job_id = f"posterizarr_{mode}_{idx}"
 

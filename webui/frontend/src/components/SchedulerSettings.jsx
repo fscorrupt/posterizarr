@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Clock,
@@ -23,7 +23,10 @@ import {
   Edit2,
   Check,
   X,
-  Pencil
+  Pencil,
+  Download,
+  Layers,
+  Sparkles
 } from "lucide-react";
 import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
@@ -64,6 +67,7 @@ const waitForLogFile = async (logFileName, maxAttempts = 30, delayMs = 200) => {
 const SchedulerSettings = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { showSuccess, showError } = useToast();
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
@@ -285,12 +289,15 @@ const SchedulerSettings = () => {
   const modeDropdownRef = useRef(null);
 
   const runModes = [
-    { id: "normal", label: t("schedulerSettings.modes.normal") },
+    { id: "normal", label: t("schedulerSettings.modes.normal") || "Standard Run" },
     ...(isJellyfinConfigured() ? [{ id: "syncjelly", label: t("schedulerSettings.modes.syncjelly") || "Sync Jellyfin" }] : []),
     ...(isEmbyConfigured() ? [{ id: "syncemby", label: t("schedulerSettings.modes.syncemby") || "Sync Emby" }] : []),
     { id: "backup", label: t("schedulerSettings.modes.backup") || "System Backup" },
-    ...(isAnyServerConfigured() ? [{ id: "logoupdater", label: "Logo Updater" }] : []),
-    ...(isPlexConfigured() ? [{ id: "plexsync", label: "Plex Sync" }] : []),
+    ...(isAnyServerConfigured() ? [{ id: "logoupdater", label: t("schedulerSettings.modes.logoupdater") || "Logo Updater" }] : []),
+    ...(isPlexConfigured() ? [{ id: "plexsync", label: t("schedulerSettings.modes.plexsync") || "Plex Sync" }] : []),
+    { id: "kometadefaults", label: t("schedulerSettings.modes.kometadefaults") || "Overlay Defaults (GitHub)" },
+    ...(isAnyServerConfigured() ? [{ id: "dynamicoverlays", label: t("schedulerSettings.modes.dynamicoverlays") || "Dynamic Overlays Sync" }] : []),
+    ...(isAnyServerConfigured() ? [{ id: "animetafill", label: t("schedulerSettings.modes.animetafill") || "AniMetaFill Anime Sync" }] : []),
   ];
 
   useEffect(() => {
@@ -302,13 +309,28 @@ const SchedulerSettings = () => {
     }
   }, [appConfig, newMode]);
 
+  useEffect(() => {
+    if (location.state?.prefillMode) {
+      setNewMode(location.state.prefillMode);
+      if (location.state.prefillFrequency) setFrequency(location.state.prefillFrequency);
+      if (location.state.prefillTime) setNewTime(location.state.prefillTime);
+      if (location.state.prefillDescription) setNewDescription(location.state.prefillDescription);
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 150);
+    }
+  }, [location.state]);
+
   const modeConfigs = {
-    normal: { icon: Clock, color: "text-theme-primary", bgColor: "bg-theme-primary/10", label: t("schedulerSettings.modes.normal") },
-    syncjelly: { icon: RefreshCw, color: "text-blue-400", bgColor: "bg-blue-400/10", label: "Jellyfin Sync" },
-    syncemby: { icon: RefreshCw, color: "text-green-500", bgColor: "bg-green-500/10", label: "Emby Sync" },
-    backup: { icon: Database, color: "text-amber-500", bgColor: "bg-amber-500/10", label: "Backup" },
-    logoupdater: { icon: Grid, color: "text-purple-400", bgColor: "bg-purple-400/10", label: "Logo Updater" },
-    plexsync: { icon: Zap, color: "text-amber-500", bgColor: "bg-amber-500/10", label: "Plex Sync" }
+    normal: { icon: Clock, color: "text-theme-primary", bgColor: "bg-theme-primary/10", label: t("schedulerSettings.modes.normal") || "Standard Run" },
+    syncjelly: { icon: RefreshCw, color: "text-blue-400", bgColor: "bg-blue-400/10", label: t("schedulerSettings.modes.syncjelly") || "Jellyfin Sync" },
+    syncemby: { icon: RefreshCw, color: "text-green-500", bgColor: "bg-green-500/10", label: t("schedulerSettings.modes.syncemby") || "Emby Sync" },
+    backup: { icon: Database, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.backup") || "Backup" },
+    logoupdater: { icon: Grid, color: "text-purple-400", bgColor: "bg-purple-400/10", label: t("schedulerSettings.modes.logoupdater") || "Logo Updater" },
+    plexsync: { icon: Zap, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.plexsync") || "Plex Sync" },
+    kometadefaults: { icon: Download, color: "text-cyan-400", bgColor: "bg-cyan-400/10", label: t("schedulerSettings.modes.kometadefaults") || "Overlay Defaults" },
+    dynamicoverlays: { icon: Layers, color: "text-emerald-400", bgColor: "bg-emerald-400/10", label: t("schedulerSettings.modes.dynamicoverlays") || "Dynamic Overlays Sync" },
+    animetafill: { icon: Sparkles, color: "text-pink-400", bgColor: "bg-pink-400/10", label: t("schedulerSettings.modes.animetafill") || "AniMetaFill Anime Sync" }
   };
 
   useEffect(() => {
@@ -673,6 +695,37 @@ const SchedulerSettings = () => {
       }
     } catch (error) {
       console.error("🏃 Error in triggerNow:", error);
+      showError(t("schedulerSettings.errors.triggerRun"));
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const triggerScheduleNow = async (schedule) => {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    try {
+      const mode = schedule?.mode || "normal";
+      const response = await fetch(`${API_URL}/scheduler/run-now`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, schedule_config: schedule })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showSuccess(`Run triggered for ${modeConfigs[mode]?.label || mode}`);
+        fetchSchedulerData();
+        let logFile = "Scriptlog.log";
+        if (mode === "plexsync") logFile = "PlexSync.log";
+        else if (mode === "kometadefaults") logFile = "OverlayDefaults.log";
+        else if (mode === "dynamicoverlays") logFile = "DynamicOverlaysSync.log";
+        await waitForLogFile(logFile);
+        navigate("/logs", { state: { logFile } });
+      } else {
+        showError(data.detail || t("schedulerSettings.errors.triggerRun"));
+      }
+    } catch (error) {
+      console.error("🏃 Error in triggerScheduleNow:", error);
       showError(t("schedulerSettings.errors.triggerRun"));
     } finally {
       setIsUpdating(false);
@@ -1232,6 +1285,43 @@ const SchedulerSettings = () => {
             </div>
           )}
 
+          {newMode === "kometadefaults" && (
+            <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
+                <Download className="w-4 h-4" />
+                Overlay Defaults Auto-Updater
+              </div>
+              <p className="text-xs text-theme-muted leading-relaxed">
+                Automatically checks the official overlay template repositories on this schedule. 
+                New default overlay templates will be downloaded to <span className="text-cyan-300 font-mono">Overlayfiles/dynamic_overlays/defaults/</span>, and existing defaults will be updated with upstream improvements.
+              </p>
+            </div>
+          )}
+
+          {newMode === "dynamicoverlays" && (
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                <Layers className="w-4 h-4" />
+                Dynamic Overlays Sync
+              </div>
+              <p className="text-xs text-theme-muted leading-relaxed">
+                Executes the Dynamic Overlay compositor across your configured libraries, applies template rules, and updates media server artwork. If AniMetaFill is enabled, anime classification runs automatically before overlaying.
+              </p>
+            </div>
+          )}
+
+          {newMode === "animetafill" && (
+            <div className="p-4 bg-pink-500/10 border border-pink-500/30 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-pink-400 font-semibold text-sm">
+                <Sparkles className="w-4 h-4" />
+                AniMetaFill Anime Classification
+              </div>
+              <p className="text-xs text-theme-muted leading-relaxed">
+                Scans your Anime libraries against SIMKL and Sonarr to classify episodes into Canon, Filler, and Mixed, and updates the anime overlay recipes in <span className="text-pink-300 font-mono">Overlayfiles/dynamic_overlays/configs/anime_overlays.yml</span>.
+              </p>
+            </div>
+          )}
+
           {/* Calendar Day Picker for Monthly selection */}
           {frequency === "monthly" && (
             <div className="p-4 bg-theme-bg border border-theme rounded-lg">
@@ -1314,9 +1404,25 @@ const SchedulerSettings = () => {
                           <span>Types: {Array.isArray(schedule.asset_types) ? schedule.asset_types.join(", ") : (schedule.asset_types || "all")}</span>
                         </div>
                       )}
+                      {mode === "kometadefaults" && (
+                        <div className="flex flex-wrap gap-2 mt-1 text-[10px] text-cyan-400/80 font-medium items-center">
+                          <span>Source: Official Templates</span>
+                          <span>•</span>
+                          <span>Target: Overlayfiles/dynamic_overlays/defaults/</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => triggerScheduleNow(schedule)}
+                      disabled={isUpdating || status?.is_executing}
+                      className="p-2 text-green-400 hover:bg-green-500/10 rounded-lg transition-all disabled:opacity-50"
+                      title={`Run ${mConfig.label} now`}
+                    >
+                      <Play className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleEditSchedule(schedule, index)}

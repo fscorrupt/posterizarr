@@ -798,7 +798,7 @@ function ConfigEditor() {
                                         {/* If Searching: Flat List */}
                                         {searchQuery ? (
                                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                {fields.map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} />)}
+                                                {fields.map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} />)}
 
                                                 {/* API Key Manager (In Search) */}
                                                 {groupName === "WebUI Settings" && (
@@ -820,7 +820,7 @@ function ConfigEditor() {
                                                             </div>
                                                         )}
                                                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                            {categorizedFields[category].map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} />)}
+                                                            {categorizedFields[category].map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} />)}
                                                         </div>
                                                     </div>
                                                 ))}
@@ -881,8 +881,305 @@ function ConfigEditor() {
   );
 }
 
+// Dedicated editor for Per-Library Overrides with stable item keys, live duplicate validation, and custom background order
+const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors, commonInputClass, setHasUnsavedChanges }) => {
+    const dictValue = value && typeof value === 'object' ? value : {};
+
+    const [items, setItems] = useState(() => {
+        return Object.entries(dictValue).map(([k, v], idx) => ({
+            id: `lib-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: k,
+            data: v || {
+                PreferredLanguageOrder: ["en"],
+                ApplyToPoster: true,
+                ApplyToSeason: true,
+                ApplyToBackground: true,
+                ApplyToLogo: true,
+                EnableBackgroundLanguageOrderOverride: false,
+                PreferredBackgroundLanguageOrder: [],
+                EnableProviderOrderOverride: false,
+                ProviderOrder: ["TMDB", "TVDB", "Fanart", "Plex"]
+            }
+        }));
+    });
+
+    const lastEmittedRef = useRef(JSON.stringify(dictValue));
+
+    useEffect(() => {
+        const incoming = JSON.stringify(value && typeof value === 'object' ? value : {});
+        if (incoming !== lastEmittedRef.current) {
+            lastEmittedRef.current = incoming;
+            const dict = value && typeof value === 'object' ? value : {};
+            setItems(
+                Object.entries(dict).map(([k, v], idx) => ({
+                    id: `lib-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    name: k,
+                    data: v || {
+                        PreferredLanguageOrder: ["en"],
+                        ApplyToPoster: true,
+                        ApplyToSeason: true,
+                        ApplyToBackground: true,
+                        ApplyToLogo: true,
+                        EnableBackgroundLanguageOrderOverride: false,
+                        PreferredBackgroundLanguageOrder: [],
+                        EnableProviderOrderOverride: false,
+                        ProviderOrder: ["TMDB", "TVDB", "Fanart", "Plex"]
+                    }
+                }))
+            );
+        }
+    }, [value]);
+
+    useEffect(() => {
+        return () => {
+            if (setValidationErrors) {
+                setValidationErrors(prev => {
+                    if (!prev || !prev.LibraryLanguageOverrides) return prev;
+                    const next = { ...prev };
+                    delete next.LibraryLanguageOverrides;
+                    return next;
+                });
+            }
+        };
+    }, [setValidationErrors]);
+
+    const commitItems = (nextItems) => {
+        setItems(nextItems);
+        if (setHasUnsavedChanges) setHasUnsavedChanges(true);
+
+        const counts = {};
+        nextItems.forEach(it => {
+            const clean = it.name.trim().toLowerCase();
+            if (clean) counts[clean] = (counts[clean] || 0) + 1;
+        });
+
+        const duplicateNames = [];
+        let hasEmpty = false;
+
+        nextItems.forEach(it => {
+            const clean = it.name.trim();
+            if (!clean) {
+                hasEmpty = true;
+            } else if (counts[clean.toLowerCase()] > 1 && !duplicateNames.includes(clean)) {
+                duplicateNames.push(clean);
+            }
+        });
+
+        if (setValidationErrors) {
+            if (duplicateNames.length > 0) {
+                setValidationErrors(prev => ({
+                    ...prev,
+                    LibraryLanguageOverrides: `Duplicate library override: "${duplicateNames.join(', ')}"`
+                }));
+            } else if (hasEmpty) {
+                setValidationErrors(prev => ({
+                    ...prev,
+                    LibraryLanguageOverrides: "Library override name cannot be empty"
+                }));
+            } else {
+                setValidationErrors(prev => {
+                    if (!prev || !prev.LibraryLanguageOverrides) return prev;
+                    const next = { ...prev };
+                    delete next.LibraryLanguageOverrides;
+                    return next;
+                });
+            }
+        }
+
+        if (duplicateNames.length === 0 && !hasEmpty) {
+            const newDict = {};
+            nextItems.forEach(it => {
+                const trimmed = it.name.trim();
+                if (trimmed) {
+                    newDict[trimmed] = it.data;
+                }
+            });
+            lastEmittedRef.current = JSON.stringify(newDict);
+            onChange(newDict);
+        }
+    };
+
+    const handleUpdateName = (id, newName) => {
+        const next = items.map(it => it.id === id ? { ...it, name: newName } : it);
+        commitItems(next);
+    };
+
+    const handleUpdateData = (id, patch) => {
+        const next = items.map(it => it.id === id ? { ...it, data: { ...(it.data || {}), ...patch } } : it);
+        commitItems(next);
+    };
+
+    const handleRemoveItem = (id) => {
+        const next = items.filter(it => it.id !== id);
+        commitItems(next);
+    };
+
+    const handleAddItem = () => {
+        let baseName = "Library Name";
+        let newName = baseName;
+        let counter = 1;
+        const existingNames = items.map(it => it.name.trim().toLowerCase());
+        while (existingNames.includes(newName.toLowerCase())) {
+            counter++;
+            newName = `${baseName} ${counter}`;
+        }
+        const newItem = {
+            id: `lib-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: newName,
+            data: {
+                PreferredLanguageOrder: ["en"],
+                ApplyToPoster: true,
+                ApplyToSeason: true,
+                ApplyToBackground: true,
+                ApplyToLogo: true,
+                EnableBackgroundLanguageOrderOverride: false,
+                PreferredBackgroundLanguageOrder: [],
+                EnableProviderOrderOverride: false,
+                ProviderOrder: ["TMDB", "TVDB", "Fanart", "Plex"]
+            }
+        };
+        commitItems([...items, newItem]);
+    };
+
+    const nameCounts = {};
+    items.forEach(it => {
+        const clean = it.name.trim().toLowerCase();
+        if (clean) nameCounts[clean] = (nameCounts[clean] || 0) + 1;
+    });
+
+    return (
+        <div className="space-y-4">
+            {items.map((item) => {
+                const trimmed = item.name.trim();
+                const isDuplicate = trimmed && nameCounts[trimmed.toLowerCase()] > 1;
+                const isEmpty = !trimmed;
+                const fieldError = isDuplicate ? "Library already has an override" : (isEmpty ? "Library name cannot be empty" : null);
+                const isCheckedBackground = item.data?.ApplyToBackground ?? true;
+
+                return (
+                    <div key={item.id} className="flex flex-col gap-3 p-4 bg-theme-bg/30 border border-theme rounded-lg relative group transition-all">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-1">
+                                <label className="block text-xs font-medium text-theme-muted mb-1">Library Name</label>
+                                <input
+                                    className={`${commonInputClass} font-mono text-sm ${fieldError ? "border-red-500 focus:border-red-500 focus:ring-red-500/20 bg-red-500/5 text-red-300" : ""}`}
+                                    value={item.name}
+                                    placeholder="Library Name"
+                                    onChange={(e) => handleUpdateName(item.id, e.target.value)}
+                                    disabled={disabled}
+                                />
+                                {fieldError && (
+                                    <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1 font-medium">
+                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {fieldError}
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => handleRemoveItem(item.id)}
+                                className="p-2.5 mt-5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 flex-shrink-0 transition-colors"
+                                disabled={disabled}
+                                title="Remove Library Override"
+                            >
+                                <Trash2 className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="pt-3 border-t border-theme/50">
+                            <LanguageOrderSelector
+                                value={item.data?.PreferredLanguageOrder || []}
+                                onChange={(newOrder) => handleUpdateData(item.id, { PreferredLanguageOrder: newOrder })}
+                                helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
+                            />
+                            <div className="flex gap-4 mt-3 pl-1">
+                                {["Poster", "Season", "Background", "Logo"].map((type) => {
+                                    const isChecked = item.data?.[`ApplyTo${type}`] ?? true;
+                                    return (
+                                        <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={(e) => handleUpdateData(item.id, { [`ApplyTo${type}`]: e.target.checked })}
+                                                disabled={disabled}
+                                                className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                            />
+                                            {type}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Optional Separate Background Language Order */}
+                            {isCheckedBackground && (
+                                <div className="mt-4 pt-3 border-t border-theme/50">
+                                    <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={item.data?.EnableBackgroundLanguageOrderOverride ?? false}
+                                            onChange={(e) => handleUpdateData(item.id, { EnableBackgroundLanguageOrderOverride: e.target.checked })}
+                                            disabled={disabled}
+                                            className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                        />
+                                        Separate Background Language Order (Optional)
+                                    </label>
+                                    
+                                    {(item.data?.EnableBackgroundLanguageOrderOverride) && (
+                                        <div className="pl-6">
+                                            <LanguageOrderSelector 
+                                                value={item.data?.PreferredBackgroundLanguageOrder || []} 
+                                                onChange={(newOrder) => handleUpdateData(item.id, { PreferredBackgroundLanguageOrder: newOrder })}
+                                                helpText="Select custom language order for backgrounds in this library (e.g. textless 'xx' first). If left empty, backgrounds follow the main library order above."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Optional Provider Order Override */}
+                            <div className="mt-4 pt-3 border-t border-theme/50">
+                                <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={item.data?.EnableProviderOrderOverride ?? false}
+                                        onChange={(e) => handleUpdateData(item.id, { EnableProviderOrderOverride: e.target.checked })}
+                                        disabled={disabled}
+                                        className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                    />
+                                    Enable Provider Order Override
+                                </label>
+                                
+                                {(item.data?.EnableProviderOrderOverride) && (
+                                    <div className="pl-6">
+                                        <ProviderOrderSelector 
+                                            value={item.data?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]} 
+                                            onChange={(newOrder) => handleUpdateData(item.id, { ProviderOrder: newOrder })}
+                                            helpText="Select the specific provider priority for this library."
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
+
+            <button
+                onClick={handleAddItem}
+                className="w-full py-3 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-theme-primary transition-all flex items-center justify-center gap-2 text-sm font-medium"
+                disabled={disabled}
+            >
+                <Plus className="w-5 h-5" /> Add Library Override
+            </button>
+            {items.length === 0 && (
+                <p className="text-[10px] text-theme-muted italic">
+                    Language order for specific libraries. Applies to posters, seasons and backgrounds for this library; title cards keep their textless-first preference automatically.
+                </p>
+            )}
+        </div>
+    );
+};
+
 // Extracted Setting Card Component for cleaner main loop
-const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges }) => {
+const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges, setValidationErrors }) => {
     const value = usingFlatStructure ? config[settingKey] : config[groupName]?.[settingKey];
     const isWide = (settingKey === "NewLineOnSpecificSymbols" && groupName === "Text Formatting") || settingKey.includes("ResolutionOverlays") || settingKey.includes("LibstoExclude") || settingKey === "AgregarrTriggerEnabled";
     const uniqueId = `setting-${groupName}-${settingKey}`;
@@ -988,139 +1285,15 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             );
         }
         if (settingKey === "LibraryLanguageOverrides") {
-            // One language order per library, applied to posters/seasons/backgrounds
-            // for that library (title cards keep their own textless-first lead).
-            // A single field per library instead of one per asset type, since the
-            // real intent is "this library is German/French/etc", not four
-            // settings to keep in sync.
-            const dictValue = value && typeof value === 'object' ? value : {};
-
-            const handleUpdateKey = (oldKey, newKey) => {
-                const newDict = { ...dictValue };
-                if (oldKey !== newKey) {
-                    delete newDict[oldKey];
-                }
-                newDict[newKey] = dictValue[oldKey] || { PreferredLanguageOrder: [] };
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleUpdateOrder = (key, newOrder) => {
-                const newDict = { ...dictValue };
-                newDict[key] = { ...(dictValue[key] || {}), PreferredLanguageOrder: newOrder };
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleRemovePair = (keyToRemove) => {
-                const newDict = { ...dictValue };
-                delete newDict[keyToRemove];
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleAddPair = () => {
-                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"], ApplyToPoster: true, ApplyToSeason: true, ApplyToBackground: true, ApplyToLogo: true } };
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleToggleApplyTo = (key, type, value) => {
-                const newDict = { ...dictValue };
-                newDict[key] = { ...(dictValue[key] || {}), [`ApplyTo${type}`]: value };
-                updateValue(fieldKey, newDict);
-            };
-
             return (
-                <div className="space-y-4">
-                    {Object.entries(dictValue).map(([k, v], idx) => (
-                        <div key={idx} className="flex flex-col gap-3 p-4 bg-theme-bg/30 border border-theme rounded-lg relative group transition-all">
-                            <div className="flex items-center gap-3">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-medium text-theme-muted mb-1">Library Name</label>
-                                    <input
-                                        className={`${commonInputClass} font-mono text-sm`}
-                                        value={k}
-                                        placeholder="Library Name"
-                                        onChange={(e) => handleUpdateKey(k, e.target.value)}
-                                        disabled={disabled}
-                                    />
-                                </div>
-                                <button
-                                    onClick={() => handleRemovePair(k)}
-                                    className="p-2.5 mt-5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 flex-shrink-0 transition-colors"
-                                    disabled={disabled}
-                                    title="Remove Library Override"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            <div className="pt-3 border-t border-theme/50">
-                                <LanguageOrderSelector
-                                    value={v?.PreferredLanguageOrder || []}
-                                    onChange={(newOrder) => handleUpdateOrder(k, newOrder)}
-                                    helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
-                                />
-                                <div className="flex gap-4 mt-3 pl-1">
-                                    {["Poster", "Season", "Background", "Logo"].map((type) => {
-                                        const isChecked = v?.[`ApplyTo${type}`] ?? true;
-                                        return (
-                                            <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isChecked}
-                                                    onChange={(e) => handleToggleApplyTo(k, type, e.target.checked)}
-                                                    disabled={disabled}
-                                                    className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
-                                                />
-                                                {type}
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                                <div className="mt-4 pt-3 border-t border-theme/50">
-                                    <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
-                                        <input
-                                            type="checkbox"
-                                            checked={v?.EnableProviderOrderOverride ?? false}
-                                            onChange={(e) => {
-                                                const newDict = { ...dictValue };
-                                                newDict[k] = { ...(dictValue[k] || {}), EnableProviderOrderOverride: e.target.checked };
-                                                updateValue(fieldKey, newDict);
-                                            }}
-                                            disabled={disabled}
-                                            className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
-                                        />
-                                        Enable Provider Order Override
-                                    </label>
-                                    
-                                    {(v?.EnableProviderOrderOverride) && (
-                                        <div className="pl-6">
-                                            <ProviderOrderSelector 
-                                                value={v?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]} 
-                                                onChange={(newOrder) => {
-                                                    const newDict = { ...dictValue };
-                                                    newDict[k] = { ...(dictValue[k] || {}), ProviderOrder: newOrder };
-                                                    updateValue(fieldKey, newDict);
-                                                }}
-                                                helpText="Select the specific provider priority for this library."
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                    <button
-                        onClick={handleAddPair}
-                        className="w-full py-3 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-theme-primary transition-all flex items-center justify-center gap-2 text-sm font-medium"
-                        disabled={disabled}
-                    >
-                        <Plus className="w-5 h-5" /> Add Library Override
-                    </button>
-                    {Object.keys(dictValue).length === 0 && (
-                        <p className="text-[10px] text-theme-muted italic">
-                            Language order for specific libraries. Applies to posters, seasons and backgrounds for this library; title cards keep their textless-first preference automatically.
-                        </p>
-                    )}
-                </div>
+                <LibraryOverridesEditor
+                    value={value}
+                    onChange={(newDict) => updateValue(fieldKey, newDict)}
+                    disabled={disabled}
+                    setValidationErrors={setValidationErrors}
+                    commonInputClass={commonInputClass}
+                    setHasUnsavedChanges={setHasUnsavedChanges}
+                />
             );
         }
         if (settingKey === "NewLineWords" || settingKey === "TmdbLanguageMappings") {

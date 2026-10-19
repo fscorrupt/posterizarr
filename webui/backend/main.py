@@ -17,10 +17,11 @@ except ImportError:
     from defaults import setup_default_images
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import json
+import yaml
 import subprocess
 import shlex
 import asyncio
@@ -349,6 +350,8 @@ def load_webui_settings():
         "log_level": "INFO",
         "theme": "dark",
         "auto_refresh_interval": 180,
+        "auto_overlay_sync": True,
+        "auto_kometa_overlay_sync": True,
     }
 
     try:
@@ -2274,6 +2277,7 @@ async def lifespan(app: FastAPI):
                 broadcast_callback=broadcast_asset_event,
                 loop=asyncio.get_running_loop(),
                 assets_dir=ASSETS_DIR,
+                on_run_complete_callback=trigger_auto_overlay_sync,
             )
             logs_watcher.start()
             logger.info(
@@ -2302,6 +2306,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Scheduler module not available, skipping scheduler initialization")
 
+    # Start Dynamic Overlays background change detector
+    try:
+        from overlay_sync_service import start_overlay_change_detector_background
+        start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=LOGS_DIR)
+    except Exception as e:
+        logger.warning(f"Could not start dynamic overlays change detector: {e}")
+
     yield
 
     # Shutdown
@@ -2324,6 +2335,13 @@ async def lifespan(app: FastAPI):
             logger.info("Queue listener stopped")
         except Exception as e:
             logger.error(f"Error stopping queue listener: {e}")
+
+    # Stop dynamic overlays change detector
+    try:
+        from overlay_sync_service import stop_overlay_change_detector_background
+        stop_overlay_change_detector_background()
+    except Exception as e:
+        logger.warning(f"Error stopping dynamic overlays change detector: {e}")
 
     # Stop background cache refresh
     stop_cache_refresh_background()
@@ -3448,23 +3466,22 @@ async def delete_overlay_file(filename: str):
 
 @app.get("/api/fonts")
 async def get_font_files():
-    """Get list of font files from Overlayfiles directory"""
+    """Get list of font files from Overlayfiles and dynamic_overlays/fonts directories"""
     try:
-        if not OVERLAYFILES_DIR.exists():
-            OVERLAYFILES_DIR.mkdir(exist_ok=True)
-            return {"success": True, "files": []}
-
-        # Get all font files (ttf, otf, woff, woff2)
         font_extensions = {".ttf", ".otf", ".woff", ".woff2"}
-        files = [
-            f.name
-            for f in OVERLAYFILES_DIR.iterdir()
-            if f.is_file() and f.suffix.lower() in font_extensions
+        found_files = set()
+        search_dirs = [
+            OVERLAYFILES_DIR,
+            OVERLAYFILES_DIR / "dynamic_overlays" / "fonts",
+            OVERLAYFILES_DIR / "fonts",
         ]
+        for sdir in search_dirs:
+            if sdir.exists() and sdir.is_dir():
+                for f in sdir.iterdir():
+                    if f.is_file() and f.suffix.lower() in font_extensions:
+                        found_files.add(f.name)
 
-        # Sort alphabetically
-        files.sort()
-
+        files = sorted(list(found_files))
         logger.info(f"Found {len(files)} font files")
         return {"success": True, "files": files}
 
@@ -3651,13 +3668,18 @@ async def preview_font_file(filename: str, text: str = "Aa"):
         if not safe_filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
 
-        font_path = (OVERLAYFILES_DIR / safe_filename).resolve()
+        font_candidates = [
+            (OVERLAYFILES_DIR / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "dynamic_overlays" / "fonts" / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "fonts" / safe_filename).resolve(),
+        ]
+        font_path = None
+        for cand in font_candidates:
+            if cand.is_relative_to(OVERLAYFILES_DIR.resolve()) and cand.exists():
+                font_path = cand
+                break
 
-        # Guard against path traversal: resolved path must stay within OVERLAYFILES_DIR
-        if not font_path.is_relative_to(OVERLAYFILES_DIR.resolve()):
-            raise HTTPException(status_code=400, detail="Invalid filename")
-
-        if not font_path.exists():
+        if not font_path:
             raise HTTPException(status_code=404, detail="Font file not found")
 
         # Validate font extension
@@ -4983,7 +5005,11 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                         logger.warning(f"Could not refresh Plex libraries: {fe}")
             elif server_type == "jellyfin":
                 jf_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
-                jf_api = config.get("JellyfinApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("JellyfinApiKey")
+                jf_api = (
+                    (config.get("JellyfinAPIKey") or config.get("JellyfinApiKey"))
+                    if config.get("using_flat_structure")
+                    else (config.get("ApiPart", {}).get("JellyfinAPIKey") or config.get("ApiPart", {}).get("JellyfinApiKey"))
+                )
                 if jf_url and is_safe_url(str(jf_url).rstrip('/'), allow_private=True, allow_loopback=True):
                     try:
                         clean_url = str(jf_url).rstrip('/')
@@ -4993,7 +5019,7 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                             if resp.status_code == 200:
                                 data = resp.json()
                                 libraries = [
-                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId", "")}
+                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId") or lib.get("Id", "")}
                                     for lib in data if lib.get("Name")
                                 ]
                                 if libraries:
@@ -5003,17 +5029,24 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                         logger.warning(f"Could not refresh Jellyfin libraries: {fe}")
             elif server_type == "emby":
                 emby_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
-                emby_api = config.get("EmbyApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("EmbyApiKey")
+                emby_api = (
+                    (config.get("EmbyAPIKey") or config.get("EmbyApiKey"))
+                    if config.get("using_flat_structure")
+                    else (config.get("ApiPart", {}).get("EmbyAPIKey") or config.get("ApiPart", {}).get("EmbyApiKey"))
+                )
                 if emby_url and is_safe_url(str(emby_url).rstrip('/'), allow_private=True, allow_loopback=True):
                     try:
                         clean_url = str(emby_url).rstrip('/')
-                        headers = {"Authorization": f'MediaBrowser Token="{emby_api}"'} if emby_api else {}
+                        headers = {
+                            "X-Emby-Token": emby_api,
+                            "Authorization": f'MediaBrowser Token="{emby_api}"'
+                        } if emby_api else {}
                         async with httpx.AsyncClient(timeout=10.0) as client:
                             resp = await client.get(f"{clean_url}/Library/VirtualFolders", headers=headers)
                             if resp.status_code == 200:
                                 data = resp.json()
                                 libraries = [
-                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId", "")}
+                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId") or lib.get("Id", "")}
                                     for lib in data if lib.get("Name")
                                 ]
                                 if libraries:
@@ -5895,6 +5928,51 @@ async def get_upload_diagnostics():
     return diagnostics
 
 
+def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental"):
+    """Auto-trigger Dynamic Overlays Sync in background when new media is created."""
+    try:
+        webui_cfg = load_webui_settings()
+        if not webui_cfg.get("auto_overlay_sync", webui_cfg.get("auto_kometa_overlay_sync", True)):
+            return
+
+        try:
+            from overlay_sync_service import (
+                run_overlay_sync_task,
+                is_overlay_sync_running
+            )
+        except ImportError:
+            return
+
+        if is_overlay_sync_running():
+            logger.info("[OverlaySync] A sync task is already running. Skipping auto-trigger.")
+            return
+
+        logger.info(f"[OverlaySync] Auto-triggering Dynamic Overlays Sync ({scope}) after {source}...")
+
+        def _run_bg():
+            try:
+                asyncio.run(
+                    run_overlay_sync_task(
+                        target_server="all",
+                        scope=scope,
+                        library="all",
+                        base_dir=BASE_DIR,
+                        config_path=CONFIG_PATH,
+                        log_file_path=LOGS_DIR / "DynamicOverlaysSync.log"
+                    )
+                )
+            except Exception as task_err:
+                logger.error(f"[OverlaySync] Error executing background sync: {task_err}")
+
+        threading.Thread(target=_run_bg, daemon=True).start()
+    except Exception as e:
+        logger.error(f"[OverlaySync] Error auto-triggering overlay sync: {e}", exc_info=True)
+
+
+# Backward compatibility alias
+trigger_auto_kometa_overlay_sync = trigger_auto_overlay_sync
+
+
 @app.get("/api/status")
 async def get_status():
     """Get script status with last log lines from appropriate log file"""
@@ -5926,6 +6004,12 @@ async def get_status():
                     logger.info("Cache refresh started in background after script completion")
                 except Exception as e:
                     logger.error(f"Error refreshing cache after script completion: {e}")
+
+                # Auto-trigger Dynamic Overlays Sync
+                try:
+                    trigger_auto_overlay_sync(source="script completion")
+                except Exception as k_err:
+                    logger.error(f"Error auto-triggering overlay sync: {k_err}")
 
                 # Save runtime statistics to database
                 if RUNTIME_DB_AVAILABLE and finished_mode:
@@ -5978,6 +6062,12 @@ async def get_status():
                         logger.error(
                             f"Error refreshing cache after scheduler completion: {e}"
                         )
+
+                    # Auto-trigger Dynamic Overlays Sync
+                    try:
+                        trigger_auto_overlay_sync(source="scheduler completion")
+                    except Exception as k_err:
+                        logger.error(f"Error auto-triggering overlay sync: {k_err}")
 
                     # Save runtime statistics to database for scheduler runs
                     if RUNTIME_DB_AVAILABLE:
@@ -8545,6 +8635,9 @@ KNOWN_LOG_FILES: Dict[str, Path] = {
     "BackendServer.log": UI_LOGS_DIR / "BackendServer.log",
     "FrontendUI.log": UI_LOGS_DIR / "FrontendUI.log",
     "PlexSync.log": UI_LOGS_DIR / "PlexSync.log",
+    "KometaDefaults.log": UI_LOGS_DIR / "KometaDefaults.log",
+    "DynamicOverlaysSync.log": UI_LOGS_DIR / "DynamicOverlaysSync.log",
+    "AniMetaFill.log": UI_LOGS_DIR / "AniMetaFill.log",
 }
 
 
@@ -9547,16 +9640,21 @@ def _get_categorized_assets(config: dict) -> dict:
         if lib_override:
             lib_preferred_langs = lib_override.get("PreferredLanguageOrder", [])
             lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
-            if lib_primary_lang:
-                if "background" in asset_type_lower:
-                    if lib_override.get("ApplyToBackground", True):
+            if "background" in asset_type_lower:
+                if lib_override.get("ApplyToBackground", True):
+                    bg_enabled = lib_override.get("EnableBackgroundLanguageOrderOverride")
+                    lib_bg_langs = lib_override.get("PreferredBackgroundLanguageOrder", [])
+                    use_custom_bg = (bg_enabled is True or (bg_enabled is None and len(lib_bg_langs) > 0)) and len(lib_bg_langs) > 0
+                    if use_custom_bg:
+                        target_primary_lang = lib_bg_langs[0]
+                    elif lib_primary_lang:
                         target_primary_lang = lib_primary_lang
-                elif "season" in asset_type_lower:
-                    if lib_override.get("ApplyToSeason", True):
-                        target_primary_lang = lib_primary_lang
-                elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
-                    if lib_override.get("ApplyToPoster", True):
-                        target_primary_lang = lib_primary_lang
+            elif "season" in asset_type_lower:
+                if lib_override.get("ApplyToSeason", True) and lib_primary_lang:
+                    target_primary_lang = lib_primary_lang
+            elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
+                if lib_override.get("ApplyToPoster", True) and lib_primary_lang:
+                    target_primary_lang = lib_primary_lang
 
         if language and target_primary_lang:
             lang_normalized = (
@@ -11225,15 +11323,27 @@ async def restart_scheduler():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/scheduler/run-now")
-async def run_scheduler_now():
+async def run_scheduler_now(request: Request):
     """Manually trigger a scheduled run immediately (non-blocking)"""
     if not SCHEDULER_AVAILABLE or not scheduler:
         raise HTTPException(status_code=503, detail="Scheduler not available")
 
     try:
+        mode = "normal"
+        schedule_config = None
+        try:
+            body = await request.body()
+            if body:
+                data = json.loads(body.decode("utf-8"))
+                if isinstance(data, dict):
+                    mode = data.get("mode", "normal")
+                    schedule_config = data.get("schedule_config")
+        except Exception:
+            pass
+
         # Use asyncio.create_task to run it asynchronously
-        asyncio.create_task(scheduler.run_script(force_run=True))
-        return {"success": True, "message": "Manual run triggered successfully"}
+        asyncio.create_task(scheduler.run_script(mode=mode, schedule_config=schedule_config, force_run=True))
+        return {"success": True, "message": f"Manual run triggered successfully for mode '{mode}'"}
     except RuntimeError as e:
         logger.warning(f"Cannot trigger run: {e}")
         raise HTTPException(status_code=400, detail="A script execution is already in progress or the scheduler is busy.")
@@ -16029,16 +16139,21 @@ async def get_assets_overview():
                 lib_preferred_langs = lib_override.get("PreferredLanguageOrder", [])
                 lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
 
-                if lib_primary_lang:
-                    if "background" in asset_type_lower:
-                        if lib_override.get("ApplyToBackground", True):
+                if "background" in asset_type_lower:
+                    if lib_override.get("ApplyToBackground", True):
+                        bg_enabled = lib_override.get("EnableBackgroundLanguageOrderOverride")
+                        lib_bg_langs = lib_override.get("PreferredBackgroundLanguageOrder", [])
+                        use_custom_bg = (bg_enabled is True or (bg_enabled is None and len(lib_bg_langs) > 0)) and len(lib_bg_langs) > 0
+                        if use_custom_bg:
+                            target_primary_lang = lib_bg_langs[0]
+                        elif lib_primary_lang:
                             target_primary_lang = lib_primary_lang
-                    elif "season" in asset_type_lower:
-                        if lib_override.get("ApplyToSeason", True):
-                            target_primary_lang = lib_primary_lang
-                    elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
-                        if lib_override.get("ApplyToPoster", True):
-                            target_primary_lang = lib_primary_lang
+                elif "season" in asset_type_lower:
+                    if lib_override.get("ApplyToSeason", True) and lib_primary_lang:
+                        target_primary_lang = lib_primary_lang
+                elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
+                    if lib_override.get("ApplyToPoster", True) and lib_primary_lang:
+                        target_primary_lang = lib_primary_lang
 
             if language and target_primary_lang:
                 # Normalize: "Textless" = "xx"
@@ -18650,6 +18765,2144 @@ async def api_search_media_logos(request: TMDBCollectionSearchRequest):
     except Exception as e:
         logger.error(f"Error searching media logos: {e}")
         return {"success": False, "error": "Failed to search media logos."}
+
+
+# ==============================================================================
+# DYNAMIC OVERLAYS ENDPOINTS (KOMETA MIGRATION & RUNTIME CACHE)
+# ==============================================================================
+
+try:
+    from overlay_cache import OverlayCache
+    from overlay_resolver import (
+        OverlayResolver, safe_resolve_overlay_path,
+        ALLOWED_ALL_EXTS, ALLOWED_FONT_EXTS, ALLOWED_IMAGE_EXTS, ALLOWED_CONFIG_EXTS
+    )
+    from overlay_engine import DynamicOverlayCompositor, draw_backdrop_and_text, PORTRAIT_DIM, LANDSCAPE_DIM
+    dynamic_overlay_cache = OverlayCache(DATABASE_DIR / "overlay_cache.db")
+    overlay_resolver = OverlayResolver(BASE_DIR)
+    # Backward compatibility aliases
+    kometa_resolver = overlay_resolver
+    safe_resolve_kometa_path = safe_resolve_overlay_path
+    KometaResolver = OverlayResolver
+except Exception as _init_err:
+    logger.error(f"Failed initializing Dynamic Overlays services: {_init_err}", exc_info=True)
+    dynamic_overlay_cache = None
+    overlay_resolver = None
+    kometa_resolver = None
+
+
+class DynamicOverlayFetchRequest(BaseModel):
+    asset_name: str
+    category: str = "image"
+    custom_url: Optional[str] = None
+
+
+class DynamicOverlayImportDefaultsRequest(BaseModel):
+    overwrite: bool = False
+
+
+@app.get("/api/dynamic-overlays/status")
+async def get_dynamic_overlays_status():
+    """Return status, directory information, and cache summary for dynamic overlays."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        yaml_files = kometa_resolver.get_configured_yaml_files()
+        defaults_files = kometa_resolver.get_available_defaults()
+        stats = dynamic_overlay_cache.get_stats() if dynamic_overlay_cache else {}
+        return {
+            "success": True,
+            "kometa_dir": str(kometa_resolver.kometa_dir),
+            "configs_dir": str(kometa_resolver.configs_dir),
+            "assets_dir": str(kometa_resolver.assets_dir),
+            "defaults_dir": str(kometa_resolver.defaults_dir),
+            "fonts_dir": str(kometa_resolver.fonts_dir),
+            "has_configs": len(yaml_files) > 0,
+            "yaml_files": yaml_files,
+            "defaults_files": defaults_files,
+            "cache_stats": stats
+        }
+    except Exception as e:
+        logger.error(f"Error fetching dynamic overlays status: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/scan")
+async def scan_dynamic_overlays():
+    """Scan Overlayfiles/kometa/configs/ and return library mappings and asset readiness checklist."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        report = kometa_resolver.scan_and_analyze_rules()
+        yaml_files = kometa_resolver.get_configured_yaml_files()
+        return {
+            "success": True,
+            "yaml_files": yaml_files,
+            **report
+        }
+    except Exception as e:
+        logger.error(f"Error scanning dynamic overlays: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/import-defaults")
+@app.post("/api/dynamic-overlays/import")
+async def import_dynamic_overlays_defaults(req: Optional[DynamicOverlayImportDefaultsRequest] = None):
+    """Import official Kometa default overlay templates from GitHub directly into Overlayfiles/kometa/defaults/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        overwrite = req.overwrite if req else False
+        result = await kometa_resolver.import_defaults_from_github(overwrite=overwrite)
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {
+            "success": True,
+            "import_result": result,
+            "scan": fresh_scan
+        }
+    except Exception as e:
+        logger.error(f"Error importing Kometa defaults from GitHub: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/fetch-asset")
+async def fetch_dynamic_overlay_asset(req: DynamicOverlayFetchRequest):
+    """Fetch a single missing asset safely from official repository or custom URL."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        res = await kometa_resolver.fetch_asset(
+            asset_name=req.asset_name,
+            category=req.category,
+            custom_url=req.custom_url
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Error fetching asset {req.asset_name}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/fetch-all-missing")
+async def fetch_all_missing_dynamic_overlay_assets():
+    """Fetch all fetchable assets in batch."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        res = await kometa_resolver.fetch_all_missing()
+        return {"success": True, **res}
+    except Exception as e:
+        logger.error(f"Error batch fetching missing assets: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/upload-asset")
+async def upload_dynamic_overlay_asset(
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
+    category: Optional[str] = Form(None)
+):
+    """Upload custom assets (images, fonts, or YAML configs) directly to Overlayfiles/kometa/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        upload_list = []
+        if files:
+            upload_list.extend(files)
+        if file:
+            upload_list.append(file)
+
+        if not upload_list:
+            raise HTTPException(status_code=400, detail="No files provided for upload.")
+
+        saved_files = []
+        errors = []
+        all_extracted_keys = {}
+
+        for f in upload_list:
+            filename = f.filename or ""
+            ext = Path(filename).suffix.lower()
+
+            # Auto-detect category from file extension, falling back to provided category
+            if ext in ALLOWED_CONFIG_EXTS or category in ("config", "configs", "yaml", "yml", "template"):
+                target_dir = kometa_resolver.configs_dir
+                allowed = ALLOWED_CONFIG_EXTS
+                cat_name = "config"
+            elif ext in ALLOWED_FONT_EXTS or category in ("font", "fonts"):
+                target_dir = kometa_resolver.fonts_dir
+                allowed = ALLOWED_FONT_EXTS
+                cat_name = "font"
+            elif ext in ALLOWED_IMAGE_EXTS or category in ("image", "assets", "asset", "images"):
+                target_dir = kometa_resolver.assets_dir
+                allowed = ALLOWED_IMAGE_EXTS
+                cat_name = "image"
+            else:
+                errors.append(f"{filename}: Unsupported file type '{ext}'. Allowed extensions: {sorted(list(ALLOWED_ALL_EXTS))}")
+                continue
+
+            safe_path = safe_resolve_kometa_path(target_dir, filename, allowed)
+            if not safe_path:
+                errors.append(f"{filename}: Disallowed or invalid filename.")
+                continue
+
+            content = await f.read()
+            if len(content) > 15 * 1024 * 1024:
+                errors.append(f"{filename}: File size exceeds maximum 15MB limit.")
+                continue
+
+            parsed_yaml = None
+            # If it's a YAML config, also validate YAML syntax so corrupt files aren't saved
+            if cat_name == "config":
+                try:
+                    parsed_yaml = yaml.safe_load(content.decode("utf-8-sig"))
+                except Exception as ye:
+                    errors.append(f"{filename}: Invalid YAML syntax: {ye}")
+                    continue
+
+                if isinstance(parsed_yaml, dict):
+                    try:
+                        from dynamic_overlays_service import extract_kometa_api_keys, save_dynamic_overlays_settings
+                        extracted = extract_kometa_api_keys(parsed_yaml)
+                        if extracted:
+                            save_dynamic_overlays_settings(extracted)
+                            all_extracted_keys.update(extracted)
+                            logger.info(f"[Upload] Extracted API keys from {filename}: {list(extracted.keys())}")
+                    except Exception as ee:
+                        logger.warning(f"[Upload] Error extracting API keys from {filename}: {ee}")
+
+            # If the target file already exists, create a backup first
+            if safe_path.exists():
+                backup_path = safe_path.with_suffix(f"{safe_path.suffix}.bak")
+                shutil.copy2(safe_path, backup_path)
+
+            with open(safe_path, "wb") as f_out:
+                f_out.write(content)
+
+            # Auto-translate uploaded config.yml / config.yaml to visual config
+            if cat_name == "config" and (filename.lower() in ("config.yml", "config.yaml") or (isinstance(parsed_yaml, dict) and "libraries" in parsed_yaml)):
+                try:
+                    from dynamic_overlays_service import parse_config_yml_to_visual, save_visual_config
+                    fresh_vis = parse_config_yml_to_visual(safe_path)
+                    if fresh_vis and fresh_vis.get("libraries"):
+                        save_visual_config(fresh_vis)
+                        logger.info(f"[Upload] Auto-translated {filename} into visual configuration.")
+                except Exception as ve:
+                    logger.warning(f"[Upload] Auto-translation to visual configuration failed: {ve}")
+
+            saved_files.append({
+                "filename": filename,
+                "category": cat_name,
+                "path": str(safe_path),
+                "size_bytes": len(content)
+            })
+
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        yaml_files = kometa_resolver.get_configured_yaml_files()
+
+        if not saved_files and errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
+
+        return {
+            "success": len(saved_files) > 0,
+            "saved_files": saved_files,
+            "errors": errors,
+            "count": len(saved_files),
+            "filename": saved_files[0]["filename"] if saved_files else None,
+            "category": saved_files[0]["category"] if saved_files else None,
+            "path": saved_files[0]["path"] if saved_files else None,
+            "yaml_files": yaml_files,
+            "readiness": fresh_scan.get("readiness", {}),
+            "scan": fresh_scan,
+            "extracted_keys": list(all_extracted_keys.keys()) if all_extracted_keys else []
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading asset: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.delete("/api/dynamic-overlays/config-file")
+async def delete_dynamic_overlay_config_file(filename: str = Query(...)):
+    """Safely delete a configuration or overlay YAML file from Overlayfiles/kometa/configs/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        res = kometa_resolver.delete_config_file(filename)
+        if res.get("success"):
+            fresh_scan = kometa_resolver.scan_and_analyze_rules()
+            yaml_files = kometa_resolver.get_configured_yaml_files()
+            return {**res, "scan": fresh_scan, "yaml_files": yaml_files}
+        return res
+    except Exception as e:
+        logger.error(f"Error deleting config file {filename}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/preview")
+async def preview_dynamic_overlay(
+    template_type: str = Query("movie_poster"),
+    rating: Optional[str] = Query("8.4"),
+    runtime: Optional[str] = Query("1h 58m"),
+    status_label: Optional[str] = Query(""),
+    status_color: Optional[str] = Query("#FFA500"),
+    resolution: Optional[str] = Query("4K"),
+    languages: Optional[str] = Query("de,en"),
+    anime_tag: Optional[str] = Query(None),
+    network: Optional[str] = Query(None),
+    multi_ratings: Optional[str] = Query(None),
+    rating_sources: Optional[str] = Query(None),
+    rating_orientation: Optional[str] = Query("horizontal"),
+    rating_contrast_box: Optional[bool] = Query(True),
+    rating_spacing: Optional[int] = Query(15),
+    # Optional layout offsets
+    rating_x: Optional[int] = Query(None),
+    rating_y: Optional[int] = Query(None),
+    rating_align: Optional[str] = Query(None),
+    rating_valign: Optional[str] = Query(None),
+    runtime_x: Optional[int] = Query(None),
+    runtime_y: Optional[int] = Query(None),
+    runtime_align: Optional[str] = Query(None),
+    runtime_valign: Optional[str] = Query(None),
+    status_x: Optional[int] = Query(None),
+    status_y: Optional[int] = Query(None),
+    status_align: Optional[str] = Query(None),
+    status_valign: Optional[str] = Query(None),
+    res_x: Optional[int] = Query(None),
+    res_y: Optional[int] = Query(None),
+    res_align: Optional[str] = Query(None),
+    res_valign: Optional[str] = Query(None),
+    anime_x: Optional[int] = Query(None),
+    anime_y: Optional[int] = Query(None),
+    anime_align: Optional[str] = Query(None),
+    anime_valign: Optional[str] = Query(None),
+    lang_x: Optional[int] = Query(None),
+    lang_y: Optional[int] = Query(None),
+    lang_align: Optional[str] = Query(None),
+    lang_valign: Optional[str] = Query(None),
+    network_x: Optional[int] = Query(None),
+    network_y: Optional[int] = Query(None),
+    network_align: Optional[str] = Query(None),
+    network_valign: Optional[str] = Query(None),
+    age_rating: Optional[str] = Query(None),
+    age_rating_x: Optional[int] = Query(None),
+    age_rating_y: Optional[int] = Query(None),
+    age_rating_align: Optional[str] = Query(None),
+    age_rating_valign: Optional[str] = Query(None),
+    age_rating_source: Optional[str] = Query("commonsense"),
+    audio_codec: Optional[str] = Query(None),
+    audio_codec_style: Optional[str] = Query("compact"),
+    audio_codec_x: Optional[int] = Query(None),
+    audio_codec_y: Optional[int] = Query(None),
+    audio_codec_align: Optional[str] = Query(None),
+    audio_codec_valign: Optional[str] = Query(None),
+    video_format: Optional[str] = Query(None),
+    video_format_x: Optional[int] = Query(None),
+    video_format_y: Optional[int] = Query(None),
+    video_format_align: Optional[str] = Query(None),
+    video_format_valign: Optional[str] = Query(None),
+    custom_image_id: Optional[str] = Query(None),
+    resolution_mode: Optional[str] = Query(None),
+    resolution_back_color: Optional[str] = Query(None),
+    resolution_back_radius: Optional[int] = Query(None),
+    resolution_back_width: Optional[int] = Query(None),
+    resolution_back_height: Optional[int] = Query(None),
+    runtime_font_size: Optional[int] = Query(None),
+    runtime_font: Optional[str] = Query(None),
+    rating_font_size: Optional[int] = Query(None),
+    rating_font: Optional[str] = Query(None),
+    age_rating_font_size: Optional[int] = Query(None),
+    age_rating_font: Optional[str] = Query(None),
+    status_font_size: Optional[int] = Query(None),
+    status_font: Optional[str] = Query(None),
+    languages_font_size: Optional[int] = Query(None),
+    languages_font: Optional[str] = Query(None)
+):
+    """Generate in-memory live preview composite showing active dynamic overlays."""
+    try:
+        import base64
+
+        def _clean_str(v, max_len=64):
+            if v is None:
+                return None
+            if not isinstance(v, (str, int, float)):
+                return None
+            s = str(v).strip()
+            if s.lower() in ("none", "off", "false", "", "null"):
+                return None
+            # Multi-pass decode to neutralize double-encoded traversal
+            for _ in range(3):
+                dec = urllib.parse.unquote(s)
+                if dec == s:
+                    break
+                s = dec
+            # Strip path separators, directory traversal tokens, and control characters
+            s = re.sub(r'[\x00-\x1f\x7f/\\:\*\?"<>|~]', '', s)
+            if ".." in s:
+                return None
+            return s[:max_len]
+
+        def _clean_int(v):
+            if v is None:
+                return None
+            try:
+                return int(v)
+            except (ValueError, TypeError):
+                return None
+
+        rating = _clean_str(rating)
+        runtime = _clean_str(runtime)
+        status_label = _clean_str(status_label)
+        status_color = _clean_str(status_color)
+        resolution = _clean_str(resolution)
+        languages = _clean_str(languages)
+        anime_tag = _clean_str(anime_tag)
+        network = _clean_str(network)
+        multi_ratings = _clean_str(multi_ratings)
+        rating_sources = _clean_str(rating_sources)
+        age_rating = _clean_str(age_rating)
+        age_rating_source = _clean_str(age_rating_source) or "commonsense"
+        audio_codec = _clean_str(audio_codec)
+        audio_codec_style = _clean_str(audio_codec_style) or "compact"
+        video_format = _clean_str(video_format)
+        resolution_mode = _clean_str(resolution_mode)
+        resolution_back_color = _clean_str(resolution_back_color)
+        resolution_back_radius = _clean_int(resolution_back_radius)
+        resolution_back_width = _clean_int(resolution_back_width)
+        resolution_back_height = _clean_int(resolution_back_height)
+
+        runtime_font = _clean_str(runtime_font)
+        runtime_font_size = _clean_int(runtime_font_size)
+        rating_font = _clean_str(rating_font)
+        rating_font_size = _clean_int(rating_font_size)
+        age_rating_font = _clean_str(age_rating_font)
+        age_rating_font_size = _clean_int(age_rating_font_size)
+        status_font = _clean_str(status_font)
+        status_font_size = _clean_int(status_font_size)
+        languages_font = _clean_str(languages_font)
+        languages_font_size = _clean_int(languages_font_size)
+
+        rating_x = _clean_int(rating_x)
+        rating_y = _clean_int(rating_y)
+        runtime_x = _clean_int(runtime_x)
+        runtime_y = _clean_int(runtime_y)
+        status_x = _clean_int(status_x)
+        status_y = _clean_int(status_y)
+        res_x = _clean_int(res_x)
+        res_y = _clean_int(res_y)
+        anime_x = _clean_int(anime_x)
+        anime_y = _clean_int(anime_y)
+        lang_x = _clean_int(lang_x)
+        lang_y = _clean_int(lang_y)
+        network_x = _clean_int(network_x)
+        network_y = _clean_int(network_y)
+        age_rating_x = _clean_int(age_rating_x)
+        age_rating_y = _clean_int(age_rating_y)
+        audio_codec_x = _clean_int(audio_codec_x)
+        audio_codec_y = _clean_int(audio_codec_y)
+        video_format_x = _clean_int(video_format_x)
+        video_format_y = _clean_int(video_format_y)
+
+        is_landscape = (template_type in ("episode_card", "backdrop", "background", "titlecard"))
+        dim = LANDSCAPE_DIM if is_landscape else PORTRAIT_DIM
+
+        base = None
+        custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+        if custom_image_id:
+            safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(custom_image_id).strip())
+            for ext in (".png", ".jpg", ".jpeg", ".webp"):
+                candidate = custom_previews_dir / f"{safe_id}{ext}"
+                if candidate.exists():
+                    try:
+                        base = Image.open(candidate).convert("RGBA")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed opening custom preview image {candidate}: {e}")
+
+        if base is None:
+            try:
+                try:
+                    from .defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+                except ImportError:
+                    from defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+
+                default_poster_path = BASE_DIR / "Overlayfiles" / "default_poster.jpg"
+                default_bg_path = BASE_DIR / "Overlayfiles" / "default_background.jpg"
+
+                if is_landscape:
+                    if default_bg_path.exists():
+                        base = Image.open(default_bg_path).convert("RGBA")
+                    elif DEFAULT_BACKGROUND_B64:
+                        raw_bg = base64.b64decode(DEFAULT_BACKGROUND_B64.strip())
+                        base = Image.open(BytesIO(raw_bg)).convert("RGBA")
+                else:
+                    if default_poster_path.exists():
+                        base = Image.open(default_poster_path).convert("RGBA")
+                    elif DEFAULT_POSTER_B64:
+                        raw_p = base64.b64decode(DEFAULT_POSTER_B64.strip())
+                        base = Image.open(BytesIO(raw_p)).convert("RGBA")
+            except Exception as img_err:
+                logger.warning(f"Failed to load sample image for dynamic overlay preview: {img_err}")
+                base = None
+
+        if base:
+            base = base.resize(dim, Image.Resampling.LANCZOS)
+        else:
+            base = Image.new("RGBA", dim, (24, 28, 36, 255))
+            draw = ImageDraw.Draw(base)
+            center_text = "SAMPLE TITLE CARD (1920x1080)" if is_landscape else "SAMPLE MOVIE POSTER (1000x1500)"
+            draw.text(
+                (dim[0] // 2, dim[1] // 2),
+                center_text,
+                anchor="mm",
+                fill=(255, 255, 255, 90)
+            )
+
+
+        base_buf = BytesIO()
+        base.save(base_buf, format="PNG")
+        base_bytes = base_buf.getvalue()
+
+        layers = []
+        assets_dir = kometa_resolver.assets_dir if (kometa_resolver and getattr(kometa_resolver, 'assets_dir', None) and kometa_resolver.assets_dir.exists()) else (BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets")
+        fonts_dir = kometa_resolver.fonts_dir if (kometa_resolver and getattr(kometa_resolver, 'fonts_dir', None) and kometa_resolver.fonts_dir.exists()) else (BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "fonts")
+        colus_font = (BASE_DIR / "Overlayfiles" / "Colus-Regular.ttf")
+
+        inter_font = fonts_dir / "Inter-Bold.ttf"
+        if not inter_font.exists():
+            inter_font = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "fonts" / "Inter-Bold.ttf"
+        text_font_to_use = str(inter_font) if inter_font.exists() else (str(colus_font) if colus_font.exists() else None)
+
+        def _resolve_font_file(font_name: Optional[str], fallback_font: Optional[str]) -> Optional[str]:
+            if not font_name or str(font_name).lower() in ("default", "none", "", "null"):
+                return fallback_font
+            safe = os.path.basename(str(font_name).strip())
+            cands = [
+                fonts_dir / safe,
+                BASE_DIR / "Overlayfiles" / safe,
+                fonts_dir / f"{safe}.ttf",
+                fonts_dir / f"{safe}.otf",
+                BASE_DIR / "Overlayfiles" / f"{safe}.ttf",
+                BASE_DIR / "Overlayfiles" / f"{safe}.otf",
+            ]
+            for c in cands:
+                if c.exists():
+                    return str(c)
+            return fallback_font
+
+        # 1. 4K / Resolution Ribbon or Banner
+        if resolution and str(resolution).strip().lower() not in ("none", "off", "false", ""):
+            res_clean = resolution.lower()
+            is_4k = ("4k" in res_clean or "2160" in res_clean or "uhd" in res_clean)
+            banner_file = assets_dir / "4K_banner.png"
+            if not banner_file.exists():
+                banner_file = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "4K_banner.png"
+
+            # Check if resolution_mode is banner OR (is_4k on a movie poster and res_y in (0, None) and resolution_mode != 'badge')
+            use_top_banner = (resolution_mode == "banner") or (
+                is_4k and banner_file.exists() and not is_landscape and (res_y is None or res_y == 0) and resolution_mode != "badge"
+            )
+            if use_top_banner and banner_file.exists() and not is_landscape:
+                layers.append({
+                    "name": "resolution_banner",
+                    "type": "image",
+                    "image_path": str(banner_file),
+                    "horizontal_align": "center",
+                    "horizontal_offset": 0,
+                    "vertical_align": "top",
+                    "vertical_offset": 0
+                })
+            else:
+                badge_name = "4K.png" if is_4k else ("1080p.png" if "1080" in res_clean else f"{resolution}.png")
+                badge_candidates = [
+                    assets_dir / badge_name,
+                    assets_dir / "resolution" / badge_name,
+                    assets_dir / f"{res_clean}.png",
+                    assets_dir / "resolution" / f"{res_clean}.png",
+                    BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / badge_name,
+                    BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "resolution" / badge_name,
+                ]
+                badge_file = None
+                for cand in badge_candidates:
+                    if cand.exists():
+                        badge_file = cand
+                        break
+
+                # Resolution background styling
+                if resolution_back_color is not None:
+                    res_bcol = None if resolution_back_color.lower() in ("none", "off", "#00000000", "transparent") else resolution_back_color
+                else:
+                    res_bcol = "#00000099" # Default contrast pill
+                res_brad = resolution_back_radius if resolution_back_radius is not None else 15
+                res_bw = resolution_back_width or (260 if is_landscape else 245)
+                res_bh = resolution_back_height or (85 if is_landscape else 95)
+
+                if badge_file:
+                    layers.append({
+                        "name": "resolution",
+                        "type": "image",
+                        "image_path": str(badge_file),
+                        "back_color": res_bcol,
+                        "back_width": res_bw if res_bcol else None,
+                        "back_height": res_bh if res_bcol else None,
+                        "back_radius": res_brad if res_bcol else 0,
+                        "horizontal_align": res_align or "left",
+                        "horizontal_offset": res_x if res_x is not None else 15,
+                        "vertical_align": res_valign or "top",
+                        "vertical_offset": res_y if res_y is not None else 15
+                    })
+                else:
+                    layers.append({
+                        "name": "resolution",
+                        "type": "text",
+                        "text": resolution.upper(),
+                        "font_path": text_font_to_use,
+                        "font_size": 34 if is_landscape else 38,
+                        "font_color": "#FFFFFF",
+                        "back_color": res_bcol,
+                        "back_width": 140 if res_bcol else None,
+                        "back_height": 60 if res_bcol else None,
+                        "back_radius": res_brad if res_bcol else 0,
+                        "horizontal_align": res_align or "left",
+                        "horizontal_offset": res_x if res_x is not None else 15,
+                        "vertical_align": res_valign or "top",
+                        "vertical_offset": res_y if res_y is not None else 15
+                    })
+
+        # 2. Ratings Badges (Multi-Ratings Cluster or Legacy Single Badge)
+        has_multi = multi_ratings and str(multi_ratings).strip().lower() not in ("none", "off", "false", "")
+        if has_multi or rating_sources:
+            try:
+                from overlay_sync_service import build_multi_rating_layers
+                sample_ratings = {
+                    "imdb": "8.4",
+                    "tomatoes": "94",
+                    "tomatoesaudience": "88",
+                    "tmdb": "8.1",
+                    "trakt": "82",
+                    "letterboxd": "4.2",
+                    "metacritic": "78"
+                }
+                src_list = [s.strip().lower() for s in (rating_sources or "").split(",") if s.strip() and s.strip().lower() != "true"]
+                if not src_list:
+                    try:
+                        from dynamic_overlays_service import get_dynamic_overlays_settings
+                        cur_dyn = get_dynamic_overlays_settings()
+                        src_list = cur_dyn.get("rating_sources") or ["imdb", "tomatoes", "tmdb"]
+                    except Exception:
+                        src_list = ["imdb", "tomatoes", "tmdb"]
+                dyn_cfg = {
+                    "sources": src_list,
+                    "orientation": rating_orientation or "horizontal",
+                    "position": f"{rating_valign or 'bottom'}-{rating_align or 'right'}",
+                    "offset_x": rating_x if rating_x is not None else 30,
+                    "offset_y": rating_y if rating_y is not None else 25,
+                    "spacing": rating_spacing if rating_spacing is not None else 15,
+                    "contrast_box": rating_contrast_box if rating_contrast_box is not None else True
+                }
+                if rating_font_size:
+                    dyn_cfg["font_size"] = rating_font_size
+                rating_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "rating"
+                fonts_dir_dyn = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "fonts"
+                m_layers = build_multi_rating_layers(
+                    ratings=sample_ratings,
+                    dyn_settings=dyn_cfg,
+                    canvas_type="landscape" if is_landscape else "portrait",
+                    assets_dir=rating_dir,
+                    fonts_dir=fonts_dir_dyn
+                )
+                layers.extend(m_layers)
+            except Exception as m_err:
+                logger.warning(f"Failed to generate multi-ratings in preview: {m_err}")
+        else:
+            has_rating = rating and str(rating).strip().lower() not in ("none", "off", "false", "", "0")
+            if has_rating:
+                try:
+                    score = float(rating)
+                except ValueError:
+                    score = 8.0
+
+                if score >= 6.5:
+                    badge_file = assets_dir / "Rating_High.png"
+                elif score >= 4.5:
+                    badge_file = assets_dir / "Rating_Mid.png"
+                else:
+                    badge_file = assets_dir / "Rating_Low.png"
+
+                circ_font = fonts_dir / "CircularStd-Bold.otf"
+                font_to_use = str(circ_font) if circ_font.exists() else (str(colus_font) if colus_font.exists() else None)
+                r_font = _resolve_font_file(rating_font, font_to_use)
+                r_size = rating_font_size if (rating_font_size and rating_font_size > 10) else (42 if is_landscape else 50)
+
+                if is_landscape:
+                    h_offset = rating_x if rating_x is not None else 30
+                    v_offset = rating_y if rating_y is not None else 25
+                    h_align = rating_align or "right"
+                    v_align = rating_valign or "bottom"
+                    layers.append({
+                        "name": "rating",
+                        "type": "badge",
+                        "text": str(rating).strip(),
+                        "image_path": str(badge_file) if badge_file.exists() else None,
+                        "scale_height": 60,
+                        "scale_width": 120,
+                        "font_path": r_font,
+                        "font_size": r_size,
+                        "font_color": "#282a2d" if (4.5 <= score < 6.5) else "#FFFFFF",
+                        "horizontal_align": h_align,
+                        "horizontal_offset": h_offset,
+                        "vertical_align": v_align,
+                        "vertical_offset": v_offset,
+                        "addon_position": "center"
+                    })
+                else:
+                    # Portrait poster (movie_poster, show_poster):
+                    # Matches exact Kometa Rating_High_BG plate (300x200) and user_rating text!
+                    bg_offset = rating_x if (rating_x is not None and rating_x != 30) else 375
+                    bg_align = rating_align if (rating_align and rating_align != "right") else "center"
+                    bg_v_offset = rating_y if (rating_y is not None and rating_y != 25) else 0
+                    bg_v_align = rating_valign or "bottom"
+
+                    layers.append({
+                        "name": "rating_bg",
+                        "type": "image",
+                        "image_path": str(badge_file) if badge_file.exists() else None,
+                        "horizontal_align": bg_align,
+                        "horizontal_offset": bg_offset,
+                        "vertical_align": bg_v_align,
+                        "vertical_offset": bg_v_offset
+                    })
+                    layers.append({
+                        "name": "user_rating",
+                        "type": "text",
+                        "text": str(rating).strip(),
+                        "font_path": r_font,
+                        "font_size": 85,
+                        "font_color": "#282a2d" if (4.5 <= score < 6.5) else "#FFFFFF",
+                        "horizontal_align": bg_align,
+                        "horizontal_offset": bg_offset,
+                        "vertical_align": bg_v_align,
+                        "vertical_offset": bg_v_offset + 70
+                    })
+
+        # 3. Series Status Banner (Only for TV or when explicitly enabled, never default on movie posters)
+        has_status = status_label and str(status_label).strip().lower() not in ("none", "off", "false", "")
+        # Prevent default "RETURNING SERIES" from covering movie_poster
+        if has_status and not is_landscape and status_label.strip() == "RETURNING SERIES" and status_x is None and status_y is None:
+            has_status = False
+
+        if has_status:
+            h_offset = status_x if status_x is not None else 0
+            v_offset = status_y if status_y is not None else (25 if is_landscape else 35)
+            h_align = status_align or "center"
+            v_align = status_valign or "bottom"
+            st_font = _resolve_font_file(status_font, str(colus_font) if colus_font.exists() else None)
+            st_size = status_font_size if (status_font_size and status_font_size > 10) else (64 if is_landscape else 75)
+
+            layers.append({
+                "name": "status",
+                "type": "text",
+                "text": status_label.strip(),
+                "font_path": st_font,
+                "font_size": st_size,
+                "font_color": status_color or "#FFA500",
+                "back_color": "#000000BF",
+                "back_width": 1400 if is_landscape else 920,
+                "back_height": 110 if is_landscape else 130,
+                "back_radius": 15,
+                "horizontal_align": h_align,
+                "horizontal_offset": h_offset,
+                "vertical_align": v_align,
+                "vertical_offset": v_offset
+            })
+
+        # 4. Runtime Badge (Clean formatted e.g. 1h 58m, transparent background, text stroke for legibility)
+        has_runtime = runtime and str(runtime).strip().lower() not in ("none", "off", "false", "")
+        if has_runtime:
+            rt_str = str(runtime).strip()
+            # If runtime is given in raw minutes (e.g. "124 min" or "124"), format to "2h 4m"
+            raw_digits = "".join(ch for ch in rt_str if ch.isdigit())
+            if raw_digits and ("min" in rt_str.lower() or rt_str.isdigit()):
+                try:
+                    total_m = int(raw_digits)
+                    hrs = total_m // 60
+                    mins = total_m % 60
+                    rt_str = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+                except Exception:
+                    pass
+
+            h_offset = runtime_x if runtime_x is not None else 140
+            v_offset = runtime_y if runtime_y is not None else 37
+            h_align = runtime_align or "center"
+            v_align = runtime_valign or "bottom"
+
+            rt_font = _resolve_font_file(runtime_font, text_font_to_use)
+            rt_size = runtime_font_size if (runtime_font_size and runtime_font_size > 10) else (52 if is_landscape else 50)
+
+            layers.append({
+                "name": "runtime",
+                "type": "text",
+                "text": rt_str,
+                "font_path": rt_font,
+                "font_size": rt_size,
+                "font_color": "#FFFFFF",
+                "stroke_width": 2,
+                "stroke_color": "#000000D0",
+                "horizontal_align": h_align,
+                "horizontal_offset": h_offset,
+                "vertical_align": v_align,
+                "vertical_offset": v_offset,
+                "back_color": "#00000000",
+                "back_width": 180 if is_landscape else 205,
+                "back_height": 65 if is_landscape else 80,
+                "back_align": "center"
+            })
+
+        # 5. Audio Languages (Country Flags - Stacked vertically like Kometa / Alien style)
+        has_languages = languages and str(languages).strip().lower() not in ("none", "off", "false", "")
+        if has_languages:
+            raw_codes = [l.strip().lower() for l in languages.split(",") if l.strip()]
+            flags_dir = assets_dir / "flags" / "square"
+            if not flags_dir.exists():
+                flags_dir = assets_dir / "flag" / "square"
+            if not flags_dir.exists():
+                flags_dir = assets_dir / "flags"
+
+            flag_w = 38 if is_landscape else 46
+            flag_h = 24 if is_landscape else 28
+            h_offset = lang_x if lang_x is not None else 30
+            v_offset = lang_y if lang_y is not None else 35
+            h_align = lang_align or "left"
+            v_align = lang_valign or "bottom"
+
+            from overlay_sync_service import LANGUAGE_TO_FLAG_MAP, LANGUAGE_MAP
+
+            flag_files_found = []
+            for raw_c in raw_codes:
+                norm_c = LANGUAGE_MAP.get(raw_c, raw_c)
+                cand_name = LANGUAGE_TO_FLAG_MAP.get(norm_c, f"{norm_c}.png")
+                cand_path = flags_dir / cand_name
+                if cand_path.exists():
+                    flag_files_found.append((norm_c, cand_path))
+
+            if flag_files_found:
+                if len(flag_files_found) == 1:
+                    code, flag_path = flag_files_found[0]
+                    layers.append({
+                        "name": f"language_flag_{code}",
+                        "type": "image",
+                        "image_path": str(flag_path),
+                        "scale_width": flag_w,
+                        "scale_height": flag_h,
+                        "horizontal_align": h_align,
+                        "horizontal_offset": h_offset,
+                        "vertical_align": v_align,
+                        "vertical_offset": v_offset
+                    })
+                elif len(flag_files_found) >= 2:
+                    code_top, top_path = flag_files_found[0]
+                    code_bot, bot_path = flag_files_found[1]
+                    # Bottom flag
+                    layers.append({
+                        "name": f"language_flag_{code_bot}",
+                        "type": "image",
+                        "image_path": str(bot_path),
+                        "scale_width": flag_w,
+                        "scale_height": flag_h,
+                        "horizontal_align": h_align,
+                        "horizontal_offset": h_offset,
+                        "vertical_align": v_align,
+                        "vertical_offset": v_offset
+                    })
+                    # Top flag
+                    layers.append({
+                        "name": f"language_flag_{code_top}",
+                        "type": "image",
+                        "image_path": str(top_path),
+                        "scale_width": flag_w,
+                        "scale_height": flag_h,
+                        "horizontal_align": h_align,
+                        "horizontal_offset": h_offset,
+                        "vertical_align": v_align,
+                        "vertical_offset": v_offset + flag_h + 4
+                    })
+            else:
+                lang_clean = " · ".join([l.strip().upper() for l in raw_codes])
+                layers.append({
+                    "name": "languages",
+                    "type": "text",
+                    "text": lang_clean,
+                    "font_path": text_font_to_use,
+                    "font_size": 30 if is_landscape else 34,
+                    "font_color": "#FFFFFF",
+                    "back_color": "#000000AA",
+                    "back_width": (160 if is_landscape else 140) + (len(lang_clean) * 10),
+                    "back_height": 60 if is_landscape else 65,
+                    "back_radius": 10,
+                    "horizontal_align": h_align,
+                    "horizontal_offset": h_offset,
+                    "vertical_align": v_align,
+                    "vertical_offset": v_offset
+                })
+
+        # 6. Network Logo / Text Badge
+        has_network = network and str(network).strip().lower() not in ("none", "off", "false", "")
+        if has_network:
+            h_offset = network_x if network_x is not None else 25
+            v_offset = network_y if network_y is not None else 25
+            h_align = network_align or "right"
+            v_align = network_valign or "top"
+
+            # Search network asset across multiple subdirectories and case-insensitively
+            found_net_img = None
+            net_candidates = [
+                assets_dir / f"{network}.png",
+                assets_dir / "network" / f"{network}.png",
+                assets_dir / "network" / "color" / f"{network}.png",
+                assets_dir / "network" / "white" / f"{network}.png",
+                assets_dir / "streaming" / f"{network}.png",
+                assets_dir / "streaming" / "color" / f"{network}.png",
+                assets_dir / "streaming" / "white" / f"{network}.png",
+                assets_dir / "studio" / f"{network}.png",
+                assets_dir / "studio" / "standard" / f"{network}.png",
+            ]
+            for cand in net_candidates:
+                if cand.exists():
+                    found_net_img = cand
+                    break
+
+            if not found_net_img:
+                net_stem = str(network).lower().strip()
+                search_dirs = [
+                    assets_dir,
+                    assets_dir / "network",
+                    assets_dir / "network" / "color",
+                    assets_dir / "network" / "white",
+                    assets_dir / "streaming",
+                    assets_dir / "streaming" / "color",
+                    assets_dir / "studio",
+                    assets_dir / "studio" / "standard",
+                ]
+                for s_dir in search_dirs:
+                    if s_dir.exists() and s_dir.is_dir():
+                        try:
+                            for f in s_dir.iterdir():
+                                if f.is_file() and f.stem.lower() == net_stem and f.suffix.lower() in (".png", ".jpg", ".webp"):
+                                    found_net_img = f
+                                    break
+                        except Exception:
+                            pass
+                    if found_net_img:
+                        break
+
+            if found_net_img:
+                layers.append({
+                    "name": "network",
+                    "type": "image",
+                    "image_path": str(found_net_img),
+                    "horizontal_align": h_align,
+                    "horizontal_offset": h_offset,
+                    "vertical_align": v_align,
+                    "vertical_offset": v_offset
+                })
+            else:
+                layers.append({
+                    "name": "network",
+                    "type": "text",
+                    "text": network.upper(),
+                    "font_size": 36 if is_landscape else 48,
+                    "font_color": "#FFFFFF",
+                    "back_color": "#000000AA",
+                    "back_width": 180,
+                    "back_height": 60,
+                    "back_radius": 10,
+                    "horizontal_align": h_align,
+                    "horizontal_offset": h_offset,
+                    "vertical_align": v_align,
+                    "vertical_offset": v_offset
+                })
+
+        # 7. Anime Filler Tag
+        if anime_tag and str(anime_tag).strip().lower() not in ("none", "off", "false", ""):
+            tag_color = "#27C24CB3" if anime_tag.lower() == "canon" else ("#ED1F1FB3" if anime_tag.lower() == "filler" else "#FFA500B3")
+            layers.append({
+                "name": "anime_tag",
+                "type": "text",
+                "text": anime_tag.upper().strip(),
+                "font_path": str(colus_font) if colus_font.exists() else None,
+                "font_size": 55,
+                "font_color": "#FFFFFF",
+                "back_color": tag_color,
+                "back_width": 240,
+                "back_height": 80,
+                "back_radius": 12,
+                "horizontal_align": anime_align or "left",
+                "horizontal_offset": anime_x if anime_x is not None else 20,
+                "vertical_align": anime_valign or "top",
+                "vertical_offset": anime_y if anime_y is not None else 20
+            })
+
+        # 8. Age & Content Rating Badge (Common Sense Media, FSK, MPAA, BBFC)
+        has_age = age_rating and str(age_rating).strip().lower() not in ("none", "off", "false", "")
+        if has_age:
+            age_str = str(age_rating).strip()
+            age_src = str(age_rating_source or "commonsense").strip().lower()
+            h_offset = age_rating_x if age_rating_x is not None else (110 if has_languages else 30)
+            v_offset = age_rating_y if age_rating_y is not None else 37
+            h_align = age_rating_align or "left"
+            v_align = age_rating_valign or "bottom"
+
+            cr_dir = assets_dir / "cr"
+            if not cr_dir.exists():
+                cr_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "cr"
+
+            clean_val = age_str.lower().replace(" ", "").replace("-", "")
+            found_badge_img = None
+
+            if cr_dir.exists():
+                stems_to_try = []
+                if "fsk" in age_src or "de" in age_src or "fsk" in clean_val:
+                    digits = "".join(ch for ch in clean_val if ch.isdigit())
+                    if digits:
+                        stems_to_try.extend([f"de{digits}c", f"de{digits}", f"de{digits}cw"])
+                elif "us" in age_src or "mpaa" in age_src:
+                    stems_to_try.extend([
+                        f"us{clean_val}c", f"us{clean_val}",
+                        f"us{age_str.lower()}c", f"us{age_str.lower()}",
+                        f"ustv-{clean_val.replace('tv', '')}c", f"ustv-{clean_val.replace('tv', '')}"
+                    ])
+                elif "uk" in age_src or "bbfc" in age_src:
+                    stems_to_try.extend([f"uk{clean_val}c", f"uk{clean_val}"])
+
+                for stem in stems_to_try:
+                    for ext in (".png", ".webp"):
+                        cand = cr_dir / f"{stem}{ext}"
+                        if cand.exists():
+                            found_badge_img = cand
+                            break
+                    if found_badge_img:
+                        break
+
+            if found_badge_img:
+                layers.append({
+                    "name": "age_rating",
+                    "type": "image",
+                    "image_path": str(found_badge_img),
+                    "scale_height": 55 if is_landscape else 65,
+                    "horizontal_align": h_align,
+                    "horizontal_offset": h_offset,
+                    "vertical_align": v_align,
+                    "vertical_offset": v_offset
+                })
+            else:
+                cs_icon = assets_dir / "Commonsense.png"
+                if not cs_icon.exists():
+                    cs_icon = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "Commonsense.png"
+                if not cs_icon.exists() and cr_dir.exists():
+                    cs_icon = cr_dir / "cs.png"
+
+                cs_display = age_str
+                if cs_icon.exists() and (age_src == "commonsense" or "+" in age_str or age_str.isdigit()):
+                    if not cs_display.endswith("+") and cs_display.isdigit():
+                        cs_display = f"{cs_display}+"
+                    cs_h = 36 if is_landscape else 44
+                    cs_w = int(cs_h * (92 / 83))
+
+                    cs_font = _resolve_font_file(age_rating_font, text_font_to_use)
+                    cs_size = age_rating_font_size if (age_rating_font_size and age_rating_font_size > 10) else cs_h
+                    layers.append({
+                        "name": "commonsense",
+                        "type": "badge",
+                        "text": cs_display,
+                        "image_path": str(cs_icon),
+                        "scale_height": cs_h,
+                        "addon_position": "left",
+                        "addon_offset": 12,
+                        "font_path": cs_font,
+                        "font_size": cs_size,
+                        "font_color": "#FFFFFF",
+                        "stroke_width": 2,
+                        "stroke_color": "#000000D0",
+                        "horizontal_align": h_align,
+                        "horizontal_offset": h_offset,
+                        "vertical_align": v_align,
+                        "vertical_offset": v_offset,
+                        "drop_shadow": True
+                    })
+                else:
+                    ar_font = _resolve_font_file(age_rating_font, text_font_to_use)
+                    ar_size = age_rating_font_size if (age_rating_font_size and age_rating_font_size > 10) else (34 if is_landscape else 38)
+                    layers.append({
+                        "name": "age_rating",
+                        "type": "text",
+                        "text": age_str.upper(),
+                        "font_path": ar_font,
+                        "font_size": ar_size,
+                        "font_color": "#FFFFFF",
+                        "back_color": "#000000AA",
+                        "back_width": 140 if is_landscape else 130,
+                        "back_height": 70 if is_landscape else 65,
+                        "back_radius": 10,
+                        "horizontal_align": h_align,
+                        "horizontal_offset": h_offset,
+                        "vertical_align": v_align,
+                        "vertical_offset": v_offset
+                    })
+
+        # 8. Audio Codec Badge (Dolby Atmos, TrueHD, DTS:X, etc.)
+        if audio_codec and str(audio_codec).strip().lower() not in ("none", "off", "false", ""):
+            ac_key = str(audio_codec).strip().lower()
+            style = audio_codec_style if audio_codec_style in ("compact", "standard") else "compact"
+            codec_candidates = [
+                assets_dir / "audio_codec" / style / f"{ac_key}.png",
+                assets_dir / "audio_codec" / "compact" / f"{ac_key}.png",
+                assets_dir / "audio_codec" / "standard" / f"{ac_key}.png",
+                assets_dir / f"{ac_key}.png"
+            ]
+            found_codec_img = None
+            for cand in codec_candidates:
+                if cand.exists():
+                    found_codec_img = cand
+                    break
+
+            if found_codec_img:
+                layers.append({
+                    "name": f"audio_codec_{ac_key}",
+                    "type": "image",
+                    "image_path": str(found_codec_img),
+                    "back_color": "#00000099",
+                    "back_width": 305,
+                    "back_height": 105,
+                    "back_radius": 12,
+                    "horizontal_align": audio_codec_align or "center",
+                    "horizontal_offset": audio_codec_x if audio_codec_x is not None else 0,
+                    "vertical_align": audio_codec_valign or "top",
+                    "vertical_offset": audio_codec_y if audio_codec_y is not None else 15
+                })
+
+        # 9. Video Format Badge (Telesync, CAM, Remux, Blu-ray, Web, etc.)
+        if video_format and str(video_format).strip().lower() not in ("none", "off", "false", ""):
+            vf_str = str(video_format).strip().upper()
+            layers.append({
+                "name": f"video_format_{vf_str.lower()}",
+                "type": "text",
+                "text": vf_str,
+                "font_path": text_font_to_use,
+                "font_size": 38 if not is_landscape else 32,
+                "font_color": "#FFFFFF",
+                "back_color": "#00000099",
+                "back_width": 305,
+                "back_height": 105,
+                "back_radius": 12,
+                "horizontal_align": video_format_align or "left",
+                "horizontal_offset": video_format_x if video_format_x is not None else 15,
+                "vertical_align": video_format_valign or "bottom",
+                "vertical_offset": video_format_y if video_format_y is not None else 15
+            })
+
+        rendered_bytes = DynamicOverlayCompositor.composite_overlays(
+            base_image_bytes=base_bytes,
+            layers=layers,
+            canvas_type="landscape" if is_landscape else "portrait"
+        )
+
+        return Response(
+            content=rendered_bytes,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
+    except Exception as e:
+        logger.error(f"Error generating preview: {e}", exc_info=True)
+        return Response(content=b"", status_code=500)
+
+
+@app.get("/api/dynamic-overlays/sample-image")
+async def get_dynamic_overlays_sample_image(
+    template_type: str = Query("movie_poster"),
+    custom_image_id: Optional[str] = Query(None)
+):
+    """Serve base sample movie poster or landscape episode card image for canvas preview backdrop."""
+    import base64
+    custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+    if custom_image_id:
+        safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(custom_image_id).strip())
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            cand = custom_previews_dir / f"{safe_id}{ext}"
+            if cand.exists():
+                return FileResponse(cand, media_type=f"image/{'png' if ext == '.png' else ('webp' if ext == '.webp' else 'jpeg')}")
+
+    is_landscape = (template_type in ("episode_card", "backdrop", "background", "titlecard"))
+    try:
+        try:
+            from .defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+        except ImportError:
+            from defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+
+        default_poster_path = BASE_DIR / "Overlayfiles" / "default_poster.jpg"
+        default_bg_path = BASE_DIR / "Overlayfiles" / "default_background.jpg"
+
+        if is_landscape:
+            if default_bg_path.exists():
+                return FileResponse(default_bg_path, media_type="image/jpeg")
+            elif DEFAULT_BACKGROUND_B64:
+                return Response(content=base64.b64decode(DEFAULT_BACKGROUND_B64.strip()), media_type="image/jpeg")
+        else:
+            if default_poster_path.exists():
+                return FileResponse(default_poster_path, media_type="image/jpeg")
+            elif DEFAULT_POSTER_B64:
+                return Response(content=base64.b64decode(DEFAULT_POSTER_B64.strip()), media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Error serving sample image: {e}")
+
+    dim = LANDSCAPE_DIM if is_landscape else PORTRAIT_DIM
+    blank = Image.new("RGBA", dim, (24, 28, 36, 255))
+    buf = BytesIO()
+    blank.save(buf, format="JPEG")
+    return Response(content=buf.getvalue(), media_type="image/jpeg")
+
+
+@app.post("/api/dynamic-overlays/upload-preview-image")
+async def upload_dynamic_overlay_preview_image(
+    file: UploadFile = File(...),
+    template_type: str = Form("movie_poster")
+):
+    """Save an uploaded custom poster, season card, or titlecard image to test overlays on."""
+    try:
+        if not file.filename:
+            return {"success": False, "error": "No file selected."}
+        
+        safe_type = re.sub(r'[^a-zA-Z0-9_\-]', '', str(template_type).strip()) or "movie_poster"
+        ext = Path(file.filename).suffix.lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+            return {"success": False, "error": f"Unsupported image format '{ext}'. Please upload PNG, JPG, or WebP."}
+        
+        contents = await file.read()
+        if len(contents) > 30 * 1024 * 1024:
+            return {"success": False, "error": "Image file too large (max 30MB)."}
+            
+        try:
+            img = Image.open(BytesIO(contents))
+            orig_w, orig_h = img.size
+        except Exception as img_err:
+            return {"success": False, "error": f"Invalid or corrupted image: {img_err}"}
+            
+        custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+        custom_previews_dir.mkdir(parents=True, exist_ok=True)
+        
+        dest_path = custom_previews_dir / f"{safe_type}.png"
+        if not _is_within_root(dest_path.resolve(), custom_previews_dir.resolve()):
+            return {"success": False, "error": "Invalid destination path."}
+        img.convert("RGBA").save(dest_path, format="PNG")
+        
+        import time
+        t = int(time.time())
+        return {
+            "success": True,
+            "preview_image_id": safe_type,
+            "filename": file.filename,
+            "width": orig_w,
+            "height": orig_h,
+            "url": f"/api/dynamic-overlays/custom-preview-image/{safe_type}?t={t}"
+        }
+    except Exception as e:
+        logger.error(f"Error uploading preview image: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/custom-preview-image/{image_id}")
+async def get_custom_preview_image(image_id: str):
+    """Retrieve saved custom preview image."""
+    safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(image_id).strip())
+    if not safe_id:
+        raise HTTPException(status_code=400, detail="Invalid image id")
+    custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+    path = custom_previews_dir / f"{safe_id}.png"
+    if not _is_within_root(path.resolve(), custom_previews_dir.resolve()):
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+    if path.exists():
+        return FileResponse(path, media_type="image/png")
+    raise HTTPException(status_code=404, detail="Custom preview image not found")
+
+
+@app.delete("/api/dynamic-overlays/custom-preview-image/{image_id}")
+async def delete_custom_preview_image(image_id: str):
+    """Delete a custom preview image to revert to default sample."""
+    safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(image_id).strip())
+    if not safe_id:
+        raise HTTPException(status_code=400, detail="Invalid image id")
+    custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+    path = custom_previews_dir / f"{safe_id}.png"
+    if not _is_within_root(path.resolve(), custom_previews_dir.resolve()):
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+    if path.exists():
+        try:
+            path.unlink()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    return {"success": True}
+
+
+class SaveLayoutRequest(BaseModel):
+    library_name: str
+    layout: Dict[str, Dict[str, Any]]
+    filename: str = "config.yml"
+    target_format: Optional[str] = None
+
+
+@app.post("/api/dynamic-overlays/save-layout")
+async def save_dynamic_overlay_layout(req: SaveLayoutRequest):
+    """Save drag-and-drop layout coordinates directly to a library's overlay rules."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.save_library_layout(req.library_name, req.layout, req.filename, target_format=req.target_format)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        fresh_vis = {}
+        try:
+            from dynamic_overlays_service import parse_config_yml_to_visual
+            fresh_vis = parse_config_yml_to_visual()
+        except Exception as ve:
+            logger.warning(f"Failed parsing fresh visual config: {ve}")
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
+    return res
+
+
+@app.get("/api/dynamic-overlays/cache")
+async def get_dynamic_overlays_cache():
+    """Return cache statistics and recent synced items."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        stats = dynamic_overlay_cache.get_stats()
+        recent = dynamic_overlay_cache.get_recent_entries(limit=40)
+        return {"success": True, "stats": stats, "recent": recent}
+    except Exception as e:
+        logger.error(f"Error fetching cache: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/cache/clear")
+async def clear_dynamic_overlays_cache(server_type: Optional[str] = Query(None)):
+    """Clear cached overlay records."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        deleted = dynamic_overlay_cache.clear_cache(server_type)
+        return {"success": True, "deleted_count": deleted}
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/cache/entries")
+async def get_dynamic_overlays_cache_entries(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    server_type: Optional[str] = Query(None),
+    asset_type: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    sort_by: str = Query("last_pushed_at"),
+    sort_desc: bool = Query(True)
+):
+    """Return paginated entries from the dynamic overlay push cache."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        data = dynamic_overlay_cache.get_entries(
+            page=page,
+            limit=limit,
+            search=search,
+            server_type=server_type,
+            asset_type=asset_type,
+            media_type=media_type,
+            status=status,
+            sort_by=sort_by,
+            sort_desc=sort_desc
+        )
+        return {"success": True, **data}
+    except Exception as e:
+        logger.error(f"Error querying overlay cache entries: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "entries": [], "total": 0}
+
+
+@app.delete("/api/dynamic-overlays/cache/entry/{entry_id}")
+async def delete_dynamic_overlay_cache_entry(entry_id: int):
+    """Delete a single entry from dynamic overlay push cache."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        deleted = dynamic_overlay_cache.delete_entry_by_id(entry_id)
+        if deleted:
+            return {"success": True, "message": "Cache entry deleted."}
+        return {"success": False, "error": "Entry not found or already deleted."}
+    except Exception as e:
+        logger.error(f"Error deleting cache entry {entry_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+
+class SaveConfigContentRequest(BaseModel):
+    filename: str = "config.yml"
+    content: str
+
+
+class RemoveOverlayRuleRequest(BaseModel):
+    library_name: str
+    overlay_index: int
+    filename: str = "config.yml"
+
+
+class AddOverlayRuleRequest(BaseModel):
+    library_name: str
+    overlay_type: str = "default"
+    overlay_name: str
+    template_variables: Optional[Dict[str, Any]] = None
+    filename: str = "config.yml"
+
+
+class UpdateOverlayVariablesRequest(BaseModel):
+    library_name: str
+    overlay_index: int
+    template_variables: Dict[str, Any]
+    filename: str = "config.yml"
+
+
+@app.get("/api/dynamic-overlays/config-content")
+async def get_dynamic_overlays_config_content(filename: str = Query("config.yml")):
+    """Read raw YAML content of config.yml for in-UI editing."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    return kometa_resolver.get_config_content(filename)
+
+
+@app.post("/api/dynamic-overlays/config-content")
+async def save_dynamic_overlays_config_content(req: SaveConfigContentRequest):
+    """Save raw YAML content with syntax validation and automatic backup."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.save_config_content(req.filename, req.content)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/rules/remove")
+async def remove_dynamic_overlay_rule(req: RemoveOverlayRuleRequest):
+    """Remove a specific overlay rule from a library in config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.remove_library_overlay(req.library_name, req.overlay_index, req.filename)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/rules/add")
+async def add_dynamic_overlay_rule(req: AddOverlayRuleRequest):
+    """Add a new overlay rule (default or file) to a library in config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.add_library_overlay(
+        req.library_name, req.overlay_type, req.overlay_name, req.template_variables, req.filename
+    )
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/rules/update")
+async def update_dynamic_overlay_variables(req: UpdateOverlayVariablesRequest):
+    """Update template variables for an overlay rule in a library."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.update_library_overlay(
+        req.library_name, req.overlay_index, req.template_variables, req.filename
+    )
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+class AddLibraryRequest(BaseModel):
+    library_name: str
+    filename: str = "config.yml"
+
+
+class RemoveLibraryRequest(BaseModel):
+    library_name: Optional[str] = None
+    library_names: Optional[List[str]] = None
+    filename: str = "config.yml"
+
+
+@app.post("/api/dynamic-overlays/libraries/add")
+async def add_dynamic_overlay_library(req: AddLibraryRequest):
+    """Add a new library entry to config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.add_library(req.library_name, req.filename)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/libraries/remove")
+async def remove_dynamic_overlay_library(req: RemoveLibraryRequest):
+    """Remove one or more library entries from config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+
+    target_names = []
+    if req.library_names:
+        target_names.extend([str(n).strip() for n in req.library_names if str(n).strip()])
+    elif req.library_name:
+        target_names.append(req.library_name.strip())
+
+    if not target_names:
+        return {"success": False, "error": "No library name specified for removal."}
+
+    res = kometa_resolver.remove_libraries(target_names, req.filename)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+# ==============================================================================
+# DYNAMIC OVERLAYS SYNC ENDPOINTS
+# ==============================================================================
+
+class DynamicOverlaysSyncRequest(BaseModel):
+    target_server: str = "all"  # "all", "plex", "jellyfin", "emby"
+    scope: str = "incremental"   # "incremental" (changes only) or "all" (all assets)
+    library: str = "all"        # "all" or specific library name
+
+
+@app.post("/api/dynamic-overlays/sync")
+async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
+    """
+    Triggers an on-demand Dynamic Overlays Sync task.
+    - scope="incremental": Detects changes (skips unmodified via overlay_cache.db).
+    - scope="all": Full sync (re-evaluates and pushes all assets).
+    """
+    try:
+        from overlay_sync_service import (
+            run_overlay_sync_task,
+            is_overlay_sync_running
+        )
+    except ImportError as e:
+        return {"success": False, "error": f"Overlay sync service not available: {e}"}
+
+    if is_overlay_sync_running():
+        return {
+            "success": False,
+            "error": "A dynamic overlay sync task is already running.",
+            "is_running": True
+        }
+
+    def _run_bg():
+        try:
+            asyncio.run(
+                run_overlay_sync_task(
+                    target_server=req.target_server,
+                    scope=req.scope,
+                    library=req.library,
+                    base_dir=BASE_DIR,
+                    config_path=CONFIG_PATH,
+                    log_file_path=LOGS_DIR / "DynamicOverlaysSync.log"
+                )
+            )
+        except Exception as bg_err:
+            logger.error(f"[OverlaySync] Error in background sync: {bg_err}", exc_info=True)
+
+    threading.Thread(target=_run_bg, daemon=True).start()
+    return {
+        "success": True,
+        "message": f"Dynamic overlay sync started ({req.scope} mode for {req.target_server.upper()}).",
+        "target_server": req.target_server,
+        "scope": req.scope,
+        "library": req.library
+    }
+
+
+@app.get("/api/dynamic-overlays/sync/status")
+async def get_dynamic_overlays_sync_status():
+    """Return status of background dynamic overlays sync task and recent logs."""
+    try:
+        from overlay_sync_service import (
+            is_overlay_sync_running,
+            get_last_sync_result
+        )
+        running = is_overlay_sync_running()
+        last_res = get_last_sync_result()
+    except Exception:
+        running = False
+        last_res = None
+
+    log_path = LOGS_DIR / "DynamicOverlaysSync.log"
+    recent_logs = []
+    if log_path.exists():
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="ignore") as lf:
+                lines = lf.readlines()
+                recent_logs = [l.strip() for l in lines[-60:]]
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "is_running": running,
+        "last_result": last_res,
+        "recent_logs": recent_logs,
+        "log_file": "DynamicOverlaysSync.log"
+    }
+
+
+@app.post("/api/dynamic-overlays/sync/stop")
+async def stop_dynamic_overlays_sync():
+    """Cancel and stop the currently running dynamic overlays sync task."""
+    try:
+        from overlay_sync_service import stop_overlay_sync
+        stopped = stop_overlay_sync()
+        return {"success": True, "message": "Dynamic overlay sync stopped.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/sync/reset")
+async def reset_dynamic_overlays_sync_state():
+    """Force reset the overlay sync lock state in case it got stuck."""
+    try:
+        from overlay_sync_service import reset_overlay_sync_state
+        reset_overlay_sync_state()
+        return {"success": True, "message": "Overlay sync state lock reset.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/detect-changes")
+async def detect_dynamic_overlays_changes_endpoint(
+    target_server: str = Query("all"),
+    library: str = Query("all")
+):
+    """
+    Lightning-fast bulk autodetection for media updates across Plex, Jellyfin, and Emby.
+    Detects:
+    - Audio language stream updates (e.g. ['en'] -> ['de', 'en'])
+    - Edition / Cut upgrades (e.g. Director's Cut, Extended Cut)
+    - Runtime / Duration modifications (e.g. 105m -> 135m)
+    - TV Show status transitions (e.g. returning -> ended / canceled / airing)
+    - Clean artwork modifications on disk
+    - Newly added media items
+    """
+    try:
+        from overlay_sync_service import detect_media_changes
+        from dynamic_overlays_service import save_dynamic_overlays_settings
+        report = await detect_media_changes(
+            target_server=target_server,
+            library=library,
+            base_dir=BASE_DIR,
+            config_path=CONFIG_PATH
+        )
+        save_dynamic_overlays_settings({
+            "last_change_detection_at": datetime.now().isoformat(),
+            "last_change_detection_summary": report.get("summary")
+        })
+        return report
+    except Exception as e:
+        logger.error(f"[DetectChanges] Error running change detection: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/last-detection-report")
+async def get_last_dynamic_overlays_detection_report():
+    """
+    Returns the most recent media change autodetection report (including full list of changed items),
+    enabling persistent browsing without triggering a new scan.
+    """
+    try:
+        from overlay_sync_service import get_last_detection_report
+        return get_last_detection_report(base_dir=BASE_DIR)
+    except Exception as e:
+        logger.error(f"[DetectChanges] Error fetching last detection report: {e}")
+        return {"success": False, "error": str(e), "changes": [], "summary": {}}
+
+
+@app.post("/api/dynamic-overlays/sync-changed")
+async def sync_changed_dynamic_overlays_endpoint(req: DynamicOverlaysSyncRequest):
+    """
+    Triggers an on-demand Dynamic Overlays Sync for ONLY media items with detected updates.
+    """
+    try:
+        from overlay_sync_service import run_overlay_sync_task, is_overlay_sync_running
+        if is_overlay_sync_running():
+            return {
+                "success": False,
+                "error": "A dynamic overlay sync task is already running.",
+                "is_running": True
+            }
+
+        def _run_changed_bg():
+            try:
+                asyncio.run(
+                    run_overlay_sync_task(
+                        target_server=req.target_server,
+                        scope="changed",
+                        library=req.library,
+                        base_dir=BASE_DIR,
+                        config_path=CONFIG_PATH,
+                        log_file_path=LOGS_DIR / "DynamicOverlaysSync.log"
+                    )
+                )
+            except Exception as bg_err:
+                logger.error(f"[OverlaySync] Error in changed items sync: {bg_err}", exc_info=True)
+
+        threading.Thread(target=_run_changed_bg, daemon=True).start()
+        return {
+            "success": True,
+            "message": f"Dynamic overlay sync started for modified items ({req.target_server.upper()}).",
+            "target_server": req.target_server,
+            "scope": "changed",
+            "library": req.library
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ==============================================================================
+# ANIMETAFILL ANIME CLASSIFICATION ENDPOINTS
+# ==============================================================================
+
+class SonarrTestRequest(BaseModel):
+    url: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class AniMetaFillConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+    media_server: Optional[str] = "plex"
+    target_libraries: Optional[List[str]] = None
+    plex_url: Optional[str] = None
+    plex_token: Optional[str] = None
+    plex_libraries: Optional[List[str]] = None
+    sonarr_url: Optional[str] = None
+    sonarr_api_key: Optional[str] = None
+    simkl_client_id: Optional[str] = None
+    labels: Optional[Dict[str, str]] = None
+    colors: Optional[Dict[str, str]] = None
+    aesthetic: Optional[Dict[str, Any]] = None
+    mal_enabled: Optional[bool] = None
+
+
+@app.post("/api/animetafill/test-sonarr")
+async def test_sonarr_endpoint(req: Optional[SonarrTestRequest] = None):
+    """Test connection to Sonarr using passed parameters or credentials stored in config.json."""
+    try:
+        from animetafill_service import test_sonarr_connection
+        u = req.url if req else None
+        k = req.api_key if req else None
+        res = test_sonarr_connection(url=u, api_key=k)
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e), "message": f"Sonarr test error: {e}"}
+
+
+@app.get("/api/animetafill/status")
+async def get_animetafill_status_endpoint():
+    """Return status of AniMetaFill anime classifier, counts, and logs."""
+    try:
+        from animetafill_service import get_animetafill_status
+        return {"success": True, **get_animetafill_status()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/animetafill/config")
+async def get_animetafill_config_endpoint():
+    """Return AniMetaFill configuration settings."""
+    try:
+        from animetafill_service import get_animetafill_config
+        return {"success": True, "config": get_animetafill_config()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/animetafill/config")
+async def save_animetafill_config_endpoint(req: AniMetaFillConfigRequest):
+    """Save AniMetaFill configuration including the master toggle switch."""
+    try:
+        from animetafill_service import save_animetafill_config
+        update_dict = {k: v for k, v in req.model_dump().items() if v is not None}
+        saved = save_animetafill_config(update_dict)
+        return {"success": True, "config": saved, "message": "AniMetaFill configuration saved."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/animetafill/run")
+async def run_animetafill_endpoint(force: bool = False):
+    """Trigger an immediate background synchronization of AniMetaFill."""
+    try:
+        from animetafill_service import run_animetafill_sync_task, is_animetafill_running
+        if is_animetafill_running():
+            return {"success": False, "error": "AniMetaFill sync is already in progress.", "is_running": True}
+        res = run_animetafill_sync_task(force=force)
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+class AnimeUpsertRequest(BaseModel):
+    anime_title: str
+    episode_range: str
+    category: str = "canon"
+    episode_title: Optional[str] = None
+
+class AnimeEpisodeUpdateRequest(BaseModel):
+    anime_title: str
+    episode_number: int
+    category: str
+
+
+@app.get("/api/animetafill/shows")
+async def get_animetafill_shows_endpoint(query: Optional[str] = None, category: Optional[str] = None, page: int = 1, page_size: int = 30):
+    """Retrieve paginated anime classification items from local SQLite database."""
+    try:
+        from animetafill_service import get_anime_shows
+        data = get_anime_shows(query=query, category=category, page=page, page_size=page_size)
+        return {"success": True, **data}
+    except Exception as e:
+        return {"success": False, "error": str(e), "shows": [], "total_shows": 0}
+
+
+@app.get("/api/animetafill/shows/{anime_title}/episodes")
+async def get_animetafill_show_episodes_endpoint(anime_title: str):
+    """Retrieve mapped episodes for a specific anime series."""
+    try:
+        from animetafill_service import get_anime_episodes
+        episodes = get_anime_episodes(anime_title)
+        return {"success": True, "episodes": episodes, "anime_title": anime_title}
+    except Exception as e:
+        return {"success": False, "error": str(e), "episodes": []}
+
+
+@app.post("/api/animetafill/items/upsert")
+async def upsert_animetafill_item_endpoint(req: AnimeUpsertRequest):
+    """Manually add or override episode classification for an anime series."""
+    try:
+        from animetafill_service import upsert_anime_item
+        res = upsert_anime_item(
+            anime_title=req.anime_title,
+            episode_range=req.episode_range,
+            category=req.category,
+            episode_title=req.episode_title
+        )
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/animetafill/episodes/update")
+async def update_animetafill_episode_endpoint(req: AnimeEpisodeUpdateRequest):
+    """Update classification of a single episode."""
+    try:
+        from animetafill_service import update_single_episode
+        res = update_single_episode(
+            anime_title=req.anime_title,
+            episode_number=req.episode_number,
+            category=req.category
+        )
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.delete("/api/animetafill/shows/{anime_title}")
+async def delete_animetafill_show_endpoint(anime_title: str):
+    """Delete an anime show from classification database and remove its overlay block."""
+    try:
+        from animetafill_service import delete_anime_show
+        res = delete_anime_show(anime_title)
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ==============================================================================
+# DYNAMIC OVERLAYS MASTER SETTINGS & VISUAL TRANSLATOR ENDPOINTS
+# ==============================================================================
+
+class DynamicOverlaysSettingsRequest(BaseModel):
+    enabled: Optional[bool] = None
+    auto_sync_on_startup: Optional[bool] = None
+    sync_mode: Optional[str] = None
+    backdrop_overlays_enabled: Optional[bool] = None
+    rating_sources: Optional[List[str]] = None
+    rating_slots: Optional[Dict[str, str]] = None
+    rating_alignment: Optional[str] = None
+    rating_position: Optional[str] = None
+    rating_contrast_box: Optional[bool] = None
+    mdblist_api_key: Optional[str] = None
+    omdb_api_key: Optional[str] = None
+    rating_cache_ttl_days: Optional[int] = None
+    change_detection_enabled: Optional[bool] = None
+    change_detection_interval_minutes: Optional[int] = None
+    auto_resync_on_change: Optional[bool] = None
+    fast_bulk_query_enabled: Optional[bool] = None
+    debug_logging: Optional[bool] = None
+    concurrency: Optional[int] = None
+    wizard_dismissed: Optional[bool] = None
+
+class DynamicOverlaysVisualConfigRequest(BaseModel):
+    config: Dict[str, Any]
+
+class DynamicOverlaysImportYamlRequest(BaseModel):
+    yaml_text: str
+
+@app.get("/api/dynamic-overlays/settings")
+async def get_dynamic_overlays_settings_endpoint():
+    """Return master settings for Dynamic Overlays (Disabled by default)."""
+    try:
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        return {"success": True, "settings": get_dynamic_overlays_settings()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/settings")
+async def save_dynamic_overlays_settings_endpoint(req: DynamicOverlaysSettingsRequest):
+    """Update master settings (e.g. enable/disable, backdrops, rating sources, wizard dismissal)."""
+    try:
+        from dynamic_overlays_service import save_dynamic_overlays_settings
+        update_dict = {k: v for k, v in req.model_dump().items() if v is not None}
+        saved = save_dynamic_overlays_settings(update_dict)
+        if saved.get("enabled", False) and saved.get("change_detection_enabled", True):
+            from overlay_sync_service import start_overlay_change_detector_background
+            start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=LOGS_DIR)
+        return {"success": True, "settings": saved, "message": "Settings saved."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/wizard-dismiss")
+async def dismiss_dynamic_overlays_wizard_endpoint():
+    """Persist wizard dismissal state directly in SQLite database."""
+    try:
+        if CONFIG_DATABASE_AVAILABLE and config_db:
+            config_db.set_value("DynamicOverlays", "wizard_dismissed", True)
+        from dynamic_overlays_service import save_dynamic_overlays_settings
+        saved = save_dynamic_overlays_settings({"wizard_dismissed": True})
+        return {"success": True, "wizard_dismissed": True, "settings": saved}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/dynamic-overlays/ratings-cache")
+async def get_dynamic_overlays_ratings_cache_endpoint():
+    """Return ratings cache statistics and status."""
+    try:
+        from ratings_service import ratings_cache
+        stats = ratings_cache.get_stats()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/ratings-cache/clear")
+async def clear_dynamic_overlays_ratings_cache_endpoint():
+    """Clear media ratings cache to force fresh ratings on next sync."""
+    try:
+        from ratings_service import ratings_cache
+        ratings_cache.clear_all()
+        return {"success": True, "message": "Ratings cache cleared."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/dynamic-overlays/ratings-cache/entries")
+async def get_dynamic_overlays_ratings_cache_entries(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    server_type: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    show_status: Optional[str] = Query(None),
+    sort_by: str = Query("cached_at"),
+    sort_desc: bool = Query(True)
+):
+    """Return paginated entries from the media ratings cache with score breakdown and show status."""
+    try:
+        from ratings_service import ratings_cache
+        data = ratings_cache.get_entries(
+            page=page,
+            limit=limit,
+            search=search,
+            server_type=server_type,
+            media_type=media_type,
+            status=status,
+            show_status=show_status,
+            sort_by=sort_by,
+            sort_desc=sort_desc
+        )
+        return {"success": True, **data}
+    except Exception as e:
+        logger.error(f"Error querying ratings cache entries: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "entries": [], "total": 0}
+
+@app.delete("/api/dynamic-overlays/ratings-cache/entry/{entry_id}")
+async def delete_dynamic_overlays_ratings_cache_entry(entry_id: int):
+    """Delete a single cached rating record."""
+    try:
+        from ratings_service import ratings_cache
+        deleted = ratings_cache.delete_entry(entry_id)
+        if deleted:
+            return {"success": True, "message": "Rating record deleted from cache."}
+        return {"success": False, "error": "Entry not found or already deleted."}
+    except Exception as e:
+        logger.error(f"Error deleting rating entry {entry_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/ratings-cache/expire/{entry_id}")
+async def expire_dynamic_overlays_ratings_cache_entry(entry_id: int):
+    """Mark a cached rating record as expired so it will be refreshed on next sync."""
+    try:
+        from ratings_service import ratings_cache
+        expired = ratings_cache.expire_entry(entry_id)
+        if expired:
+            return {"success": True, "message": "Rating marked as expired. It will refresh on next sync."}
+        return {"success": False, "error": "Entry not found."}
+    except Exception as e:
+        logger.error(f"Error expiring rating entry {entry_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+class DynamicOverlaysTestApiKeyRequest(BaseModel):
+    provider: str
+    api_key: str
+
+@app.post("/api/dynamic-overlays/test-api-key")
+async def test_dynamic_overlays_api_key_endpoint(req: DynamicOverlaysTestApiKeyRequest):
+    """Test external API key for MDBList or OMDb against a benchmark title."""
+    provider = req.provider.lower().strip()
+    api_key = req.api_key.strip()
+    if not api_key:
+        return {"success": False, "error": "API key cannot be empty."}
+
+    import httpx
+    import urllib.parse
+    clean_key = urllib.parse.quote(api_key)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if provider == "mdblist":
+                url = f"https://mdblist.com/api/?apikey={clean_key}&i=tt0111161"
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, dict) and data.get("error"):
+                        return {"success": False, "valid": False, "error": f"MDBList: {data['error']}"}
+                    ratings_list = data.get("ratings", []) if isinstance(data, dict) else []
+                    if ratings_list:
+                        sample = ", ".join(f"{r.get('source', '').upper()}: {r.get('value') or r.get('score')}" for r in ratings_list[:4])
+                        return {"success": True, "valid": True, "message": f"Verified! MDBList returned scores ({sample})"}
+                    return {"success": True, "valid": True, "message": "Key is valid and connected to MDBList."}
+                elif resp.status_code in [401, 403]:
+                    return {"success": False, "valid": False, "error": "Invalid or expired MDBList API key."}
+                elif resp.status_code == 503:
+                    return {"success": False, "valid": False, "error": "MDBList rejected request (Service temporarily unavailable or key unrecognized)."}
+                else:
+                    return {"success": False, "valid": False, "error": f"MDBList returned status {resp.status_code}"}
+
+            elif provider == "omdb":
+                url = f"https://www.omdbapi.com/?apikey={clean_key}&i=tt0111161"
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("Response") == "True":
+                        imdb_rating = data.get("imdbRating", "N/A")
+                        rt_rating = next((r.get("Value") for r in data.get("Ratings", []) if r.get("Source") == "Rotten Tomatoes"), None)
+                        summary = f"IMDb: {imdb_rating}" + (f", RT: {rt_rating}" if rt_rating else "")
+                        return {"success": True, "valid": True, "message": f"Verified! OMDb returned scores ({summary})"}
+                    else:
+                        return {"success": False, "valid": False, "error": data.get("Error", "Invalid OMDb API key.")}
+                elif resp.status_code in [401, 403]:
+                    return {"success": False, "valid": False, "error": "Invalid or unauthorized OMDb API key."}
+                else:
+                    return {"success": False, "valid": False, "error": f"OMDb returned status {resp.status_code}"}
+            else:
+                return {"success": False, "error": f"Unsupported provider: {provider}"}
+    except Exception as e:
+        return {"success": False, "valid": False, "error": f"API request error: {str(e)}"}
+
+@app.get("/api/dynamic-overlays/visual-config")
+async def get_dynamic_overlays_visual_config_endpoint():
+    """
+    Translates config.yml into a high-level visual JSON configuration for the UI.
+    Eliminates raw YAML editing for users.
+    """
+    try:
+        from dynamic_overlays_service import parse_config_yml_to_visual
+        vis = parse_config_yml_to_visual()
+        return {"success": True, "config": vis}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/visual-config")
+async def save_dynamic_overlays_visual_config_endpoint(req: DynamicOverlaysVisualConfigRequest):
+    """
+    Saves visual UI configuration, automatically translating and compiling it into config.yml.
+    """
+    try:
+        from dynamic_overlays_service import compile_visual_to_config_yml
+        ok = compile_visual_to_config_yml(req.config)
+        if ok:
+            return {"success": True, "message": "Visual configuration saved and compiled into overlay templates."}
+        return {"success": False, "error": "Failed to compile visual configuration."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/import-yaml")
+async def import_dynamic_overlays_yaml_endpoint(req: DynamicOverlaysImportYamlRequest):
+    """
+    Imports existing YAML text once, translating it into visual UI controls.
+    Extracts external API keys (MDBList, OMDb) if present.
+    """
+    try:
+        from dynamic_overlays_service import import_yaml_to_visual, get_dynamic_overlays_settings
+        vis = import_yaml_to_visual(req.yaml_text)
+        fresh_settings = get_dynamic_overlays_settings()
+        extracted_keys = vis.get("extracted_keys", []) if isinstance(vis, dict) else []
+        return {
+            "success": True,
+            "config": vis,
+            "settings": fresh_settings,
+            "extracted_keys": extracted_keys,
+            "message": "YAML successfully translated into visual configuration."
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/quick-start")
+async def quick_start_dynamic_overlays_endpoint():
+    """
+    Turnkey one-click setup for users with no existing Kometa config.
+    Auto-detects active media server libraries or seeds clean Movies & TV Shows with
+    standard overlays enabled (Resolution, Audio Codecs, Languages, Ratings, Status).
+    """
+    try:
+        from dynamic_overlays_service import generate_starter_visual_config, save_visual_config, compile_visual_to_config_yml
+        starter = generate_starter_visual_config()
+        save_visual_config(starter)
+        compile_visual_to_config_yml(starter)
+        return {
+            "success": True,
+            "config": starter,
+            "message": f"Successfully initialized starter configuration for {len(starter.get('libraries', {}))} libraries with standard presets enabled."
+        }
+    except Exception as e:
+        logger.error(f"Error in quick-start dynamic overlays: {e}")
+        return {"success": False, "error": str(e)}
 
 
 if FRONTEND_DIR.exists():

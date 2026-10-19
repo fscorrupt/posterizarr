@@ -49,6 +49,7 @@ import TestGallery from "./components/TestGallery";
 import QueueView from "./components/QueueView";
 import Blueprints from "./components/Blueprints";
 import OnboardingModal from "./components/OnboardingModal";
+import DynamicOverlays from "./components/DynamicOverlays";
 
 function AppContent() {
   const { isCollapsed } = useSidebar();
@@ -291,6 +292,7 @@ function AppContent() {
 
                 <Route path="/test-gallery" element={<TestGallery />} />
                 <Route path="/blueprints" element={<Blueprints />} />
+                <Route path="/dynamic-overlays" element={<DynamicOverlays />} />
 
                 <Route
                   path="/config"

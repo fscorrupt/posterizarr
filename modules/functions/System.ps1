@@ -696,7 +696,22 @@ function Set-LibraryLanguageOverride {
 
         $posterOrder = if ($applyToPoster) { $order } else { $global:DefaultPreferredLanguageOrder }
         $seasonOrder = if ($applyToSeason) { $order } else { $global:DefaultPreferredSeasonLanguageOrder }
-        $backgroundOrder = if ($applyToBackground) { $order } else { $global:DefaultPreferredBackgroundLanguageOrder }
+
+        $enableBgLangOverride = if ($null -ne $override.EnableBackgroundLanguageOrderOverride) { [bool]$override.EnableBackgroundLanguageOrderOverride } else { $false }
+        $hasCustomBgOrder = ($override.PreferredBackgroundLanguageOrder -and $override.PreferredBackgroundLanguageOrder.Count -gt 0)
+
+        $backgroundOrder = if ($applyToBackground) {
+            if ($enableBgLangOverride -and $hasCustomBgOrder) {
+                $override.PreferredBackgroundLanguageOrder
+            } elseif ($null -eq $override.EnableBackgroundLanguageOrderOverride -and $hasCustomBgOrder) {
+                $override.PreferredBackgroundLanguageOrder
+            } else {
+                $order
+            }
+        } else {
+            $global:DefaultPreferredBackgroundLanguageOrder
+        }
+
         $logoOrder = if ($applyToLogo) { $order } else { $global:DefaultLogoLanguageOrder }
 
         $tcOrder = if ($order -and $order[0] -eq 'xx') { $order } else { @('xx') + $order }
@@ -1000,6 +1015,60 @@ function Set-OSTypeAndScriptRoot {
         $global:ScriptRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
         $global:OSType = [System.Environment]::OSVersion.Platform
     }
+}
+function Get-DynamicOverlaysSettings {
+    <#
+    .SYNOPSIS
+        Discovers and returns the parsed dynamic_overlays_settings.json object or $null.
+    #>
+    $candidatePaths = @()
+    if ($env:APP_DATA) {
+        $candidatePaths += "$env:APP_DATA/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($IsLinux -or (Test-Path "/.dockerenv")) {
+        $candidatePaths += "/config/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($global:ScriptRoot) {
+        $candidatePaths += "$global:ScriptRoot/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($global:AppRoot) {
+        $candidatePaths += "$global:AppRoot/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($PSScriptRoot) {
+        $localParent = (Get-Item $PSScriptRoot).Parent.Parent.FullName
+        if ($localParent) {
+            $candidatePaths += (Join-Path $localParent "dynamic_overlays/dynamic_overlays_settings.json")
+        }
+    }
+
+    foreach ($path in $candidatePaths) {
+        if ($path -and (Test-Path $path)) {
+            try {
+                return (Get-Content -Path $path -Raw | ConvertFrom-Json)
+            }
+            catch {}
+        }
+    }
+    return $null
+}
+
+function Get-DynamicOverlaysEnabled {
+    <#
+    .SYNOPSIS
+        Checks whether the Dynamic Overlays feature is enabled in dynamic_overlays_settings.json.
+    #>
+    param(
+        [switch]$ForceCheck
+    )
+
+    if (-not $ForceCheck -and $global:DynamicOverlaysEnabled -eq $true) {
+        return $true
+    }
+
+    $settings = Get-DynamicOverlaysSettings
+    $isEnabled = [bool]($settings -and $settings.enabled -eq $true)
+    $global:DynamicOverlaysEnabled = $isEnabled
+    return $isEnabled
 }
 function Write-Entry {
     [CmdletBinding()]

@@ -10,6 +10,7 @@
     $global:collectionCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['collectionCount'] = 0 }
     $Mode = "manual"
+    $global:Mode = "manual"
 
     Write-Entry -Message "Manual Poster Creation Started" -Path $global:configLogging -Color DarkMagenta -log Info
 
@@ -1054,7 +1055,10 @@
         # This design choice prioritizes data integrity and gives users control over when and how their media server metadata is updated, especially in scenarios where image processing might be complex or prone to errors
         # By ensuring that media server updates only occur after successful image processing, we can maintain a more reliable and consistent user experience, reducing the likelihood of issues caused by failed image manipulations while still providing the convenience of automatic updates when desired.
         # Additionally, the media server update logic is designed to be flexible and adaptable to different server types (Plex, Emby, Jellyfin) and various asset types (movies, shows, seasons, episodes), allowing for a wide range of use cases and configurations while still maintaining a clear and structured approach to updating media metadata based on the processed images.
-        if ($Upload2Plex -eq 'true' -or $UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
+        if ($global:DynamicOverlaysEnabled -eq $true -or $DynamicOverlaysEnabled -eq $true) {
+            Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct media server upload in Manual Mode. Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+        }
+        elseif ($Upload2Plex -eq 'true' -or $UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
             Write-Entry -Message "Manual Mode: Updating Media Server artwork..." -Path $global:configLogging -Color Cyan -log Info
 
             $FinalTargetID = $null
@@ -1175,7 +1179,7 @@
                             Write-Entry -Subtext "Attempting Plex Post to: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
                             
                             # Using -InFile instead of -Body with ReadAllBytes to prevent "Error while copying content to a stream"
-                            $Upload = Invoke-WebRequest -Uri $uri -Method Post -Headers $extraPlexHeaders -InFile $PosterImage -ContentType 'image/jpeg' -ErrorAction Stop
+                            $Upload = Invoke-WebRequest -Uri $uri -Method Post -Headers $extraPlexHeaders -InFile ([Management.Automation.WildcardPattern]::Escape($PosterImage)) -ContentType 'image/jpeg' -ErrorAction Stop
                             
                             Write-Entry -Subtext "Manual Plex Upload Success: $PosterImage" -Path $global:configLogging -Color Green -log Info
                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
@@ -1278,6 +1282,21 @@
     }
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "up" -ping $executionTime.TotalMilliseconds
+    }
+
+    # Notify Dynamic Overlays service to composite and push newly created artwork
+    if ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled) {
+        try {
+            $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
+            $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
+            $body = @{
+                target_server = "all"
+                scope = "incremental"
+                library = "all"
+            } | ConvertTo-Json
+            Invoke-RestMethod -Uri $syncUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction SilentlyContinue | Out-Null
+            Write-Entry -Subtext "Notified Dynamic Overlays service to composite and push new artwork." -Path $global:configLogging -Color DarkMagenta -log Info
+        } catch {}
     }
 
 

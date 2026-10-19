@@ -125,17 +125,16 @@ function GetFanartLogo {
         if (-not $id) { continue }
         try {
             if ($type -eq 'tv') {
-                $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue
             }
             Elseif ($type -eq 'movies') {
-                $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue
             }
         } catch {
-
-            Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
-
+            if ($_.Exception.Message -notmatch '404|URI not found') {
+                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            }
             $entrytemp = $null
-
         }
         if (-not $entrytemp) { continue }
 
@@ -1490,8 +1489,10 @@ function GetFanartMoviePoster {
 
         foreach ($id in $ids) {
             if ($id) {
-                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                    if ($_.Exception.Message -notmatch '404|URI not found') {
+                        Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    }
                     $entrytemp = $null
                 }
                 if ($entrytemp -and $entrytemp.movieposter) {
@@ -1545,8 +1546,10 @@ function GetFanartMoviePoster {
 
         foreach ($id in $ids) {
             if ($id) {
-                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                    if ($_.Exception.Message -notmatch '404|URI not found') {
+                        Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    }
                     $entrytemp = $null
                 }
                 if ($entrytemp -and $entrytemp.movieposter) {
@@ -1592,8 +1595,10 @@ function GetFanartMovieBackground {
 
     foreach ($id in $ids) {
         if ($id) {
-            try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                if ($_.Exception.Message -notmatch '404|URI not found') {
+                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                }
                 $entrytemp = $null
             }
             if ($entrytemp -and $entrytemp.moviebackground) {
@@ -1650,8 +1655,10 @@ function GetFanartShowPoster {
         $id = $global:tvdbid
         $entrytemp = $null
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                if ($_.Exception.Message -notmatch '404|URI not found') {
+                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                }
                 $entrytemp = $null
             }
             if ($entrytemp -and $entrytemp.tvposter) {
@@ -1713,8 +1720,10 @@ function GetFanartShowPoster {
         $entrytemp = $null
 
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                if ($_.Exception.Message -notmatch '404|URI not found') {
+                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                }
                 $entrytemp = $null
             }
             if ($entrytemp -and $entrytemp.tvposter) {
@@ -1761,8 +1770,10 @@ function GetFanartShowBackground {
     $entrytemp = $null
 
     if ($id) {
-        try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-            Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+        try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+            if ($_.Exception.Message -notmatch '404|URI not found') {
+                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            }
             $entrytemp = $null
         }
         if ($entrytemp -and $entrytemp.showbackground) {
@@ -1817,8 +1828,10 @@ function GetFanartSeasonPoster {
     $entrytemp = $null
     if ($global:SeasonPreferTextless -eq $true) {
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                if ($_.Exception.Message -notmatch '404|URI not found') {
+                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                }
                 $entrytemp = $null
             }
             if ($entrytemp.seasonposter) {
@@ -1920,8 +1933,10 @@ function GetFanartSeasonPoster {
     }
     Else {
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                if ($_.Exception.Message -notmatch '404|URI not found') {
+                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                }
                 $entrytemp = $null
             }
             if ($entrytemp.seasonposter) {
@@ -2856,6 +2871,11 @@ function UploadOtherMediaServerArtwork {
         [string]$imagePath,
         [switch]$SkipExifCheck # Added optional parameter
     )
+
+    if ($global:DynamicOverlaysEnabled -eq $true -or $DynamicOverlaysEnabled -eq $true) {
+        Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct Jellyfin/Emby upload for item $itemId ($imageType). Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+        return
+    }
 
     $userAssetType = $imageType
     if ($imageType -eq 'Backdrop') {
