@@ -40,9 +40,22 @@ const TopNavbar = () => {
     } catch (e) { /* Silent fail */ }
   };
 
+  const isRunningRef = useRef(systemStatus.running);
+  useEffect(() => {
+    isRunningRef.current = systemStatus.running;
+  }, [systemStatus.running]);
+
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
+    let tick = 0;
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      tick++;
+      // Poll every 5s if Posterizarr is actively running; relax to every 15s when idle
+      if (isRunningRef.current || tick % 3 === 0) {
+        fetchStatus();
+      }
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 

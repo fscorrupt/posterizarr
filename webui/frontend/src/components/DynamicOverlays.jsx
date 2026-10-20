@@ -320,6 +320,11 @@ export default function DynamicOverlays() {
     try {
       localStorage.setItem("posterizarr_active_overlay_tab", tabId);
     } catch {}
+    if (tabId === "sync" || tabId === "cache") {
+      fetchOverlaySyncStatus();
+    } else if (tabId === "anime") {
+      fetchAnimetafillStatus();
+    }
   };
 
   const [activeAssetTarget, setActiveAssetTarget] = useState("all"); // "all", "poster", "backdrop", "season", "titlecard"
@@ -1782,6 +1787,16 @@ export default function DynamicOverlays() {
     isAnimetafillRunningRef.current = isAnimetafillRunning;
   }, [isAnimetafillRunning]);
 
+  const isOverlaySyncRunningRef = useRef(isOverlaySyncRunning);
+  useEffect(() => {
+    isOverlaySyncRunningRef.current = isOverlaySyncRunning;
+  }, [isOverlaySyncRunning]);
+
+  const systemRunStatusRef = useRef(systemRunStatus);
+  useEffect(() => {
+    systemRunStatusRef.current = systemRunStatus;
+  }, [systemRunStatus]);
+
   useEffect(() => {
     fetchAllData(true);
     fetchRunStatus();
@@ -1789,10 +1804,33 @@ export default function DynamicOverlays() {
     fetchWebUISettings();
     fetchOverlaySyncStatus();
     fetchAnimetafillData();
+
+    let tick = 0;
     const interval = setInterval(() => {
-      fetchRunStatus();
-      fetchOverlaySyncStatus();
-      if (activeTabRef.current === "anime" || isAnimetafillRunningRef.current) {
+      // Pause polling completely when browser tab is minimized or in background
+      if (typeof document !== "undefined" && document.hidden) return;
+      tick++;
+
+      const isAnimeRunning = isAnimetafillRunningRef.current;
+      const isSyncRunning = isOverlaySyncRunningRef.current;
+      const isSysRunning = systemRunStatusRef.current?.running;
+      const curTab = activeTabRef.current;
+
+      // 1. Overall System Run Status (/api/status):
+      // Fast polling (3.5s) only if active run detected; otherwise relaxed to every ~14s (every 4 ticks)
+      if (isSysRunning || tick % 4 === 0) {
+        fetchRunStatus();
+      }
+
+      // 2. Dynamic Overlay Sync Status (/api/dynamic-overlays/sync/status):
+      // Fast polling (3.5s) if sync is running; if idle, only poll every ~14s if user is actively on sync/cache tab
+      if (isSyncRunning || ((curTab === "sync" || curTab === "cache") && tick % 4 === 0)) {
+        fetchOverlaySyncStatus();
+      }
+
+      // 3. AniMetaFill Status (/api/animetafill/status):
+      // Fast polling (3.5s) if anime sync is running; if idle, only poll every ~14s if user is actively on anime tab
+      if (isAnimeRunning || (curTab === "anime" && tick % 4 === 0)) {
         fetchAnimetafillStatus();
       }
     }, 3500);
