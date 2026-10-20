@@ -185,7 +185,7 @@ class AnimeFillerListProvider(EpisodeSourceProvider):
 class SimklProvider(EpisodeSourceProvider):
     """
     Provider for Simkl.com.
-    Uses its modern API for precision metadata and scrapes its web UI for filler lists.
+    Uses its API for metadata and scrapes its web UI for filler lists.
     """
     def __init__(self, client_id: Optional[str] = None):
         self.client_id = client_id
@@ -200,7 +200,7 @@ class SimklProvider(EpisodeSourceProvider):
             logger.warning("No SIMKL Client ID provided. Skipping SIMKL tier.")
             return None
             
-        # 1. Try TVDB ID lookup first (High Precision)
+        # 1. Try TVDB ID lookup first
         if tvdb_id:
             try:
                 url = f"https://api.simkl.com/search/id?tvdb={tvdb_id}&client_id={self.client_id}"
@@ -222,7 +222,7 @@ class SimklProvider(EpisodeSourceProvider):
                         simkl_id = ids.get('simkl') or ids.get('simkl_id')
                         
                         if simkl_id:
-                            logger.match("SIMKL", f"Precision match via TVDB ID: {tvdb_id}")
+                            logger.match("SIMKL", f"Matched via TVDB ID: {tvdb_id}")
                             return {
                                 "id": simkl_id,
                                 "slug": ids.get('slug', ''),

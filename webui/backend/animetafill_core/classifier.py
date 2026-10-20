@@ -45,7 +45,7 @@ class EpisodeClassifierService:
         Synchronizes episode classification data for a show across all tiers.
         
         The strategy follows a 3-tier approach:
-        1. High-Precision ID Matching (SIMKL)
+        1. TVDB ID Matching (SIMKL)
         2. Broad Title-based searching (SIMKL -> AFL)
         3. 100% Canon Fallback (Safe assumption if providers return no data)
         """
@@ -70,9 +70,9 @@ class EpisodeClassifierService:
         show_found_on_any = False
         had_provider_error = False
 
-        # --- PHASE 1: High-Precision ID Match (SIMKL) ---
+        # --- PHASE 1: TVDB ID Match (SIMKL) ---
         if tvdb_id:
-            logger.process(f"Attempting High-Precision ID match (TVDB: {tvdb_id})...")
+            logger.process(f"Looking up TVDB ID: {tvdb_id}...")
             try:
                 # Note: Pass the main title for logging, but the actual lookup uses the ID
                 eps, found, url = self.simkl_provider.fetch_episodes(main_title, tvdb_id=tvdb_id)
