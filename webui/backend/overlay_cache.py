@@ -50,6 +50,14 @@ def compute_metadata_hash(
     else:
         clean_langs = []
 
+    # Filter out internal/non-rating keys (e.g. '_cached', '_source') from ratings dictionary
+    filtered_ratings = {}
+    if isinstance(multi_ratings, dict):
+        filtered_ratings = {
+            str(k): v for k, v in multi_ratings.items()
+            if not str(k).startswith("_") and v is not None
+        }
+
     payload = {
         "languages": clean_langs,
         "runtime_mins": int(runtime_mins) if runtime_mins is not None else None,
@@ -62,9 +70,10 @@ def compute_metadata_hash(
         "has_dolby_vision": bool(has_dolby_vision) if has_dolby_vision is not None else None,
         "content_rating": str(content_rating).strip().lower() if content_rating else None,
         "network": str(network).strip().lower() if network else None,
-        "ratings": multi_ratings or {}
+        "ratings": filtered_ratings
     }
     return hashlib.md5(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
 
 
 class OverlayCache:
@@ -212,13 +221,41 @@ class OverlayCache:
         if metadata_hash and entry.get("metadata_hash"):
             if entry["metadata_hash"] != metadata_hash:
                 return False
-
-        # If server_updated_at provided, verify Plex/Emby/Jellyfin item hasn't been updated
-        if server_updated_at and entry.get("server_updated_at"):
+        elif server_updated_at and entry.get("server_updated_at"):
+            # Fallback only when metadata_hash was not stored (e.g. legacy cache entries)
             if str(entry["server_updated_at"]) != str(server_updated_at):
                 return False
 
         return True
+
+    def update_server_updated_at(
+        self,
+        server_type: str,
+        item_id: str,
+        asset_type: str,
+        server_updated_at: str
+    ) -> bool:
+        """Update server_updated_at timestamp for a cached entry without changing hashes."""
+        if not server_updated_at:
+            return False
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE dynamic_overlay_cache
+                        SET server_updated_at = ?
+                        WHERE server_type = ? AND item_id = ? AND asset_type = ?
+                        """,
+                        (str(server_updated_at), server_type.lower(), str(item_id), asset_type.lower())
+                    )
+                conn.close()
+                return True
+            except Exception as e:
+                logger.error(f"[OverlayCache] Error updating server_updated_at: {e}")
+                return False
+
 
     def record_push(
         self,

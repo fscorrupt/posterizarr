@@ -2488,6 +2488,8 @@ async def run_overlay_sync_task(
                                 write_log(f"  [-] Error compositing/uploading '{title}': {comp_err}")
                         else:
                             await _inc_stats(skipped=1)
+                            if item.get("server_updated_at"):
+                                cache.update_server_updated_at(s_type, str(item_id), "poster", item.get("server_updated_at"))
 
                         if _cancel_requested:
                             return
@@ -2624,6 +2626,8 @@ async def run_overlay_sync_task(
                                 write_log(f"  [-] Error compositing/uploading backdrop for '{title}': {b_err}")
                         else:
                             await _inc_stats(skipped=1)
+                            if item.get("server_updated_at"):
+                                cache.update_server_updated_at(s_type, str(item_id), "background", item.get("server_updated_at"))
 
                     if _cancel_requested:
                         return
@@ -2773,6 +2777,8 @@ async def run_overlay_sync_task(
                                             write_log(f"  [-] Error compositing/uploading season '{title} S{s_num:02d}': {s_comp_err}")
                                     else:
                                         await _inc_stats(skipped=1)
+                                        if item.get("server_updated_at"):
+                                            cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}", "season", item.get("server_updated_at"))
 
                                 # 8. Discover and sync Titlecards (Episodes) for this Season
                                 try:
@@ -3002,6 +3008,8 @@ async def run_overlay_sync_task(
 
                                         if scope == "incremental" and ep_current:
                                             await _inc_stats(skipped=1)
+                                            if item.get("server_updated_at"):
+                                                cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}e{ep_num}", "episode", item.get("server_updated_at"))
                                             continue
 
                                         with open(clean_tc, "rb") as tcf:
