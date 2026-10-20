@@ -6482,6 +6482,42 @@ async def get_runtime_history(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/api/runtime-history/{run_id}/assets")
+async def get_runtime_run_assets(run_id: int):
+    """
+    Get image choices/assets created during a specific runtime history execution
+    """
+    try:
+        if not RUNTIME_DB_AVAILABLE or not runtime_db:
+            return {"success": False, "assets": [], "message": "Runtime database not available"}
+
+        entry = runtime_db.get_runtime_by_id(run_id)
+        if not entry:
+            return {"success": False, "assets": [], "message": "Run entry not found"}
+
+        start_str = entry.get("start_time") or entry.get("timestamp")
+        end_str = entry.get("end_time") or entry.get("timestamp")
+
+        assets = []
+        if DATABASE_AVAILABLE and db and start_str:
+            s = str(start_str).replace("T", " ")[:19]
+            e = str(end_str).replace("T", " ")[:19] if end_str else s
+            if s > e:
+                s, e = e, s
+            raw_assets = db.get_assets_created_between(s, e)
+            assets = [dict(row) for row in raw_assets]
+
+        return {
+            "success": True,
+            "run_id": run_id,
+            "assets": assets,
+            "count": len(assets)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching assets for run {run_id}: {e}")
+        return {"success": False, "assets": [], "error": str(e)}
+
+
 @app.get("/api/runtime-summary")
 async def get_runtime_summary(days: int = Query(30, ge=1, le=365)):
     """

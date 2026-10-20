@@ -595,6 +595,31 @@ class RuntimeDatabase:
                     conn.close()
                 return None
 
+    def get_runtime_by_id(self, run_id: int) -> Optional[Dict]:
+        """Get a specific runtime entry by ID"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT * FROM runtime_stats
+                    WHERE id = ?
+                    LIMIT 1
+                """,
+                    (run_id,),
+                )
+                row = cursor.fetchone()
+                conn.close()
+                if row:
+                    return dict(row)
+                return None
+            except Exception as e:
+                logger.error(f"Error getting runtime entry by id {run_id}: {e}")
+                if 'conn' in locals():
+                    conn.close()
+                return None
+
     def get_runtime_history(
         self, limit: int = 50, offset: int = 0, mode: str = None
     ) -> List[Dict]:

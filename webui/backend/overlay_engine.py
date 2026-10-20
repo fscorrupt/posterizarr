@@ -508,13 +508,13 @@ class DynamicOverlayCompositor:
                         raise
 
             # If clean asset is higher resolution (e.g. 2000x3000 portrait or 3840x2160 titlecard),
-            # upscale only the transparent overlay canvas using LANCZOS to perfectly match native dimensions.
+            # upscale only the transparent overlay canvas using BICUBIC to perfectly match native dimensions.
             # Clean asset artwork is NEVER downscaled!
             if (orig_w, orig_h) != target_dim:
-                overlay_canvas = overlay_canvas.resize((orig_w, orig_h), Image.Resampling.LANCZOS)
+                overlay_canvas = overlay_canvas.resize((orig_w, orig_h), Image.Resampling.BICUBIC)
                 if debug_logging and debug_callback:
                     _cb(
-                        f"[OverlayDebug] Overlay canvas upscaled from {target_w}x{target_h}px to native {orig_w}x{orig_h}px (LANCZOS) and composited onto clean asset."
+                        f"[OverlayDebug] Overlay canvas upscaled from {target_w}x{target_h}px to native {orig_w}x{orig_h}px (BICUBIC) and composited onto clean asset."
                     )
 
             # Composite the sharp, upscaled overlay layer on top of the clean, untouched base image
@@ -523,7 +523,7 @@ class DynamicOverlayCompositor:
             # Convert to RGB and export to JPEG (quality 92) in memory
             final_rgb = working_canvas.convert("RGB")
             out_buffer = io.BytesIO()
-            final_rgb.save(out_buffer, format="JPEG", quality=92, optimize=True)
+            final_rgb.save(out_buffer, format="JPEG", quality=92, optimize=False)
             return out_buffer.getvalue()
 
     @staticmethod

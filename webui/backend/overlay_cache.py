@@ -196,14 +196,15 @@ class OverlayCache:
         clean_asset_hash: str,
         overlay_recipe_hash: str,
         metadata_hash: Optional[str] = None,
-        server_updated_at: Optional[str] = None
+        server_updated_at: Optional[str] = None,
+        cached_entry: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Check if the item has already been overlaid and uploaded with the EXACT same
         clean asset image, applied overlay recipe, and media attribute signature.
         If languages, cut/runtime, status, edition, or server timestamp changed, returns False.
         """
-        entry = self.get_entry(server_type, item_id, asset_type)
+        entry = cached_entry if cached_entry is not None else self.get_entry(server_type, item_id, asset_type)
         if not entry:
             return False
 
