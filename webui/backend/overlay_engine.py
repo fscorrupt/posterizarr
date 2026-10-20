@@ -44,6 +44,7 @@ from typing import Optional, Tuple, Dict, Any, List, Union, Callable
 from PIL import Image, ImageColor, ImageDraw, ImageFont, ImageFilter
 
 logger = logging.getLogger("overlay_engine")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 PORTRAIT_DIM = (1000, 1500)
 LANDSCAPE_DIM = (1920, 1080)
@@ -516,10 +517,41 @@ class DynamicOverlayCompositor:
                 elem_img = Image.open(io.BytesIO(layer["image_bytes"])).convert("RGBA")
             elif elem_img is None:
                 img_path = layer.get("image_path")
-                if not img_path or not Path(img_path).exists():
+                resolved_ip = None
+                if img_path:
+                    ip = Path(img_path)
+                    if ip.exists():
+                        resolved_ip = ip
+                    else:
+                        candidate_asset_dirs = [
+                            PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets",
+                            PROJECT_ROOT / "Overlayfiles" / "kometa" / "assets",
+                            PROJECT_ROOT / "Overlayfiles",
+                            Path("/app/Overlayfiles/dynamic_overlays/assets"),
+                            Path("/app/Overlayfiles/kometa/assets"),
+                            Path("/app/Overlayfiles"),
+                            Path("/config/Overlayfiles/dynamic_overlays/assets"),
+                            Path("/config/Overlayfiles/kometa/assets"),
+                            Path("/config/Overlayfiles"),
+                        ]
+                        ip_name = ip.name
+                        for ad in candidate_asset_dirs:
+                            cand = ad / ip_name
+                            if cand.exists():
+                                resolved_ip = cand
+                                break
+                            for sub in ["rating", "flag/square", "flags/square", "flag/round", "flags/round", "resolution", "commonsense", "ribbon"]:
+                                cand_sub = ad / sub / ip_name
+                                if cand_sub.exists():
+                                    resolved_ip = cand_sub
+                                    break
+                            if resolved_ip:
+                                break
+
+                if not resolved_ip or not resolved_ip.exists():
                     return None
 
-                with Image.open(img_path) as img:
+                with Image.open(resolved_ip) as img:
                     elem_img = img.convert("RGBA")
 
             if elem_img is None:
@@ -573,26 +605,101 @@ class DynamicOverlayCompositor:
 
         # 2. Text or Combined Text+Badge (e.g. Rating with Score, Status banner, Runtime, Anime Filler)
         font_path = layer.get("font_path")
-        font_size = layer.get("font_size", 40)
+        font_size = int(layer.get("font_size") or 40)
         font = None
-        if font_path and Path(font_path).exists():
+
+        candidate_font_dirs = [
+            PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts",
+            PROJECT_ROOT / "Overlayfiles" / "kometa" / "fonts",
+            PROJECT_ROOT / "Overlayfiles",
+            Path("/app/Overlayfiles/dynamic_overlays/fonts"),
+            Path("/app/Overlayfiles/kometa/fonts"),
+            Path("/app/Overlayfiles"),
+            Path("/config/Overlayfiles/dynamic_overlays/fonts"),
+            Path("/config/Overlayfiles/kometa/fonts"),
+            Path("/config/Overlayfiles"),
+            Path("/config/fonts"),
+            Path("/fonts"),
+            Path("/usr/share/fonts/custom"),
+            Path("C:/Windows/Fonts"),
+        ]
+
+        # Resolve font path if specified
+        resolved_fp = None
+        if font_path:
+            fp = Path(font_path)
+            if fp.exists():
+                resolved_fp = fp
+            else:
+                f_name = fp.name
+                for fd in candidate_font_dirs:
+                    cand = fd / f_name
+                    if cand.exists():
+                        resolved_fp = cand
+                        break
+
+        # Fallback fonts if font not found
+        if not resolved_fp:
+            for fallback in ["Inter-Bold.ttf", "Inter-Medium.ttf", "CircularStd-Bold.otf", "Roboto-Bold.ttf", "Roboto-Medium.ttf", "Arial.ttf", "DejaVuSans.ttf"]:
+                for fd in candidate_font_dirs:
+                    cand = fd / fallback
+                    if cand.exists():
+                        resolved_fp = cand
+                        break
+                if resolved_fp:
+                    break
+
+        if resolved_fp and resolved_fp.exists():
             try:
-                font = ImageFont.truetype(str(font_path), size=font_size)
+                font = ImageFont.truetype(str(resolved_fp), size=font_size)
             except Exception as fe:
-                logger.warning(f"[Compositor] Failed loading font {font_path}: {fe}")
+                logger.warning(f"[Compositor] Failed loading font {resolved_fp}: {fe}")
 
         if not font:
             try:
+                font = ImageFont.load_default(size=font_size)
+            except TypeError:
                 font = ImageFont.load_default()
-            except Exception:
-                pass
+            except Exception as de:
+                logger.warning(f"[Compositor] Failed loading default font: {de}")
 
         # Load optional background badge image if provided
         elem_img = None
         badge_img_path = layer.get("image_path")
-        if badge_img_path and Path(badge_img_path).exists():
+        resolved_bp = None
+        if badge_img_path:
+            bp = Path(badge_img_path)
+            if bp.exists():
+                resolved_bp = bp
+            else:
+                candidate_asset_dirs = [
+                    PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets",
+                    PROJECT_ROOT / "Overlayfiles" / "kometa" / "assets",
+                    PROJECT_ROOT / "Overlayfiles",
+                    Path("/app/Overlayfiles/dynamic_overlays/assets"),
+                    Path("/app/Overlayfiles/kometa/assets"),
+                    Path("/app/Overlayfiles"),
+                    Path("/config/Overlayfiles/dynamic_overlays/assets"),
+                    Path("/config/Overlayfiles/kometa/assets"),
+                    Path("/config/Overlayfiles"),
+                ]
+                bp_name = bp.name
+                for ad in candidate_asset_dirs:
+                    cand = ad / bp_name
+                    if cand.exists():
+                        resolved_bp = cand
+                        break
+                    for sub in ["rating", "flag/square", "flags/square", "flag/round", "flags/round", "resolution", "commonsense", "ribbon"]:
+                        cand_sub = ad / sub / bp_name
+                        if cand_sub.exists():
+                            resolved_bp = cand_sub
+                            break
+                    if resolved_bp:
+                        break
+
+        if resolved_bp and resolved_bp.exists():
             try:
-                with Image.open(badge_img_path) as b_img:
+                with Image.open(resolved_bp) as b_img:
                     elem_img = b_img.convert("RGBA")
                     bw, bh = elem_img.size
                     scale_h = layer.get("scale_height") or layer.get("addon_size")
@@ -607,7 +714,7 @@ class DynamicOverlayCompositor:
                         if tw and th:
                             elem_img = elem_img.resize((tw, th), Image.Resampling.LANCZOS)
             except Exception as be:
-                logger.warning(f"[Compositor] Failed loading badge image {badge_img_path}: {be}")
+                logger.warning(f"[Compositor] Failed loading badge image {resolved_bp}: {be}")
 
         stroke_color = layer.get("stroke_color")
         stroke_width = int(layer.get("stroke_width") or 0)

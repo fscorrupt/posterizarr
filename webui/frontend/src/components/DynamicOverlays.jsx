@@ -530,6 +530,7 @@ export default function DynamicOverlays() {
   // Action states
   const [isScanning, setIsScanning] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isImportingImages, setIsImportingImages] = useState(false);
   const [isBatchFetching, setIsBatchFetching] = useState(false);
   const [fetchingAsset, setFetchingAsset] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -2158,6 +2159,35 @@ export default function DynamicOverlays() {
       showError("Error importing overlay templates from repository");
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  // Import Official Kometa Images (defaults/overlays/images)
+  const handleImportImages = async (overwrite = false) => {
+    try {
+      setIsImportingImages(true);
+      showToast("Downloading official Kometa images archive (defaults/overlays/images)...", "info");
+      const res = await fetch("/api/dynamic-overlays/import-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overwrite })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const imp = data.import_result || {};
+        showToast(
+          `Successfully imported official Kometa overlay images (${imp.extracted_count || 0} images extracted)!`,
+          "success"
+        );
+        await fetchAllData();
+      } else {
+        showToast(data.error || "Failed to import official Kometa images", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Error importing official Kometa images", "error");
+    } finally {
+      setIsImportingImages(false);
     }
   };
 
@@ -3841,7 +3871,7 @@ export default function DynamicOverlays() {
     return { label: "Overlay Rules", className: "bg-amber-500/10 border-amber-500/30 text-amber-400" };
   };
 
-  const readiness = scanData?.readiness || { total: 0, ready: 0, fetchable: 0, missing: 0, assets: [] };
+  const readiness = scanData?.readiness || { total: 0, ready: 0, fetchable: 0, missing: 0, upload_needed: 0, assets: [] };
   const libraries = scanData?.libraries || {};
   const yamlFiles = statusData?.yaml_files || scanData?.yaml_files || [];
 
@@ -5878,6 +5908,53 @@ export default function DynamicOverlays() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* Media Type Segmented Toggle */}
+                    <div className="inline-flex p-0.5 rounded-xl bg-theme-hover border border-theme">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisualConfig((prev) => {
+                            const nextLibs = { ...prev.libraries };
+                            const targetLib = { ...nextLibs[selectedVisualLib], media_type: "movie" };
+                            nextLibs[selectedVisualLib] = targetLib;
+                            return { ...prev, libraries: nextLibs };
+                          });
+                          if (activeAssetTarget === "season" || activeAssetTarget === "titlecard") {
+                            setActiveAssetTarget("poster");
+                          }
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          !isTv
+                            ? "bg-theme-primary text-white shadow-sm"
+                            : "text-theme-muted hover:text-theme-text"
+                        }`}
+                        title="Set library type to Movies"
+                      >
+                        <Film className="w-3.5 h-3.5" />
+                        <span>Movie</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisualConfig((prev) => {
+                            const nextLibs = { ...prev.libraries };
+                            const targetLib = { ...nextLibs[selectedVisualLib], media_type: "show" };
+                            nextLibs[selectedVisualLib] = targetLib;
+                            return { ...prev, libraries: nextLibs };
+                          });
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          isTv
+                            ? "bg-theme-primary text-white shadow-sm"
+                            : "text-theme-muted hover:text-theme-text"
+                        }`}
+                        title="Set library type to TV Shows & Series"
+                      >
+                        <Tv className="w-3.5 h-3.5" />
+                        <span>TV Show</span>
+                      </button>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -6431,6 +6508,16 @@ export default function DynamicOverlays() {
                 {isImporting ? "Importing Defaults..." : "Import Overlay Defaults"}
               </button>
 
+              <button
+                onClick={() => handleImportImages(false)}
+                disabled={isImportingImages}
+                title="Download all official overlay images (defaults/overlays/images) from official Kometa GitHub archive"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-xs font-medium text-theme-text transition-all shadow-sm disabled:opacity-50"
+              >
+                <Download className={`w-4 h-4 text-theme-primary ${isImportingImages ? "animate-bounce" : ""}`} />
+                {isImportingImages ? "Downloading Images..." : "Download Official Images"}
+              </button>
+
               {isDefaultsScheduled ? (
                 <button
                   onClick={() => navigate("/scheduler", { state: { prefillMode: "overlaydefaults" } })}
@@ -6478,13 +6565,13 @@ export default function DynamicOverlays() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-theme-card border border-theme rounded-xl p-5 flex items-center gap-3.5 shadow-sm">
               <div className="p-2.5 rounded-lg bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-xl font-bold text-theme-text">{readiness.ready}</div>
+                <div className="text-xl font-bold text-theme-text">{readiness.ready || 0}</div>
                 <div className="text-xs text-theme-muted">Assets Ready & Verified</div>
               </div>
             </div>
@@ -6494,8 +6581,18 @@ export default function DynamicOverlays() {
                 <Download className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-xl font-bold text-theme-text">{readiness.fetchable}</div>
+                <div className="text-xl font-bold text-theme-text">{readiness.fetchable || 0}</div>
                 <div className="text-xs text-theme-muted">Available from GitHub / Seed</div>
+              </div>
+            </div>
+
+            <div className="bg-theme-card border border-theme rounded-xl p-5 flex items-center gap-3.5 shadow-sm">
+              <div className="p-2.5 rounded-lg bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                <Upload className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xl font-bold text-theme-text">{readiness.upload_needed || 0}</div>
+                <div className="text-xs text-theme-muted">Custom Upload Needed</div>
               </div>
             </div>
 
@@ -6504,8 +6601,8 @@ export default function DynamicOverlays() {
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-xl font-bold text-theme-text">{readiness.missing}</div>
-                <div className="text-xs text-theme-muted">Custom Files Needed</div>
+                <div className="text-xl font-bold text-theme-text">{readiness.missing || 0}</div>
+                <div className="text-xs text-theme-muted">Missing Assets</div>
               </div>
             </div>
           </div>
@@ -6628,14 +6725,28 @@ export default function DynamicOverlays() {
           </div>
 
           <div className="bg-theme-card border border-theme rounded-xl overflow-hidden shadow-sm">
-            <div className="p-5 border-b border-theme flex items-center justify-between">
-              <h3 className="font-bold text-theme-text text-sm flex items-center gap-2">
-                <Layers className="w-4 h-4 text-theme-primary" />
-                Asset Dependency Checklist
-              </h3>
-              <span className="text-xs text-theme-muted">
-                {readiness.assets.length} total required assets found in YAMLs
-              </span>
+            <div className="p-5 border-b border-theme flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-theme-text text-sm flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-theme-primary" />
+                  Asset Dependency Checklist
+                </h3>
+                <span className="text-xs text-theme-muted">
+                  {readiness.assets.length} total required assets found in YAMLs
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleImportImages(false)}
+                  disabled={isImportingImages}
+                  title="Download all official overlay images (defaults/overlays/images) from official Kometa GitHub archive"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-theme-hover hover:bg-theme-hover/80 border border-theme text-theme-text text-xs font-semibold transition-all disabled:opacity-50"
+                >
+                  <Download className={`w-3.5 h-3.5 text-theme-primary ${isImportingImages ? "animate-bounce" : ""}`} />
+                  <span>{isImportingImages ? "Downloading Images..." : "Download Official Images"}</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -6653,6 +6764,7 @@ export default function DynamicOverlays() {
                   {readiness.assets.map((asset, idx) => {
                     const isReady = asset.status === "ready";
                     const isFetchable = asset.status === "fetchable";
+                    const isUploadNeeded = asset.status === "upload_needed";
                     return (
                       <tr key={idx} className="hover:bg-theme-hover/30 transition-colors">
                         <td className="py-3 px-4">
@@ -6663,6 +6775,10 @@ export default function DynamicOverlays() {
                           ) : isFetchable ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-theme-card border border-theme text-theme-text font-medium">
                               <Download className="w-3 h-3 text-theme-primary" /> Fetchable
+                            </span>
+                          ) : isUploadNeeded ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 font-medium">
+                              <Upload className="w-3 h-3" /> Upload Needed
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-medium">
@@ -6683,7 +6799,13 @@ export default function DynamicOverlays() {
                             </span>
                           ) : isFetchable ? (
                             <span>
-                              {asset.source_type === "local_seed" ? "Local Seed Cache" : "Remote Template Repository"}
+                              {asset.source_type === "local_seed"
+                                ? "Local Seed Cache"
+                                : "Official Kometa GitHub"}
+                            </span>
+                          ) : isUploadNeeded ? (
+                            <span className="text-orange-400/90 font-medium">
+                              Custom font/image — manual upload required
                             </span>
                           ) : (
                             <span className="text-amber-400/90">
@@ -6707,8 +6829,12 @@ export default function DynamicOverlays() {
                             </button>
                           )}
                           {!isReady && !isFetchable && (
-                            <label className="px-2.5 py-1 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text font-medium transition-all inline-flex items-center gap-1 cursor-pointer shadow-sm">
-                              <Upload className="w-3 h-3 text-theme-primary" />
+                            <label className={`px-2.5 py-1 rounded-lg border font-medium transition-all inline-flex items-center gap-1 cursor-pointer shadow-sm ${
+                              isUploadNeeded
+                                ? "bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30 text-orange-400"
+                                : "bg-theme-card hover:bg-theme-hover border-theme hover:border-theme-primary/50 text-theme-text"
+                            }`}>
+                              <Upload className="w-3 h-3" />
                               Browse & Upload
                               <input
                                 type="file"

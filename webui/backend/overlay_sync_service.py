@@ -139,6 +139,18 @@ LANGUAGE_MAP = {
     "swe": "sv",
     "nor": "no",
     "fin": "fi",
+    "ukr": "uk",
+    "tur": "tr",
+    "ara": "ar",
+    "hin": "hi",
+    "ell": "el", "gre": "el",
+    "ces": "cs", "cze": "cs",
+    "hun": "hu",
+    "ron": "ro", "rum": "ro",
+    "vie": "vi",
+    "tha": "th",
+    "ind": "id",
+    "heb": "he",
     # Common full language names
     "german": "de", "deutsch": "de",
     "english": "en",
@@ -156,6 +168,18 @@ LANGUAGE_MAP = {
     "swedish": "sv",
     "norwegian": "no",
     "finnish": "fi",
+    "ukrainian": "uk",
+    "turkish": "tr",
+    "arabic": "ar",
+    "hindi": "hi",
+    "greek": "el",
+    "czech": "cs",
+    "hungarian": "hu",
+    "romanian": "ro",
+    "vietnamese": "vi",
+    "thai": "th",
+    "indonesian": "id",
+    "hebrew": "he",
 }
 
 LANGUAGE_TO_FLAG_MAP = {
@@ -175,6 +199,18 @@ LANGUAGE_TO_FLAG_MAP = {
     "sv": "se.png",
     "no": "no.png",
     "fi": "fi.png",
+    "uk": "ua.png",
+    "tr": "tr.png",
+    "ar": "sa.png",
+    "hi": "in.png",
+    "el": "gr.png",
+    "cs": "cz.png",
+    "hu": "hu.png",
+    "ro": "ro.png",
+    "vi": "vn.png",
+    "th": "th.png",
+    "id": "id.png",
+    "he": "il.png",
 }
 
 COMMONSENSE_RATING_MAP = {
@@ -1110,8 +1146,10 @@ def build_overlay_layers_for_item(
     """
     # 1. Primary Engine: Full Configuration & Template Resolution Engine
     try:
-        from overlay_resolver import OverlayConfigEngine
+        from overlay_resolver import OverlayConfigEngine, PROJECT_ROOT
         project_root = overlays_dir.parent.parent
+        if not (project_root / "Overlayfiles" / "dynamic_overlays").exists() and not (project_root / "defaults").exists():
+            project_root = PROJECT_ROOT
         engine = OverlayConfigEngine(project_root)
         layers = engine.evaluate_item(item_metadata, library_rules)
         if layers:
@@ -1690,6 +1728,10 @@ async def run_overlay_sync_task(
         legacy = base_dir / "Overlayfiles" / "kometa"
         if legacy.exists():
             overlays_dir = legacy
+        elif (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays").exists():
+            overlays_dir = PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays"
+        elif Path("/app/Overlayfiles/dynamic_overlays").exists():
+            overlays_dir = Path("/app/Overlayfiles/dynamic_overlays")
     cache = OverlayCache(base_dir / "database" / "overlay_cache.db")
 
     # Rotate log if exceeds 10MB
@@ -2152,9 +2194,10 @@ async def run_overlay_sync_task(
                                     audio_langs = []
                                     for s in m_root.findall(".//Stream"):
                                         if s.get("streamType") == "2":
-                                            lc = s.get("languageCode") or s.get("language")
+                                            lc = s.get("languageCode") or s.get("languageTag") or s.get("language")
                                             if lc:
-                                                norm_l = LANGUAGE_MAP.get(lc.lower(), lc.lower())
+                                                clean_code = str(lc).lower().split("-")[0].split("_")[0].strip()
+                                                norm_l = LANGUAGE_MAP.get(clean_code, LANGUAGE_MAP.get(str(lc).lower(), clean_code))
                                                 if norm_l not in audio_langs:
                                                     audio_langs.append(norm_l)
                                             if not item.get("audio_codec") and s.get("codec"):
@@ -2729,9 +2772,10 @@ async def run_overlay_sync_task(
                                                 ep_langs = []
                                                 for st_node in ep_elem.findall(".//Stream"):
                                                     if st_node.get("streamType") == "2":
-                                                        lc_code = st_node.get("languageCode") or st_node.get("language")
+                                                        lc_code = st_node.get("languageCode") or st_node.get("languageTag") or st_node.get("language")
                                                         if lc_code:
-                                                            norm_lang = LANGUAGE_MAP.get(lc_code.lower(), lc_code.lower())
+                                                            clean_code = str(lc_code).lower().split("-")[0].split("_")[0].strip()
+                                                            norm_lang = LANGUAGE_MAP.get(clean_code, LANGUAGE_MAP.get(str(lc_code).lower(), clean_code))
                                                             if norm_lang not in ep_langs:
                                                                 ep_langs.append(norm_lang)
                                                     elif st_node.get("streamType") == "1":

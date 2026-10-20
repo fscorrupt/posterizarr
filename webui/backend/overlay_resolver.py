@@ -36,6 +36,63 @@ ALLOWED_ALL_EXTS = ALLOWED_CONFIG_EXTS | ALLOWED_IMAGE_EXTS | ALLOWED_FONT_EXTS
 
 OVERLAY_TEMPLATES_RAW = "https://raw.githubusercontent.com/Kometa-Team/Kometa/master"
 KOMETA_GITHUB_RAW = OVERLAY_TEMPLATES_RAW
+KOMETA_IMAGES_RAW = f"{KOMETA_GITHUB_RAW}/defaults/overlays/images"
+
+# Official fonts shipped in the Kometa repository (https://github.com/Kometa-Team/Kometa/tree/master/fonts)
+OFFICIAL_KOMETA_FONTS = {
+    "Arimo-Bold.ttf", "Arimo-BoldItalic.ttf", "Arimo-Italic.ttf", "Arimo-Medium.ttf",
+    "Arimo-MediumItalic.ttf", "Arimo-Regular.ttf", "Arimo-SemiBold.ttf", "Arimo-SemiBoldItalic.ttf",
+    "Comfortaa-Bold.ttf", "Comfortaa-Light.ttf", "Comfortaa-Medium.ttf", "Comfortaa-Regular.ttf",
+    "Comfortaa-SemiBold.ttf", "Consensus-Bold.otf", "Consensus-ExtraLight.otf", "Consensus-Light.otf",
+    "Consensus-Medium.otf", "Consensus-Regular.otf", "Consensus-SemiBold.otf", "Consensus-Thin.otf",
+    "Figtree-Black.ttf", "Figtree-BlackItalic.ttf", "Figtree-Bold.ttf", "Figtree-BoldItalic.ttf",
+    "Figtree-ExtraBold.ttf", "Figtree-ExtraBoldItalic.ttf", "Figtree-Italic.ttf", "Figtree-Light.ttf",
+    "Figtree-LightItalic.ttf", "Figtree-Medium.ttf", "Figtree-MediumItalic.ttf", "Figtree-Regular.ttf",
+    "Figtree-SemiBold.ttf", "Figtree-SemiBoldItalic.ttf", "Inter-Black.ttf", "Inter-Bold.ttf",
+    "Inter-ExtraBold.ttf", "Inter-ExtraLight.ttf", "Inter-Light.ttf", "Inter-Medium.ttf",
+    "Inter-Regular.ttf", "Inter-SemiBold.ttf", "Inter-Thin.ttf", "Lato-Black.ttf",
+    "Lato-BlackItalic.ttf", "Lato-Bold.ttf", "Lato-BoldItalic.ttf", "Lato-Italic.ttf",
+    "Lato-Light.ttf", "Lato-LightItalic.ttf", "Lato-Regular.ttf", "Lato-Thin.ttf",
+    "Lato-ThinItalic.ttf", "LibreFranklin-Black.ttf", "LibreFranklin-BlackItalic.ttf",
+    "LibreFranklin-Bold.ttf", "LibreFranklin-BoldItalic.ttf", "LibreFranklin-ExtraBold.ttf",
+    "LibreFranklin-ExtraBoldItalic.ttf", "LibreFranklin-ExtraLight.ttf", "LibreFranklin-ExtraLightItalic.ttf",
+    "LibreFranklin-Italic.ttf", "LibreFranklin-Light.ttf", "LibreFranklin-LightItalic.ttf",
+    "LibreFranklin-Medium.ttf", "LibreFranklin-MediumItalic.ttf", "LibreFranklin-Regular.ttf",
+    "LibreFranklin-SemiBold.ttf", "LibreFranklin-SemiBoldItalic.ttf", "LibreFranklin-Thin.ttf",
+    "LibreFranklin-ThinItalic.ttf", "Montserrat-Black.ttf", "Montserrat-BlackItalic.ttf",
+    "Montserrat-Bold.ttf", "Montserrat-BoldItalic.ttf", "Montserrat-ExtraBold.ttf",
+    "Montserrat-ExtraBoldItalic.ttf", "Montserrat-ExtraLight.ttf", "Montserrat-ExtraLightItalic.ttf",
+    "Montserrat-Italic.ttf", "Montserrat-Light.ttf", "Montserrat-LightItalic.ttf",
+    "Montserrat-Medium.ttf", "Montserrat-MediumItalic.ttf", "Montserrat-Regular.ttf",
+    "Montserrat-SemiBold.ttf", "Montserrat-SemiBoldItalic.ttf", "Montserrat-Thin.ttf",
+    "Montserrat-ThinItalic.ttf", "Roboto-Black.ttf", "Roboto-BlackItalic.ttf",
+    "Roboto-Bold.ttf", "Roboto-BoldItalic.ttf", "Roboto-Italic.ttf", "Roboto-Light.ttf",
+    "Roboto-LightItalic.ttf", "Roboto-Medium.ttf", "Roboto-MediumItalic.ttf",
+    "Roboto-Regular.ttf", "Roboto-Thin.ttf", "Roboto-ThinItalic.ttf", "SourceSans3-Black.ttf",
+    "SourceSans3-BlackItalic.ttf", "SourceSans3-Bold.ttf", "SourceSans3-BoldItalic.ttf",
+    "SourceSans3-ExtraBold.ttf", "SourceSans3-ExtraBoldItalic.ttf", "SourceSans3-ExtraLight.ttf",
+    "SourceSans3-ExtraLightItalic.ttf", "SourceSans3-Italic.ttf", "SourceSans3-Light.ttf",
+    "SourceSans3-LightItalic.ttf", "SourceSans3-Medium.ttf", "SourceSans3-MediumItalic.ttf",
+    "SourceSans3-Regular.ttf", "SourceSans3-SemiBold.ttf", "SourceSans3-SemiBoldItalic.ttf"
+}
+
+OFFICIAL_KOMETA_IMAGE_SUBDIRS = {
+    "audio_codec", "audio_codec/compact", "audio_codec/standard",
+    "cr", "edition", "flag", "flag/round", "flag/square",
+    "logo", "logo/round", "logo/square",
+    "network", "network/color", "network/white",
+    "rating", "resolution",
+    "ribbon", "ribbon/black", "ribbon/gray", "ribbon/red", "ribbon/yellow",
+    "streaming", "streaming/color", "streaming/white",
+    "studio", "studio/bigger", "studio/standard"
+}
+
+OFFICIAL_KOMETA_ROOT_IMAGES = {
+    "commonsense.png", "direct-play.png", "mediastinger.png",
+    "dual_audio.png", "dual_subs.png", "edition.png", "fire.png",
+    "flame.png", "flame2.png", "multi_audio.png", "multi_subs.png",
+    "versions.png"
+}
 
 OFFICIAL_OVERLAY_DEFAULTS = [
     "aspect.yml",
@@ -243,9 +300,9 @@ def load_cached_yaml_file(file_path: Path) -> Dict[str, Any]:
 class OverlayResolver:
     """Manages Kometa configuration files, dependencies, and asset resolution."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root
-        self.overlayfiles_dir = project_root / "Overlayfiles"
+    def __init__(self, project_root: Union[Path, str]):
+        self.project_root = Path(project_root)
+        self.overlayfiles_dir = self.project_root / "Overlayfiles"
         self.overlays_dir = self.overlayfiles_dir / "dynamic_overlays"
         if not self.overlays_dir.exists():
             legacy = self.overlayfiles_dir / "kometa"
@@ -636,10 +693,14 @@ class OverlayResolver:
                     status = "ready"
                     source_type = "local"
                     resolved_path = str(p2)
-                else:
+                elif name in OFFICIAL_KOMETA_FONTS:
                     status = "fetchable"
                     source_type = "github"
                     download_url = f"{KOMETA_GITHUB_RAW}/fonts/{name}"
+                else:
+                    status = "upload_needed"
+                    source_type = "upload_needed"
+                    download_url = None
 
             # 2. Default Templates
             elif cat == "template":
@@ -658,8 +719,8 @@ class OverlayResolver:
                     source_type = "github"
                     download_url = f"{KOMETA_GITHUB_RAW}/defaults/overlays/{name}"
                 else:
-                    status = "missing"
-                    source_type = "custom"
+                    status = "upload_needed"
+                    source_type = "upload_needed"
                     download_url = None
 
             # 3. Images
@@ -667,13 +728,16 @@ class OverlayResolver:
                 name_lower = name.lower()
                 target_stem = Path(name_lower).stem
                 found_local = None
-                search_roots = [self.assets_dir, self.overlayfiles_dir]
+                search_roots = [self.assets_dir, self.defaults_dir / "images", self.overlayfiles_dir]
                 sub_folders = [
                     "", "network", "network/color", "network/white",
                     "streaming", "streaming/color", "streaming/white",
                     "studio", "studio/standard", "studio/bigger",
                     "resolution", "rating", "flags/square", "flag/square",
-                    "ribbon/red", "ribbon/black", "ribbon"
+                    "flags/round", "flag/round",
+                    "ribbon/red", "ribbon/black", "ribbon", "ribbon/yellow", "ribbon/gray",
+                    "audio_codec", "audio_codec/compact", "audio_codec/standard",
+                    "cr", "edition", "logo", "logo/round", "logo/square"
                 ]
                 for root in search_roots:
                     for sub in sub_folders:
@@ -699,20 +763,30 @@ class OverlayResolver:
                     status = "fetchable"
                     source_type = "remote_url"
                     download_url = asset["url"]
+                elif name_lower in OFFICIAL_KOMETA_ROOT_IMAGES:
+                    status = "fetchable"
+                    source_type = "github"
+                    download_url = f"{KOMETA_IMAGES_RAW}/{name}"
+                elif any(name_lower.startswith(f"{sub}/") for sub in OFFICIAL_KOMETA_IMAGE_SUBDIRS):
+                    status = "fetchable"
+                    source_type = "github"
+                    download_url = f"{KOMETA_IMAGES_RAW}/{name}"
+                elif any(res in name_lower for res in ["4k", "1080p", "720p", "hdr", "dv"]):
+                    fn = name_lower if name_lower.endswith((".png", ".jpg", ".webp")) else f"{name_lower}.png"
+                    status = "fetchable"
+                    source_type = "github"
+                    download_url = f"{KOMETA_IMAGES_RAW}/resolution/{fn}"
                 else:
-                    # Check if it could be a resolution badge on GitHub
-                    if any(res in name_lower for res in ["4k", "1080p", "720p", "hdr", "dv"]):
-                        status = "fetchable"
-                        source_type = "github"
-                        download_url = f"{KOMETA_GITHUB_RAW}/defaults/overlays/images/resolution/{name_lower}"
-                    else:
-                        status = "missing"
-                        source_type = "custom_needed"
+                    status = "upload_needed"
+                    source_type = "upload_needed"
+                    download_url = None
 
             if status == "ready":
                 ready += 1
             elif status == "fetchable":
                 fetchable += 1
+            elif status == "upload_needed":
+                upload_needed = locals().get("upload_needed", 0) + 1
             else:
                 missing += 1
 
@@ -725,27 +799,38 @@ class OverlayResolver:
                 "resolved_path": resolved_path
             })
 
+        up_needed = locals().get("upload_needed", 0)
         return {
             "total": len(items_report),
             "ready": ready,
             "fetchable": fetchable,
+            "upload_needed": up_needed,
             "missing": missing,
-            "all_satisfied": (missing == 0 and fetchable == 0),
+            "all_satisfied": (missing == 0 and fetchable == 0 and up_needed == 0),
             "assets": items_report
         }
 
     async def fetch_asset(self, asset_name: str, category: str, custom_url: Optional[str] = None) -> Dict[str, Any]:
         """
-        Download a missing asset directly into Overlayfiles/kometa/.
+        Download a missing asset directly into Overlayfiles/dynamic_overlays/.
         Strictly validates extensions, safety of URLs, and prevents file traversal.
         """
         if not asset_name or is_template_placeholder(asset_name):
             return {"success": False, "error": f"Invalid asset name or template placeholder: {asset_name}"}
 
+        default_url = None
         if category == "font":
             target_dir = self.fonts_dir
             allowed_exts = ALLOWED_FONT_EXTS
-            default_url = f"{KOMETA_GITHUB_RAW}/fonts/{asset_name}"
+            if custom_url and is_safe_remote_url(custom_url):
+                default_url = custom_url
+            elif asset_name in OFFICIAL_KOMETA_FONTS:
+                default_url = f"{KOMETA_GITHUB_RAW}/fonts/{asset_name}"
+            else:
+                return {
+                    "success": False,
+                    "error": f"'{asset_name}' is a custom font not present in the official Kometa repository. Please upload it via the UI."
+                }
         elif category == "template":
             target_dir = self.defaults_dir
             allowed_exts = ALLOWED_CONFIG_EXTS
@@ -763,10 +848,20 @@ class OverlayResolver:
             target_dir = self.assets_dir
             allowed_exts = ALLOWED_IMAGE_EXTS
             name_lower = asset_name.lower()
-            if any(res in name_lower for res in ["4k", "1080p", "720p", "hdr", "dv"]):
-                default_url = f"{KOMETA_GITHUB_RAW}/defaults/overlays/images/resolution/{name_lower}"
-            else:
+            if custom_url and is_safe_remote_url(custom_url):
                 default_url = custom_url
+            elif name_lower in OFFICIAL_KOMETA_ROOT_IMAGES:
+                default_url = f"{KOMETA_IMAGES_RAW}/{asset_name}"
+            elif any(name_lower.startswith(f"{sub}/") for sub in OFFICIAL_KOMETA_IMAGE_SUBDIRS):
+                default_url = f"{KOMETA_IMAGES_RAW}/{asset_name}"
+            elif any(res in name_lower for res in ["4k", "1080p", "720p", "hdr", "dv"]):
+                fn = name_lower if name_lower.endswith((".png", ".jpg", ".webp")) else f"{name_lower}.png"
+                default_url = f"{KOMETA_IMAGES_RAW}/resolution/{fn}"
+            else:
+                return {
+                    "success": False,
+                    "error": f"'{asset_name}' is a custom image not present in the official Kometa repository. Please upload it via the UI."
+                }
 
         safe_dest = safe_resolve_overlay_path(target_dir, asset_name, allowed_exts)
         if not safe_dest:
@@ -794,6 +889,49 @@ class OverlayResolver:
                 return {"success": True, "method": "downloaded", "path": str(safe_dest)}
         except Exception as e:
             logger.error(f"[OverlayResolver] Error downloading {asset_name}: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def import_default_images_from_github(self, overwrite: bool = False) -> Dict[str, Any]:
+        """
+        Stream and extract official Kometa default images from upstream GitHub archive
+        directly into Overlayfiles/dynamic_overlays/assets/ and defaults/images/.
+        """
+        import tarfile
+        import urllib.request
+
+        tar_url = "https://github.com/Kometa-Team/Kometa/archive/refs/heads/master.tar.gz"
+        imported_count = 0
+        dest_dirs = [self.assets_dir, self.defaults_dir / "images"]
+        for d in dest_dirs:
+            d.mkdir(parents=True, exist_ok=True)
+
+        try:
+            def _download_and_extract():
+                nonlocal imported_count
+                req = urllib.request.Request(tar_url, headers={"User-Agent": "Posterizarr"})
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    with tarfile.open(fileobj=resp, mode="r|gz") as tf:
+                        for member in tf:
+                            prefix = "Kometa-master/defaults/overlays/images/"
+                            if prefix in member.name and member.isfile():
+                                rel_subpath = member.name[member.name.index(prefix) + len(prefix):]
+                                if not rel_subpath:
+                                    continue
+                                for dest_root in dest_dirs:
+                                    dest_file = dest_root / rel_subpath
+                                    if dest_file.exists() and not overwrite:
+                                        continue
+                                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+                                    extracted_f = tf.extractfile(member)
+                                    if extracted_f:
+                                        with open(dest_file, "wb") as out_f:
+                                            out_f.write(extracted_f.read())
+                                imported_count += 1
+
+            await asyncio.to_thread(_download_and_extract)
+            return {"success": True, "count": imported_count, "message": f"Successfully imported {imported_count} official overlay images."}
+        except Exception as e:
+            logger.error(f"[OverlayResolver] Error importing default images: {e}")
             return {"success": False, "error": str(e)}
 
     async def fetch_all_missing(self) -> Dict[str, Any]:
@@ -1564,15 +1702,60 @@ class OverlayConfigEngine:
         self.assets_dir = self.overlays_dir / "assets"
         self.fonts_dir = self.overlays_dir / "fonts"
 
-        # Load standard external templates (templates.yml)
+        # Multi-root resolution: Collect all viable base candidate directories across Docker, project, and config
+        self.candidate_roots: List[Path] = []
+        for r in [self.project_root, PROJECT_ROOT, Path("/app"), Path("/config")]:
+            if r and Path(r).exists() and Path(r) not in self.candidate_roots:
+                self.candidate_roots.append(Path(r))
+
+        self.candidate_font_dirs: List[Path] = []
+        for cr in self.candidate_roots:
+            for sub in [
+                cr / "Overlayfiles" / "dynamic_overlays" / "fonts",
+                cr / "Overlayfiles" / "kometa" / "fonts",
+                cr / "Overlayfiles" / "dynamic_overlays" / "configs" / "fonts",
+                cr / "Overlayfiles" / "kometa" / "configs" / "fonts",
+                cr / "fonts",
+            ]:
+                if sub.exists() and sub not in self.candidate_font_dirs:
+                    self.candidate_font_dirs.append(sub)
+        if Path("/usr/share/fonts/custom").exists():
+            self.candidate_font_dirs.append(Path("/usr/share/fonts/custom"))
+
+        self.candidate_asset_dirs: List[Path] = []
+        for cr in self.candidate_roots:
+            for sub in [
+                cr / "Overlayfiles" / "dynamic_overlays" / "assets",
+                cr / "Overlayfiles" / "kometa" / "assets",
+                cr / "Overlayfiles" / "dynamic_overlays" / "configs",
+                cr / "Overlayfiles" / "kometa" / "configs",
+                cr / "assets"
+            ]:
+                if sub.exists() and sub not in self.candidate_asset_dirs:
+                    self.candidate_asset_dirs.append(sub)
+
+        self.candidate_default_dirs: List[Path] = []
+        for cr in self.candidate_roots:
+            for sub in [
+                cr / "Overlayfiles" / "dynamic_overlays" / "defaults",
+                cr / "Overlayfiles" / "kometa" / "defaults",
+                cr / "defaults"
+            ]:
+                if sub.exists() and sub not in self.candidate_default_dirs:
+                    self.candidate_default_dirs.append(sub)
+
+        # Load standard external templates (templates.yml) across candidates
         self.templates = {}
-        tpl_path = self.defaults_dir / "templates.yml"
-        if tpl_path.exists():
-            try:
-                with open(tpl_path, "r", encoding="utf-8") as f:
-                    self.templates = yaml.safe_load(f).get("templates", {})
-            except Exception as e:
-                logger.warning(f"[OverlayConfigEngine] Error loading templates.yml: {e}")
+        for dd in self.candidate_default_dirs:
+            tpl_path = dd / "templates.yml"
+            if tpl_path.exists():
+                try:
+                    with open(tpl_path, "r", encoding="utf-8") as f:
+                        self.templates = yaml.safe_load(f).get("templates", {})
+                    if self.templates:
+                        break
+                except Exception as e:
+                    logger.warning(f"[OverlayConfigEngine] Error loading templates.yml from {tpl_path}: {e}")
 
     def resolve_image_path(self, raw_path: Optional[str]) -> Optional[Path]:
         if not raw_path or str(raw_path).startswith("text(") or str(raw_path).startswith("blur("):
@@ -1585,31 +1768,11 @@ class OverlayConfigEngine:
         if not p_str.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             p_str = f"{p_str}.png"
 
-        # Direct in assets_dir
-        cand1 = self.assets_dir / p_str
-        if cand1.exists():
-            return cand1
-
-        # Also check flag vs flags interchangeable paths
-        if p_str.startswith("flag/"):
-            cand_flags = self.assets_dir / ("flags" + p_str[4:])
-            if cand_flags.exists():
-                return cand_flags
-        elif p_str.startswith("flags/"):
-            cand_flag = self.assets_dir / ("flag" + p_str[5:])
-            if cand_flag.exists():
-                return cand_flag
-
-        # Language code to flag fallback (e.g. flag/square/en -> flag/square/us)
         stem = Path(p_str).stem.lower()
         flag_aliases = {"en": "us", "ja": "jp", "zh": "cn", "ko": "kr", "da": "dk", "sv": "se"}
-        if stem in flag_aliases:
-            for p_folder in [Path(p_str).parent, Path("flag/square"), Path("flags/square"), Path("flag/round"), Path("flags/round")]:
-                alias_path = self.assets_dir / p_folder / f"{flag_aliases[stem]}.png"
-                if alias_path.exists():
-                    return alias_path
+        target_name = Path(p_str).name.lower()
+        target_name_with_ext = target_name if target_name.endswith((".png", ".jpg", ".jpeg", ".webp")) else f"{target_name}.png"
 
-        # Subdirectories inside assets
         sub_dirs = [
             "",
             "flag/square", "flags/square", "flag/round", "flags/round",
@@ -1621,53 +1784,64 @@ class OverlayConfigEngine:
             "ribbon", "ribbon/red", "ribbon/black", "ribbon/yellow", "ribbon/gray",
             "logo/square", "logo/round"
         ]
-        target_name = Path(p_str).name.lower()
-        target_name_with_ext = target_name if target_name.endswith((".png", ".jpg", ".jpeg", ".webp")) else f"{target_name}.png"
 
-        for sub in sub_dirs:
-            cand = self.assets_dir / sub / Path(p_str).name
-            if cand.exists():
-                return cand
-            if stem in flag_aliases:
-                cand_alias = self.assets_dir / sub / f"{flag_aliases[stem]}.png"
-                if cand_alias.exists():
-                    return cand_alias
-            # Case-insensitive match in directory
-            sub_folder = self.assets_dir / sub
-            if sub_folder.exists() and sub_folder.is_dir():
-                try:
-                    for f in sub_folder.iterdir():
-                        if f.is_file() and f.name.lower() in (target_name, target_name_with_ext):
-                            return f
-                except Exception:
-                    pass
+        for base_asset_dir in self.candidate_asset_dirs:
+            # 1. Direct path
+            cand1 = base_asset_dir / p_str
+            if cand1.exists():
+                return cand1
 
-        # Direct in configs_dir
-        cand2 = self.configs_dir / p_str
-        if cand2.exists():
-            return cand2
+            # 2. Flag vs flags
+            if p_str.startswith("flag/"):
+                c = base_asset_dir / ("flags" + p_str[4:])
+                if c.exists():
+                    return c
+            elif p_str.startswith("flags/"):
+                c = base_asset_dir / ("flag" + p_str[5:])
+                if c.exists():
+                    return c
+
+            # 3. Subdirectories inside base_asset_dir
+            for sub in sub_dirs:
+                cand = base_asset_dir / sub / Path(p_str).name
+                if cand.exists():
+                    return cand
+                if stem in flag_aliases:
+                    cand_alias = base_asset_dir / sub / f"{flag_aliases[stem]}.png"
+                    if cand_alias.exists():
+                        return cand_alias
+                sub_folder = base_asset_dir / sub
+                if sub_folder.exists() and sub_folder.is_dir():
+                    try:
+                        for f in sub_folder.iterdir():
+                            if f.is_file() and f.name.lower() in (target_name, target_name_with_ext):
+                                return f
+                    except Exception:
+                        pass
         return None
 
     def resolve_font_path(self, font_name: Optional[str]) -> Optional[str]:
-        if not font_name:
-            for f in ["Inter-Bold.ttf", "Inter-Medium.ttf", "Roboto-Medium.ttf"]:
-                if (self.fonts_dir / f).exists():
-                    return str(self.fonts_dir / f)
-            return None
-        clean_name = Path(font_name).name
-        cand = self.fonts_dir / clean_name
-        if cand.exists():
-            return str(cand)
-        cand2 = self.configs_dir / "fonts" / clean_name
-        if cand2.exists():
-            return str(cand2)
-        cand3 = self.project_root / font_name
-        if cand3.exists():
-            return str(cand3)
-        for fallback in ["Inter-Bold.ttf", "Inter-Medium.ttf", "Roboto-Bold.ttf", "Roboto-Medium.ttf"]:
-            if (self.fonts_dir / fallback).exists():
-                return str(self.fonts_dir / fallback)
-        return str(cand)
+        clean_name = Path(font_name).name if font_name else None
+
+        # 1. Search clean_name in candidate font dirs
+        if clean_name:
+            for fd in self.candidate_font_dirs:
+                cand = fd / clean_name
+                if cand.exists():
+                    return str(cand)
+            # Check direct project relative
+            for cr in self.candidate_roots:
+                cand = cr / font_name
+                if cand.exists():
+                    return str(cand)
+
+        # 2. Check standard fallbacks
+        for fallback in ["Inter-Bold.ttf", "Inter-Medium.ttf", "CircularStd-Bold.otf", "Roboto-Bold.ttf", "Roboto-Medium.ttf"]:
+            for fd in self.candidate_font_dirs:
+                cand = fd / fallback
+                if cand.exists():
+                    return str(cand)
+        return None
 
     def load_overlay_file(self, file_entry: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         """Loads YAML, returns (overlays_dict, queues_dict, templates_dict, merged_vars)."""
@@ -1687,14 +1861,22 @@ class OverlayConfigEngine:
 
         if "default" in file_entry:
             name = str(file_entry["default"]).strip()
-            file_path = self.defaults_dir / f"{name}.yml"
+            for dd in self.candidate_default_dirs:
+                cand_f = dd / f"{name}.yml"
+                if cand_f.exists():
+                    file_path = cand_f
+                    break
         elif "file" in file_entry:
             f_str = str(file_entry["file"]).strip()
             if f_str.startswith("config/"):
                 f_str = f_str[7:]
-            file_path = self.configs_dir / f_str
-            if not file_path.exists():
-                file_path = self.project_root / file_entry["file"]
+            for cr in self.candidate_roots:
+                for sub in [cr / "Overlayfiles" / "dynamic_overlays" / "configs" / f_str, cr / "Overlayfiles" / "kometa" / "configs" / f_str, cr / file_entry["file"]]:
+                    if sub.exists():
+                        file_path = sub
+                        break
+                if file_path:
+                    break
 
         if not file_path or not file_path.exists():
             return {}, {}, {}, {}

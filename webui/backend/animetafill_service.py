@@ -103,6 +103,7 @@ DEFAULT_YAML_OUTPUT = _overlays_base / "configs" / "anime_overlays.yml"
 DEFAULT_DB_PATH = get_database_dir() / "animetafill.db"
 
 _is_sync_running: bool = False
+_stop_sync_requested: bool = False
 _last_sync_result: Dict[str, Any] = {
     "status": "idle",
     "timestamp": None,
@@ -653,6 +654,14 @@ def is_animetafill_running() -> bool:
     return _is_sync_running
 
 
+def stop_animetafill_sync() -> bool:
+    """Stop/cancel the running AniMetaFill sync task."""
+    global _stop_sync_requested, _is_sync_running
+    _stop_sync_requested = True
+    _is_sync_running = False
+    return True
+
+
 def get_animetafill_status() -> Dict[str, Any]:
     """Returns comprehensive status, sync history, show counts, and recent logs."""
     cfg = get_animetafill_config()
@@ -740,7 +749,8 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
     _is_sync_running = True
 
     def _worker():
-        global _is_sync_running, _last_sync_result
+        global _is_sync_running, _last_sync_result, _stop_sync_requested
+        _stop_sync_requested = False
         cfg = get_animetafill_config()
         out_dir = str(DEFAULT_YAML_OUTPUT.parent)
         db_path = str(DEFAULT_DB_PATH)

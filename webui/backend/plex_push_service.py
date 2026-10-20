@@ -1065,7 +1065,19 @@ async def fetch_plex_episodes(plex_url: str, plex_token: str, season_rating_key:
             return episodes
     except Exception as e:
         logger.debug(f"Error fetching episodes for season {safe_rk}: {e}")
-    return []
+_is_plex_sync_running: bool = False
+_stop_plex_sync_requested: bool = False
+
+def is_plex_sync_running() -> bool:
+    """Check if Plex Sync background task is currently running."""
+    return _is_plex_sync_running
+
+def stop_plex_sync() -> bool:
+    """Request stopping the Plex Sync background task."""
+    global _stop_plex_sync_requested, _is_plex_sync_running
+    _stop_plex_sync_requested = True
+    _is_plex_sync_running = False
+    return True
 
 async def run_plex_sync_task(
     schedule_config: Dict[str, Any],
@@ -1104,8 +1116,16 @@ async def run_plex_sync_task(
             pass
         logger.info(f"[PlexSync] {msg}")
 
-    write_log("=" * 60)
-    write_log("STARTING SCHEDULED PLEX SYNC TASK")
+    global _is_plex_sync_running, _stop_plex_sync_requested
+    if _is_plex_sync_running:
+        return {"success": False, "error": "Plex Sync is already in progress.", "is_running": True}
+
+    _is_plex_sync_running = True
+    _stop_plex_sync_requested = False
+
+    try:
+        write_log("=" * 60)
+        write_log("STARTING SCHEDULED PLEX SYNC TASK")
 
     plex_url, plex_token = get_plex_credentials_from_config(config_path)
     if not plex_url or not plex_token:
@@ -1519,10 +1539,12 @@ async def run_plex_sync_task(
     write_log("PLEX SYNC TASK COMPLETED")
     write_log("=" * 60)
 
-    return {
-        "success": True,
-        "checked": total_checked,
-        "pushed": total_pushed,
-        "skipped": total_skipped,
-        "failed": total_failed
-    }
+        return {
+            "success": True,
+            "checked": total_checked,
+            "pushed": total_pushed,
+            "skipped": total_skipped,
+            "failed": total_failed
+        }
+    finally:
+        _is_plex_sync_running = False

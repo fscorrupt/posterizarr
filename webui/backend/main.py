@@ -6185,6 +6185,79 @@ async def get_status():
         elif is_running and (effective_mode == "webhook" or effective_mode == "tautulli" or effective_mode == "arr"):
             display_pid = "External"
 
+        # Check sub-service running states
+        overlay_sync_active = False
+        try:
+            from overlay_sync_service import is_overlay_sync_running
+            overlay_sync_active = is_overlay_sync_running()
+        except Exception:
+            pass
+
+        plex_sync_active = False
+        try:
+            from plex_push_service import is_plex_sync_running
+            plex_sync_active = is_plex_sync_running()
+        except Exception:
+            pass
+
+        animetafill_active = False
+        try:
+            from animetafill_service import is_animetafill_running
+            animetafill_active = is_animetafill_running()
+        except Exception:
+            pass
+
+        metadata_refresh_active = bool(globals().get("metadata_refresh_running", False))
+
+        active_tasks = []
+        if is_running:
+            active_tasks.append({
+                "id": "posterizarr",
+                "name": (effective_mode or "Posterizarr").capitalize(),
+                "label": (effective_mode or "Running").upper(),
+                "type": "posterizarr",
+                "stop_endpoint": "/api/stop",
+                "color": "green",
+            })
+        if overlay_sync_active:
+            active_tasks.append({
+                "id": "overlay_sync",
+                "name": "Overlay Sync",
+                "label": "OVERLAY SYNC",
+                "type": "overlay_sync",
+                "stop_endpoint": "/api/dynamic-overlays/sync/stop",
+                "color": "blue",
+            })
+        elif plex_sync_active:
+            active_tasks.append({
+                "id": "plex_sync",
+                "name": "Plex Sync",
+                "label": "PLEX SYNC",
+                "type": "plex_sync",
+                "stop_endpoint": "/api/plex-sync/stop",
+                "color": "blue",
+            })
+        if animetafill_active:
+            active_tasks.append({
+                "id": "animetafill",
+                "name": "AniMetaFill",
+                "label": "ANIMETAFILL",
+                "type": "animetafill",
+                "stop_endpoint": "/api/animetafill/stop",
+                "color": "purple",
+            })
+        if metadata_refresh_active:
+            active_tasks.append({
+                "id": "metadata_refresh",
+                "name": "Metadata Refresh",
+                "label": "METADATA REFRESH",
+                "type": "metadata_refresh",
+                "stop_endpoint": "/api/assets/skipped/refresh/stop",
+                "color": "amber",
+            })
+
+        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active)
+
         return {
             "running": is_running,
             "manual_running": manual_is_running,
@@ -6199,6 +6272,12 @@ async def get_status():
             "already_running_detected": already_running,
             "running_file_exists": running_file_exists,
             "start_time": current_start_time if is_running else None,
+            "overlay_sync_running": overlay_sync_active,
+            "plex_sync_running": plex_sync_active,
+            "animetafill_running": animetafill_active,
+            "metadata_refresh_running": metadata_refresh_active,
+            "any_running": any_running,
+            "active_tasks": active_tasks,
         }
 
 @app.delete("/api/running-file")
@@ -15607,14 +15686,30 @@ async def get_proxy_poster(server_type: str, item_id: str):
 
 from fastapi import BackgroundTasks
 
+metadata_refresh_running: bool = False
+metadata_refresh_stop_requested: bool = False
+
+def is_metadata_refresh_running() -> bool:
+    global metadata_refresh_running
+    return bool(metadata_refresh_running)
+
+def stop_metadata_refresh() -> bool:
+    global metadata_refresh_stop_requested, metadata_refresh_running
+    metadata_refresh_stop_requested = True
+    metadata_refresh_running = False
+    return True
+
 class RefreshSkippedRequest(BaseModel):
     ids: List[str] = [] # If empty, refresh all
 
 async def refresh_skipped_metadata_background(ids: List[str]):
     """Background task to fetch and update metadata for skipped items"""
+    global metadata_refresh_running, metadata_refresh_stop_requested
     if not DATABASE_AVAILABLE or db is None:
         return
 
+    metadata_refresh_running = True
+    metadata_refresh_stop_requested = False
     try:
         # Get active server credentials
         plex_url, plex_token = _get_media_server_credentials("plex")
@@ -15626,6 +15721,9 @@ async def refresh_skipped_metadata_background(ids: List[str]):
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for item in rows_data:
+                if metadata_refresh_stop_requested:
+                    logger.info("Metadata refresh stopped by user request.")
+                    break
 
                 # Check if we should process this item
                 str_id = str(item['id'])
@@ -15724,6 +15822,8 @@ async def refresh_skipped_metadata_background(ids: List[str]):
 
     except Exception as e:
         logger.error(f"Error in background metadata refresh task: {e}")
+    finally:
+        metadata_refresh_running = False
 
 @app.post("/api/assets/skipped/refresh")
 async def refresh_skipped_metadata(request: RefreshSkippedRequest, background_tasks: BackgroundTasks):
@@ -15733,6 +15833,32 @@ async def refresh_skipped_metadata(request: RefreshSkippedRequest, background_ta
 
     background_tasks.add_task(refresh_skipped_metadata_background, request.ids)
     return {"success": True, "message": "Metadata refresh started in the background"}
+
+@app.post("/api/assets/skipped/refresh/stop")
+async def stop_skipped_metadata_refresh():
+    """Cancel and stop the background skipped items metadata refresh."""
+    stop_metadata_refresh()
+    return {"success": True, "message": "Metadata refresh stopped.", "is_running": False}
+
+@app.post("/api/animetafill/stop")
+async def stop_animetafill_endpoint():
+    """Cancel and stop the currently running AniMetaFill sync task."""
+    try:
+        from animetafill_service import stop_animetafill_sync
+        stop_animetafill_sync()
+        return {"success": True, "message": "AniMetaFill sync stopped.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/plex-sync/stop")
+async def stop_plex_sync_endpoint():
+    """Cancel and stop the currently running Plex sync task."""
+    try:
+        from plex_push_service import stop_plex_sync
+        stop_plex_sync()
+        return {"success": True, "message": "Plex sync stopped.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 from typing import Optional, Union
 
@@ -18895,6 +19021,25 @@ async def import_dynamic_overlays_defaults(req: Optional[DynamicOverlayImportDef
         }
     except Exception as e:
         logger.error(f"Error importing Kometa defaults from GitHub: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/import-images")
+async def import_dynamic_overlays_images(req: Optional[DynamicOverlayImportDefaultsRequest] = None):
+    """Import official Kometa default overlay images (flags, resolution, ratings, ribbons, etc.) directly into Overlayfiles/dynamic_overlays/assets/ and defaults/images/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        overwrite = req.overwrite if req else False
+        result = await kometa_resolver.import_default_images_from_github(overwrite=overwrite)
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {
+            "success": True,
+            "import_result": result,
+            "scan": fresh_scan
+        }
+    except Exception as e:
+        logger.error(f"Error importing Kometa default images from GitHub: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 

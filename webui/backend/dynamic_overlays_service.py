@@ -453,6 +453,60 @@ def _split_unified_position(pos: str) -> Tuple[str, str]:
     return "center", "center"
 
 
+def get_media_server_library_type(lib_name: str) -> Optional[str]:
+    """
+    Looks up library media type ('movie' or 'show') from cached media server libraries database.
+    Checks Plex, Emby, and Jellyfin.
+    """
+    if not lib_name:
+        return None
+    clean_target = lib_name.strip().lower()
+
+    # 1. Try server_libraries_database module
+    try:
+        from server_libraries_database import ServerLibrariesDB
+        # Check active singleton from main if available
+        try:
+            from main import server_libraries_db
+            if server_libraries_db:
+                for srv in ["plex", "jellyfin", "emby"]:
+                    res = server_libraries_db.get_media_server_libraries(srv)
+                    for cl in res.get("libraries") or []:
+                        c_name = str(cl.get("name") or cl.get("title") or "").strip().lower()
+                        if c_name == clean_target:
+                            t = str(cl.get("type") or "").strip().lower()
+                            if t in ("movie", "movies"):
+                                return "movie"
+                            if t in ("show", "shows", "tv", "tvshows"):
+                                return "show"
+        except Exception:
+            pass
+
+        # Check database files directly
+        db_candidates = [
+            get_config_dir() / "database" / "server_libraries.db",
+            PROJECT_ROOT / "database" / "server_libraries.db",
+            Path("/config/database/server_libraries.db")
+        ]
+        for db_p in db_candidates:
+            if db_p.exists():
+                db_obj = ServerLibrariesDB(db_p)
+                for srv in ["plex", "jellyfin", "emby"]:
+                    res = db_obj.get_media_server_libraries(srv)
+                    for cl in res.get("libraries") or []:
+                        c_name = str(cl.get("name") or cl.get("title") or "").strip().lower()
+                        if c_name == clean_target:
+                            t = str(cl.get("type") or "").strip().lower()
+                            if t in ("movie", "movies"):
+                                return "movie"
+                            if t in ("show", "shows", "tv", "tvshows"):
+                                return "show"
+    except Exception as e:
+        logger.debug(f"[DynamicOverlays] Library type lookup error for '{lib_name}': {e}")
+
+    return None
+
+
 def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
     """
     Creates a turnkey starter visual configuration.
@@ -463,20 +517,35 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
     if detected_libraries:
         libs_to_create = detected_libraries
     else:
-        # Check if media server libraries can be discovered from server_libraries_db
+        # Check if media server libraries can be discovered from server_libraries_database
         try:
-            from server_libraries_db import server_libraries_db
-            if server_libraries_db is not None:
-                for s_type in ["plex", "jellyfin", "emby"]:
-                    res = server_libraries_db.get_media_server_libraries(s_type)
-                    cached_libs = res.get("libraries") or []
-                    for cl in cached_libs:
-                        cl_name = cl.get("name") or cl.get("title")
-                        cl_type = cl.get("type") or ("movie" if "movie" in str(cl_name).lower() else "show")
-                        if cl_name and not any(x["name"].lower() == cl_name.lower() for x in libs_to_create):
-                            libs_to_create.append({"name": cl_name, "type": cl_type})
-        except Exception:
-            pass
+            from server_libraries_database import ServerLibrariesDB
+            db_candidates = [
+                get_config_dir() / "database" / "server_libraries.db",
+                PROJECT_ROOT / "database" / "server_libraries.db",
+                Path("/config/database/server_libraries.db")
+            ]
+            for db_p in db_candidates:
+                if db_p.exists():
+                    db_obj = ServerLibrariesDB(db_p)
+                    for s_type in ["plex", "jellyfin", "emby"]:
+                        res = db_obj.get_media_server_libraries(s_type)
+                        cached_libs = res.get("libraries") or []
+                        for cl in cached_libs:
+                            cl_name = cl.get("name") or cl.get("title")
+                            raw_t = str(cl.get("type") or "").strip().lower()
+                            if raw_t in ("artist", "music", "audiobook", "audiobooks", "boxsets", "collections"):
+                                continue  # Skip audio/music/collections for poster overlays
+                            cl_type = "movie" if raw_t in ("movie", "movies") else ("show" if raw_t in ("show", "shows", "tv", "tvshows") else None)
+                            if not cl_type:
+                                is_tv = any(w in str(cl_name).lower() for w in ["tv", "show", "series", "serie", "season", "episode"])
+                                cl_type = "show" if is_tv else "movie"
+                            if cl_name and not any(x["name"].lower() == cl_name.lower() for x in libs_to_create):
+                                libs_to_create.append({"name": cl_name, "type": cl_type})
+                    if libs_to_create:
+                        break
+        except Exception as e:
+            logger.debug(f"[DynamicOverlays] Error discovering starter libraries: {e}")
 
     if not libs_to_create:
         libs_to_create = [
@@ -487,7 +556,8 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
     visual_libs = {}
     for lib_item in libs_to_create:
         lib_name = lib_item.get("name", "Movies")
-        media_type = lib_item.get("type", "movie" if any(w in lib_name.lower() for w in ["movie", "film"]) else "show")
+        db_type = get_media_server_library_type(lib_name)
+        media_type = lib_item.get("type") or db_type or ("show" if any(w in lib_name.lower() for w in ["tv", "show", "series", "serie", "season", "episode"]) else "movie")
         is_movie = (media_type == "movie")
 
         visual_libs[lib_name] = {
@@ -661,15 +731,67 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
     visual_libs = {}
 
+    # Load existing saved visual config to preserve user manual settings (like media_type)
+    existing_vis = {}
+    try:
+        vis_file = get_visual_config_file(for_writing=False)
+        if vis_file.exists():
+            with open(vis_file, "r", encoding="utf-8") as jf:
+                existing_vis = json.load(jf) or {}
+    except Exception:
+        pass
+    saved_libs = existing_vis.get("libraries", {}) if isinstance(existing_vis, dict) else {}
+
     for lib_name, lib_data in raw_libs.items():
         if not isinstance(lib_data, dict):
             continue
 
-        is_movie = any(w in lib_name.lower() for w in ["movie", "film"])
-        media_type = "movie" if is_movie else "show"
+        overlay_files = lib_data.get("overlay_files") or lib_data.get("overlays") or []
+
+        # 1. Check existing saved visual configuration (preserve explicit user setting)
+        media_type = None
+        if saved_libs.get(lib_name) and saved_libs[lib_name].get("media_type") in ("movie", "show"):
+            media_type = saved_libs[lib_name]["media_type"]
+
+        # 2. Check explicit lib_data in YAML
+        if not media_type:
+            raw_t = str(lib_data.get("media_type") or lib_data.get("type") or "").strip().lower()
+            if raw_t in ("movie", "movies"):
+                media_type = "movie"
+            elif raw_t in ("show", "shows", "tv", "tvshows"):
+                media_type = "show"
+
+        # 3. Check media server library database (Plex / Emby / Jellyfin knows actual library type)
+        if not media_type:
+            db_type = get_media_server_library_type(lib_name)
+            if db_type in ("movie", "show"):
+                media_type = db_type
+
+        # 4. Check overlay files in config
+        if not media_type:
+            has_movie_rules = any(
+                "overlays_movies" in str(e.get("file", "")).lower() or
+                str(e.get("template_variables", {}).get("builder_level", "")).lower() == "movie"
+                for e in overlay_files if isinstance(e, dict)
+            )
+            has_tv_rules = any(
+                "overlays_tv" in str(e.get("file", "")).lower() or
+                str(e.get("template_variables", {}).get("builder_level", "")).lower() in ("show", "episode", "season")
+                for e in overlay_files if isinstance(e, dict)
+            )
+            if has_movie_rules and not has_tv_rules:
+                media_type = "movie"
+            elif has_tv_rules and not has_movie_rules:
+                media_type = "show"
+
+        # 5. Check library name keywords (only mark show if TV/shows keywords match)
+        if not media_type:
+            is_tv = any(w in lib_name.lower() for w in ["tv", "show", "series", "serie", "season", "episode"])
+            media_type = "show" if is_tv else "movie"
+
+        is_movie = (media_type == "movie")
 
         # Badge extraction
-        overlay_files = lib_data.get("overlay_files") or lib_data.get("overlays") or []
         badges: Dict[str, Any] = {
             "resolution": {
                 "enabled": False,
@@ -1010,7 +1132,9 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "horizontal_offset": int(b_age.get("offset_x", 255)),
                 "vertical_offset": int(b_age.get("offset_y", 37)),
                 "back_width": int(b_age.get("back_width", 230)),
-                "back_color": b_age.get("back_color", "#00000000")
+                "back_color": b_age.get("back_color", "#00000000"),
+                "font_size": int(b_age.get("font_size", 55)),
+                "font": b_age.get("font") or "fonts/Inter-Medium.ttf"
             }
             if b_age.get("level"):
                 age_vars["builder_level"] = b_age["level"]
@@ -1132,7 +1256,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "vertical_align": v,
                 "horizontal_offset": int(raw_rt_x) if raw_rt_x is not None else def_rt_x,
                 "vertical_offset": int(raw_rt_y) if raw_rt_y is not None else def_rt_y,
-                "font_size": int(b_rt["font_size"]) if b_rt.get("font_size") else (52 if media_type == "show" else 40),
+                "font_size": int(b_rt["font_size"]) if b_rt.get("font_size") else (52 if media_type == "show" else 50),
+                "font": b_rt.get("font") or "fonts/Inter-Bold.ttf",
                 "back_color": b_rt.get("back_color", "#00000000"),
                 "back_width": int(b_rt.get("back_width", 205)),
                 "back_height": int(b_rt.get("back_height", 80)),
@@ -1231,6 +1356,7 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             overlay_files.append(entry)
 
         libraries_dict[lib_name] = {
+            "media_type": media_type,
             "schedule": "hourly(02),hourly(05),hourly(08),hourly(11),hourly(14),hourly(17),hourly(20),hourly(23)",
             "schedule_overlays": "hourly(02),hourly(05),hourly(08),hourly(11),hourly(14),hourly(17),hourly(20),hourly(23)",
             "overlay_files": overlay_files,

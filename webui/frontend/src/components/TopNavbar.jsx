@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Palette, User, LogOut, Activity, Zap, Square, Trash2, ChevronDown, AlertTriangle } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -16,12 +16,15 @@ const TopNavbar = () => {
   // Dialog States
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
+  const [taskToStop, setTaskToStop] = useState(null);
 
   // Status State
   const [systemStatus, setSystemStatus] = useState({
     running: false,
     mode: null,
-    runningFileExists: false
+    runningFileExists: false,
+    activeTasks: [],
+    anyRunning: false,
   });
 
   const fetchStatus = async () => {
@@ -29,21 +32,23 @@ const TopNavbar = () => {
       const res = await fetch("/api/status");
       if (res.ok) {
         const data = await res.json();
+        const activeTasks = Array.isArray(data.active_tasks) ? data.active_tasks : [];
+        const isAnyRunning = Boolean(data.any_running ?? (data.running || activeTasks.length > 0));
         setSystemStatus({
-          running: data.running,
-          // Use the specific mode from the backend (e.g. "tautulli", "arr")
-          // If null, fallback to "Running"
+          running: Boolean(data.running),
           mode: data.current_mode || "Running", 
-          runningFileExists: data.already_running_detected || data.running_file_exists
+          runningFileExists: Boolean(data.already_running_detected || data.running_file_exists),
+          activeTasks,
+          anyRunning: isAnyRunning,
         });
       }
     } catch (e) { /* Silent fail */ }
   };
 
-  const isRunningRef = useRef(systemStatus.running);
+  const isRunningRef = useRef(systemStatus.anyRunning);
   useEffect(() => {
-    isRunningRef.current = systemStatus.running;
-  }, [systemStatus.running]);
+    isRunningRef.current = systemStatus.anyRunning;
+  }, [systemStatus.anyRunning]);
 
   useEffect(() => {
     fetchStatus();
@@ -51,7 +56,7 @@ const TopNavbar = () => {
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
       tick++;
-      // Poll every 5s if Posterizarr is actively running; relax to every 15s when idle
+      // Poll every 5s if any task is actively running; relax to every 15s when idle
       if (isRunningRef.current || tick % 3 === 0) {
         fetchStatus();
       }
@@ -61,18 +66,20 @@ const TopNavbar = () => {
 
   const handleStopSystem = async () => {
     try {
-      const response = await fetch("/api/stop", { method: "POST" });
+      const endpoint = taskToStop?.stop_endpoint || "/api/stop";
+      const response = await fetch(endpoint, { method: "POST" });
       const data = await response.json();
 
       if (data.success) {
         fetchStatus();
       } else {
-        console.error("Stop failed:", data.message);
+        console.error("Stop failed:", data.message || data.error);
       }
     } catch (error) {
       console.error("Failed to stop system", error);
     } finally {
       setShowStopConfirm(false);
+      setTaskToStop(null);
     }
   };
 
@@ -110,50 +117,108 @@ const TopNavbar = () => {
         <div className="flex items-center gap-4">
 
            {/* System Status Indicators */}
-             {/* 1. System Running Status */}
-             {systemStatus.running && (
-                 <div className="flex items-center gap-3 animate-in slide-in-from-left-5 duration-500 mr-2">
-                    <div className="flex items-center gap-2.5 px-4 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                        </span>
-                        <span className="text-xs font-bold text-green-500 uppercase tracking-widest">
-                             {systemStatus.mode || "Running"}
-                        </span>
-                    </div>
+           {/* 1. Active Running Tasks (Posterizarr, Overlay Sync, AniMetaFill, Metadata Refresh) */}
+           {systemStatus.activeTasks?.map((task) => {
+             const colorMap = {
+               green: {
+                 badge: "bg-green-500/10 border-green-500/20 text-green-500",
+                 ping: "bg-green-400",
+                 dot: "bg-green-500",
+               },
+               blue: {
+                 badge: "bg-blue-500/10 border-blue-500/20 text-blue-400",
+                 ping: "bg-blue-400",
+                 dot: "bg-blue-500",
+               },
+               purple: {
+                 badge: "bg-purple-500/10 border-purple-500/20 text-purple-400",
+                 ping: "bg-purple-400",
+                 dot: "bg-purple-500",
+               },
+               amber: {
+                 badge: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+                 ping: "bg-amber-400",
+                 dot: "bg-amber-500",
+               },
+             };
+             const themeColor = colorMap[task.color] || colorMap.green;
 
-                    <button
-                      onClick={() => setShowStopConfirm(true)}
-                      className="group flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-500 transition-all"
-                      title={t("topNavbar.stopSystem", "Stop System")}
-                    >
-                      <Square className="w-3.5 h-3.5 fill-current" />
-                      <span className="text-xs font-semibold">Stop</span>
-                    </button>
+             return (
+               <div key={task.id} className="flex items-center gap-2 animate-in slide-in-from-left-5 duration-300 mr-1">
+                 <div className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-full ${themeColor.badge}`}>
+                   <span className="relative flex h-2 w-2">
+                     <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${themeColor.ping}`}></span>
+                     <span className={`relative inline-flex rounded-full h-2 w-2 ${themeColor.dot}`}></span>
+                   </span>
+                   <span className="text-xs font-bold uppercase tracking-widest whitespace-nowrap">
+                     {task.label || task.name}
+                   </span>
                  </div>
-             )}
 
-             {/* 2. Lock File / Zombie State */}
-             {!systemStatus.running && systemStatus.runningFileExists && (
-                <div className="flex items-center gap-3 animate-in slide-in-from-left-5 duration-500 mr-2">
-                   <div className="flex items-center gap-2 px-4 py-1.5 bg-yellow-500/10 border border-yellow-500/20 rounded-full">
-                      <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />
-                      <span className="text-xs font-bold text-yellow-500 uppercase tracking-widest">
-                        LOCKED
-                      </span>
-                   </div>
-
+                 {task.stop_endpoint && (
                    <button
-                      onClick={() => setShowLockConfirm(true)}
-                      className="group flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/10 hover:border-orange-500/30 text-orange-400 hover:text-orange-500 transition-all"
-                      title={t("topNavbar.deleteLockfile", "Delete Running File")}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span className="text-xs font-semibold">Clear Lock</span>
-                    </button>
-                </div>
-             )}
+                     onClick={() => {
+                       setTaskToStop(task);
+                       setShowStopConfirm(true);
+                     }}
+                     className="group flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-500 transition-all shadow-sm"
+                     title={`Stop ${task.name}`}
+                   >
+                     <Square className="w-3.5 h-3.5 fill-current" />
+                     <span className="text-xs font-semibold">Stop</span>
+                   </button>
+                 )}
+               </div>
+             );
+           })}
+
+           {/* Fallback for legacy running state if activeTasks is empty */}
+           {(!systemStatus.activeTasks || systemStatus.activeTasks.length === 0) && systemStatus.running && (
+             <div className="flex items-center gap-3 animate-in slide-in-from-left-5 duration-500 mr-2">
+               <div className="flex items-center gap-2.5 px-4 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
+                 <span className="relative flex h-2.5 w-2.5">
+                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                 </span>
+                 <span className="text-xs font-bold text-green-500 uppercase tracking-widest">
+                   {systemStatus.mode || "Running"}
+                 </span>
+               </div>
+
+               <button
+                 onClick={() => {
+                   setTaskToStop({ id: "posterizarr", name: "Posterizarr", stop_endpoint: "/api/stop" });
+                   setShowStopConfirm(true);
+                 }}
+                 className="group flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-500 transition-all"
+                 title={t("topNavbar.stopSystem", "Stop System")}
+               >
+                 <Square className="w-3.5 h-3.5 fill-current" />
+                 <span className="text-xs font-semibold">Stop</span>
+               </button>
+             </div>
+           )}
+
+           {/* 2. Lock File / Zombie State */}
+           {!systemStatus.anyRunning && systemStatus.runningFileExists && (
+             <div className="flex items-center gap-3 animate-in slide-in-from-left-5 duration-500 mr-2">
+               <div className="flex items-center gap-2 px-4 py-1.5 bg-yellow-500/10 border border-yellow-500/20 rounded-full">
+                 <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />
+                 <span className="text-xs font-bold text-yellow-500 uppercase tracking-widest">
+                   LOCKED
+                 </span>
+               </div>
+
+               <button
+                 onClick={() => setShowLockConfirm(true)}
+                 className="group flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/10 hover:border-orange-500/30 text-orange-400 hover:text-orange-500 transition-all"
+                 title={t("topNavbar.deleteLockfile", "Delete Running File")}
+               >
+                 <Trash2 className="w-3.5 h-3.5" />
+                 <span className="text-xs font-semibold">Clear Lock</span>
+               </button>
+             </div>
+           )}
 
           {/* Language Switcher */}
           <div className="bg-theme-hover/30 rounded-xl p-1">
@@ -248,10 +313,13 @@ const TopNavbar = () => {
       {/* Confirmation Dialogs */}
       <ConfirmDialog
         isOpen={showStopConfirm}
-        onClose={() => setShowStopConfirm(false)}
+        onClose={() => {
+          setShowStopConfirm(false);
+          setTaskToStop(null);
+        }}
         onConfirm={handleStopSystem}
-        title={t("topNavbar.stopSystem", "Stop System")}
-        message={t("topNavbar.confirmStop", "Are you sure you want to force stop?")}
+        title={taskToStop ? `Stop ${taskToStop.name}` : t("topNavbar.stopSystem", "Stop System")}
+        message={taskToStop ? `Are you sure you want to stop ${taskToStop.name}?` : t("topNavbar.confirmStop", "Are you sure you want to force stop?")}
         confirmText={t("common.stop", "Stop")}
         type="danger"
       />
