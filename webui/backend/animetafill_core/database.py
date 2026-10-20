@@ -22,9 +22,7 @@ class AnimeDatabase:
             os.makedirs(db_dir, exist_ok=True)
         except PermissionError:
             logger.error(f"FATAL: No permission to create or write to the database directory: '{db_dir}'")
-            if os.name != 'nt':
-                logger.error("FIX: Run 'chown -R 1000:1000 /data' on your host system to fix permissions.")
-            sys.exit(1)
+            raise PermissionError(f"No permission to create or write to the database directory: '{db_dir}'")
 
         if not os.access(db_dir, os.W_OK):
             logger.error(f"FATAL: Database directory '{db_dir}' is NOT writable.")

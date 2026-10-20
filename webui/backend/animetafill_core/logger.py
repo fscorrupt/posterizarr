@@ -17,24 +17,32 @@ class Logger:
     Custom logger providing categorized, color-simulated console output 
     """
     def __init__(self):
+        self.log_file = self._resolve_default_log_file()
+        self._setup_handler()
+
+    def _resolve_default_log_file(self) -> str:
+        env_file = os.environ.get('LOG_FILE')
+        if env_file:
+            return env_file
         ui_logs_dir = os.environ.get("UI_LOGS_DIR")
         if not ui_logs_dir:
-            if os.path.exists("/config/UILogs"):
+            app_data = os.environ.get("APP_DATA")
+            if app_data and os.path.exists(app_data):
+                ui_logs_dir = os.path.join(app_data, "UILogs")
+            elif os.path.exists("/config") and os.path.isdir("/config"):
                 ui_logs_dir = "/config/UILogs"
             else:
                 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 root_dir = os.path.dirname(os.path.dirname(backend_dir))
                 ui_logs_dir = os.path.join(root_dir, "UILogs")
-        default_log = os.path.join(ui_logs_dir, "AniMetaFill.log")
-        self.log_file = os.environ.get('LOG_FILE', default_log)
+        return os.path.join(ui_logs_dir, "AniMetaFill.log")
+
+    def _setup_handler(self):
         log_dir = os.path.dirname(self.log_file)
-        
-        # Ensure log directory exists
         try:
             if log_dir and not os.path.exists(log_dir):
                 os.makedirs(log_dir, exist_ok=True)
             
-            # Setup RotatingFileHandler
             handler = logging.handlers.RotatingFileHandler(
                 self.log_file, 
                 maxBytes=10*1024*1024, # 10MB safety limit
@@ -42,24 +50,30 @@ class Logger:
                 encoding='utf-8'
             )
             
-            # Configure dedicated Logger for AniMetaFill (do NOT modify root logger)
             self._file_logger = logging.getLogger("AniMetaFill")
             self._file_logger.setLevel(logging.INFO)
             self._file_logger.propagate = False
             
-            # Clear existing handlers on AniMetaFill logger only
             for h in self._file_logger.handlers[:]:
                 self._file_logger.removeHandler(h)
                 
             formatter = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
             handler.setFormatter(formatter)
             self._file_logger.addHandler(handler)
-            
-            print(f"  Info: Logging to {self.log_file} (UTF-8)")
-            
         except Exception as e:
-            # Fallback to console only if file access fails
             print(f"  Warning: Logger fallback to console only ({e})")
+
+    def reconfigure_log_file(self, new_log_file: str):
+        """Update file destination dynamically if environment sets LOG_FILE."""
+        if not new_log_file:
+            return
+        try:
+            if hasattr(self, 'log_file') and os.path.abspath(self.log_file) == os.path.abspath(new_log_file):
+                return
+            self.log_file = new_log_file
+            self._setup_handler()
+        except Exception:
+            pass
 
     def _log_to_file(self, level: str, msg: str):
         try:

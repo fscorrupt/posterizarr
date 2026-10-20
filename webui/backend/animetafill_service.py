@@ -55,10 +55,28 @@ def get_ui_logs_dir() -> Path:
     """Resolve UILogs directory (/config/UILogs in Docker, PROJECT_ROOT/UILogs in local)."""
     app_data = os.environ.get("APP_DATA")
     if app_data and Path(app_data).exists():
-        return Path(app_data) / "UILogs"
-    if os.path.exists("/config") and os.path.isdir("/config"):
-        return Path("/config") / "UILogs"
-    return PROJECT_ROOT / "UILogs"
+        d = Path(app_data) / "UILogs"
+    elif os.path.exists("/config") and os.path.isdir("/config"):
+        d = Path("/config") / "UILogs"
+    else:
+        d = PROJECT_ROOT / "UILogs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_overlays_base_dir() -> Path:
+    """Resolve base directory for dynamic overlays (persistent /config in Docker, PROJECT_ROOT in local)."""
+    cfg_dir = get_config_dir()
+    for base in [cfg_dir, PROJECT_ROOT]:
+        candidate = base / "Overlayfiles" / "dynamic_overlays"
+        if candidate.exists():
+            return candidate
+        legacy = base / "Overlayfiles" / "kometa"
+        if legacy.exists():
+            return legacy
+    d = cfg_dir / "Overlayfiles" / "dynamic_overlays"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 CONFIG_FILE = get_dynamic_overlays_config_dir() / "animetafill_config.json"
@@ -80,11 +98,7 @@ if not CONFIG_FILE.exists():
 
 LOG_FILE_PATH = get_ui_logs_dir() / "AniMetaFill.log"
 
-_overlays_base = PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays"
-if not _overlays_base.exists():
-    _legacy_ov = PROJECT_ROOT / "Overlayfiles" / "kometa"
-    if _legacy_ov.exists():
-        _overlays_base = _legacy_ov
+_overlays_base = get_overlays_base_dir()
 DEFAULT_YAML_OUTPUT = _overlays_base / "configs" / "anime_overlays.yml"
 DEFAULT_DB_PATH = get_database_dir() / "animetafill.db"
 
@@ -434,14 +448,14 @@ def get_animetafill_config() -> Dict[str, Any]:
     jf_part = pj_config.get("JellyfinPart", {})
     emby_part = pj_config.get("EmbyPart", {})
 
-    plex_url = plex_part.get("PlexUrl") or pj_config.get("PlexUrl") or ""
-    plex_token = api_part.get("PlexToken") or plex_part.get("PlexToken") or pj_config.get("PlexToken") or ""
+    plex_url = merged.get("plex_url") or (merged.get("server_url") if media_server == "plex" else "") or plex_part.get("PlexUrl") or pj_config.get("PlexUrl") or ""
+    plex_token = merged.get("plex_token") or (merged.get("server_token") if media_server == "plex" else "") or api_part.get("PlexToken") or plex_part.get("PlexToken") or pj_config.get("PlexToken") or ""
 
-    jf_url = jf_part.get("JellyfinUrl") or pj_config.get("JellyfinUrl") or ""
-    jf_key = api_part.get("JellyfinAPIKey") or api_part.get("JellyfinApiKey") or pj_config.get("JellyfinApiKey") or ""
+    jf_url = merged.get("jellyfin_url") or (merged.get("server_url") if media_server == "jellyfin" else "") or jf_part.get("JellyfinUrl") or pj_config.get("JellyfinUrl") or ""
+    jf_key = merged.get("jellyfin_api_key") or (merged.get("server_token") if media_server == "jellyfin" else "") or api_part.get("JellyfinAPIKey") or api_part.get("JellyfinApiKey") or pj_config.get("JellyfinApiKey") or ""
 
-    emby_url = emby_part.get("EmbyUrl") or pj_config.get("EmbyUrl") or ""
-    emby_key = api_part.get("EmbyAPIKey") or api_part.get("EmbyApiKey") or pj_config.get("EmbyApiKey") or ""
+    emby_url = merged.get("emby_url") or (merged.get("server_url") if media_server == "emby" else "") or emby_part.get("EmbyUrl") or pj_config.get("EmbyUrl") or ""
+    emby_key = merged.get("emby_api_key") or (merged.get("server_token") if media_server == "emby" else "") or api_part.get("EmbyAPIKey") or api_part.get("EmbyApiKey") or pj_config.get("EmbyApiKey") or ""
 
     # Sonarr, Simkl, and MAL are strictly stored in config.db
     sonarr_url = merged.get("sonarr_url", "")
@@ -734,7 +748,12 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
         # Set up log environment
         LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
         os.environ["LOG_FILE"] = str(LOG_FILE_PATH)
-
+        try:
+            from animetafill_core.logger import logger as core_logger
+            if hasattr(core_logger, "reconfigure_log_file"):
+                core_logger.reconfigure_log_file(str(LOG_FILE_PATH))
+        except Exception:
+            pass
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:

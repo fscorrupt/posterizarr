@@ -80,8 +80,7 @@ class KometaYamlGenerator:
             os.makedirs(self.output_dir, exist_ok=True)
         except PermissionError:
             print(f"\n  Error: No permission to create or write to the Kometa output directory: '{self.output_dir}'")
-            print("  Fix: Ensure your /data folder is writable by the container user.")
-            sys.exit(1)
+            raise PermissionError(f"No permission to create or write to the Kometa output directory: '{self.output_dir}'")
 
     def _get_templates(self) -> dict:
         """Defines the highly-configurable Premium Aesthetic templates."""

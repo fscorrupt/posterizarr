@@ -59,7 +59,15 @@ class MediaServerScanner:
         for lib_name in libraries:
             try:
                 logger.info(f"[Plex] Scanning library: {lib_name}")
-                section = server.library.section(lib_name)
+                try:
+                    section = server.library.section(lib_name)
+                except Exception:
+                    sections = server.library.sections()
+                    matching = [s for s in sections if s.title.strip().lower() == lib_name.strip().lower()]
+                    if matching:
+                        section = matching[0]
+                    else:
+                        raise
                 for show in section.all():
                     if hasattr(show, "title") and show.title:
                         show_titles.add(show.title)
