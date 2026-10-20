@@ -71,9 +71,16 @@ class KometaYamlGenerator:
             "back_color": "#000000BF",
             "back_width": 300,
             "back_height": 100,
-            "font_size": 70
+            "font_size": 70,
+            "font": "Colus-Regular.ttf",
+            "uppercase": False
         })
-        self.font_path = self.config.get('font_path', 'config/fonts/Colus-Regular.ttf')
+        font_choice = self.aesthetic.get('font') or self.config.get('font_path', 'config/fonts/Colus-Regular.ttf')
+        if font_choice:
+            f_name = os.path.basename(str(font_choice).replace('\\', '/'))
+            self.font_path = f"config/fonts/{f_name}"
+        else:
+            self.font_path = 'config/fonts/Colus-Regular.ttf'
         self.overlays: Dict[str, dict] = {}
 
         try:
@@ -130,11 +137,14 @@ class KometaYamlGenerator:
         2. Surgical Text check via title_map (Normalized Title) - handles Specials/Shifts
         """
         title_map = title_map or {}
+        is_uppercase = bool(self.aesthetic.get("uppercase", False))
         for category, episodes_data in episode_mapping.items():
             if not episodes_data: continue
 
             # Use configured labels and colors
             label_text = self.labels.get(category, category.title())
+            if is_uppercase:
+                label_text = label_text.upper()
             hex_color = self.colors.get(category, "#262626B3")
 
             episode_list = []

@@ -400,7 +400,9 @@ def _get_defaults() -> Dict[str, Any]:
             "back_color": "#000000BF",
             "back_width": 300,
             "back_height": 100,
-            "font_size": 70
+            "font_size": 70,
+            "font": "Colus-Regular.ttf",
+            "uppercase": False
         },
         "mal_enabled": True,
         "last_sync": None,
@@ -428,6 +430,9 @@ def get_animetafill_config() -> Dict[str, Any]:
     db_cfg = _read_from_config_db("AniMetaFill")
 
     merged = {**defaults, **app_cfg, **db_cfg}
+    merged["aesthetic"] = {**defaults.get("aesthetic", {}), **app_cfg.get("aesthetic", {}), **db_cfg.get("aesthetic", {})}
+    merged["labels"] = {**defaults.get("labels", {}), **app_cfg.get("labels", {}), **db_cfg.get("labels", {})}
+    merged["colors"] = {**defaults.get("colors", {}), **app_cfg.get("colors", {}), **db_cfg.get("colors", {})}
     primary_server = _detect_configured_server()
     user_chosen_server = db_cfg.get("media_server") or app_cfg.get("media_server")
     if user_chosen_server and str(user_chosen_server).lower().strip() in ("plex", "jellyfin", "emby"):
@@ -496,6 +501,87 @@ def get_animetafill_config() -> Dict[str, Any]:
     return merged
 
 
+def sync_anime_overlays_yaml(aesthetic: Dict[str, Any], labels: Dict[str, Any], colors: Dict[str, Any]) -> bool:
+    """
+    Updates the template definition and overlay labels in anime_overlays.yml
+    to match the current aesthetic, font, uppercase setting, and custom labels.
+    Returns True if file was updated, False otherwise.
+    """
+    if not DEFAULT_YAML_OUTPUT.exists():
+        return False
+    try:
+        import yaml
+        with open(DEFAULT_YAML_OUTPUT, "r", encoding="utf-8") as yf:
+            ydata = yaml.safe_load(yf) or {}
+
+        font_choice = aesthetic.get("font") or "Colus-Regular.ttf"
+        f_name = Path(font_choice).name
+        font_path = f"config/fonts/{f_name}"
+        is_uppercase = bool(aesthetic.get("uppercase", False))
+
+        templates = ydata.setdefault("templates", {})
+        anime_bar = templates.setdefault("AnimeBar", {})
+        overlay_tmpl = anime_bar.setdefault("overlay", {})
+
+        overlay_tmpl["name"] = "text(<<label>>)"
+        overlay_tmpl["horizontal_align"] = aesthetic.get("horizontal_align", "left")
+        overlay_tmpl["vertical_align"] = aesthetic.get("vertical_align", "top")
+        overlay_tmpl["horizontal_offset"] = int(aesthetic.get("horizontal_offset", 0))
+        overlay_tmpl["vertical_offset"] = int(aesthetic.get("vertical_offset", 15))
+        overlay_tmpl["back_color"] = aesthetic.get("back_color", "#000000BF")
+        overlay_tmpl["font_color"] = "<<color>>"
+        overlay_tmpl["back_width"] = int(aesthetic.get("back_width", 300))
+        overlay_tmpl["back_height"] = int(aesthetic.get("back_height", 100))
+        overlay_tmpl["font"] = font_path
+        overlay_tmpl["font_size"] = int(aesthetic.get("font_size", 70))
+
+        # Synchronize existing overlays blocks if any exist
+        overlays = ydata.get("overlays")
+        if isinstance(overlays, dict) and overlays:
+            new_overlays = {}
+            for key, val in overlays.items():
+                if isinstance(val, dict) and val.get("template", {}).get("name") == "AnimeBar":
+                    cur_label = str(val.get("template", {}).get("label", ""))
+                    cat = None
+                    lower_label = cur_label.lower()
+                    lower_key = str(key).lower()
+                    if "canon" in lower_label or "canon" in lower_key:
+                        cat = "canon"
+                    elif "filler" in lower_label or "filler" in lower_key:
+                        cat = "filler"
+                    elif "mixed" in lower_label or "mixed" in lower_key:
+                        cat = "mixed"
+
+                    if cat:
+                        base_label = labels.get(cat, cat.title())
+                        eff_label = base_label.upper() if is_uppercase else base_label
+                        val["template"]["label"] = eff_label
+                        if colors.get(cat):
+                            val["template"]["color"] = colors[cat]
+
+                        if " - " in key:
+                            show_part = key.rsplit(" - ", 1)[0]
+                            new_key = f"{show_part} - {eff_label}"
+                        else:
+                            new_key = key
+                        new_overlays[new_key] = val
+                    else:
+                        new_overlays[key] = val
+                else:
+                    new_overlays[key] = val
+            ydata["overlays"] = new_overlays
+
+        tmp_out = f"{DEFAULT_YAML_OUTPUT}.tmp"
+        with open(tmp_out, "w", encoding="utf-8") as yf:
+            yaml.dump(ydata, yf, default_flow_style=False, sort_keys=False)
+        os.replace(tmp_out, DEFAULT_YAML_OUTPUT)
+        logger.info(f"[AniMetaFill] Synced styling (font='{font_path}', uppercase={is_uppercase}) to {DEFAULT_YAML_OUTPUT}")
+        return True
+    except Exception as e:
+        logger.error(f"[AniMetaFill] Error syncing aesthetic to {DEFAULT_YAML_OUTPUT}: {e}")
+        return False
+
+
 def save_animetafill_config(new_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Persists AniMetaFill configuration.
@@ -558,6 +644,15 @@ def save_animetafill_config(new_config: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error saving {CONFIG_FILE}: {e}")
 
+    # 4. Synchronize aesthetic styling and labels to anime_overlays.yml immediately
+    try:
+        sync_anime_overlays_yaml(
+            db_payload.get("aesthetic", {}),
+            db_payload.get("labels", {}),
+            db_payload.get("colors", {})
+        )
+    except Exception as e:
+        logger.warning(f"Could not sync styling to anime_overlays.yml: {e}")
 
     return get_animetafill_config()
 
@@ -777,6 +872,9 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
             srv_url = cfg.get("server_url", "")
             srv_token = cfg.get("server_token", "")
             target_libs = cfg.get("target_libraries", cfg.get("plex_libraries", []))
+            aesthetic_cfg = cfg.get("aesthetic", {})
+            font_choice = aesthetic_cfg.get("font") or "Colus-Regular.ttf"
+            font_path_str = f"config/fonts/{Path(font_choice).name}"
 
             # Build runtime config dictionary matching AniMetaFill requirements
             runtime_config = {
@@ -807,14 +905,14 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
                 },
                 "overlays": {
                     "output_dir": out_dir,
-                    "font_path": "config/fonts/Colus-Regular.ttf",
+                    "font_path": font_path_str,
                     "labels": cfg.get("labels", {}),
                     "colors": cfg.get("colors", {}),
                     "aesthetic": cfg.get("aesthetic", {})
                 },
                 "kometa": {
                     "output_dir": out_dir,
-                    "font_path": "config/fonts/Colus-Regular.ttf",
+                    "font_path": font_path_str,
                     "labels": cfg.get("labels", {}),
                     "colors": cfg.get("colors", {}),
                     "aesthetic": cfg.get("aesthetic", {})
@@ -1134,21 +1232,30 @@ def _update_anime_overlays_yml_for_title(anime_title: str):
         cfg = get_animetafill_config()
         labels = cfg.get("labels", {})
         colors = cfg.get("colors", {})
+        aesthetic = cfg.get("aesthetic", {})
+        is_upper = bool(aesthetic.get("uppercase", False))
 
         for cat, numbers in by_cat.items():
-            key_name = f"{anime_title} - {cat.capitalize()}"
+            base_lbl = labels.get(cat, cat.title())
+            effective_label = base_lbl.upper() if is_upper else base_lbl
+            key_name = f"{anime_title} - {effective_label}"
             if not numbers:
-                if key_name in overlays:
-                    del overlays[key_name]
+                for k in [key_name, f"{anime_title} - {cat.capitalize()}", f"{anime_title} - {cat.upper()}", f"{anime_title} - {cat.title()}"]:
+                    if k in overlays:
+                        del overlays[k]
                 continue
 
             ep_patterns = [f"S\\d+E{n:02d}|E{n:02d}|E{n:03d}|Episode\\s*{n}" for n in numbers]
             regex_str = f"(?i)({'|'.join(ep_patterns[:80])})"
 
+            for old_k in [f"{anime_title} - {cat.capitalize()}", f"{anime_title} - {cat.upper()}", f"{anime_title} - {cat.title()}"]:
+                if old_k != key_name and old_k in overlays:
+                    del overlays[old_k]
+
             overlays[key_name] = {
                 "template": {
                     "name": "AnimeBar",
-                    "label": labels.get(cat, cat.capitalize()),
+                    "label": effective_label,
                     "color": colors.get(cat, "#27C24CB3" if cat == "canon" else "#FF0000B3")
                 },
                 "builder_level": "episode",

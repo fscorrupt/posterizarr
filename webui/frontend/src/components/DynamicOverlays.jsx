@@ -10185,6 +10185,9 @@ export default function DynamicOverlays() {
 
             {(() => {
               const aesthetic = animetafillConfig?.aesthetic || {};
+              const labels = animetafillConfig?.labels || { canon: "Canon", filler: "Filler", mixed: "Mixed" };
+              const colors = animetafillConfig?.colors || { canon: "#27C24CB3", filler: "#FF0000B3", mixed: "#FFA500B3" };
+
               const updateAesthetic = (patch) => {
                 setAnimetafillConfig((prev) => ({
                   ...prev,
@@ -10195,9 +10198,21 @@ export default function DynamicOverlays() {
                 }));
               };
 
+              const updateLabels = (patch) => {
+                setAnimetafillConfig((prev) => ({
+                  ...prev,
+                  labels: {
+                    ...(prev?.labels || { canon: "Canon", filler: "Filler", mixed: "Mixed" }),
+                    ...patch
+                  }
+                }));
+              };
+
               const hAlign = aesthetic.horizontal_align || "left";
               const vAlign = aesthetic.vertical_align || "top";
               const unifiedPos = `${vAlign}-${hAlign}`;
+              const isUpper = Boolean(aesthetic.uppercase);
+              const activeFont = aesthetic.font || "Colus-Regular.ttf";
 
               return (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -10265,6 +10280,7 @@ export default function DynamicOverlays() {
                       </div>
                     </div>
 
+                    {/* Dimensions & Box Styling */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-theme/60">
                       <div className="space-y-1">
                         <label className="text-[10px] font-semibold text-theme-muted uppercase">Badge Width (px)</label>
@@ -10306,10 +10322,129 @@ export default function DynamicOverlays() {
                         />
                       </div>
                     </div>
+
+                    {/* Typography: Font Family & Text Casing */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-theme/60">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-theme-muted uppercase flex items-center gap-1.5">
+                          <Type className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Font Family</span>
+                        </label>
+                        <select
+                          value={activeFont}
+                          onChange={(e) => updateAesthetic({ font: e.target.value })}
+                          className="w-full bg-theme-hover border border-theme rounded-xl px-2.5 py-1.5 text-xs text-theme-text font-medium truncate focus:ring-1 focus:ring-purple-400"
+                        >
+                          <option value="Colus-Regular.ttf">Colus-Regular.ttf (Default)</option>
+                          {(availableFonts || [])
+                            .filter((f) => f !== "Colus-Regular.ttf")
+                            .map((f) => (
+                              <option key={f} value={f}>
+                                {f.replace(/\.(ttf|otf|woff2?)$/i, "")} ({f})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-theme-muted uppercase flex items-center justify-between">
+                          <span>Text Casing</span>
+                          <span className="text-[9px] font-mono text-purple-400 font-bold">
+                            {isUpper ? "UPPERCASE" : "Title Case"}
+                          </span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-1.5 bg-theme-hover/40 p-1 rounded-xl border border-theme">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateAesthetic({ uppercase: true });
+                              updateLabels({
+                                canon: (labels.canon || "Canon").toUpperCase(),
+                                filler: (labels.filler || "Filler").toUpperCase(),
+                                mixed: (labels.mixed || "Mixed").toUpperCase()
+                              });
+                            }}
+                            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
+                              isUpper
+                                ? "bg-purple-600 text-white shadow-xs"
+                                : "text-theme-muted hover:text-theme-text"
+                            }`}
+                          >
+                            UPPERCASE
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateAesthetic({ uppercase: false });
+                              updateLabels({
+                                canon: (labels.canon || "CANON").charAt(0).toUpperCase() + (labels.canon || "CANON").slice(1).toLowerCase(),
+                                filler: (labels.filler || "FILLER").charAt(0).toUpperCase() + (labels.filler || "FILLER").slice(1).toLowerCase(),
+                                mixed: (labels.mixed || "MIXED").charAt(0).toUpperCase() + (labels.mixed || "MIXED").slice(1).toLowerCase()
+                              });
+                            }}
+                            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
+                              !isUpper
+                                ? "bg-purple-600 text-white shadow-xs"
+                                : "text-theme-muted hover:text-theme-text"
+                            }`}
+                          >
+                            Title Case
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Customizable Badge Text Labels */}
+                    <div className="space-y-1.5 pt-2 border-t border-theme/60">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-semibold text-theme-muted uppercase">Badge Text Labels</label>
+                        <span className="text-[9px] text-theme-muted">
+                          {isUpper ? "Output rendered as: CANON / FILLER / MIXED" : "Output rendered as: Canon / Filler / Mixed"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[9px] font-semibold text-emerald-400 block mb-0.5">Canon</label>
+                          <input
+                            type="text"
+                            value={labels.canon ?? (isUpper ? "CANON" : "Canon")}
+                            onChange={(e) => updateLabels({ canon: isUpper ? e.target.value.toUpperCase() : e.target.value })}
+                            className="w-full bg-theme-hover border border-theme rounded-xl px-2 py-1 text-xs text-theme-text font-mono"
+                            placeholder={isUpper ? "CANON" : "Canon"}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-semibold text-red-400 block mb-0.5">Filler</label>
+                          <input
+                            type="text"
+                            value={labels.filler ?? (isUpper ? "FILLER" : "Filler")}
+                            onChange={(e) => updateLabels({ filler: isUpper ? e.target.value.toUpperCase() : e.target.value })}
+                            className="w-full bg-theme-hover border border-theme rounded-xl px-2 py-1 text-xs text-theme-text font-mono"
+                            placeholder={isUpper ? "FILLER" : "Filler"}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-semibold text-amber-400 block mb-0.5">Mixed</label>
+                          <input
+                            type="text"
+                            value={labels.mixed ?? (isUpper ? "MIXED" : "Mixed")}
+                            onChange={(e) => updateLabels({ mixed: isUpper ? e.target.value.toUpperCase() : e.target.value })}
+                            className="w-full bg-theme-hover border border-theme rounded-xl px-2 py-1 text-xs text-theme-text font-mono"
+                            placeholder={isUpper ? "MIXED" : "Mixed"}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Right Preview Box with Live Artwork Backdrop */}
                   <div className="lg:col-span-5 bg-black/60 border border-theme rounded-xl p-4 flex flex-col items-center justify-center space-y-2.5">
+                    <style>{`
+                      @font-face {
+                        font-family: 'AnimeBarFont';
+                        src: url('/api/fonts/download/${encodeURIComponent(activeFont)}');
+                      }
+                    `}</style>
                     <div className="flex items-center justify-between w-full">
                       <span className="text-[11px] font-semibold text-theme-muted uppercase tracking-wider flex items-center gap-1.5">
                         <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
@@ -10319,23 +10454,27 @@ export default function DynamicOverlays() {
                       {/* Tag Switcher (Canon, Filler, Mixed) */}
                       <div className="flex items-center gap-1 bg-black/50 p-0.5 rounded-lg border border-theme">
                         {[
-                          { tag: "CANON", color: "text-emerald-400 hover:text-emerald-300" },
-                          { tag: "FILLER", color: "text-red-400 hover:text-red-300" },
-                          { tag: "MIXED", color: "text-amber-400 hover:text-amber-300" }
-                        ].map((t) => (
-                          <button
-                            key={t.tag}
-                            type="button"
-                            onClick={() => setAnimetafillPreviewTag(t.tag)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider transition-all ${
-                              animetafillPreviewTag === t.tag
-                                ? "bg-white/20 text-white shadow-xs"
-                                : `${t.color} opacity-75 hover:opacity-100`
-                            }`}
-                          >
-                            {t.tag}
-                          </button>
-                        ))}
+                          { tag: "CANON", labelKey: "canon", color: "text-emerald-400 hover:text-emerald-300" },
+                          { tag: "FILLER", labelKey: "filler", color: "text-red-400 hover:text-red-300" },
+                          { tag: "MIXED", labelKey: "mixed", color: "text-amber-400 hover:text-amber-300" }
+                        ].map((t) => {
+                          const activeRaw = labels[t.labelKey] || t.tag;
+                          const tagLabel = isUpper ? activeRaw.toUpperCase() : activeRaw;
+                          return (
+                            <button
+                              key={t.tag}
+                              type="button"
+                              onClick={() => setAnimetafillPreviewTag(t.tag)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider transition-all ${
+                                animetafillPreviewTag === t.tag
+                                  ? "bg-white/20 text-white shadow-xs"
+                                  : `${t.color} opacity-75 hover:opacity-100`
+                              }`}
+                            >
+                              {tagLabel}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -10357,6 +10496,12 @@ export default function DynamicOverlays() {
                         MIXED: { text: "#F59E0B", border: "rgba(245, 158, 11, 0.6)" }
                       };
                       const activeStyle = TAG_STYLES[animetafillPreviewTag] || TAG_STYLES.CANON;
+
+                      const currentKey = animetafillPreviewTag.toLowerCase();
+                      const rawBadgeLabel = currentKey === "filler"
+                        ? (labels.filler || "Filler")
+                        : (currentKey === "mixed" ? (labels.mixed || "Mixed") : (labels.canon || "Canon"));
+                      const displayedBadgeText = isUpper ? rawBadgeLabel.toUpperCase() : rawBadgeLabel;
 
                       return (
                         <div className="w-full aspect-video bg-zinc-900 rounded-lg relative overflow-hidden border border-zinc-800 shadow-2xl flex items-center justify-center">
@@ -10383,12 +10528,14 @@ export default function DynamicOverlays() {
 
                           {/* Styled Anime Canon / Filler Badge */}
                           <div
-                            className="absolute flex items-center justify-center font-bold font-mono tracking-wider shadow-2xl transition-all select-none"
+                            className="absolute flex items-center justify-center font-bold tracking-wider shadow-2xl transition-all select-none"
                             style={{
                               backgroundColor: aesthetic.back_color || "#000000BF",
                               color: activeStyle.text,
                               border: `1.5px solid ${activeStyle.border}`,
                               boxShadow: "0 4px 14px rgba(0, 0, 0, 0.7)",
+                              fontFamily: "'AnimeBarFont', sans-serif, monospace",
+                              textTransform: isUpper ? "uppercase" : "none",
                               top: vAlign === "top" ? `${(vo / 1080) * 100}%` : "auto",
                               bottom: vAlign === "bottom" ? `${(vo / 1080) * 100}%` : "auto",
                               left: hAlign === "left" ? `${(ho / 1920) * 100}%` : (hAlign === "center" ? "50%" : "auto"),
@@ -10401,14 +10548,14 @@ export default function DynamicOverlays() {
                               padding: "2px 6px"
                             }}
                           >
-                            {animetafillPreviewTag}
+                            {displayedBadgeText}
                           </div>
                         </div>
                       );
                     })()}
 
                     <span className="text-[10px] text-theme-muted text-center">
-                      Badge is positioned in {hAlign.toUpperCase()} {vAlign.toUpperCase()} with {aesthetic.horizontal_offset ?? 0}px H / {aesthetic.vertical_offset ?? 15}px V offset.
+                      Badge in {hAlign.toUpperCase()} {vAlign.toUpperCase()} with {aesthetic.horizontal_offset ?? 0}px H / {aesthetic.vertical_offset ?? 15}px V offset • Font: <span className="text-purple-300 font-mono">{activeFont}</span> ({isUpper ? "UPPERCASE" : "Title Case"}).
                     </span>
                   </div>
                 </div>

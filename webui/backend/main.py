@@ -3659,13 +3659,18 @@ async def download_font_file(filename: str):
         if not safe_filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
 
-        font_path = (OVERLAYFILES_DIR / safe_filename).resolve()
+        font_candidates = [
+            (OVERLAYFILES_DIR / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "dynamic_overlays" / "fonts" / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "fonts" / safe_filename).resolve(),
+        ]
+        font_path = None
+        for cand in font_candidates:
+            if cand.is_relative_to(OVERLAYFILES_DIR.resolve()) and cand.exists():
+                font_path = cand
+                break
 
-        # Guard against path traversal: resolved path must stay within OVERLAYFILES_DIR
-        if not font_path.is_relative_to(OVERLAYFILES_DIR.resolve()):
-            raise HTTPException(status_code=400, detail="Invalid filename")
-
-        if not font_path.exists():
+        if not font_path:
             raise HTTPException(status_code=404, detail="Font file not found")
 
         return FileResponse(font_path)
