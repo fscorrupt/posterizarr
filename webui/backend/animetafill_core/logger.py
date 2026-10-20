@@ -46,17 +46,18 @@ class Logger:
             if os.path.exists(self.log_file) and os.path.getsize(self.log_file) > 0:
                 handler.doRollover()
 
-            # Configure Root Logger for file access
-            root_logger = logging.getLogger()
-            root_logger.setLevel(logging.INFO)
+            # Configure dedicated Logger for AniMetaFill (do NOT modify root logger)
+            self._file_logger = logging.getLogger("AniMetaFill")
+            self._file_logger.setLevel(logging.INFO)
+            self._file_logger.propagate = False
             
-            # Clear existing handlers to avoid duplicates
-            for h in root_logger.handlers[:]:
-                root_logger.removeHandler(h)
+            # Clear existing handlers on AniMetaFill logger only
+            for h in self._file_logger.handlers[:]:
+                self._file_logger.removeHandler(h)
                 
             formatter = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
             handler.setFormatter(formatter)
-            root_logger.addHandler(handler)
+            self._file_logger.addHandler(handler)
             
             print(f"  Info: Logging to {self.log_file} (UTF-8)")
             
@@ -67,7 +68,8 @@ class Logger:
     def _log_to_file(self, level: str, msg: str):
         try:
             line = f"{level: <8} | {msg}"
-            logging.info(line)
+            if hasattr(self, '_file_logger') and self._file_logger:
+                self._file_logger.info(line)
         except Exception:
             pass
 

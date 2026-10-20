@@ -336,11 +336,36 @@ def _get_posterizarr_config() -> Dict[str, Any]:
     return {}
 
 
+def _detect_configured_server() -> str:
+    """Detect which media server is actively enabled in Posterizarr config.json."""
+    pj_config = _get_posterizarr_config()
+    plex_part = pj_config.get("PlexPart", {})
+    jf_part = pj_config.get("JellyfinPart", {})
+    emby_part = pj_config.get("EmbyPart", {})
+    
+    use_emby = str(emby_part.get("UseEmby", pj_config.get("UseEmby", ""))).lower() == "true"
+    use_jf = str(jf_part.get("UseJellyfin", pj_config.get("UseJellyfin", ""))).lower() == "true"
+    use_plex = str(plex_part.get("UsePlex", pj_config.get("UsePlex", ""))).lower() == "true"
+
+    if use_emby and not use_plex and not use_jf:
+        return "emby"
+    if use_jf and not use_plex:
+        return "jellyfin"
+    if use_plex:
+        return "plex"
+    if emby_part.get("EmbyUrl") and not plex_part.get("PlexUrl"):
+        return "emby"
+    if jf_part.get("JellyfinUrl") and not plex_part.get("PlexUrl"):
+        return "jellyfin"
+    return "plex"
+
+
 def _get_defaults() -> Dict[str, Any]:
     """Load default settings with zero hardcoded keys or IDs."""
+    server = _detect_configured_server()
     return {
         "enabled": False,
-        "media_server": "plex",  # plex, jellyfin, or emby
+        "media_server": server,  # plex, jellyfin, or emby
         "target_libraries": ["Anime Shows"],
         "labels": {
             "canon": "Canon",
@@ -388,9 +413,15 @@ def get_animetafill_config() -> Dict[str, Any]:
     db_cfg = _read_from_config_db("AniMetaFill")
 
     merged = {**defaults, **app_cfg, **db_cfg}
-    media_server = str(merged.get("media_server", "plex")).lower().strip()
+    primary_server = _detect_configured_server()
+    media_server = str(merged.get("media_server", primary_server)).lower().strip()
     if media_server not in ("plex", "jellyfin", "emby"):
-        media_server = "plex"
+        media_server = primary_server
+    else:
+        # If stored media_server is 'plex' but plex is disabled in Posterizarr and another server is enabled, auto-select the active server
+        pj_config = _get_posterizarr_config()
+        if media_server == "plex" and str(pj_config.get("PlexPart", {}).get("UsePlex", "")).lower() == "false" and primary_server != "plex":
+            media_server = primary_server
     merged["media_server"] = media_server
 
     # Preselect target libraries strictly of type 'show' if empty
@@ -670,7 +701,7 @@ def get_animetafill_status() -> Dict[str, Any]:
     }
 
 
-def run_animetafill_sync_task(force: bool = False) -> Dict[str, Any]:
+def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Executes the AniMetaFill synchronizer in background thread.
     Connects to Sonarr/Plex/Jellyfin/Emby/SIMKL/MAL/AFL, extracts canon/filler data, and generates anime_overlays.yml.
@@ -679,6 +710,12 @@ def run_animetafill_sync_task(force: bool = False) -> Dict[str, Any]:
 
     if _is_sync_running:
         return {"success": False, "error": "AniMetaFill sync is already in progress.", "is_running": True}
+
+    if runtime_overrides and isinstance(runtime_overrides, dict):
+        try:
+            save_animetafill_config(runtime_overrides)
+        except Exception as e:
+            logger.warning(f"Failed applying runtime overrides before sync: {e}")
 
     cfg = get_animetafill_config()
     simkl_id = str(cfg.get("simkl_client_id") or "").strip()

@@ -475,6 +475,7 @@ export default function DynamicOverlays() {
   const [isTestingSonarr, setIsTestingSonarr] = useState(false);
   const [sonarrTestResult, setSonarrTestResult] = useState(null);
   const [showSonarrKey, setShowSonarrKey] = useState(false);
+  const [showSimklKey, setShowSimklKey] = useState(false);
   const [statusData, setStatusData] = useState(null);
   const [scanData, setScanData] = useState(null);
   const [cacheData, setCacheData] = useState(null);
@@ -1984,13 +1985,26 @@ export default function DynamicOverlays() {
 
   const handleRunAnimetafill = async () => {
     if (!animetafillConfig?.simkl_client_id || !animetafillConfig.simkl_client_id.trim()) {
-      showToast("Cannot start sync: SIMKL Client ID is required. Please enter and save your SIMKL Client ID first.", "warning");
+      showToast("Cannot start sync: SIMKL Client ID is required. Please enter your SIMKL Client ID first.", "warning");
       return;
     }
     try {
       setIsAnimetafillRunning(true);
+      // Auto-save configuration before starting sync so entered token and library choices are saved
+      try {
+        await fetch("/api/animetafill/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(animetafillConfig)
+        });
+      } catch (saveErr) {
+        console.warn("Failed to auto-save AniMetaFill config before run:", saveErr);
+      }
+
       const res = await fetch(`/api/animetafill/run?force=${animetafillForce ? "true" : "false"}`, {
-        method: "POST"
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(animetafillConfig)
       });
       const data = await res.json();
       if (data.success) {
@@ -9685,17 +9699,27 @@ export default function DynamicOverlays() {
                     <span className="text-rose-400 font-bold">*</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium">Required</span>
                   </label>
-                  <a
-                    href="https://simkl.com/settings/developer/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-theme-primary hover:underline flex items-center gap-1 text-[11px]"
-                  >
-                    Get Free ID <ExternalLink className="w-3 h-3" />
-                  </a>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowSimklKey(!showSimklKey)}
+                      className="text-theme-muted hover:text-theme-text flex items-center gap-1 text-[11px]"
+                    >
+                      {showSimklKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showSimklKey ? "Hide" : "Show"}</span>
+                    </button>
+                    <a
+                      href="https://simkl.com/settings/developer/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-theme-primary hover:underline flex items-center gap-1 text-[11px]"
+                    >
+                      Get Free ID <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
                 <input
-                  type="text"
+                  type={showSimklKey ? "text" : "password"}
                   required
                   value={animetafillConfig?.simkl_client_id || ""}
                   onChange={(e) => setAnimetafillConfig({ ...animetafillConfig, simkl_client_id: e.target.value })}

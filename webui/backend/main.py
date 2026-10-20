@@ -20606,13 +20606,13 @@ async def save_animetafill_config_endpoint(req: AniMetaFillConfigRequest):
 
 
 @app.post("/api/animetafill/run")
-async def run_animetafill_endpoint(force: bool = False):
+async def run_animetafill_endpoint(force: bool = False, req: Optional[Dict[str, Any]] = None):
     """Trigger an immediate background synchronization of AniMetaFill."""
     try:
         from animetafill_service import run_animetafill_sync_task, is_animetafill_running
         if is_animetafill_running():
             return {"success": False, "error": "AniMetaFill sync is already in progress.", "is_running": True}
-        res = run_animetafill_sync_task(force=force)
+        res = run_animetafill_sync_task(force=force, runtime_overrides=req)
         return res
     except Exception as e:
         return {"success": False, "error": str(e)}
