@@ -1144,14 +1144,18 @@ def build_overlay_layers_for_item(
     Uses the OverlayConfigEngine to resolve templates, queues, groups,
     and conditionals with high precision.
     """
-    # 1. Primary Engine: Full Configuration & Template Resolution Engine
     try:
         from overlay_resolver import OverlayConfigEngine, PROJECT_ROOT
+        global _CACHED_CONFIG_ENGINE, _CACHED_CONFIG_ENGINE_ROOT
         project_root = overlays_dir.parent.parent
         if not (project_root / "Overlayfiles" / "dynamic_overlays").exists() and not (project_root / "defaults").exists():
             project_root = PROJECT_ROOT
-        engine = OverlayConfigEngine(project_root)
+        if "_CACHED_CONFIG_ENGINE" not in globals() or _CACHED_CONFIG_ENGINE is None or _CACHED_CONFIG_ENGINE_ROOT != project_root:
+            _CACHED_CONFIG_ENGINE = OverlayConfigEngine(project_root)
+            _CACHED_CONFIG_ENGINE_ROOT = project_root
+        engine = _CACHED_CONFIG_ENGINE
         layers = engine.evaluate_item(item_metadata, library_rules)
+
         if layers:
             if is_landscape:
                 layers = [l for l in layers if l.get("name") not in ("4K_banner", "resolution_banner")]
@@ -2115,6 +2119,7 @@ async def run_overlay_sync_task(
 
                 write_log(f"Processing {len(media_items)} items on {s_type.upper()} (Concurrency: {concurrency}, Debug Logging: {debug_log_enabled})...")
 
+                dir_cache: Dict[str, Any] = {}
                 server_stats = {"synced": 0, "skipped": 0, "failed": 0}
                 stats_lock = asyncio.Lock()
 
@@ -2143,29 +2148,50 @@ async def run_overlay_sync_task(
                     mdblist_key = dyn_settings.get("mdblist_api_key") or ""
                     omdb_key = dyn_settings.get("omdb_api_key") or ""
 
-                    # 1. Locate clean assets on disk (poster and backdrop)
-                    clean_asset = find_clean_asset(
-                        assets_dir=real_asset_path,
-                        library_name=lib_name,
-                        root_folder=root_f,
-                        title=title,
-                        asset_type="poster",
-                        imdb_id=item.get("imdb_id"),
-                        tmdb_id=item.get("tmdb_id"),
-                        tvdb_id=item.get("tvdb_id"),
-                        year=item.get("year")
-                    )
-                    clean_backdrop = find_clean_asset(
-                        assets_dir=real_asset_path,
-                        library_name=lib_name,
-                        root_folder=root_f,
-                        title=title,
-                        asset_type="background",
-                        imdb_id=item.get("imdb_id"),
-                        tmdb_id=item.get("tmdb_id"),
-                        tvdb_id=item.get("tvdb_id"),
-                        year=item.get("year")
-                    ) if backdrop_enabled else None
+                    # Fast cache lookup for poster & backdrop paths
+                    cached_entry = cache.get_entry(s_type, str(item_id), "poster") if scope in ("incremental", "changed") else None
+                    cached_backdrop_entry = cache.get_entry(s_type, str(item_id), "background") if (backdrop_enabled and scope in ("incremental", "changed")) else None
+
+                    # 1. Locate clean assets on disk (reuse known cached path or search disk with dir_cache)
+                    clean_asset = None
+                    if cached_entry and cached_entry.get("clean_asset_path"):
+                        c_p = Path(cached_entry["clean_asset_path"])
+                        if c_p.is_file():
+                            clean_asset = c_p
+
+                    if not clean_asset:
+                        clean_asset = find_clean_asset(
+                            assets_dir=real_asset_path,
+                            library_name=lib_name,
+                            root_folder=root_f,
+                            title=title,
+                            asset_type="poster",
+                            imdb_id=item.get("imdb_id"),
+                            tmdb_id=item.get("tmdb_id"),
+                            tvdb_id=item.get("tvdb_id"),
+                            year=item.get("year"),
+                            dir_cache=dir_cache
+                        )
+
+                    clean_backdrop = None
+                    if backdrop_enabled:
+                        if cached_backdrop_entry and cached_backdrop_entry.get("clean_asset_path"):
+                            cb_p = Path(cached_backdrop_entry["clean_asset_path"])
+                            if cb_p.is_file():
+                                clean_backdrop = cb_p
+                        if not clean_backdrop:
+                            clean_backdrop = find_clean_asset(
+                                assets_dir=real_asset_path,
+                                library_name=lib_name,
+                                root_folder=root_f,
+                                title=title,
+                                asset_type="background",
+                                imdb_id=item.get("imdb_id"),
+                                tmdb_id=item.get("tmdb_id"),
+                                tvdb_id=item.get("tvdb_id"),
+                                year=item.get("year"),
+                                dir_cache=dir_cache
+                            )
 
                     if not clean_asset and not clean_backdrop:
                         write_log(f"  [>] {w_tag}'{title}' ({lib_name}): No clean original asset found in '{real_asset_path}'. Skipping.")
@@ -2177,7 +2203,6 @@ async def run_overlay_sync_task(
                     if s_type == "plex":
                         # Fast incremental check: if server_updated_at matches cache, reuse cached detected_languages & attributes
                         need_plex_detail = (scope not in ("incremental", "changed"))
-                        cached_entry = cache.get_entry(s_type, str(item_id), "poster") if scope in ("incremental", "changed") else None
                         if not need_plex_detail:
                             if not cached_entry or cached_entry.get("status") != "synced":
                                 need_plex_detail = True
@@ -2201,6 +2226,7 @@ async def run_overlay_sync_task(
                                     item["video_format"] = cached_entry["detected_video_format"]
                                 if cached_entry.get("detected_resolution") and not item.get("resolution"):
                                     item["resolution"] = cached_entry["detected_resolution"]
+
 
                         if need_plex_detail:
                             try:
