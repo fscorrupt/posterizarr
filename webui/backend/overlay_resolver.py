@@ -124,6 +124,57 @@ OFFICIAL_OVERLAY_DEFAULTS = [
 OFFICIAL_KOMETA_OVERLAY_DEFAULTS = OFFICIAL_OVERLAY_DEFAULTS
 
 
+def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
+    """
+    Resolve any official Kometa image asset name directly to its official raw GitHub URL:
+    https://raw.githubusercontent.com/Kometa-Team/Kometa/master/defaults/overlays/images/...
+    Allows fetching only the exact images referenced in configs without downloading full archives.
+    """
+    if not image_name or is_template_placeholder(image_name):
+        return None
+
+    clean = image_name.replace("\\", "/").strip().lstrip("/")
+    clean_lower = clean.lower()
+
+    # 1. Direct path with official subfolder (e.g. flag/square/ad.png, resolution/4k.png, rating/imdb.png)
+    for sub in OFFICIAL_KOMETA_IMAGE_SUBDIRS:
+        if clean_lower.startswith(f"{sub}/"):
+            fn = clean if clean.lower().endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{clean}.png"
+            return f"{KOMETA_IMAGES_RAW}/{fn}"
+
+    # 2. Plural "flags/" -> normalize to "flag/"
+    if clean_lower.startswith("flags/"):
+        normalized = "flag/" + clean[6:]
+        fn = normalized if normalized.lower().endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{normalized}.png"
+        return f"{KOMETA_IMAGES_RAW}/{fn}"
+
+    # 3. Known root images (e.g. ribbon.png, etc.)
+    if clean_lower in OFFICIAL_KOMETA_ROOT_IMAGES or f"{clean_lower}.png" in OFFICIAL_KOMETA_ROOT_IMAGES:
+        fn = clean if clean.lower().endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{clean}.png"
+        return f"{KOMETA_IMAGES_RAW}/{fn}"
+
+    # 4. Standalone resolution keywords (e.g. 4k, 1080p, 720p, hdr, dv, dolby_vision, imax)
+    stem = Path(clean_lower).stem
+    if any(res in stem for res in ["4k", "1080p", "720p", "480p", "hdr", "dv", "dolby_vision", "hdr10", "imax"]):
+        return f"{KOMETA_IMAGES_RAW}/resolution/{stem}.png"
+
+    # 5. Standalone audio codecs (e.g. truehd, atmos, dts, flac, aac, opus, eac3, ac3)
+    if any(codec in stem for codec in ["truehd", "atmos", "dts", "flac", "aac", "opus", "eac3", "ac3", "pcm"]):
+        return f"{KOMETA_IMAGES_RAW}/audio_codec/standard/{stem}.png"
+
+    # 6. Standalone 2-3 letter country or language codes (e.g. ad, de, en, fr, ja, es, it, nl, etc.)
+    # In Kometa, language flag overlays point to flag/square/{lang}.png
+    if len(stem) in [2, 3] and stem.isalpha():
+        return f"{KOMETA_IMAGES_RAW}/flag/square/{stem}.png"
+
+    # 7. Common streaming services or networks
+    common_services = {"netflix", "apple", "disney", "amazon", "hbo", "paramount", "hulu", "peacock"}
+    if stem in common_services:
+        return f"{KOMETA_IMAGES_RAW}/streaming/color/{stem}.png"
+
+    return None
+
+
 # ==============================================================================
 # SECURITY UTILITIES (PATH TRAVERSAL & SSRF MITIGATION)
 # ==============================================================================
@@ -755,6 +806,7 @@ class OverlayResolver:
                     if found_local:
                         break
 
+                found_url = resolve_official_kometa_image_url(name)
                 if found_local:
                     status = "ready"
                     source_type = "local"
@@ -763,19 +815,10 @@ class OverlayResolver:
                     status = "fetchable"
                     source_type = "remote_url"
                     download_url = asset["url"]
-                elif name_lower in OFFICIAL_KOMETA_ROOT_IMAGES:
+                elif found_url:
                     status = "fetchable"
                     source_type = "github"
-                    download_url = f"{KOMETA_IMAGES_RAW}/{name}"
-                elif any(name_lower.startswith(f"{sub}/") for sub in OFFICIAL_KOMETA_IMAGE_SUBDIRS):
-                    status = "fetchable"
-                    source_type = "github"
-                    download_url = f"{KOMETA_IMAGES_RAW}/{name}"
-                elif any(res in name_lower for res in ["4k", "1080p", "720p", "hdr", "dv"]):
-                    fn = name_lower if name_lower.endswith((".png", ".jpg", ".webp")) else f"{name_lower}.png"
-                    status = "fetchable"
-                    source_type = "github"
-                    download_url = f"{KOMETA_IMAGES_RAW}/resolution/{fn}"
+                    download_url = found_url
                 else:
                     status = "upload_needed"
                     source_type = "upload_needed"
@@ -847,25 +890,34 @@ class OverlayResolver:
         else:
             target_dir = self.assets_dir
             allowed_exts = ALLOWED_IMAGE_EXTS
-            name_lower = asset_name.lower()
             if custom_url and is_safe_remote_url(custom_url):
                 default_url = custom_url
-            elif name_lower in OFFICIAL_KOMETA_ROOT_IMAGES:
-                default_url = f"{KOMETA_IMAGES_RAW}/{asset_name}"
-            elif any(name_lower.startswith(f"{sub}/") for sub in OFFICIAL_KOMETA_IMAGE_SUBDIRS):
-                default_url = f"{KOMETA_IMAGES_RAW}/{asset_name}"
-            elif any(res in name_lower for res in ["4k", "1080p", "720p", "hdr", "dv"]):
-                fn = name_lower if name_lower.endswith((".png", ".jpg", ".webp")) else f"{name_lower}.png"
-                default_url = f"{KOMETA_IMAGES_RAW}/resolution/{fn}"
             else:
+                default_url = resolve_official_kometa_image_url(asset_name)
+
+            if not default_url:
                 return {
                     "success": False,
                     "error": f"'{asset_name}' is a custom image not present in the official Kometa repository. Please upload it via the UI."
                 }
 
-        safe_dest = safe_resolve_overlay_path(target_dir, asset_name, allowed_exts)
+        # If official image URL points to a subpath (e.g. flag/square/ad.png), preserve that subpath
+        rel_sub = None
+        if default_url and default_url.startswith(f"{KOMETA_IMAGES_RAW}/"):
+            rel_sub = default_url[len(KOMETA_IMAGES_RAW) + 1:]
+
+        if rel_sub and category not in ["font", "template"]:
+            safe_dest = safe_resolve_overlay_path(target_dir, rel_sub, allowed_exts)
+        else:
+            safe_dest = safe_resolve_overlay_path(target_dir, asset_name, allowed_exts)
+
+        if not safe_dest:
+            safe_dest = safe_resolve_overlay_path(target_dir, asset_name, allowed_exts)
+
         if not safe_dest:
             return {"success": False, "error": f"Invalid or disallowed asset filename: {asset_name}"}
+
+        safe_dest.parent.mkdir(parents=True, exist_ok=True)
 
         # Remote Download via HTTPS
         download_url = custom_url or default_url
@@ -886,18 +938,60 @@ class OverlayResolver:
                 with open(safe_dest, "wb") as fp:
                     fp.write(content)
 
+                # Also save copy in root of assets_dir if safe_dest was in a subfolder
+                base_dest = self.assets_dir / Path(asset_name).name
+                if safe_dest != base_dest and not base_dest.exists():
+                    try:
+                        with open(base_dest, "wb") as fp_base:
+                            fp_base.write(content)
+                    except Exception:
+                        pass
+
                 return {"success": True, "method": "downloaded", "path": str(safe_dest)}
         except Exception as e:
             logger.error(f"[OverlayResolver] Error downloading {asset_name}: {e}")
             return {"success": False, "error": str(e)}
 
+_images_import_progress: Dict[str, Any] = {
+    "is_running": False,
+    "phase": "idle",
+    "download_bytes": 0,
+    "total_bytes": 0,
+    "download_percent": 0.0,
+    "extracted_count": 0,
+    "total_images": 0,
+    "extract_percent": 0.0,
+    "overall_percent": 0.0,
+    "message": "Idle",
+    "error": None
+}
+
+def get_images_import_progress() -> Dict[str, Any]:
+    global _images_import_progress
+    return dict(_images_import_progress)
+
+def is_images_import_running() -> bool:
+    global _images_import_progress
+    return bool(_images_import_progress.get("is_running", False))
+
+
     async def import_default_images_from_github(self, overwrite: bool = False) -> Dict[str, Any]:
         """
-        Stream and extract official Kometa default images from upstream GitHub archive
+        Download and extract official Kometa default images from upstream GitHub archive
         directly into Overlayfiles/dynamic_overlays/assets/ and defaults/images/.
+        Provides real-time progress for UI display.
         """
+        global _images_import_progress
+        if _images_import_progress.get("is_running"):
+            return {
+                "success": False,
+                "error": "Image import is already in progress.",
+                "progress": dict(_images_import_progress)
+            }
+
         import tarfile
         import urllib.request
+        import shutil
 
         tar_url = "https://github.com/Kometa-Team/Kometa/archive/refs/heads/master.tar.gz"
         imported_count = 0
@@ -905,34 +999,126 @@ class OverlayResolver:
         for d in dest_dirs:
             d.mkdir(parents=True, exist_ok=True)
 
+        temp_tar_path = self.overlays_dir / "kometa_images_temp.tar.gz"
+
+        _images_import_progress.update({
+            "is_running": True,
+            "phase": "downloading",
+            "download_bytes": 0,
+            "total_bytes": 0,
+            "download_percent": 0.0,
+            "extracted_count": 0,
+            "total_images": 0,
+            "extract_percent": 0.0,
+            "overall_percent": 0.0,
+            "message": "Connecting to GitHub archive...",
+            "error": None
+        })
+
         try:
             def _download_and_extract():
                 nonlocal imported_count
                 req = urllib.request.Request(tar_url, headers={"User-Agent": "Posterizarr"})
-                with urllib.request.urlopen(req, timeout=90) as resp:
-                    with tarfile.open(fileobj=resp, mode="r|gz") as tf:
-                        for member in tf:
-                            prefix = "Kometa-master/defaults/overlays/images/"
-                            if prefix in member.name and member.isfile():
-                                rel_subpath = member.name[member.name.index(prefix) + len(prefix):]
-                                if not rel_subpath:
+                with urllib.request.urlopen(req, timeout=180) as resp:
+                    cl = resp.headers.get("Content-Length")
+                    total_bytes = int(cl) if cl and cl.isdigit() else 0
+                    _images_import_progress["total_bytes"] = total_bytes
+                    _images_import_progress["message"] = "Downloading archive from GitHub..."
+
+                    downloaded = 0
+                    chunk_size = 1024 * 512  # 512 KB
+                    with open(temp_tar_path, "wb") as out_tar:
+                        while True:
+                            chunk = resp.read(chunk_size)
+                            if not chunk:
+                                break
+                            out_tar.write(chunk)
+                            downloaded += len(chunk)
+                            if total_bytes > 0:
+                                pct = min(100.0, (downloaded / total_bytes) * 100.0)
+                                overall = round(pct * 0.5, 1)
+                                msg = f"Downloading archive: {downloaded // (1024*1024)} MB / {total_bytes // (1024*1024)} MB ({round(pct, 1)}%)"
+                            else:
+                                pct = 0.0
+                                overall = min(49.0, round((downloaded / (1024 * 1024)) * 0.2, 1))
+                                msg = f"Downloading archive: {downloaded // (1024*1024)} MB downloaded..."
+
+                            _images_import_progress.update({
+                                "download_bytes": downloaded,
+                                "download_percent": round(pct, 1),
+                                "overall_percent": overall,
+                                "message": msg
+                            })
+
+                _images_import_progress.update({
+                    "phase": "extracting",
+                    "download_percent": 100.0,
+                    "overall_percent": 50.0,
+                    "message": "Inspecting archive members..."
+                })
+
+                prefix = "defaults/overlays/images/"
+                with tarfile.open(temp_tar_path, mode="r:gz") as tf:
+                    members = [m for m in tf.getmembers() if m.isfile() and prefix in m.name]
+                    total_members = len(members)
+                    _images_import_progress["total_images"] = total_members
+
+                    for idx, member in enumerate(members, 1):
+                        rel_subpath = member.name.split(prefix, 1)[1].lstrip("/")
+                        if not rel_subpath:
+                            continue
+                        extracted_f = tf.extractfile(member)
+                        if extracted_f:
+                            data = extracted_f.read()
+                            for dest_root in dest_dirs:
+                                dest_file = dest_root / rel_subpath
+                                if dest_file.exists() and not overwrite:
                                     continue
-                                for dest_root in dest_dirs:
-                                    dest_file = dest_root / rel_subpath
-                                    if dest_file.exists() and not overwrite:
-                                        continue
-                                    dest_file.parent.mkdir(parents=True, exist_ok=True)
-                                    extracted_f = tf.extractfile(member)
-                                    if extracted_f:
-                                        with open(dest_file, "wb") as out_f:
-                                            out_f.write(extracted_f.read())
-                                imported_count += 1
+                                dest_file.parent.mkdir(parents=True, exist_ok=True)
+                                with open(dest_file, "wb") as out_f:
+                                    out_f.write(data)
+                            imported_count += 1
+
+                        if idx % 20 == 0 or idx == total_members:
+                            ext_pct = round((idx / total_members) * 100.0, 1) if total_members > 0 else 100.0
+                            overall = round(50.0 + (ext_pct * 0.5), 1)
+                            _images_import_progress.update({
+                                "extracted_count": imported_count,
+                                "extract_percent": ext_pct,
+                                "overall_percent": overall,
+                                "message": f"Extracting images: {idx} / {total_members} ({ext_pct}%)"
+                            })
 
             await asyncio.to_thread(_download_and_extract)
-            return {"success": True, "count": imported_count, "message": f"Successfully imported {imported_count} official overlay images."}
+
+            _images_import_progress.update({
+                "is_running": False,
+                "phase": "completed",
+                "extracted_count": imported_count,
+                "overall_percent": 100.0,
+                "message": f"Successfully imported {imported_count} official overlay images!"
+            })
+            return {
+                "success": True,
+                "count": imported_count,
+                "extracted_count": imported_count,
+                "message": f"Successfully imported {imported_count} official overlay images."
+            }
         except Exception as e:
-            logger.error(f"[OverlayResolver] Error importing default images: {e}")
-            return {"success": False, "error": str(e)}
+            logger.error(f"[OverlayResolver] Error importing default images: {e}", exc_info=True)
+            _images_import_progress.update({
+                "is_running": False,
+                "phase": "error",
+                "error": str(e),
+                "message": f"Error: {e}"
+            })
+            return {"success": False, "error": str(e), "count": 0, "extracted_count": 0}
+        finally:
+            if temp_tar_path.exists():
+                try:
+                    temp_tar_path.unlink()
+                except Exception:
+                    pass
 
     async def fetch_all_missing(self) -> Dict[str, Any]:
         """Fetch all fetchable missing assets in batch."""

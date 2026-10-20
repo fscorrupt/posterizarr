@@ -3194,6 +3194,9 @@ async def detect_media_changes(
             "summary": summary
         }
 
+    total_scanned = 0
+    changed_items = []
+
     servers_to_scan = []
     if target_server == "all":
         servers_to_scan = [s for s in ["plex", "jellyfin", "emby"] if s in creds_map]

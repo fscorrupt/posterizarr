@@ -6209,6 +6209,13 @@ async def get_status():
 
         metadata_refresh_active = bool(globals().get("metadata_refresh_running", False))
 
+        import_images_active = False
+        try:
+            from overlay_resolver import is_images_import_running
+            import_images_active = is_images_import_running()
+        except Exception:
+            pass
+
         active_tasks = []
         if is_running:
             active_tasks.append({
@@ -6218,6 +6225,15 @@ async def get_status():
                 "type": "posterizarr",
                 "stop_endpoint": "/api/stop",
                 "color": "green",
+            })
+        if import_images_active:
+            active_tasks.append({
+                "id": "import_images",
+                "name": "Image Download",
+                "label": "DOWNLOADING IMAGES",
+                "type": "import_images",
+                "stop_endpoint": None,
+                "color": "blue",
             })
         if overlay_sync_active:
             active_tasks.append({
@@ -6256,7 +6272,7 @@ async def get_status():
                 "color": "amber",
             })
 
-        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active)
+        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active or import_images_active)
 
         return {
             "running": is_running,
@@ -19024,22 +19040,49 @@ async def import_dynamic_overlays_defaults(req: Optional[DynamicOverlayImportDef
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/dynamic-overlays/import-images/progress")
+async def get_dynamic_overlays_images_progress():
+    """Returns real-time download and extraction progress of official Kometa images."""
+    try:
+        from overlay_resolver import get_images_import_progress
+        return {"success": True, "progress": get_images_import_progress()}
+    except Exception as e:
+        return {"success": False, "error": str(e), "progress": {}}
+
+
 @app.post("/api/dynamic-overlays/import-images")
 async def import_dynamic_overlays_images(req: Optional[DynamicOverlayImportDefaultsRequest] = None):
     """Import official Kometa default overlay images (flags, resolution, ratings, ribbons, etc.) directly into Overlayfiles/dynamic_overlays/assets/ and defaults/images/."""
     if not kometa_resolver:
         return {"success": False, "error": "Dynamic overlays service is uninitialized."}
     try:
+        from overlay_resolver import is_images_import_running, get_images_import_progress
+        if is_images_import_running():
+            return {
+                "success": True,
+                "message": "Image import is already in progress.",
+                "is_running": True,
+                "progress": get_images_import_progress()
+            }
+
         overwrite = req.overwrite if req else False
-        result = await kometa_resolver.import_default_images_from_github(overwrite=overwrite)
-        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+
+        async def _run_import():
+            try:
+                await kometa_resolver.import_default_images_from_github(overwrite=overwrite)
+                kometa_resolver.scan_and_analyze_rules()
+            except Exception as e_run:
+                logger.error(f"[OverlayResolver] Background image import error: {e_run}", exc_info=True)
+
+        asyncio.create_task(_run_import())
         return {
             "success": True,
-            "import_result": result,
-            "scan": fresh_scan
+            "message": "Official Kometa image import initiated.",
+            "is_running": True,
+            "progress": get_images_import_progress()
         }
     except Exception as e:
-        logger.error(f"Error importing Kometa default images from GitHub: {e}", exc_info=True)
+        logger.error(f"Error initiating Kometa default images download: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 

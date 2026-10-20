@@ -549,6 +549,37 @@ class DynamicOverlayCompositor:
                                 break
 
                 if not resolved_ip or not resolved_ip.exists():
+                    # Attempt on-demand download from official Kometa raw repository
+                    try:
+                        from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, KOMETA_IMAGES_RAW
+                        raw_target = str(ip).replace("\\", "/")
+                        raw_url = resolve_official_kometa_image_url(raw_target) or resolve_official_kometa_image_url(ip.name)
+                        if raw_url and is_safe_remote_url(raw_url):
+                            import httpx
+                            with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
+                                r_resp = h_client.get(raw_url)
+                                if r_resp.status_code == 200:
+                                    save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
+                                    if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/"):
+                                        sub_p = raw_url[len(KOMETA_IMAGES_RAW) + 1:]
+                                        save_path = save_dir / sub_p
+                                    else:
+                                        save_path = save_dir / ip.name
+                                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                                    with open(save_path, "wb") as f_out:
+                                        f_out.write(r_resp.content)
+                                    base_path = save_dir / ip.name
+                                    if save_path != base_path and not base_path.exists():
+                                        try:
+                                            with open(base_path, "wb") as f_base:
+                                                f_base.write(r_resp.content)
+                                        except Exception:
+                                            pass
+                                    resolved_ip = save_path
+                    except Exception as e_ondemand:
+                        logger.debug(f"[OverlayEngine] On-demand asset fetch error: {e_ondemand}")
+
+                if not resolved_ip or not resolved_ip.exists():
                     return None
 
                 with Image.open(resolved_ip) as img:

@@ -531,6 +531,23 @@ export default function DynamicOverlays() {
   const [isScanning, setIsScanning] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isImportingImages, setIsImportingImages] = useState(false);
+  const [showImportImagesWarningModal, setShowImportImagesWarningModal] = useState(false);
+  const [showImportImagesProgressModal, setShowImportImagesProgressModal] = useState(false);
+  const [importImagesOverwrite, setImportImagesOverwrite] = useState(false);
+  const [importImagesProgress, setImportImagesProgress] = useState({
+    is_running: false,
+    phase: "idle",
+    download_bytes: 0,
+    total_bytes: 231354348,
+    download_percent: 0,
+    extracted_count: 0,
+    total_images: 2331,
+    extract_percent: 0,
+    overall_percent: 0,
+    message: "",
+    error: null,
+  });
+  const importProgressPollRef = useRef(null);
   const [isBatchFetching, setIsBatchFetching] = useState(false);
   const [fetchingAsset, setFetchingAsset] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -2162,31 +2179,88 @@ export default function DynamicOverlays() {
     }
   };
 
-  // Import Official Kometa Images (defaults/overlays/images)
-  const handleImportImages = async (overwrite = false) => {
+  // Progress polling for official Kometa images download/extraction
+  const startPollingImportProgress = () => {
+    if (importProgressPollRef.current) clearInterval(importProgressPollRef.current);
+    importProgressPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/dynamic-overlays/import-images/progress");
+        if (res.ok) {
+          const data = await res.json();
+          const p = data.progress || {};
+          setImportImagesProgress(p);
+          if (!p.is_running) {
+            setIsImportingImages(false);
+            if (importProgressPollRef.current) {
+              clearInterval(importProgressPollRef.current);
+              importProgressPollRef.current = null;
+            }
+            if (p.phase === "completed") {
+              fetchAllData();
+            }
+          } else {
+            setIsImportingImages(true);
+          }
+        }
+      } catch (err) {
+        console.debug("Failed polling import images progress:", err);
+      }
+    }, 800);
+  };
+
+  const handlePromptImportImages = () => {
+    if (isImportingImages) {
+      setShowImportImagesProgressModal(true);
+    } else {
+      setShowImportImagesWarningModal(true);
+    }
+  };
+
+  const handleStartImportImages = async (overwrite = false) => {
+    setShowImportImagesWarningModal(false);
+    setShowImportImagesProgressModal(true);
+    setIsImportingImages(true);
+    setImportImagesProgress({
+      is_running: true,
+      phase: "downloading",
+      download_bytes: 0,
+      total_bytes: 231354348,
+      download_percent: 0,
+      extracted_count: 0,
+      total_images: 2331,
+      extract_percent: 0,
+      overall_percent: 0,
+      message: "Initiating archive download from GitHub (~230 MB)...",
+      error: null,
+    });
+
     try {
-      setIsImportingImages(true);
-      showToast("Downloading official Kometa images archive (defaults/overlays/images)...", "info");
       const res = await fetch("/api/dynamic-overlays/import-images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ overwrite })
+        body: JSON.stringify({ overwrite }),
       });
       const data = await res.json();
-      if (data.success) {
-        const imp = data.import_result || {};
-        showToast(
-          `Successfully imported official Kometa overlay images (${imp.extracted_count || 0} images extracted)!`,
-          "success"
-        );
-        await fetchAllData();
+      if (!data.success) {
+        setImportImagesProgress((prev) => ({
+          ...prev,
+          is_running: false,
+          phase: "error",
+          error: data.error || "Failed to initiate import",
+          message: data.error || "Failed to initiate import",
+        }));
+        setIsImportingImages(false);
       } else {
-        showToast(data.error || "Failed to import official Kometa images", "error");
+        startPollingImportProgress();
       }
     } catch (err) {
-      console.error(err);
-      showToast("Error importing official Kometa images", "error");
-    } finally {
+      setImportImagesProgress((prev) => ({
+        ...prev,
+        is_running: false,
+        phase: "error",
+        error: err.message,
+        message: err.message,
+      }));
       setIsImportingImages(false);
     }
   };
@@ -6509,10 +6583,9 @@ export default function DynamicOverlays() {
               </button>
 
               <button
-                onClick={() => handleImportImages(false)}
-                disabled={isImportingImages}
+                onClick={handlePromptImportImages}
                 title="Download all official overlay images (defaults/overlays/images) from official Kometa GitHub archive"
-                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-xs font-medium text-theme-text transition-all shadow-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-xs font-medium text-theme-text transition-all shadow-sm"
               >
                 <Download className={`w-4 h-4 text-theme-primary ${isImportingImages ? "animate-bounce" : ""}`} />
                 {isImportingImages ? "Downloading Images..." : "Download Official Images"}
@@ -6738,10 +6811,9 @@ export default function DynamicOverlays() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => handleImportImages(false)}
-                  disabled={isImportingImages}
+                  onClick={handlePromptImportImages}
                   title="Download all official overlay images (defaults/overlays/images) from official Kometa GitHub archive"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-theme-hover hover:bg-theme-hover/80 border border-theme text-theme-text text-xs font-semibold transition-all disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-theme-hover hover:bg-theme-hover/80 border border-theme text-theme-text text-xs font-semibold transition-all"
                 >
                   <Download className={`w-3.5 h-3.5 text-theme-primary ${isImportingImages ? "animate-bounce" : ""}`} />
                   <span>{isImportingImages ? "Downloading Images..." : "Download Official Images"}</span>
@@ -13374,6 +13446,339 @@ export default function DynamicOverlays() {
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Finish & Open Live Preview</span>
                   </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DOWNLOAD KOMETA IMAGES - DISK SPACE & RAW FETCH NOTICE */}
+      {/* ========================================================================= */}
+      {showImportImagesWarningModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-theme/60 flex items-start justify-between gap-4 bg-theme-card">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-theme-text">
+                    Official Kometa Images Archive
+                  </h3>
+                  <p className="text-xs text-theme-muted mt-0.5">
+                    Choose how you want to retrieve overlay image assets
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportImagesWarningModal(false)}
+                className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text transition-all"
+                title="Cancel"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              {/* Option 1: Recommended Lightweight Raw Fetch */}
+              <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-300 space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-xs text-green-400">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-green-400" />
+                  <span>Recommended: Lightweight On-Demand Fetch (Zero Waste)</span>
+                </div>
+                <p className="text-xs text-theme-text leading-relaxed">
+                  You do <strong>not</strong> need to download the full archive! You can use the <strong>"Fetch All Missing"</strong> button in the Asset Dependency Checklist below. It downloads <em>only</em> the specific flags and badges referenced by your active rules directly from GitHub raw URLs (~50 KB total, under 1 second).
+                </p>
+              </div>
+
+              {/* Option 2: Full Bulk Archive Warning */}
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-xs text-amber-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>Full Archive Notice (Consumes ~700 MB Disk Space)</span>
+                </div>
+                <p className="text-xs text-theme-text leading-relaxed">
+                  Downloading the full Kometa archive will download the compressed repository from GitHub and extract <strong>over 2,300+ overlay images (~600–700 MB uncompressed)</strong> into your local storage:
+                </p>
+                <ul className="text-xs text-theme-muted list-disc list-inside space-y-0.5 pl-1 font-mono text-[11px]">
+                  <li>Overlayfiles/dynamic_overlays/assets/</li>
+                  <li>Overlayfiles/dynamic_overlays/defaults/images/</li>
+                </ul>
+                <div className="text-[11px] text-amber-400/90 pt-1 font-medium">
+                  ⚠️ Please ensure your drive has at least <strong>1 GB of free space</strong> before proceeding.
+                </div>
+              </div>
+
+              {/* Overwrite option */}
+              <label className="flex items-center gap-3 p-3 rounded-xl border border-theme/50 hover:bg-theme-hover/40 cursor-pointer transition-colors text-xs">
+                <input
+                  type="checkbox"
+                  checked={importImagesOverwrite}
+                  onChange={(e) => setImportImagesOverwrite(e.target.checked)}
+                  className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/30"
+                />
+                <span className="text-theme-text">
+                  Overwrite existing image files if already present
+                </span>
+              </label>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-theme-bg/40 border-t border-theme/60 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowImportImagesWarningModal(false);
+                  handleFetchAllMissing();
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-theme-hover hover:bg-theme-hover/80 text-theme-text border border-theme transition-all"
+                title="Fetch only the specific assets needed by your current active rules"
+              >
+                <Download className="w-3.5 h-3.5 text-green-400" />
+                <span>Fetch Only Configured (~50 KB)</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowImportImagesWarningModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-medium text-theme-muted hover:bg-theme-hover hover:text-theme-text transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStartImportImages(importImagesOverwrite)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-black shadow-md transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Full Archive</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: KOMETA IMAGES DOWNLOAD & EXTRACTION PROGRESS */}
+      {/* ========================================================================= */}
+      {showImportImagesProgressModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-5 border-b border-theme/60 flex items-start justify-between gap-4 bg-theme-card">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${
+                  importImagesProgress.phase === "completed"
+                    ? "bg-green-500/10 border border-green-500/20 text-green-400"
+                    : importImagesProgress.phase === "error"
+                    ? "bg-red-500/10 border border-red-500/20 text-red-400"
+                    : "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                }`}>
+                  {importImagesProgress.phase === "completed" ? (
+                    <CheckCircle2 className="w-5 h-5" />
+                  ) : importImagesProgress.phase === "error" ? (
+                    <AlertTriangle className="w-5 h-5" />
+                  ) : (
+                    <Download className="w-5 h-5 animate-bounce" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-theme-text">
+                    {importImagesProgress.phase === "completed"
+                      ? "Official Images Imported!"
+                      : importImagesProgress.phase === "error"
+                      ? "Image Import Failed"
+                      : "Importing Official Kometa Images..."}
+                  </h3>
+                  <p className="text-xs text-theme-muted mt-0.5">
+                    {importImagesProgress.phase === "downloading"
+                      ? "Phase 1: Downloading repository archive from GitHub..."
+                      : importImagesProgress.phase === "extracting"
+                      ? "Phase 2: Extracting overlay images to storage..."
+                      : importImagesProgress.phase === "completed"
+                      ? "All official Kometa default images are ready to use."
+                      : "An error occurred during download or extraction."}
+                  </p>
+                </div>
+              </div>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-bold font-mono ${
+                importImagesProgress.phase === "completed"
+                  ? "bg-green-500/10 border border-green-500/30 text-green-400"
+                  : importImagesProgress.phase === "error"
+                  ? "bg-red-500/10 border border-red-500/30 text-red-400"
+                  : "bg-blue-500/10 border border-blue-500/30 text-blue-400"
+              }`}>
+                {importImagesProgress.phase === "completed"
+                  ? "100%"
+                  : `${importImagesProgress.overall_percent || 0}%`}
+              </span>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              {/* Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="w-full bg-theme-bg/80 border border-theme/60 rounded-full h-3 overflow-hidden p-0.5">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      importImagesProgress.phase === "completed"
+                        ? "bg-green-500"
+                        : importImagesProgress.phase === "error"
+                        ? "bg-red-500"
+                        : "bg-gradient-to-r from-theme-primary to-blue-500"
+                    }`}
+                    style={{ width: `${Math.max(3, Math.min(100, importImagesProgress.overall_percent || 0))}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-theme-muted font-mono">
+                  <span>{importImagesProgress.message || "Processing..."}</span>
+                  <span className="font-semibold text-theme-text">
+                    {importImagesProgress.phase === "completed" ? "Done" : `${importImagesProgress.overall_percent || 0}%`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Stepper Details */}
+              <div className="space-y-2.5 pt-1">
+                {/* Step 1: Download */}
+                <div className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                  importImagesProgress.phase === "downloading"
+                    ? "bg-blue-500/5 border-blue-500/30 text-blue-300"
+                    : (importImagesProgress.download_percent >= 100 || importImagesProgress.phase === "extracting" || importImagesProgress.phase === "completed")
+                    ? "bg-green-500/5 border-green-500/20 text-theme-text"
+                    : "bg-theme-bg/40 border-theme/50 text-theme-muted"
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    {(importImagesProgress.download_percent >= 100 || importImagesProgress.phase === "extracting" || importImagesProgress.phase === "completed") ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                    ) : importImagesProgress.phase === "downloading" ? (
+                      <RefreshCw className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-theme-muted shrink-0" />
+                    )}
+                    <div>
+                      <div className="font-semibold text-theme-text">1. Download GitHub Archive</div>
+                      <div className="text-[11px] text-theme-muted">Kometa-Team/Kometa master.tar.gz</div>
+                    </div>
+                  </div>
+                  <div className="text-right font-mono text-[11px]">
+                    <div>{importImagesProgress.download_percent ? `${importImagesProgress.download_percent}%` : "In progress"}</div>
+                    <div className="text-theme-muted">
+                      {((importImagesProgress.download_bytes || 0) / (1024 * 1024)).toFixed(1)} MB
+                      {importImagesProgress.total_bytes > 0 ? ` / ${((importImagesProgress.total_bytes) / (1024 * 1024)).toFixed(1)} MB` : ""}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 2: Extraction */}
+                <div className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                  importImagesProgress.phase === "extracting"
+                    ? "bg-blue-500/5 border-blue-500/30 text-blue-300"
+                    : importImagesProgress.phase === "completed"
+                    ? "bg-green-500/5 border-green-500/20 text-theme-text"
+                    : "bg-theme-bg/40 border-theme/50 text-theme-muted"
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    {importImagesProgress.phase === "completed" ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                    ) : importImagesProgress.phase === "extracting" ? (
+                      <RefreshCw className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-theme-muted shrink-0" />
+                    )}
+                    <div>
+                      <div className="font-semibold text-theme-text">2. Extract Overlay Images</div>
+                      <div className="text-[11px] text-theme-muted">Extracting defaults/overlays/images/ (~700 MB)</div>
+                    </div>
+                  </div>
+                  <div className="text-right font-mono text-[11px]">
+                    <div>{importImagesProgress.extract_percent ? `${importImagesProgress.extract_percent}%` : "Pending"}</div>
+                    <div className="text-theme-muted">
+                      {importImagesProgress.extracted_count || 0}
+                      {importImagesProgress.total_images > 0 ? ` / ${importImagesProgress.total_images}` : ""} files
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Error Alert */}
+              {importImagesProgress.phase === "error" && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold">Error during download or extraction</div>
+                    <div className="text-[11px] text-red-300 mt-0.5">{importImagesProgress.error || "Unknown error occurred"}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Space Notice Reminder */}
+              <div className="text-[11px] text-theme-muted text-center pt-0.5">
+                <span>Disk consumption: ~700 MB in Overlayfiles/dynamic_overlays/</span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-theme-bg/40 border-t border-theme/60 flex items-center justify-between">
+              <div>
+                {importImagesProgress.is_running && (
+                  <span className="text-xs text-theme-muted flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <span>Running in background...</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {importImagesProgress.is_running && (
+                  <button
+                    type="button"
+                    onClick={() => setShowImportImagesProgressModal(false)}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-theme-muted hover:bg-theme-hover hover:text-theme-text transition-colors"
+                  >
+                    Run in Background
+                  </button>
+                )}
+                {importImagesProgress.phase === "completed" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowImportImagesProgressModal(false);
+                      fetchAllData();
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-green-500 hover:bg-green-600 text-white shadow-md transition-all"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Done & Refresh Status</span>
+                  </button>
+                )}
+                {importImagesProgress.phase === "error" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowImportImagesProgressModal(false)}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-theme-muted hover:bg-theme-hover hover:text-theme-text transition-colors"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStartImportImages(importImagesOverwrite)}
+                      className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-theme-primary hover:bg-theme-primary/90 text-white transition-all"
+                    >
+                      Retry
+                    </button>
+                  </>
                 )}
               </div>
             </div>
