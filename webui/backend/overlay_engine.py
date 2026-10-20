@@ -51,6 +51,59 @@ LANDSCAPE_DIM = (1920, 1080)
 SQUARE_DIM = (1000, 1000)
 
 
+class OverlayAssetMissingError(Exception):
+    """Raised when an essential overlay asset (image or font) cannot be resolved or downloaded."""
+    def __init__(self, asset_name: str, message: str):
+        super().__init__(message)
+        self.asset_name = asset_name
+        self.message = message
+
+
+def get_candidate_asset_dirs() -> List[Path]:
+    """Return all valid candidate directories for overlay assets across Docker and project roots."""
+    dirs: List[Path] = []
+    roots = [PROJECT_ROOT, Path("/config"), Path("/app")]
+    for r in roots:
+        for sub in [
+            r / "Overlayfiles" / "dynamic_overlays" / "assets",
+            r / "Overlayfiles" / "kometa" / "assets",
+            r / "Overlayfiles" / "dynamic_overlays" / "configs",
+            r / "Overlayfiles" / "kometa" / "configs",
+            r / "Overlayfiles" / "assets",
+            r / "Overlayfiles",
+            r / "assets",
+        ]:
+            if sub.exists() and sub not in dirs:
+                dirs.append(sub)
+    if not dirs:
+        dirs.append(PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
+    return dirs
+
+
+def get_candidate_font_dirs() -> List[Path]:
+    """Return all valid candidate directories for fonts across Docker, system, and project roots."""
+    dirs: List[Path] = []
+    roots = [PROJECT_ROOT, Path("/config"), Path("/app")]
+    for r in roots:
+        for sub in [
+            r / "Overlayfiles" / "dynamic_overlays" / "fonts",
+            r / "Overlayfiles" / "kometa" / "fonts",
+            r / "Overlayfiles" / "dynamic_overlays" / "configs" / "fonts",
+            r / "Overlayfiles" / "kometa" / "configs" / "fonts",
+            r / "Overlayfiles" / "fonts",
+            r / "Overlayfiles",
+            r / "fonts",
+        ]:
+            if sub.exists() and sub not in dirs:
+                dirs.append(sub)
+    for sys_font in [Path("/usr/share/fonts/custom"), Path("/usr/share/fonts"), Path("C:/Windows/Fonts")]:
+        if sys_font.exists() and sys_font not in dirs:
+            dirs.append(sys_font)
+    if not dirs:
+        dirs.append(PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts")
+    return dirs
+
+
 def hex_to_rgba(hex_str: str, default: Tuple[int, int, int, int] = (0, 0, 0, 0)) -> Tuple[int, int, int, int]:
     """Convert hex color string (#RRGGBB or #RRGGBBAA) to RGBA tuple."""
     if not hex_str:
@@ -381,6 +434,7 @@ class DynamicOverlayCompositor:
         base_image_bytes: bytes,
         layers: List[Dict[str, Any]],
         canvas_type: str = "portrait",
+        abort_on_missing_asset: bool = True,
         debug_logging: bool = False,
         debug_callback: Optional[Callable[[str], None]] = None,
         item_label: str = ""
@@ -388,6 +442,10 @@ class DynamicOverlayCompositor:
         """
         Takes raw image bytes of clean asset, applies list of overlay layer dicts in RAM,
         and returns JPEG bytes ready for media server upload. Clean asset is never modified on disk!
+
+        If abort_on_missing_asset is True (default), and an essential image, badge, or font cannot
+        be resolved or downloaded, OverlayAssetMissingError is raised immediately to prevent uploading
+        corrupted or half-baked overlays to the media server.
 
         High Performance & Sharpness Optimization:
         When orig_w != target_dim[0] (e.g. 2000x3000 or 3840x2160 assets), layer coordinates,
@@ -436,12 +494,18 @@ class DynamicOverlayCompositor:
                     overlay_img = DynamicOverlayCompositor._render_layer(
                         layer=layer,
                         canvas_box=target_dim,
+                        abort_on_missing=abort_on_missing_asset,
                         debug_callback=_cb if debug_logging else None
                     )
                     if overlay_img:
                         overlay_canvas = Image.alpha_composite(overlay_canvas, overlay_img)
+                except OverlayAssetMissingError:
+                    if abort_on_missing_asset:
+                        raise
                 except Exception as e:
                     logger.warning(f"[Compositor] Error rendering layer {layer.get('name')}: {e}")
+                    if abort_on_missing_asset:
+                        raise
 
             # If clean asset is higher resolution (e.g. 2000x3000 portrait or 3840x2160 titlecard),
             # upscale only the transparent overlay canvas using LANCZOS to perfectly match native dimensions.
@@ -500,6 +564,7 @@ class DynamicOverlayCompositor:
     def _render_layer(
         layer: Dict[str, Any],
         canvas_box: Tuple[int, int],
+        abort_on_missing: bool = True,
         debug_callback: Optional[Callable[[str], None]] = None
     ) -> Optional[Image.Image]:
         """Renders an individual layer definition onto a transparent canvas."""
@@ -518,22 +583,12 @@ class DynamicOverlayCompositor:
             elif elem_img is None:
                 img_path = layer.get("image_path")
                 resolved_ip = None
+                candidate_asset_dirs = get_candidate_asset_dirs()
                 if img_path:
                     ip = Path(img_path)
                     if ip.exists():
                         resolved_ip = ip
                     else:
-                        candidate_asset_dirs = [
-                            PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets",
-                            PROJECT_ROOT / "Overlayfiles" / "kometa" / "assets",
-                            PROJECT_ROOT / "Overlayfiles",
-                            Path("/app/Overlayfiles/dynamic_overlays/assets"),
-                            Path("/app/Overlayfiles/kometa/assets"),
-                            Path("/app/Overlayfiles"),
-                            Path("/config/Overlayfiles/dynamic_overlays/assets"),
-                            Path("/config/Overlayfiles/kometa/assets"),
-                            Path("/config/Overlayfiles"),
-                        ]
                         ip_name = ip.name
                         for ad in candidate_asset_dirs:
                             cand = ad / ip_name
@@ -548,44 +603,64 @@ class DynamicOverlayCompositor:
                             if resolved_ip:
                                 break
 
-                if not resolved_ip or not resolved_ip.exists():
-                    # Attempt on-demand download from official Kometa raw repository
-                    try:
-                        from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, KOMETA_IMAGES_RAW
-                        raw_target = str(ip).replace("\\", "/")
-                        raw_url = resolve_official_kometa_image_url(raw_target) or resolve_official_kometa_image_url(ip.name)
-                        if raw_url and is_safe_remote_url(raw_url):
-                            import httpx
-                            with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
-                                r_resp = h_client.get(raw_url)
-                                if r_resp.status_code == 200:
-                                    save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
-                                    if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/"):
-                                        sub_p = raw_url[len(KOMETA_IMAGES_RAW) + 1:]
-                                        save_path = save_dir / sub_p
-                                    else:
-                                        save_path = save_dir / ip.name
-                                    save_path.parent.mkdir(parents=True, exist_ok=True)
-                                    with open(save_path, "wb") as f_out:
-                                        f_out.write(r_resp.content)
-                                    base_path = save_dir / ip.name
-                                    if save_path != base_path and not base_path.exists():
-                                        try:
-                                            with open(base_path, "wb") as f_base:
-                                                f_base.write(r_resp.content)
-                                        except Exception:
-                                            pass
-                                    resolved_ip = save_path
-                    except Exception as e_ondemand:
-                        logger.debug(f"[OverlayEngine] On-demand asset fetch error: {e_ondemand}")
+                        if not resolved_ip or not resolved_ip.exists():
+                            # Attempt on-demand download from official Kometa raw repository
+                            try:
+                                from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, KOMETA_IMAGES_RAW
+                                raw_target = str(ip).replace("\\", "/")
+                                raw_url = resolve_official_kometa_image_url(raw_target) or resolve_official_kometa_image_url(ip.name)
+                                if raw_url and is_safe_remote_url(raw_url):
+                                    import httpx
+                                    with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
+                                        r_resp = h_client.get(raw_url)
+                                        if r_resp.status_code == 200:
+                                            save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
+                                            if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/"):
+                                                sub_p = raw_url[len(KOMETA_IMAGES_RAW) + 1:]
+                                                save_path = save_dir / sub_p
+                                            else:
+                                                save_path = save_dir / ip.name
+                                            save_path.parent.mkdir(parents=True, exist_ok=True)
+                                            with open(save_path, "wb") as f_out:
+                                                f_out.write(r_resp.content)
+                                            base_path = save_dir / ip.name
+                                            if save_path != base_path and not base_path.exists():
+                                                try:
+                                                    with open(base_path, "wb") as f_base:
+                                                        f_base.write(r_resp.content)
+                                                except Exception:
+                                                    pass
+                                            resolved_ip = save_path
+                            except Exception as e_ondemand:
+                                logger.debug(f"[OverlayEngine] On-demand asset fetch error: {e_ondemand}")
 
                 if not resolved_ip or not resolved_ip.exists():
+                    if abort_on_missing:
+                        target_name = img_path or layer.get("name") or "image"
+                        raise OverlayAssetMissingError(
+                            str(target_name),
+                            f"Required overlay image '{target_name}' could not be resolved or downloaded from Kometa defaults"
+                        )
                     return None
 
-                with Image.open(resolved_ip) as img:
-                    elem_img = img.convert("RGBA")
+                try:
+                    with Image.open(resolved_ip) as img:
+                        elem_img = img.convert("RGBA")
+                except Exception as img_err:
+                    if abort_on_missing:
+                        raise OverlayAssetMissingError(
+                            str(resolved_ip),
+                            f"Failed loading required overlay image '{resolved_ip}': {img_err}"
+                        )
+                    return None
 
             if elem_img is None:
+                if abort_on_missing:
+                    target_name = layer.get("image_path") or layer.get("name") or "image"
+                    raise OverlayAssetMissingError(
+                        str(target_name),
+                        f"Required overlay image '{target_name}' is missing"
+                    )
                 return None
 
             # Scale if requested
@@ -638,22 +713,7 @@ class DynamicOverlayCompositor:
         font_path = layer.get("font_path")
         font_size = int(layer.get("font_size") or 40)
         font = None
-
-        candidate_font_dirs = [
-            PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts",
-            PROJECT_ROOT / "Overlayfiles" / "kometa" / "fonts",
-            PROJECT_ROOT / "Overlayfiles",
-            Path("/app/Overlayfiles/dynamic_overlays/fonts"),
-            Path("/app/Overlayfiles/kometa/fonts"),
-            Path("/app/Overlayfiles"),
-            Path("/config/Overlayfiles/dynamic_overlays/fonts"),
-            Path("/config/Overlayfiles/kometa/fonts"),
-            Path("/config/Overlayfiles"),
-            Path("/config/fonts"),
-            Path("/fonts"),
-            Path("/usr/share/fonts/custom"),
-            Path("C:/Windows/Fonts"),
-        ]
+        candidate_font_dirs = get_candidate_font_dirs()
 
         # Resolve font path if specified
         resolved_fp = None
@@ -668,8 +728,34 @@ class DynamicOverlayCompositor:
                     if cand.exists():
                         resolved_fp = cand
                         break
+                # On-demand font download if official Kometa font
+                if not resolved_fp:
+                    try:
+                        from overlay_resolver import OFFICIAL_KOMETA_FONTS, KOMETA_GITHUB_RAW
+                        if f_name in OFFICIAL_KOMETA_FONTS:
+                            import httpx
+                            font_url = f"{KOMETA_GITHUB_RAW}/fonts/{f_name}"
+                            with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
+                                r_f = h_client.get(font_url)
+                                if r_f.status_code == 200:
+                                    save_f_dir = candidate_font_dirs[0] if candidate_font_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts")
+                                    save_f_path = save_f_dir / f_name
+                                    save_f_path.parent.mkdir(parents=True, exist_ok=True)
+                                    with open(save_f_path, "wb") as f_out:
+                                        f_out.write(r_f.content)
+                                    resolved_fp = save_f_path
+                    except Exception as e_font_fetch:
+                        logger.debug(f"[Compositor] On-demand font fetch error: {e_font_fetch}")
 
-        # Fallback fonts if font not found
+        # If an explicit font_path was requested but could not be found or downloaded
+        if font_path and not resolved_fp:
+            if abort_on_missing:
+                raise OverlayAssetMissingError(
+                    str(font_path),
+                    f"Required overlay font '{font_path}' could not be resolved or downloaded from Kometa defaults"
+                )
+
+        # Fallback fonts if no specific font was requested or fallback permitted
         if not resolved_fp:
             for fallback in ["Inter-Bold.ttf", "Inter-Medium.ttf", "CircularStd-Bold.otf", "Roboto-Bold.ttf", "Roboto-Medium.ttf", "Arial.ttf", "DejaVuSans.ttf"]:
                 for fd in candidate_font_dirs:
@@ -685,6 +771,11 @@ class DynamicOverlayCompositor:
                 font = ImageFont.truetype(str(resolved_fp), size=font_size)
             except Exception as fe:
                 logger.warning(f"[Compositor] Failed loading font {resolved_fp}: {fe}")
+                if abort_on_missing and font_path:
+                    raise OverlayAssetMissingError(
+                        str(resolved_fp),
+                        f"Failed loading required font '{resolved_fp}': {fe}"
+                    )
 
         if not font:
             try:
@@ -693,6 +784,11 @@ class DynamicOverlayCompositor:
                 font = ImageFont.load_default()
             except Exception as de:
                 logger.warning(f"[Compositor] Failed loading default font: {de}")
+                if abort_on_missing:
+                    raise OverlayAssetMissingError(
+                        "default_font",
+                        f"Failed loading system default font: {de}"
+                    )
 
         # Load optional background badge image if provided
         elem_img = None
@@ -700,20 +796,10 @@ class DynamicOverlayCompositor:
         resolved_bp = None
         if badge_img_path:
             bp = Path(badge_img_path)
+            candidate_asset_dirs = get_candidate_asset_dirs()
             if bp.exists():
                 resolved_bp = bp
             else:
-                candidate_asset_dirs = [
-                    PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets",
-                    PROJECT_ROOT / "Overlayfiles" / "kometa" / "assets",
-                    PROJECT_ROOT / "Overlayfiles",
-                    Path("/app/Overlayfiles/dynamic_overlays/assets"),
-                    Path("/app/Overlayfiles/kometa/assets"),
-                    Path("/app/Overlayfiles"),
-                    Path("/config/Overlayfiles/dynamic_overlays/assets"),
-                    Path("/config/Overlayfiles/kometa/assets"),
-                    Path("/config/Overlayfiles"),
-                ]
                 bp_name = bp.name
                 for ad in candidate_asset_dirs:
                     cand = ad / bp_name
@@ -727,6 +813,43 @@ class DynamicOverlayCompositor:
                             break
                     if resolved_bp:
                         break
+
+                if not resolved_bp:
+                    try:
+                        from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, KOMETA_IMAGES_RAW
+                        raw_target = str(bp).replace("\\", "/")
+                        raw_url = resolve_official_kometa_image_url(raw_target) or resolve_official_kometa_image_url(bp.name)
+                        if raw_url and is_safe_remote_url(raw_url):
+                            import httpx
+                            with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
+                                r_resp = h_client.get(raw_url)
+                                if r_resp.status_code == 200:
+                                    save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
+                                    if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/"):
+                                        sub_p = raw_url[len(KOMETA_IMAGES_RAW) + 1:]
+                                        save_path = save_dir / sub_p
+                                    else:
+                                        save_path = save_dir / bp.name
+                                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                                    with open(save_path, "wb") as f_out:
+                                        f_out.write(r_resp.content)
+                                    base_path = save_dir / bp.name
+                                    if save_path != base_path and not base_path.exists():
+                                        try:
+                                            with open(base_path, "wb") as f_base:
+                                                f_base.write(r_resp.content)
+                                        except Exception:
+                                            pass
+                                    resolved_bp = save_path
+                    except Exception as e_ondemand_bp:
+                        logger.debug(f"[Compositor] On-demand addon asset fetch error: {e_ondemand_bp}")
+
+            if not resolved_bp or not resolved_bp.exists():
+                if abort_on_missing:
+                    raise OverlayAssetMissingError(
+                        str(badge_img_path),
+                        f"Required badge image '{badge_img_path}' could not be resolved or downloaded from Kometa defaults"
+                    )
 
         if resolved_bp and resolved_bp.exists():
             try:
@@ -746,6 +869,11 @@ class DynamicOverlayCompositor:
                             elem_img = elem_img.resize((tw, th), Image.Resampling.LANCZOS)
             except Exception as be:
                 logger.warning(f"[Compositor] Failed loading badge image {resolved_bp}: {be}")
+                if abort_on_missing:
+                    raise OverlayAssetMissingError(
+                        str(resolved_bp),
+                        f"Failed loading required badge image '{resolved_bp}': {be}"
+                    )
 
         stroke_color = layer.get("stroke_color")
         stroke_width = int(layer.get("stroke_width") or 0)

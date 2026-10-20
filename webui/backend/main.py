@@ -19073,6 +19073,16 @@ async def import_dynamic_overlays_images(req: Optional[DynamicOverlayImportDefau
                 kometa_resolver.scan_and_analyze_rules()
             except Exception as e_run:
                 logger.error(f"[OverlayResolver] Background image import error: {e_run}", exc_info=True)
+                try:
+                    from overlay_resolver import _images_import_progress
+                    _images_import_progress.update({
+                        "is_running": False,
+                        "phase": "error",
+                        "error": str(e_run),
+                        "message": f"Import failed: {e_run}"
+                    })
+                except Exception:
+                    pass
 
         asyncio.create_task(_run_import())
         return {
@@ -20123,7 +20133,8 @@ async def preview_dynamic_overlay(
         rendered_bytes = DynamicOverlayCompositor.composite_overlays(
             base_image_bytes=base_bytes,
             layers=layers,
-            canvas_type="landscape" if is_landscape else "portrait"
+            canvas_type="landscape" if is_landscape else "portrait",
+            abort_on_missing_asset=False
         )
 
         return Response(

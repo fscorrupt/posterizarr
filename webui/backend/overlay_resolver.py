@@ -348,6 +348,29 @@ def load_cached_yaml_file(file_path: Path) -> Dict[str, Any]:
         return {}
 
 
+_images_import_progress: Dict[str, Any] = {
+    "is_running": False,
+    "phase": "idle",
+    "download_bytes": 0,
+    "total_bytes": 0,
+    "download_percent": 0.0,
+    "extracted_count": 0,
+    "total_images": 0,
+    "extract_percent": 0.0,
+    "overall_percent": 0.0,
+    "message": "Idle",
+    "error": None
+}
+
+def get_images_import_progress() -> Dict[str, Any]:
+    global _images_import_progress
+    return dict(_images_import_progress)
+
+def is_images_import_running() -> bool:
+    global _images_import_progress
+    return bool(_images_import_progress.get("is_running", False))
+
+
 class OverlayResolver:
     """Manages Kometa configuration files, dependencies, and asset resolution."""
 
@@ -371,6 +394,19 @@ class OverlayResolver:
         """Create the Overlayfiles/kometa folder hierarchy."""
         for d in [self.configs_dir, self.defaults_dir, self.assets_dir, self.fonts_dir]:
             d.mkdir(parents=True, exist_ok=True)
+
+        # Clean up any errant "c:" or "C:" directories erroneously created by legacy Windows-path joins on Linux
+        import sys
+        if sys.platform != "win32":
+            for base_check in [self.project_root, PROJECT_ROOT, Path("/config"), Path("/app")]:
+                for rogue in ["c:", "C:"]:
+                    rogue_dir = base_check / rogue
+                    if rogue_dir.exists() and rogue_dir.is_dir():
+                        try:
+                            shutil.rmtree(rogue_dir, ignore_errors=True)
+                            logger.info(f"[OverlayResolver] Cleaned up legacy errant directory: {rogue_dir}")
+                        except Exception:
+                            pass
 
     def get_available_defaults(self) -> List[Dict[str, Any]]:
         """List all default template YAML files currently downloaded in Overlayfiles/kometa/defaults/."""
@@ -952,29 +988,6 @@ class OverlayResolver:
             logger.error(f"[OverlayResolver] Error downloading {asset_name}: {e}")
             return {"success": False, "error": str(e)}
 
-_images_import_progress: Dict[str, Any] = {
-    "is_running": False,
-    "phase": "idle",
-    "download_bytes": 0,
-    "total_bytes": 0,
-    "download_percent": 0.0,
-    "extracted_count": 0,
-    "total_images": 0,
-    "extract_percent": 0.0,
-    "overall_percent": 0.0,
-    "message": "Idle",
-    "error": None
-}
-
-def get_images_import_progress() -> Dict[str, Any]:
-    global _images_import_progress
-    return dict(_images_import_progress)
-
-def is_images_import_running() -> bool:
-    global _images_import_progress
-    return bool(_images_import_progress.get("is_running", False))
-
-
     async def import_default_images_from_github(self, overwrite: bool = False) -> Dict[str, Any]:
         """
         Download and extract official Kometa default images from upstream GitHub archive
@@ -1039,9 +1052,11 @@ def is_images_import_running() -> bool:
                                 overall = round(pct * 0.5, 1)
                                 msg = f"Downloading archive: {downloaded // (1024*1024)} MB / {total_bytes // (1024*1024)} MB ({round(pct, 1)}%)"
                             else:
-                                pct = 0.0
-                                overall = min(49.0, round((downloaded / (1024 * 1024)) * 0.2, 1))
-                                msg = f"Downloading archive: {downloaded // (1024*1024)} MB downloaded..."
+                                # Estimate ~230 MB for percentage calculation when GitHub omits Content-Length
+                                est_bytes = 230 * 1024 * 1024
+                                pct = min(99.0, (downloaded / est_bytes) * 100.0)
+                                overall = round(pct * 0.5, 1)
+                                msg = f"Downloading archive: {downloaded // (1024*1024)} MB (~{round(pct, 1)}%)..."
 
                             _images_import_progress.update({
                                 "download_bytes": downloaded,
@@ -1643,14 +1658,18 @@ def is_images_import_running() -> bool:
 
             # Persist modified configuration data to config.yml across all active project locations
             target_configs = [safe_path]
-            for candidate_dir in [
+            candidate_dirs = [
                 self.project_root / "Overlayfiles" / "dynamic_overlays" / "configs",
-                Path("c:/Github/PosterizarrUI_dev/Overlayfiles/dynamic_overlays/configs"),
-                Path("C:/PosterTemp/Overlayfiles/dynamic_overlays/configs")
-            ]:
-                cand_file = candidate_dir / filename
-                if cand_file.resolve() not in [t.resolve() for t in target_configs if t.exists()]:
-                    target_configs.append(cand_file)
+                PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "configs",
+                Path("/config/Overlayfiles/dynamic_overlays/configs"),
+                Path("/app/Overlayfiles/dynamic_overlays/configs"),
+            ]
+            for candidate_dir in candidate_dirs:
+                if candidate_dir.exists():
+                    cand_file = candidate_dir / filename
+                    resolved_cand = cand_file.resolve()
+                    if resolved_cand not in [t.resolve() for t in target_configs if t.exists()]:
+                        target_configs.append(cand_file)
 
             for cfg_path in target_configs:
                 try:
@@ -2004,6 +2023,14 @@ class OverlayConfigEngine:
                                 return f
                     except Exception:
                         pass
+        # 4. If not found locally, check if it resolves to an official Kometa raw image URL
+        # Return expected local path so layer is NOT dropped, and compositor will auto-fetch it on-demand!
+        official_url = resolve_official_kometa_image_url(p_str)
+        if official_url:
+            target_sub = official_url[len(KOMETA_IMAGES_RAW) + 1:] if official_url.startswith(f"{KOMETA_IMAGES_RAW}/") else Path(p_str).name
+            base_target = self.candidate_asset_dirs[0] if self.candidate_asset_dirs else (self.project_root / "Overlayfiles" / "dynamic_overlays" / "assets")
+            return base_target / target_sub
+
         return None
 
     def resolve_font_path(self, font_name: Optional[str]) -> Optional[str]:
@@ -2027,6 +2054,12 @@ class OverlayConfigEngine:
                 cand = fd / fallback
                 if cand.exists():
                     return str(cand)
+
+        # 3. If clean_name is an official Kometa font, return target path so compositor can auto-fetch it on-demand
+        if clean_name and clean_name in OFFICIAL_KOMETA_FONTS:
+            base_target = self.candidate_font_dirs[0] if self.candidate_font_dirs else (self.project_root / "Overlayfiles" / "dynamic_overlays" / "fonts")
+            return str(base_target / clean_name)
+
         return None
 
     def load_overlay_file(self, file_entry: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:

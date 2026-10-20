@@ -38,7 +38,7 @@ from PIL import Image, ImageFont
 import httpx
 
 from overlay_cache import OverlayCache, compute_metadata_hash
-from overlay_engine import DynamicOverlayCompositor, PORTRAIT_DIM, LANDSCAPE_DIM
+from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
 from ratings_service import resolve_media_ratings, build_multi_rating_layers, ratings_cache
 from dynamic_overlays_service import get_dynamic_overlays_settings
 
@@ -1203,7 +1203,31 @@ def build_overlay_layers_for_item(
     # 2. Safety Fallback: Direct rule construction
     layers = []
     assets_dir = overlays_dir / "assets"
-    flags_dir = assets_dir / "flags" / "square"
+    flags_dirs = [
+        assets_dir / "flag" / "square",
+        assets_dir / "flags" / "square",
+        assets_dir / "flag" / "round",
+        assets_dir / "flags" / "round",
+        assets_dir / "flag",
+        assets_dir / "flags",
+        assets_dir,
+        overlays_dir / "defaults" / "images" / "flag" / "square",
+        overlays_dir / "defaults" / "images" / "flags" / "square",
+        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flag" / "square",
+        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flags" / "square",
+        Path("/config/Overlayfiles/dynamic_overlays/assets/flag/square"),
+        Path("/config/Overlayfiles/dynamic_overlays/assets/flags/square"),
+        Path("/app/Overlayfiles/dynamic_overlays/assets/flag/square"),
+    ]
+
+    def resolve_flag_path(c_code: str) -> Path:
+        f_file = LANGUAGE_TO_FLAG_MAP.get(c_code, f"{c_code}.png")
+        for fd in flags_dirs:
+            cand = fd / f_file
+            if cand.exists():
+                return cand
+        return assets_dir / "flag" / "square" / f_file
+
     fonts_dir = overlays_dir / "fonts"
 
     # Select font
@@ -1331,51 +1355,47 @@ def build_overlay_layers_for_item(
 
                 if len(clean_detected) == 1:
                     code = clean_detected[0]
-                    flag_file = LANGUAGE_TO_FLAG_MAP.get(code, f"{code}.png")
-                    flag_path = flags_dir / flag_file
-                    if flag_path.exists():
-                        layers.append({
-                            "name": f"language_flag_{code}",
-                            "type": "image",
-                            "image_path": str(flag_path),
-                            "scale_width": flag_w,
-                            "scale_height": flag_h,
-                            "horizontal_align": "left",
-                            "horizontal_offset": h_offset,
-                            "vertical_align": "bottom",
-                            "vertical_offset": v_offset
-                        })
+                    flag_path = resolve_flag_path(code)
+                    layers.append({
+                        "name": f"language_flag_{code}",
+                        "type": "image",
+                        "image_path": str(flag_path),
+                        "scale_width": flag_w,
+                        "scale_height": flag_h,
+                        "horizontal_align": "left",
+                        "horizontal_offset": h_offset,
+                        "vertical_align": "bottom",
+                        "vertical_offset": v_offset
+                    })
                 elif len(clean_detected) >= 2:
                     # Stack flags vertically: first flag on top, second flag on bottom (Image 2 style)
                     code_top = clean_detected[0]
                     code_bottom = clean_detected[1]
-                    top_flag_file = flags_dir / LANGUAGE_TO_FLAG_MAP.get(code_top, f"{code_top}.png")
-                    bot_flag_file = flags_dir / LANGUAGE_TO_FLAG_MAP.get(code_bottom, f"{code_bottom}.png")
+                    top_flag_file = resolve_flag_path(code_top)
+                    bot_flag_file = resolve_flag_path(code_bottom)
 
-                    if bot_flag_file.exists():
-                        layers.append({
-                            "name": f"language_flag_{code_bottom}",
-                            "type": "image",
-                            "image_path": str(bot_flag_file),
-                            "scale_width": flag_w,
-                            "scale_height": flag_h,
-                            "horizontal_align": "left",
-                            "horizontal_offset": h_offset,
-                            "vertical_align": "bottom",
-                            "vertical_offset": v_offset
-                        })
-                    if top_flag_file.exists():
-                        layers.append({
-                            "name": f"language_flag_{code_top}",
-                            "type": "image",
-                            "image_path": str(top_flag_file),
-                            "scale_width": flag_w,
-                            "scale_height": flag_h,
-                            "horizontal_align": "left",
-                            "horizontal_offset": h_offset,
-                            "vertical_align": "bottom",
-                            "vertical_offset": v_offset + flag_h + 4
-                        })
+                    layers.append({
+                        "name": f"language_flag_{code_bottom}",
+                        "type": "image",
+                        "image_path": str(bot_flag_file),
+                        "scale_width": flag_w,
+                        "scale_height": flag_h,
+                        "horizontal_align": "left",
+                        "horizontal_offset": h_offset,
+                        "vertical_align": "bottom",
+                        "vertical_offset": v_offset
+                    })
+                    layers.append({
+                        "name": f"language_flag_{code_top}",
+                        "type": "image",
+                        "image_path": str(top_flag_file),
+                        "scale_width": flag_w,
+                        "scale_height": flag_h,
+                        "horizontal_align": "left",
+                        "horizontal_offset": h_offset,
+                        "vertical_align": "bottom",
+                        "vertical_offset": v_offset + flag_h + 4
+                    })
 
     # 3. Common Sense Media Rating Badge
     if "commonsense" in rule_names:
@@ -2374,6 +2394,7 @@ async def run_overlay_sync_task(
                                         base_image_bytes=base_bytes,
                                         layers=overlay_layers,
                                         canvas_type="portrait",
+                                        abort_on_missing_asset=True,
                                         debug_logging=debug_log_enabled,
                                         debug_callback=write_log,
                                         item_label=f"{item_label} (Poster)"
@@ -2458,6 +2479,10 @@ async def run_overlay_sync_task(
                                     await _inc_stats(failed=1)
                                     write_log(f"  [-] {w_tag}Failed uploading '{title}' to {s_type.upper()}: Status {getattr(resp, 'status_code', 'error')}")
 
+                            except OverlayAssetMissingError as ame:
+                                await _inc_stats(failed=1)
+                                write_log(f"  [!] Aborted overlay for '{title}' (Poster): {ame.message}. Server artwork left untouched.")
+                                logger.warning(f"[OverlaySync] Aborted overlay for '{title}' (Poster): {ame.message}")
                             except Exception as comp_err:
                                 await _inc_stats(failed=1)
                                 write_log(f"  [-] Error compositing/uploading '{title}': {comp_err}")
@@ -2509,6 +2534,7 @@ async def run_overlay_sync_task(
                                         base_image_bytes=b_base_bytes,
                                         layers=b_layers,
                                         canvas_type="landscape",
+                                        abort_on_missing_asset=True,
                                         debug_logging=debug_log_enabled,
                                         debug_callback=write_log,
                                         item_label=f"{item_label} (Backdrop)"
@@ -2589,6 +2615,10 @@ async def run_overlay_sync_task(
                                 else:
                                     await _inc_stats(failed=1)
                                     write_log(f"  [-] {w_tag}Failed uploading backdrop for '{title}' to {s_type.upper()}: Status {getattr(b_resp, 'status_code', 'error')}")
+                            except OverlayAssetMissingError as ame:
+                                await _inc_stats(failed=1)
+                                write_log(f"  [!] Aborted overlay for '{title}' (Backdrop): {ame.message}. Server artwork left untouched.")
+                                logger.warning(f"[OverlaySync] Aborted overlay for '{title}' (Backdrop): {ame.message}")
                             except Exception as b_err:
                                 await _inc_stats(failed=1)
                                 write_log(f"  [-] Error compositing/uploading backdrop for '{title}': {b_err}")
@@ -2674,64 +2704,73 @@ async def run_overlay_sync_task(
                                     )
 
                                     if scope != "incremental" or not s_current:
-                                        with open(clean_season, "rb") as csf:
-                                            s_base_bytes = csf.read()
+                                        try:
+                                            with open(clean_season, "rb") as csf:
+                                                s_base_bytes = csf.read()
 
-                                        s_comp = DynamicOverlayCompositor.composite_overlays(
-                                            base_image_bytes=s_base_bytes,
-                                            layers=s_layers,
-                                            canvas_type="portrait",
-                                            debug_logging=debug_log_enabled,
-                                            debug_callback=write_log,
-                                            item_label=f"Worker {worker_id} | '{title}' S{s_num:02d} (Season)" if concurrency > 1 else f"'{title}' S{s_num:02d} (Season)"
-                                        ) if s_layers else s_base_bytes
+                                            s_comp = DynamicOverlayCompositor.composite_overlays(
+                                                base_image_bytes=s_base_bytes,
+                                                layers=s_layers,
+                                                canvas_type="portrait",
+                                                abort_on_missing_asset=True,
+                                                debug_logging=debug_log_enabled,
+                                                debug_callback=write_log,
+                                                item_label=f"Worker {worker_id} | '{title}' S{s_num:02d} (Season)" if concurrency > 1 else f"'{title}' S{s_num:02d} (Season)"
+                                            ) if s_layers else s_base_bytes
 
-                                        s_success = False
-                                        if s_type == "plex":
-                                            s_resp = await http_client.post(
-                                                f"{s_url}/library/metadata/{s_rk}/posters",
-                                                headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
-                                                content=s_comp
-                                            )
-                                            s_success = (s_resp.status_code in [200, 201])
-                                        elif s_type in ["jellyfin", "emby"]:
-                                            b64_s = base64.b64encode(s_comp)
-                                            s_resp = await http_client.post(
-                                                f"{s_url}/Items/{s_rk}/Images/Primary",
-                                                headers=headers,
-                                                content=b64_s
-                                            )
-                                            s_success = (s_resp.status_code in [200, 201, 204])
+                                            s_success = False
+                                            if s_type == "plex":
+                                                s_resp = await http_client.post(
+                                                    f"{s_url}/library/metadata/{s_rk}/posters",
+                                                    headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
+                                                    content=s_comp
+                                                )
+                                                s_success = (s_resp.status_code in [200, 201])
+                                            elif s_type in ["jellyfin", "emby"]:
+                                                b64_s = base64.b64encode(s_comp)
+                                                s_resp = await http_client.post(
+                                                    f"{s_url}/Items/{s_rk}/Images/Primary",
+                                                    headers=headers,
+                                                    content=b64_s
+                                                )
+                                                s_success = (s_resp.status_code in [200, 201, 204])
 
-                                        if s_success:
-                                            cache.record_push(
-                                                server_type=s_type,
-                                                server_url=s_url,
-                                                item_id=str(s_rk),
-                                                asset_type="season",
-                                                clean_asset_path=str(clean_season),
-                                                clean_asset_mtime=smtime,
-                                                clean_asset_size=ssize,
-                                                clean_asset_hash=sclean_hash,
-                                                overlay_recipe_hash=s_recipe_hash,
-                                                item_title=f"{title} - Season {s_num}",
-                                                library_name=lib_name,
-                                                media_type="season",
-                                                status="synced",
-                                                server_updated_at=item.get("server_updated_at"),
-                                                detected_languages=",".join(sorted(item.get("audio_languages", []))) if item.get("audio_languages") else None,
-                                                runtime_mins=None,
-                                                edition=None,
-                                                show_status=item.get("status"),
-                                                metadata_hash=s_meta_hash,
-                                                detected_audio_codec=item.get("audio_codec"),
-                                                detected_video_format=item.get("video_format"),
-                                                detected_resolution=item.get("resolution")
-                                            )
-                                            await _inc_stats(synced=1)
-                                            write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' -> {s_type.upper()}")
-                                        else:
+                                            if s_success:
+                                                cache.record_push(
+                                                    server_type=s_type,
+                                                    server_url=s_url,
+                                                    item_id=str(s_rk),
+                                                    asset_type="season",
+                                                    clean_asset_path=str(clean_season),
+                                                    clean_asset_mtime=smtime,
+                                                    clean_asset_size=ssize,
+                                                    clean_asset_hash=sclean_hash,
+                                                    overlay_recipe_hash=s_recipe_hash,
+                                                    item_title=f"{title} - Season {s_num}",
+                                                    library_name=lib_name,
+                                                    media_type="season",
+                                                    status="synced",
+                                                    server_updated_at=item.get("server_updated_at"),
+                                                    detected_languages=",".join(sorted(item.get("audio_languages", []))) if item.get("audio_languages") else None,
+                                                    runtime_mins=None,
+                                                    edition=None,
+                                                    show_status=item.get("status"),
+                                                    metadata_hash=s_meta_hash,
+                                                    detected_audio_codec=item.get("audio_codec"),
+                                                    detected_video_format=item.get("video_format"),
+                                                    detected_resolution=item.get("resolution")
+                                                )
+                                                await _inc_stats(synced=1)
+                                                write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' -> {s_type.upper()}")
+                                            else:
+                                                await _inc_stats(failed=1)
+                                        except OverlayAssetMissingError as ame:
                                             await _inc_stats(failed=1)
+                                            write_log(f"  [!] Aborted overlay for '{title} S{s_num:02d}' (Season): {ame.message}. Server artwork left untouched.")
+                                            logger.warning(f"[OverlaySync] Aborted overlay for '{title} S{s_num:02d}' (Season): {ame.message}")
+                                        except Exception as s_comp_err:
+                                            await _inc_stats(failed=1)
+                                            write_log(f"  [-] Error compositing/uploading season '{title} S{s_num:02d}': {s_comp_err}")
                                     else:
                                         await _inc_stats(skipped=1)
 
@@ -2972,6 +3011,7 @@ async def run_overlay_sync_task(
                                             base_image_bytes=tc_base_bytes,
                                             layers=ep_layers,
                                             canvas_type="landscape",
+                                            abort_on_missing_asset=True,
                                             debug_logging=debug_log_enabled,
                                             debug_callback=write_log,
                                             item_label=f"Worker {worker_id} | '{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)" if concurrency > 1 else f"'{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)"
@@ -3024,6 +3064,10 @@ async def run_overlay_sync_task(
                                         else:
                                             await _inc_stats(failed=1)
                                             write_log(f"  [-] {w_tag}Failed uploading Titlecard '{title} S{s_num:02d}E{ep_num:02d}' to {s_type.upper()}: Status {getattr(tc_resp, 'status_code', 'error')}")
+                                except OverlayAssetMissingError as ame:
+                                    await _inc_stats(failed=1)
+                                    write_log(f"  [!] Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}' (Titlecard): {ame.message}. Server artwork left untouched.")
+                                    logger.warning(f"[OverlaySync] Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}': {ame.message}")
                                 except Exception as ep_err:
                                     logger.debug(f"Episode sync error for {title} S{s_num:02d}: {ep_err}")
                                     write_log(f"  [-] {w_tag}Error syncing episodes for {title} S{s_num:02d}: {ep_err}")
@@ -3196,6 +3240,7 @@ async def detect_media_changes(
 
     total_scanned = 0
     changed_items = []
+    dir_cache: Dict[str, Any] = {}
 
     servers_to_scan = []
     if target_server == "all":

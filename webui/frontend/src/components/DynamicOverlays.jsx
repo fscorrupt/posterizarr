@@ -2314,6 +2314,7 @@ export default function DynamicOverlays() {
       setIsBatchFetching(false);
     }
   };
+  const handleFetchAllMissing = handleBatchFetch;
 
   // 6. Custom File Upload (Multi-file enabled)
   const handleFileUpload = async (e, defaultCategory = "image") => {
@@ -13535,7 +13536,7 @@ export default function DynamicOverlays() {
                 type="button"
                 onClick={() => {
                   setShowImportImagesWarningModal(false);
-                  handleFetchAllMissing();
+                  handleBatchFetch();
                 }}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-theme-hover hover:bg-theme-hover/80 text-theme-text border border-theme transition-all"
                 title="Fetch only the specific assets needed by your current active rules"
