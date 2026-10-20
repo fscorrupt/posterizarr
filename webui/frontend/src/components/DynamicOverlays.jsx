@@ -468,6 +468,9 @@ export default function DynamicOverlays() {
   const [isAnimetafillSaving, setIsAnimetafillSaving] = useState(false);
   const [isAnimetafillRunning, setIsAnimetafillRunning] = useState(false);
   const [animetafillForce, setAnimetafillForce] = useState(false);
+  const [isAnimetafillLogExpanded, setIsAnimetafillLogExpanded] = useState(false);
+  const [isAutoScrollAnimetafillLogs, setIsAutoScrollAnimetafillLogs] = useState(true);
+  const animetafillLogsRef = useRef(null);
   const [animetafillPreviewTag, setAnimetafillPreviewTag] = useState("CANON");
   const [animetafillLibraries, setAnimetafillLibraries] = useState([]);
   const [isLoadingAnimLibraries, setIsLoadingAnimLibraries] = useState(false);
@@ -729,6 +732,12 @@ export default function DynamicOverlays() {
     }
   }, [overlaySyncLogs, isAutoScrollLogs]);
 
+  useEffect(() => {
+    if (isAutoScrollAnimetafillLogs && animetafillLogsRef.current) {
+      animetafillLogsRef.current.scrollTop = animetafillLogsRef.current.scrollHeight;
+    }
+  }, [animetafillStatus?.recent_logs, isAutoScrollAnimetafillLogs]);
+
   const fetchOverlaySyncStatus = async () => {
     try {
       const res = await fetch("/api/dynamic-overlays/sync/status");
@@ -751,6 +760,40 @@ export default function DynamicOverlays() {
     const a = document.createElement("a");
     a.href = url;
     a.download = `posterizarr_sync_${new Date().toISOString().slice(0, 10)}.log`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadAnimetafillLog = async () => {
+    try {
+      const res = await fetch("/api/logs/AniMetaFill.log?tail=0");
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.content && data.content.length > 0) {
+          const text = Array.isArray(data.content) ? data.content.join("") : String(data.content);
+          const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `animetafill_sync_${new Date().toISOString().slice(0, 10)}.log`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    if (!animetafillStatus?.recent_logs || animetafillStatus.recent_logs.length === 0) return;
+    const text = animetafillStatus.recent_logs.join("\n");
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `animetafill_sync_${new Date().toISOString().slice(0, 10)}.log`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -9735,35 +9778,6 @@ export default function DynamicOverlays() {
                 )}
               </div>
 
-              {/* 5. MYANIMELIST (MAL) JIKAN INTEGRATION */}
-              <div className="p-3.5 rounded-xl bg-theme-hover/30 border border-theme space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-black text-[11px] shrink-0">
-                      MAL
-                    </div>
-                    <div>
-                      <div className="font-semibold text-theme-text flex items-center gap-1.5">
-                        <span>MyAnimeList (MAL) via Jikan API</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">Free / Open API</span>
-                      </div>
-                      <p className="text-[11px] text-theme-muted">
-                        Supplementary tier-3 fallback for anime filler metadata & episode classifications.
-                      </p>
-                    </div>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                    <input
-                      type="checkbox"
-                      checked={animetafillConfig?.mal_enabled !== false}
-                      onChange={(e) => setAnimetafillConfig({ ...animetafillConfig, mal_enabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-theme-primary"></div>
-                  </label>
-                </div>
-              </div>
-
               {/* SAVE BUTTON */}
               <div className="pt-2">
                 <button
@@ -10347,29 +10361,90 @@ export default function DynamicOverlays() {
 
           {/* RECENT LOGS VIEWER */}
           <div className="p-6 rounded-2xl bg-theme-card border border-theme shadow-xl space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-theme-text flex items-center gap-2">
-                <FileText className="w-4 h-4 text-theme-primary" />
-                <span>Recent AniMetaFill Logs</span>
-              </h3>
-              <button
-                type="button"
-                onClick={fetchAnimetafillData}
-                className="text-xs text-theme-primary hover:underline flex items-center gap-1"
-              >
-                <RefreshCw className="w-3 h-3" /> Refresh Logs
-              </button>
+            <div className="flex items-center justify-between text-xs font-bold text-theme-muted uppercase tracking-wider">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5 text-theme-text font-bold">
+                  <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                  Recent AniMetaFill Logs
+                </span>
+                <span className="font-mono text-[10px] text-theme-muted font-normal lowercase">
+                  ({animetafillStatus?.recent_logs?.length || 0} lines)
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleDownloadAnimetafillLog}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-theme-hover border border-theme text-theme-text hover:border-theme-primary/40 text-[11px] font-semibold transition-all shadow-sm"
+                  title="Download AniMetaFill log (.log)"
+                >
+                  <Download className="w-3 h-3 text-emerald-400" />
+                  <span>Download</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAnimetafillLogExpanded(!isAnimetafillLogExpanded)}
+                  className="p-1 rounded-lg bg-theme-hover border border-theme hover:bg-theme-hover/80 text-theme-muted hover:text-theme-text transition-all shadow-sm"
+                  title={isAnimetafillLogExpanded ? "Collapse log window" : "Make log window bigger"}
+                >
+                  {isAnimetafillLogExpanded ? (
+                    <Minimize2 className="w-3.5 h-3.5 text-amber-400" />
+                  ) : (
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchAnimetafillData}
+                  className="p-1 rounded-lg bg-theme-hover border border-theme hover:bg-theme-hover/80 text-theme-muted hover:text-theme-text transition-all shadow-sm"
+                  title="Refresh logs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-black/80 border border-theme font-mono text-xs text-gray-300 max-h-64 overflow-y-auto space-y-1">
-              {animetafillStatus?.recent_logs && animetafillStatus.recent_logs.length > 0 ? (
-                animetafillStatus.recent_logs.map((line, idx) => (
-                  <div key={idx} className="whitespace-pre-wrap break-all leading-relaxed">
-                    {line}
-                  </div>
-                ))
-              ) : (
-                <div className="text-theme-muted italic">No logs recorded yet.</div>
+            <div className="relative">
+              <div
+                ref={animetafillLogsRef}
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 35;
+                  setIsAutoScrollAnimetafillLogs(isAtBottom);
+                }}
+                className={`bg-slate-950 border border-theme rounded-xl p-3.5 font-mono text-[11px] text-emerald-400/90 overflow-y-auto space-y-1 shadow-inner transition-all duration-300 ${
+                  isAnimetafillLogExpanded ? "max-h-[650px] min-h-[380px]" : "max-h-56 min-h-[160px]"
+                }`}
+              >
+                {animetafillStatus?.recent_logs && animetafillStatus.recent_logs.length > 0 ? (
+                  animetafillStatus.recent_logs.map((logLine, idx) => (
+                    <div key={idx} className="whitespace-pre-wrap leading-relaxed selection:bg-emerald-500/30">
+                      {logLine}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-theme-muted italic">No logs recorded yet.</div>
+                )}
+              </div>
+
+              {/* Smart Floating "Jump to Latest" Button when User Scrolls Up */}
+              {!isAutoScrollAnimetafillLogs && animetafillStatus?.recent_logs && animetafillStatus.recent_logs.length > 0 && (
+                <div className="absolute bottom-3 right-4 z-20 pointer-events-none">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAutoScrollAnimetafillLogs(true);
+                      if (animetafillLogsRef.current) {
+                        animetafillLogsRef.current.scrollTop = animetafillLogsRef.current.scrollHeight;
+                      }
+                    }}
+                    className="pointer-events-auto px-3 py-1.5 rounded-full bg-theme-primary hover:bg-theme-primary/90 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xl border border-white/20 transition-all"
+                    title="Resume automatic scrolling"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    <span>Jump to Latest</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>

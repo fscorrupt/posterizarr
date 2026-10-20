@@ -9,7 +9,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 from animetafill_core.database import AnimeDatabase
-from animetafill_core.providers import AnimeFillerListProvider, SimklProvider, MyAnimeListJikanProvider, EpisodeData, EpisodeCategory
+from animetafill_core.providers import AnimeFillerListProvider, SimklProvider, EpisodeData, EpisodeCategory
 from animetafill_core.classifier import EpisodeClassifierService
 from animetafill_core.plex_client import PlexScanner
 from animetafill_core.sonarr_client import SonarrTranslator
@@ -51,10 +51,8 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     afl_provider = AnimeFillerListProvider()
     simkl_conf = config.get('simkl', {})
     simkl_provider = SimklProvider(simkl_conf.get('client_id'))
-    mal_conf = config.get('mal', {})
-    mal_provider = MyAnimeListJikanProvider() if mal_conf.get('enabled', True) else None
 
-    classifier = EpisodeClassifierService(db, afl_provider, simkl_provider, mal_provider=mal_provider)
+    classifier = EpisodeClassifierService(db, afl_provider, simkl_provider)
 
     server_conf = config.get('server') or config.get('plex') or {}
     srv_type = (server_conf.get('type') or config.get('media_server') or 'plex').lower()

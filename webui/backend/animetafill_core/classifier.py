@@ -2,25 +2,23 @@ import re
 import time
 from typing import Optional, List
 from animetafill_core.database import AnimeDatabase
-from animetafill_core.providers import AnimeFillerListProvider, SimklProvider, MyAnimeListJikanProvider
+from animetafill_core.providers import AnimeFillerListProvider, SimklProvider
 from animetafill_core.logger import logger
 
 class EpisodeClassifierService:
     """
-    Coordinates the classification of anime episodes by querying multiple 
-    data providers (SIMKL, AnimeFillerList, MyAnimeList/Jikan) using a fallback priority system.
+    Coordinates the classification of anime episodes by querying data providers 
+    (SIMKL, AnimeFillerList) using a fallback priority system.
     """
     def __init__(
         self, 
         db: AnimeDatabase, 
         afl_provider: AnimeFillerListProvider,
-        simkl_provider: SimklProvider,
-        mal_provider: Optional[MyAnimeListJikanProvider] = None
+        simkl_provider: SimklProvider
     ):
         self.db = db
         self.afl_provider = afl_provider
         self.simkl_provider = simkl_provider
-        self.mal_provider = mal_provider or MyAnimeListJikanProvider()
 
     def _clean_seasonal_noise(self, title: str) -> str:
         """
@@ -135,22 +133,6 @@ class EpisodeClassifierService:
             except Exception as e:
                 logger.error(f"AFL error for {title}: {e}")
                 had_provider_error = True
-
-            # Try MyAnimeList (MAL / Jikan) - 3rd Tier Provider
-            if not episodes and self.mal_provider:
-                time.sleep(1.0)
-                logger.process(f"Searching MyAnimeList (Jikan) for '{title}'...")
-                try:
-                    eps, found, url = self.mal_provider.fetch_episodes(title, tvdb_id=tvdb_id)
-                    if found:
-                        show_found_on_any = True
-                        source_url = url
-                    if eps:
-                        episodes = eps
-                        break
-                except Exception as e:
-                    logger.error(f"MAL/Jikan error for {title}: {e}")
-                    had_provider_error = True
             
             # Mandatory anti-ban delay if all providers failed for this title
             time.sleep(2.5)

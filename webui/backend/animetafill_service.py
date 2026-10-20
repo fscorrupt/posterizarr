@@ -685,7 +685,7 @@ def get_animetafill_status() -> Dict[str, Any]:
             try:
                 with open(l_cand, "r", encoding="utf-8", errors="ignore") as lf:
                     lines = lf.readlines()
-                    recent_logs = [line.strip() for line in lines[-35:]]
+                    recent_logs = [line.strip() for line in lines[-100:]]
                 break
             except Exception:
                 pass
