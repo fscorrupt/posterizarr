@@ -647,8 +647,46 @@ class OverlayResolver:
                     })
                     self._parse_overlay_file_assets(file_name, all_referenced_assets)
 
+            # Determine media_type ('movie' or 'show')
+            lib_media_type = None
+            raw_t = str(lib_data.get("media_type") or lib_data.get("type") or "").strip().lower()
+            if raw_t in ("movie", "movies"):
+                lib_media_type = "movie"
+            elif raw_t in ("show", "shows", "tv", "tvshows"):
+                lib_media_type = "show"
+
+            if not lib_media_type:
+                try:
+                    from dynamic_overlays_service import get_media_server_library_type
+                    db_type = get_media_server_library_type(lib_name)
+                    if db_type in ("movie", "show"):
+                        lib_media_type = db_type
+                except Exception:
+                    pass
+
+            if not lib_media_type:
+                has_mov = any(
+                    "overlays_movies" in str(e.get("file", "")).lower() or
+                    str(e.get("template_variables", {}).get("builder_level", "")).lower() == "movie"
+                    for e in overlay_files if isinstance(e, dict)
+                )
+                has_tv = any(
+                    "overlays_tv" in str(e.get("file", "")).lower() or
+                    str(e.get("template_variables", {}).get("builder_level", "")).lower() in ("show", "episode", "season")
+                    for e in overlay_files if isinstance(e, dict)
+                )
+                if has_mov and not has_tv:
+                    lib_media_type = "movie"
+                elif has_tv and not has_mov:
+                    lib_media_type = "show"
+
+            if not lib_media_type:
+                is_tv = any(w in lib_name.lower() for w in ["tv", "show", "series", "serie", "season", "episode"])
+                lib_media_type = "show" if is_tv else "movie"
+
             parsed_libraries[lib_name] = {
                 "name": lib_name,
+                "media_type": lib_media_type,
                 "overlays_count": len(active_overlays),
                 "overlays": active_overlays
             }
@@ -1451,7 +1489,8 @@ class OverlayResolver:
         library_name: str,
         layout_updates: Dict[str, Dict[str, Any]],
         filename: str = "config.yml",
-        target_format: Optional[str] = None
+        target_format: Optional[str] = None,
+        media_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Updates positional variables (offsets, alignments) for overlay rules
@@ -1474,6 +1513,23 @@ class OverlayResolver:
             libraries = data.setdefault("libraries", {})
             if clean_lib_name not in libraries or not isinstance(libraries[clean_lib_name], dict):
                 libraries[clean_lib_name] = {"overlay_files": []}
+
+            # Ensure media_type is kept accurate and updated
+            eff_media_type = media_type
+            if not eff_media_type:
+                try:
+                    from dynamic_overlays_service import get_media_server_library_type
+                    eff_media_type = get_media_server_library_type(clean_lib_name)
+                except Exception:
+                    pass
+            if not eff_media_type:
+                if target_format in ("show_poster", "season_poster", "episode_card"):
+                    eff_media_type = "show"
+                elif target_format in ("movie_poster",):
+                    eff_media_type = "movie"
+
+            if eff_media_type in ("movie", "show"):
+                libraries[clean_lib_name]["media_type"] = eff_media_type
 
             overlay_files = libraries[clean_lib_name].setdefault("overlay_files", [])
             if not isinstance(overlay_files, list):
@@ -1689,6 +1745,9 @@ class OverlayResolver:
 
             try:
                 vis_libs = vis_data.setdefault("libraries", {})
+                if clean_lib_name in vis_libs:
+                    if eff_media_type in ("movie", "show"):
+                        vis_libs[clean_lib_name]["media_type"] = eff_media_type
                 if clean_lib_name in vis_libs and "badges" in vis_libs[clean_lib_name]:
                     b = vis_libs[clean_lib_name]["badges"]
                     badge_map = {
@@ -2198,15 +2257,9 @@ class OverlayConfigEngine:
                         continue
                 else:
                     # In Kometa, default builder_level is show (for TV) or movie (for Movies).
-                    # Seasons and episodes only receive overlays that explicitly set builder_level: season or episode.
-                    # Exception: Status overlay in TV show libraries naturally applies to seasons unless restricted.
-                    if is_episode:
+                    # Seasons and episodes only receive overlays that explicitly set builder_level: season, episode, or all.
+                    if is_episode or is_season:
                         continue
-                    if is_season:
-                        ov_name_check = (str(ov_key).lower() + " " + str(file_vars.get("default", "")).lower())
-                        is_status_rule = "status" in ov_name_check or any("status" in str(t).lower() for t in file_templates.keys())
-                        if not is_status_rule:
-                            continue
                     elif media_type not in ("show", "series", "movie"):
                         continue
 

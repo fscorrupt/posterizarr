@@ -3441,13 +3441,20 @@ export default function DynamicOverlays() {
         };
       }
 
+      const curLibForSave = visualConfig?.libraries?.[libName];
+      const libMetaForSave = libraries?.[libName];
+      const explicitTypeForSave = curLibForSave?.media_type || libMetaForSave?.media_type;
+      const isTvForSave = explicitTypeForSave ? explicitTypeForSave === "show" : (isLandscapeFormat(previewTemplate) || previewTemplate.includes("show") || previewTemplate.includes("season"));
+      const savedMediaType = explicitTypeForSave || (isTvForSave ? "show" : "movie");
+
       const res = await fetch("/api/dynamic-overlays/save-layout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           library_name: libName,
           layout: layoutPayload,
-          target_format: previewTemplate
+          target_format: previewTemplate,
+          media_type: savedMediaType
         })
       });
       const data = await res.json();
@@ -3535,9 +3542,11 @@ export default function DynamicOverlays() {
     const activeCfg = configOverride || visualConfig;
     const effectiveLib = libName || selectedSaveLibrary || selectedVisualLib || Object.keys(activeCfg?.libraries || {})[0];
     const curLib = activeCfg?.libraries?.[effectiveLib];
-    const isTv = curLib
-      ? curLib.media_type === "show"
-      : (libraries?.[effectiveLib]?.media_type === "show" || (effectiveLib && (effectiveLib.toLowerCase().includes("tv") || effectiveLib.toLowerCase().includes("show") || effectiveLib.toLowerCase().includes("series"))));
+    const libMeta = libraries?.[effectiveLib];
+    const explicitType = curLib?.media_type || libMeta?.media_type;
+    const isTv = explicitType
+      ? explicitType === "show"
+      : (effectiveLib && (effectiveLib.toLowerCase().includes("tv") || effectiveLib.toLowerCase().includes("show") || effectiveLib.toLowerCase().includes("series")));
 
     if (isTv) {
       return [
@@ -3865,9 +3874,11 @@ export default function DynamicOverlays() {
     }
     const activeCfg = configOverride || visualConfig;
     const curLib = activeCfg?.libraries?.[libName];
-    const isTv = curLib
-      ? curLib.media_type === "show"
-      : (libraries?.[libName]?.media_type === "show" || (libName && (libName.toLowerCase().includes("tv") || libName.toLowerCase().includes("show") || libName.toLowerCase().includes("series"))));
+    const libMeta = libraries?.[libName];
+    const explicitType = curLib?.media_type || libMeta?.media_type;
+    const isTv = explicitType
+      ? explicitType === "show"
+      : (libName && (libName.toLowerCase().includes("tv") || libName.toLowerCase().includes("show") || libName.toLowerCase().includes("series")));
     const available = getAvailableFormats(libName, configOverride);
     let targetFormat = previewTemplate;
     if (!available.some(f => f.id === targetFormat)) {
@@ -8198,17 +8209,82 @@ export default function DynamicOverlays() {
                   ])).filter(Boolean);
 
                   return availablePreviewLibs.length > 0 ? (
-                    <select
-                      value={selectedSaveLibrary || availablePreviewLibs[0] || ""}
-                      onChange={(e) => handleSelectPreviewLibrary(e.target.value)}
-                      className="bg-theme-hover border border-theme rounded-xl px-2.5 py-1.5 text-xs text-theme-text font-medium max-w-[150px] truncate"
-                      title="Library to apply layout coordinates"
-                    >
-                      {availablePreviewLibs.map(lib => (
-                        <option key={lib} value={lib}>{lib}</option>
-                      ))}
-                      <option value="__NEW__">+ New Library...</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selectedSaveLibrary || availablePreviewLibs[0] || ""}
+                        onChange={(e) => handleSelectPreviewLibrary(e.target.value)}
+                        className="bg-theme-hover border border-theme rounded-xl px-2.5 py-1.5 text-xs text-theme-text font-medium max-w-[150px] truncate"
+                        title="Library to apply layout coordinates"
+                      >
+                        {availablePreviewLibs.map(lib => (
+                          <option key={lib} value={lib}>{lib}</option>
+                        ))}
+                        <option value="__NEW__">+ New Library...</option>
+                      </select>
+
+                      {/* Media Type Segmented Toggle directly in Live Preview */}
+                      {selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" && (() => {
+                        const curLib = visualConfig?.libraries?.[selectedSaveLibrary];
+                        const libMeta = libraries?.[selectedSaveLibrary];
+                        const explicitType = curLib?.media_type || libMeta?.media_type;
+                        const isTv = explicitType
+                          ? explicitType === "show"
+                          : (selectedSaveLibrary && (selectedSaveLibrary.toLowerCase().includes("tv") || selectedSaveLibrary.toLowerCase().includes("show") || selectedSaveLibrary.toLowerCase().includes("series")));
+
+                        const handleTogglePreviewType = (newType) => {
+                          setVisualConfig((prev) => {
+                            const nextLibs = { ...prev.libraries };
+                            const existing = nextLibs[selectedSaveLibrary] || {
+                              media_type: newType,
+                              badges: {}
+                            };
+                            nextLibs[selectedSaveLibrary] = { ...existing, media_type: newType };
+                            return { ...prev, libraries: nextLibs };
+                          });
+                          const available = newType === "show"
+                            ? [
+                                { id: "show_poster", label: "Show Poster (2:3)" },
+                                { id: "season_poster", label: "Season (2:3)" },
+                                { id: "episode_card", label: "Titlecard (16:9)" },
+                                { id: "backdrop", label: "Background (16:9)" }
+                              ]
+                            : [
+                                { id: "movie_poster", label: "Movie Poster (2:3)" },
+                                { id: "backdrop", label: "Background (16:9)" }
+                              ];
+                          if (!available.some(f => f.id === previewTemplate)) {
+                            setPreviewTemplate(newType === "show" ? "show_poster" : "movie_poster");
+                          }
+                        };
+
+                        return (
+                          <div className="inline-flex p-0.5 rounded-xl bg-theme-hover border border-theme">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePreviewType("movie")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                                !isTv ? "bg-theme-primary text-white shadow-sm" : "text-theme-muted hover:text-theme-text"
+                              }`}
+                              title="Set library type to Movie"
+                            >
+                              <Film className="w-3 h-3" />
+                              <span>Movie</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePreviewType("show")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                                isTv ? "bg-theme-primary text-white shadow-sm" : "text-theme-muted hover:text-theme-text"
+                              }`}
+                              title="Set library type to TV Show"
+                            >
+                              <Tv className="w-3 h-3" />
+                              <span>TV Show</span>
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   ) : null;
                 })()}
 

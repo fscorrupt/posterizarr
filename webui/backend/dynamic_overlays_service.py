@@ -748,12 +748,40 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
         overlay_files = lib_data.get("overlay_files") or lib_data.get("overlays") or []
 
-        # 1. Check existing saved visual configuration (preserve explicit user setting)
-        media_type = None
-        if saved_libs.get(lib_name) and saved_libs[lib_name].get("media_type") in ("movie", "show"):
-            media_type = saved_libs[lib_name]["media_type"]
+        db_type = get_media_server_library_type(lib_name)
 
-        # 2. Check explicit lib_data in YAML
+        # Inspect overlay files in config for movie vs tv hints
+        has_movie_rules = any(
+            "overlays_movies" in str(e.get("file", "")).lower() or
+            str(e.get("template_variables", {}).get("builder_level", "")).lower() == "movie"
+            for e in overlay_files if isinstance(e, dict)
+        )
+        has_tv_rules = any(
+            "overlays_tv" in str(e.get("file", "")).lower() or
+            str(e.get("template_variables", {}).get("builder_level", "")).lower() in ("show", "episode", "season")
+            for e in overlay_files if isinstance(e, dict)
+        )
+
+        media_type = None
+
+        # 1. Media server library database is authoritative when available
+        if db_type in ("movie", "show"):
+            # If server database says movie, trust it unless the library only contains TV show rules
+            if db_type == "movie" and has_tv_rules and not has_movie_rules:
+                media_type = "show"
+            elif db_type == "show" and has_movie_rules and not has_tv_rules:
+                media_type = "movie"
+            else:
+                media_type = db_type
+
+        # 2. Check overlay files in config (overlays_movies.yml vs overlays_tv.yml)
+        if not media_type:
+            if has_movie_rules and not has_tv_rules:
+                media_type = "movie"
+            elif has_tv_rules and not has_movie_rules:
+                media_type = "show"
+
+        # 3. Check explicit lib_data in YAML
         if not media_type:
             raw_t = str(lib_data.get("media_type") or lib_data.get("type") or "").strip().lower()
             if raw_t in ("movie", "movies"):
@@ -761,30 +789,12 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             elif raw_t in ("show", "shows", "tv", "tvshows"):
                 media_type = "show"
 
-        # 3. Check media server library database (Plex / Emby / Jellyfin knows actual library type)
+        # 4. Check existing saved visual configuration
         if not media_type:
-            db_type = get_media_server_library_type(lib_name)
-            if db_type in ("movie", "show"):
-                media_type = db_type
+            if saved_libs.get(lib_name) and saved_libs[lib_name].get("media_type") in ("movie", "show"):
+                media_type = saved_libs[lib_name]["media_type"]
 
-        # 4. Check overlay files in config
-        if not media_type:
-            has_movie_rules = any(
-                "overlays_movies" in str(e.get("file", "")).lower() or
-                str(e.get("template_variables", {}).get("builder_level", "")).lower() == "movie"
-                for e in overlay_files if isinstance(e, dict)
-            )
-            has_tv_rules = any(
-                "overlays_tv" in str(e.get("file", "")).lower() or
-                str(e.get("template_variables", {}).get("builder_level", "")).lower() in ("show", "episode", "season")
-                for e in overlay_files if isinstance(e, dict)
-            )
-            if has_movie_rules and not has_tv_rules:
-                media_type = "movie"
-            elif has_tv_rules and not has_movie_rules:
-                media_type = "show"
-
-        # 5. Check library name keywords (only mark show if TV/shows keywords match)
+        # 5. Check library name keywords (only mark show if TV/shows keywords match; otherwise default to movie)
         if not media_type:
             is_tv = any(w in lib_name.lower() for w in ["tv", "show", "series", "serie", "season", "episode"])
             media_type = "show" if is_tv else "movie"

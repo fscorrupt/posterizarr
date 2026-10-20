@@ -317,7 +317,7 @@ def _get_default_show_libraries(media_server: str = "plex") -> List[str]:
                 conn = sqlite3.connect(db_p, timeout=5)
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT name, type FROM media_server_libraries WHERE LOWER(server_type) = ? AND is_excluded = 0",
+                    "SELECT library_name, library_type FROM media_server_libraries WHERE LOWER(server_type) = ? AND is_excluded = 0",
                     (media_server.lower(),)
                 )
                 rows = cur.fetchall()

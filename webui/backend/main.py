@@ -20279,6 +20279,7 @@ class SaveLayoutRequest(BaseModel):
     layout: Dict[str, Dict[str, Any]]
     filename: str = "config.yml"
     target_format: Optional[str] = None
+    media_type: Optional[str] = None
 
 
 @app.post("/api/dynamic-overlays/save-layout")
@@ -20286,7 +20287,13 @@ async def save_dynamic_overlay_layout(req: SaveLayoutRequest):
     """Save drag-and-drop layout coordinates directly to a library's overlay rules."""
     if not kometa_resolver:
         return {"success": False, "error": "Dynamic overlays service is uninitialized."}
-    res = kometa_resolver.save_library_layout(req.library_name, req.layout, req.filename, target_format=req.target_format)
+    res = kometa_resolver.save_library_layout(
+        req.library_name,
+        req.layout,
+        req.filename,
+        target_format=req.target_format,
+        media_type=req.media_type
+    )
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
         fresh_vis = {}
