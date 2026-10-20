@@ -414,14 +414,11 @@ def get_animetafill_config() -> Dict[str, Any]:
 
     merged = {**defaults, **app_cfg, **db_cfg}
     primary_server = _detect_configured_server()
-    media_server = str(merged.get("media_server", primary_server)).lower().strip()
-    if media_server not in ("plex", "jellyfin", "emby"):
-        media_server = primary_server
+    user_chosen_server = db_cfg.get("media_server") or app_cfg.get("media_server")
+    if user_chosen_server and str(user_chosen_server).lower().strip() in ("plex", "jellyfin", "emby"):
+        media_server = str(user_chosen_server).lower().strip()
     else:
-        # If stored media_server is 'plex' but plex is disabled in Posterizarr and another server is enabled, auto-select the active server
-        pj_config = _get_posterizarr_config()
-        if media_server == "plex" and str(pj_config.get("PlexPart", {}).get("UsePlex", "")).lower() == "false" and primary_server != "plex":
-            media_server = primary_server
+        media_server = primary_server
     merged["media_server"] = media_server
 
     # Preselect target libraries strictly of type 'show' if empty

@@ -5,8 +5,7 @@ from typing import List, Dict, Optional
 import requests
 
 try:
-    from animetafill_core.logger import Logger
-    logger = Logger()
+    from animetafill_core.logger import logger
 except Exception:
     class DummyLogger:
         def info(self, m): print(f"[MediaScanner] {m}")
@@ -40,12 +39,15 @@ class MediaServerScanner:
     # PLEX IMPLEMENTATION
     # -------------------------------------------------------------
     def _connect_plex(self):
-        if not self._plex_server and self.url and self.token:
+        if not self.url or not self.token:
+            logger.error(f"[Plex] Cannot connect to Plex: URL or token is missing (URL='{self.url}', Token={'***' if self.token else 'EMPTY'}).")
+            return None
+        if not self._plex_server:
             try:
                 from plexapi.server import PlexServer
                 self._plex_server = PlexServer(self.url, self.token)
             except Exception as e:
-                logger.error(f"[Plex] Error connecting to Plex: {e}")
+                logger.error(f"[Plex] Error connecting to Plex at {self.url}: {e}")
                 return None
         return self._plex_server
 

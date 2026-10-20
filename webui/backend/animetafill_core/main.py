@@ -77,6 +77,8 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     target_libraries = server_conf.get('libraries') or config.get('target_libraries') or config.get('plex', {}).get('libraries') or []
     shows = scanner.get_shows_from_libraries(target_libraries)
     logger.info(f"Found {len(shows)} shows across {len(target_libraries)} {srv_type.upper()} libraries.")
+    if not shows:
+        logger.warning(f"No shows were found in {srv_type.upper()} library/libraries ({target_libraries}). Please ensure your media server is reachable and target libraries are configured.")
 
     json_export_path = os.path.join(data_dir, "anime_database.json")
 

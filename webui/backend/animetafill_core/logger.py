@@ -42,10 +42,6 @@ class Logger:
                 encoding='utf-8'
             )
             
-            # Per-run rotation: Force rollover if current log has data
-            if os.path.exists(self.log_file) and os.path.getsize(self.log_file) > 0:
-                handler.doRollover()
-
             # Configure dedicated Logger for AniMetaFill (do NOT modify root logger)
             self._file_logger = logging.getLogger("AniMetaFill")
             self._file_logger.setLevel(logging.INFO)
@@ -67,9 +63,14 @@ class Logger:
 
     def _log_to_file(self, level: str, msg: str):
         try:
-            line = f"{level: <8} | {msg}"
             if hasattr(self, '_file_logger') and self._file_logger:
-                self._file_logger.info(line)
+                lvl = (level or "INFO").upper().strip()
+                if lvl in ("ERROR", "FATAL"):
+                    self._file_logger.error(f"{lvl: <8} | {msg}")
+                elif lvl in ("WARN", "WARNING"):
+                    self._file_logger.warning(f"{lvl: <8} | {msg}")
+                else:
+                    self._file_logger.info(f"{lvl: <8} | {msg}")
         except Exception:
             pass
 
