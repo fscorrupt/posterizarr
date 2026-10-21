@@ -20,7 +20,7 @@ import threading
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Union, Tuple
 
 logger = logging.getLogger("overlay_cache")
 def compute_metadata_hash(
@@ -188,6 +188,38 @@ class OverlayCache:
                 logger.error(f"[OverlayCache] Error reading entry ({server_type}, {item_id}, {asset_type}): {e}")
                 return None
 
+    def load_cache_map(
+        self,
+        server_type: Optional[str] = None
+    ) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
+        """
+        Load all cached entries into an in-memory dictionary for high-performance bulk operations.
+        Keyed by (server_type, str(item_id), asset_type) -> Dict[str, Any].
+        Eliminates per-item SQLite query overhead during large library scans.
+        """
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                if server_type:
+                    cursor.execute(
+                        "SELECT * FROM dynamic_overlay_cache WHERE server_type = ?",
+                        (server_type.lower(),)
+                    )
+                else:
+                    cursor.execute("SELECT * FROM dynamic_overlay_cache")
+                rows = cursor.fetchall()
+                conn.close()
+                cache_map: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+                for row in rows:
+                    d = dict(row)
+                    key = (str(d.get("server_type", "")).lower(), str(d.get("item_id", "")), str(d.get("asset_type", "")).lower())
+                    cache_map[key] = d
+                return cache_map
+            except Exception as e:
+                logger.error(f"[OverlayCache] Error loading bulk cache map: {e}")
+                return {}
+
     def check_cache_status(
         self,
         server_type: str,
@@ -209,7 +241,7 @@ class OverlayCache:
         if not entry:
             return False, "Not in cache (initial sync)"
 
-        if entry.get("status") != "synced":
+        if entry.get("status") not in ("synced", "skipped"):
             st = entry.get("status") or "unknown"
             return False, f"Previous sync status was '{st}'"
 
@@ -221,7 +253,13 @@ class OverlayCache:
         if cached_clean_hash != clean_asset_hash:
             diff_reasons.append("Clean artwork file changed")
 
-        if cached_recipe_hash != overlay_recipe_hash:
+        empty_hashes = ("none", "", "d751713988987e9331980363e24189ce")
+        is_cached_empty = cached_recipe_hash in empty_hashes
+        is_current_empty = overlay_recipe_hash in empty_hashes
+
+        if is_cached_empty and is_current_empty:
+            pass  # Both indicate that no overlay rules apply
+        elif cached_recipe_hash != overlay_recipe_hash:
             diff_reasons.append("Overlay recipe/rules modified")
 
         # Metadata signature drift check
@@ -320,11 +358,24 @@ class OverlayCache:
         server_type: str,
         item_id: str,
         asset_type: str,
-        server_updated_at: str
+        server_updated_at: str,
+        cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None
     ) -> bool:
         """Update server_updated_at timestamp for a cached entry without changing hashes."""
         if not server_updated_at:
             return False
+        st_lower = server_type.lower()
+        it_str = str(item_id)
+        at_lower = asset_type.lower()
+        key = (st_lower, it_str, at_lower)
+
+        # Zero-write skip: if memory cache already has this exact server_updated_at, skip DB write!
+        if cache_map is not None and key in cache_map:
+            cached_val = cache_map[key].get("server_updated_at")
+            if str(cached_val or "") == str(server_updated_at):
+                return True
+            cache_map[key]["server_updated_at"] = str(server_updated_at)
+
         with self.lock:
             try:
                 conn = self._get_connection()
@@ -335,7 +386,7 @@ class OverlayCache:
                         SET server_updated_at = ?
                         WHERE server_type = ? AND item_id = ? AND asset_type = ?
                         """,
-                        (str(server_updated_at), server_type.lower(), str(item_id), asset_type.lower())
+                        (str(server_updated_at), st_lower, it_str, at_lower)
                     )
                 conn.close()
                 return True
@@ -367,10 +418,40 @@ class OverlayCache:
         metadata_hash: Optional[str] = None,
         detected_audio_codec: Optional[str] = None,
         detected_video_format: Optional[str] = None,
-        detected_resolution: Optional[str] = None
+        detected_resolution: Optional[str] = None,
+        cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None
     ) -> bool:
         """Upsert a record marking that dynamic overlays were successfully pushed with full metadata signature."""
         now_iso = datetime.now().isoformat()
+        st_lower = server_type.lower()
+        it_str = str(item_id)
+        at_lower = asset_type.lower()
+        if cache_map is not None:
+            cache_map[(st_lower, it_str, at_lower)] = {
+                "server_type": st_lower,
+                "server_url": server_url or "",
+                "item_id": it_str,
+                "media_type": media_type,
+                "asset_type": at_lower,
+                "clean_asset_path": str(clean_asset_path or ""),
+                "clean_asset_mtime": float(clean_asset_mtime or 0.0),
+                "clean_asset_size": int(clean_asset_size or 0),
+                "clean_asset_hash": clean_asset_hash or "",
+                "overlay_recipe_hash": overlay_recipe_hash,
+                "last_pushed_at": now_iso,
+                "item_title": item_title,
+                "library_name": library_name,
+                "status": status,
+                "server_updated_at": str(server_updated_at) if server_updated_at is not None else None,
+                "detected_languages": detected_languages,
+                "runtime_mins": runtime_mins,
+                "edition": edition,
+                "show_status": show_status,
+                "metadata_hash": metadata_hash,
+                "detected_audio_codec": detected_audio_codec,
+                "detected_video_format": detected_video_format,
+                "detected_resolution": detected_resolution
+            }
         with self.lock:
             try:
                 conn = self._get_connection()

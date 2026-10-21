@@ -2123,14 +2123,26 @@ async def run_overlay_sync_task(
 
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
+    log_file_handle = None
+    try:
+        log_file_handle = open(log_file_path, "a", encoding="utf-8", buffering=1)
+    except Exception:
+        pass
+
     def write_log(msg: str):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line = f"[{now_str}] {msg}\n"
-        try:
-            with open(log_file_path, "a", encoding="utf-8") as lf:
-                lf.write(line)
-        except Exception:
-            pass
+        if log_file_handle and not log_file_handle.closed:
+            try:
+                log_file_handle.write(line)
+            except Exception:
+                pass
+        else:
+            try:
+                with open(log_file_path, "a", encoding="utf-8") as lf:
+                    lf.write(line)
+            except Exception:
+                pass
         logger.info(f"[OverlaySync] {msg}")
 
     # Check Master Feature Toggle (Disabled by default)
@@ -2487,6 +2499,17 @@ async def run_overlay_sync_task(
                 debug_log_enabled = bool(dyn_settings.get("debug_logging", False))
                 concurrency = max(1, min(32, int(dyn_settings.get("concurrency", 4))))
 
+                # Pre-load in-memory cache map for high-performance instant O(1) lookups
+                cache_map = cache.load_cache_map(server_type=s_type)
+                write_log(f"Loaded {len(cache_map)} cached overlay fingerprints for {s_type.upper()} into memory.")
+
+                # Check if AniMetaFill integration is active once for the library
+                try:
+                    from animetafill_service import is_animetafill_enabled
+                    anim_enabled = is_animetafill_enabled()
+                except Exception:
+                    anim_enabled = False
+
                 write_log(f"Processing {len(media_items)} items on {s_type.upper()} (Concurrency: {concurrency}, Debug Logging: {debug_log_enabled})...")
 
                 dir_cache: Dict[str, Any] = {}
@@ -2518,13 +2541,6 @@ async def run_overlay_sync_task(
                         write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> No library overlay rules configured")
                         return
 
-                    # Master Dynamic Overlay Settings
-                    dyn_settings = get_dynamic_overlays_settings()
-                    backdrop_enabled = dyn_settings.get("backdrop_overlays_enabled", True)
-                    rating_sources = dyn_settings.get("rating_sources", ["imdb", "tmdb", "tomatoes", "tomatoesaudience"])
-                    mdblist_key = dyn_settings.get("mdblist_api_key") or ""
-                    omdb_key = dyn_settings.get("omdb_api_key") or ""
-
                     # Inspect active rules to identify what metadata domains are actually required
                     rules_str = json.dumps([r for r in lib_rules if isinstance(r, dict)]).lower()
                     needs_languages = any(k in rules_str for k in ["language", "flag", "lang_"])
@@ -2537,9 +2553,9 @@ async def run_overlay_sync_task(
                     )
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
 
-                    # Fast cache lookup for poster & backdrop paths
-                    cached_entry = cache.get_entry(s_type, str(item_id), "poster") if scope in ("incremental", "changed") else None
-                    cached_backdrop_entry = cache.get_entry(s_type, str(item_id), "background") if (backdrop_enabled and scope in ("incremental", "changed")) else None
+                    # Fast in-memory cache lookup for poster & backdrop paths
+                    cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None
+                    cached_backdrop_entry = cache_map.get((s_type.lower(), str(item_id), "background")) if (backdrop_enabled and scope in ("incremental", "changed")) else None
 
                     # Locate clean assets on disk (reuse known cached path or search disk with indexed dir_cache)
                     clean_asset = None
@@ -2596,8 +2612,6 @@ async def run_overlay_sync_task(
                             if not cached_entry or cached_entry.get("status") != "synced":
                                 need_plex_detail = True
                             elif str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or ""):
-                                need_plex_detail = True
-                            elif not cached_entry.get("detected_languages") and (needs_languages or needs_audio):
                                 need_plex_detail = True
                             else:
                                 c_langs = [l.strip().lower() for l in (cached_entry.get("detected_languages") or "").split(",") if l.strip()]
@@ -2690,7 +2704,9 @@ async def run_overlay_sync_task(
                                 logger.debug(f"Metadata stream query error for {title}: {m_err}")
 
                     # For TV Shows across all server types: resolve canonical status, networks, and content rating from TMDb API
-                    if m_type == "show" and needs_status:
+                    # Fast-path: if status is already cached and server_updated_at matches, skip remote TMDb HTTP call!
+                    needs_tmdb = (scope not in ("incremental", "changed")) or not cached_entry or str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or "")
+                    if m_type == "show" and needs_status and (needs_tmdb or not item.get("status")):
                         if item.get("tmdb_id"):
                             tmdb_token = creds.get("tmdb_token")
                             show_info = await resolve_tmdb_show_info(
@@ -2739,7 +2755,7 @@ async def run_overlay_sync_task(
                             except Exception as st_save_err:
                                 logger.debug(f"[OverlaySync] Failed to persist show status for {title}: {st_save_err}")
                     elif m_type == "movie" and needs_status:
-                        if not item.get("content_rating") and item.get("tmdb_id"):
+                        if not item.get("content_rating") and item.get("tmdb_id") and needs_tmdb:
                             tmdb_token = creds.get("tmdb_token")
                             m_cr = await resolve_tmdb_movie_content_rating(item["tmdb_id"], tmdb_token, http_client)
                             if m_cr:
@@ -2826,11 +2842,11 @@ async def run_overlay_sync_task(
                                     )
                                 else:
                                     # Check if this item previously had an overlay applied by us
-                                    cached_entry = cache.get_entry(s_type, str(item_id), "poster")
+                                    cached_entry = cached_entry or (cache_map.get((s_type.lower(), str(item_id), "poster")) if cache_map is not None else cache.get_entry(s_type, str(item_id), "poster"))
                                     was_previously_overlaid = (
                                         cached_entry
                                         and cached_entry.get("status") == "synced"
-                                        and cached_entry.get("overlay_recipe_hash") not in (None, "", "none")
+                                        and cached_entry.get("overlay_recipe_hash") not in (None, "", "none", "d751713988987e9331980363e24189ce")
                                     )
                                     if not was_previously_overlaid:
                                         # Never overlaid and no overlays apply -> leave server completely untouched!
@@ -2846,31 +2862,34 @@ async def run_overlay_sync_task(
                                             overlay_recipe_hash="none",
                                             metadata_hash=meta_hash,
                                             status="skipped",
-                                            server_updated_at=item.get("server_updated_at")
+                                            server_updated_at=item.get("server_updated_at"),
+                                            cache_map=cache_map
                                         )
-                                        return
-                                    composited_jpeg = base_bytes
+                                        composited_jpeg = None
+                                    else:
+                                        composited_jpeg = base_bytes
 
                                 upload_success = False
                                 comp_phase = f"uploading to {s_type.upper()}"
-                                if s_type == "plex":
-                                    upload_url = f"{s_url}/library/metadata/{item_id}/posters"
-                                    headers = {
-                                        "X-Plex-Token": creds.get("token"),
-                                        "Content-Type": "image/jpeg"
-                                    }
-                                    resp = await http_client.post(upload_url, headers=headers, content=composited_jpeg)
-                                    upload_success = (resp.status_code in [200, 201])
-                                elif s_type in ["jellyfin", "emby"]:
-                                    upload_url = f"{s_url}/Items/{item_id}/Images/Primary"
-                                    headers = {
-                                        "X-Emby-Token": creds.get("api_key"),
-                                        "Authorization": f'MediaBrowser Token="{creds.get("api_key")}"',
-                                        "Content-Type": "image/jpeg"
-                                    }
-                                    b64_img = base64.b64encode(composited_jpeg)
-                                    resp = await http_client.post(upload_url, headers=headers, content=b64_img)
-                                    upload_success = (resp.status_code in [200, 201, 204])
+                                if composited_jpeg is not None:
+                                    if s_type == "plex":
+                                        upload_url = f"{s_url}/library/metadata/{item_id}/posters"
+                                        headers = {
+                                            "X-Plex-Token": creds.get("token"),
+                                            "Content-Type": "image/jpeg"
+                                        }
+                                        resp = await http_client.post(upload_url, headers=headers, content=composited_jpeg)
+                                        upload_success = (resp.status_code in [200, 201])
+                                    elif s_type in ["jellyfin", "emby"]:
+                                        upload_url = f"{s_url}/Items/{item_id}/Images/Primary"
+                                        headers = {
+                                            "X-Emby-Token": creds.get("api_key"),
+                                            "Authorization": f'MediaBrowser Token="{creds.get("api_key")}"',
+                                            "Content-Type": "image/jpeg"
+                                        }
+                                        b64_img = base64.b64encode(composited_jpeg)
+                                        resp = await http_client.post(upload_url, headers=headers, content=b64_img)
+                                        upload_success = (resp.status_code in [200, 201, 204])
 
                                 if upload_success:
                                     cache.record_push(
@@ -2895,14 +2914,15 @@ async def run_overlay_sync_task(
                                         metadata_hash=meta_hash,
                                         detected_audio_codec=item.get("audio_codec"),
                                         detected_video_format=item.get("video_format"),
-                                        detected_resolution=item.get("resolution")
+                                        detected_resolution=item.get("resolution"),
+                                        cache_map=cache_map
                                     )
                                     await _inc_stats(synced=1)
                                     if overlay_layers:
                                         write_log(f"  [+] {w_tag}Overlaid & Synced: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
                                     else:
                                         write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
-                                else:
+                                elif composited_jpeg is not None:
                                     await _inc_stats(failed=1)
                                     http_detail = format_http_failure(resp)
                                     write_log(f"  [-] {w_tag}Failed uploading '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
@@ -2921,7 +2941,7 @@ async def run_overlay_sync_task(
                             await _inc_stats(skipped=1)
                             write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> Up-to-date")
                             if item.get("server_updated_at"):
-                                cache.update_server_updated_at(s_type, str(item_id), "poster", item.get("server_updated_at"))
+                                cache.update_server_updated_at(s_type, str(item_id), "poster", item.get("server_updated_at"), cache_map=cache_map)
 
                         if _cancel_requested:
                             return
@@ -2935,7 +2955,7 @@ async def run_overlay_sync_task(
                         b_layers = build_overlay_layers_for_item(b_item_meta, lib_rules, overlays_dir, is_landscape=True)
                         b_recipe_hash = compute_layers_recipe_hash(b_layers)
 
-                        b_cached_entry = cache.get_entry(s_type, str(item_id), "background")
+                        b_cached_entry = cached_backdrop_entry or (cache_map.get((s_type.lower(), str(item_id), "background")) if cache_map is not None else cache.get_entry(s_type, str(item_id), "background"))
                         b_is_current, b_cache_reason = cache.check_cache_status(
                             server_type=s_type,
                             item_id=str(item_id),
@@ -2987,7 +3007,7 @@ async def run_overlay_sync_task(
                                     b_was_previously_overlaid = (
                                         b_cached_entry
                                         and b_cached_entry.get("status") == "synced"
-                                        and b_cached_entry.get("overlay_recipe_hash") not in (None, "", "none")
+                                        and b_cached_entry.get("overlay_recipe_hash") not in (None, "", "none", "d751713988987e9331980363e24189ce")
                                     )
                                     if not b_was_previously_overlaid:
                                         await _inc_stats(skipped=1)
@@ -3002,7 +3022,8 @@ async def run_overlay_sync_task(
                                             overlay_recipe_hash="none",
                                             metadata_hash=b_recipe_hash,
                                             status="skipped",
-                                            server_updated_at=item.get("server_updated_at")
+                                            server_updated_at=item.get("server_updated_at"),
+                                            cache_map=cache_map
                                         )
                                         b_comp = None
                                     else:
@@ -3053,7 +3074,8 @@ async def run_overlay_sync_task(
                                         metadata_hash=meta_hash if clean_asset else None,
                                         detected_audio_codec=item.get("audio_codec"),
                                         detected_video_format=item.get("video_format"),
-                                        detected_resolution=item.get("resolution")
+                                        detected_resolution=item.get("resolution"),
+                                        cache_map=cache_map
                                     )
                                     await _inc_stats(synced=1)
                                     if b_layers:
@@ -3078,7 +3100,7 @@ async def run_overlay_sync_task(
                             await _inc_stats(skipped=1)
                             write_log(f"  [-] {w_tag}Skipped Backdrop: '{title}' ({lib_name}) -> Up-to-date")
                             if item.get("server_updated_at"):
-                                cache.update_server_updated_at(s_type, str(item_id), "background", item.get("server_updated_at"))
+                                cache.update_server_updated_at(s_type, str(item_id), "background", item.get("server_updated_at"), cache_map=cache_map)
 
                     if _cancel_requested:
                         return
@@ -3109,6 +3131,31 @@ async def run_overlay_sync_task(
                             # If no season posters and no titlecards exist on disk for this show, skip all season/episode calls!
                             if not has_season_posters and not has_titlecards:
                                 return
+
+                            # FAST-PATH: If show itself is up-to-date, server timestamp unchanged, and no clean artwork in show directory was modified since last sync:
+                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry:
+                                c_up = cached_entry.get("server_updated_at")
+                                s_up = item.get("server_updated_at")
+                                if c_up and s_up and str(c_up) == str(s_up):
+                                    last_p = cached_entry.get("last_pushed_at")
+                                    last_p_ts = 0.0
+                                    if last_p:
+                                        try:
+                                            last_p_ts = datetime.fromisoformat(last_p).timestamp()
+                                        except Exception:
+                                            last_p_ts = 0.0
+                                    def _safe_m(f_obj):
+                                        try:
+                                            return f_obj.stat().st_mtime
+                                        except Exception:
+                                            return 0.0
+
+                                    max_art_mtime = max((_safe_m(f) for f in files_map.values()), default=0.0)
+                                    if tc_map:
+                                        max_art_mtime = max(max_art_mtime, max((_safe_m(f) for f in tc_map.values()), default=0.0))
+                                    if last_p_ts > 0 and (max_art_mtime - last_p_ts) <= 2.0:
+                                        write_log(f"  [-] {w_tag}Skipped Show Children: '{title}' -> Seasons & Episodes Up-to-date (No media or artwork changes)")
+                                        return
 
                             seasons_to_process = []
                             if s_type == "plex":
@@ -3170,7 +3217,7 @@ async def run_overlay_sync_task(
                                         audio_codec=item.get("audio_codec"),
                                         video_format=item.get("video_format")
                                     )
-                                    s_cached_entry = cache.get_entry(s_type, str(s_rk), "season")
+                                    s_cached_entry = cache_map.get((s_type.lower(), str(s_rk), "season"))
                                     s_current, s_cache_reason = cache.check_cache_status(
                                         server_type=s_type,
                                         item_id=str(s_rk),
@@ -3246,7 +3293,8 @@ async def run_overlay_sync_task(
                                                     metadata_hash=s_meta_hash,
                                                     detected_audio_codec=item.get("audio_codec"),
                                                     detected_video_format=item.get("video_format"),
-                                                    detected_resolution=item.get("resolution")
+                                                    detected_resolution=item.get("resolution"),
+                                                    cache_map=cache_map
                                                 )
                                                 await _inc_stats(synced=1)
                                                 write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {s_sync_reason}]")
@@ -3268,7 +3316,7 @@ async def run_overlay_sync_task(
                                         await _inc_stats(skipped=1)
                                         write_log(f"  [-] {w_tag}Skipped Season: '{title} S{s_num:02d}' -> Up-to-date")
                                         if item.get("server_updated_at"):
-                                            cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}", "season", item.get("server_updated_at"))
+                                            cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}", "season", item.get("server_updated_at"), cache_map=cache_map)
 
                                 # 8. Discover and sync Titlecards (Episodes) for this Season
                                 if has_titlecards:
@@ -3465,12 +3513,6 @@ async def run_overlay_sync_task(
                                             effective_ep_rules = list(lib_rules)
                                             anime_cfg = overlays_dir / "configs" / "anime_overlays.yml"
                                             if anime_cfg.exists():
-                                                try:
-                                                    from animetafill_service import is_animetafill_enabled
-                                                    anim_enabled = is_animetafill_enabled()
-                                                except Exception:
-                                                    anim_enabled = False
-
                                                 has_anime_rule = any(
                                                     str(r.get("file", "")).endswith("anime_overlays.yml")
                                                     for r in effective_ep_rules if isinstance(r, dict)
@@ -3496,7 +3538,7 @@ async def run_overlay_sync_task(
                                                 has_hdr=ep_data.get("has_hdr"),
                                                 has_dolby_vision=ep_data.get("has_dolby_vision")
                                             )
-                                            ep_cached_entry = cache.get_entry(s_type, str(ep_rk), "titlecard")
+                                            ep_cached_entry = cache_map.get((s_type.lower(), str(ep_rk), "titlecard"))
                                             ep_current, ep_cache_reason = cache.check_cache_status(
                                                 server_type=s_type,
                                                 item_id=str(ep_rk),
@@ -3513,7 +3555,7 @@ async def run_overlay_sync_task(
                                                 await _inc_stats(skipped=1)
                                                 write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Up-to-date")
                                                 if item.get("server_updated_at"):
-                                                    cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}e{ep_num}", "episode", item.get("server_updated_at"))
+                                                    cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}e{ep_num}", "episode", item.get("server_updated_at"), cache_map=cache_map)
                                                 continue
 
                                             ep_sync_reason = f"Forced sync (scope={scope})" if scope != "incremental" else ep_cache_reason
@@ -3578,7 +3620,8 @@ async def run_overlay_sync_task(
                                                         metadata_hash=ep_meta_hash,
                                                         detected_audio_codec=ep_data.get("audio_codec"),
                                                         detected_video_format=ep_data.get("video_format"),
-                                                        detected_resolution=ep_data.get("resolution")
+                                                        detected_resolution=ep_data.get("resolution"),
+                                                        cache_map=cache_map
                                                     )
                                                     await _inc_stats(synced=1)
                                                     write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
@@ -3674,6 +3717,11 @@ async def run_overlay_sync_task(
         return res
     finally:
         _is_sync_running = False
+        if log_file_handle and not log_file_handle.closed:
+            try:
+                log_file_handle.close()
+            except Exception:
+                pass
 
 # ==============================================================================
 # FAST BULK CHANGE AUTODETECTION
@@ -3789,6 +3837,7 @@ async def detect_media_changes(
             creds = creds_map[s_type]
             s_url = creds["url"]
             excluded = [str(x).lower() for x in creds.get("excluded", [])]
+            cache_map = cache.load_cache_map(s_type)
 
             if s_type == "plex":
                 token = creds.get("token")
@@ -3847,7 +3896,7 @@ async def detect_media_changes(
                                         continue
 
                                     total_scanned += 1
-                                    cached = cache.get_entry(s_type, str(rk), "poster")
+                                    cached = cache_map.get((s_type.lower(), str(rk), "poster"))
                                     item_changes = []
                                     detail_notes = []
 
@@ -4079,7 +4128,7 @@ async def detect_media_changes(
                                         continue
 
                                     total_scanned += 1
-                                    cached = cache.get_entry(s_type, str(it_id), "poster")
+                                    cached = cache_map.get((s_type.lower(), str(it_id), "poster"))
                                     item_changes = []
                                     detail_notes = []
 
