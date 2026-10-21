@@ -153,9 +153,9 @@ class EpisodeClassifierService:
 
         # Step 3: Upsert to DB (Tier 1)
         if episodes:
-            print(f"[Classifier] Successfully found {len(episodes)} episodes. Updating local DB...")
+            logger.info(f"[Classifier] Successfully found {len(episodes)} episodes. Updating local DB...")
             self.db.upsert_episodes(main_title, episodes, source_url=source_url)
             return True, source_url
         else:
-            print(f"[Classifier] Failed to find any episode data for {main_title} in all tiers.")
+            logger.warning(f"[Classifier] Failed to find any episode data for {main_title} in all tiers.")
             return False, None

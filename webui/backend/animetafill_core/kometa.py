@@ -5,6 +5,7 @@ import re
 import shutil
 import glob
 from typing import Dict, List
+from animetafill_core.logger import logger
 
 class KometaYamlGenerator:
     """
@@ -48,7 +49,7 @@ class KometaYamlGenerator:
                             "episodes": [ep.upper() for ep in episodes]
                         })
         except Exception as e:
-            print(f"  Warning: Could not parse existing YAML: {e}")
+            logger.warning(f"Could not parse existing YAML: {e}")
 
         return results
 
@@ -86,7 +87,7 @@ class KometaYamlGenerator:
         try:
             os.makedirs(self.output_dir, exist_ok=True)
         except PermissionError:
-            print(f"\n  Error: No permission to create or write to the Kometa output directory: '{self.output_dir}'")
+            logger.error(f"No permission to create or write to the Kometa output directory: '{self.output_dir}'")
             raise PermissionError(f"No permission to create or write to the Kometa output directory: '{self.output_dir}'")
 
     def _get_templates(self) -> dict:

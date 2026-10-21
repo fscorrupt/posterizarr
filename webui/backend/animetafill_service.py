@@ -16,8 +16,9 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from animetafill_core.logger import logger as core_logger
 
-logger = logging.getLogger("animetafill_service")
+logger = logging.getLogger("AniMetaFill.service")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -854,7 +855,6 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
         LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
         os.environ["LOG_FILE"] = str(LOG_FILE_PATH)
         try:
-            from animetafill_core.logger import logger as core_logger
             if hasattr(core_logger, "reconfigure_log_file"):
                 core_logger.reconfigure_log_file(str(LOG_FILE_PATH))
         except Exception:

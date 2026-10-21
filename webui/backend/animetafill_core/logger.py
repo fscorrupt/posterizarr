@@ -14,7 +14,7 @@ if sys.platform == "win32":
 
 class Logger:
     """
-    Custom logger providing categorized, color-simulated console output 
+    Custom logger providing categorized file output for AniMetaFill and the UI.
     """
     def __init__(self):
         self.log_file = self._resolve_default_log_file()
@@ -39,6 +39,9 @@ class Logger:
 
     def _setup_handler(self):
         log_dir = os.path.dirname(self.log_file)
+        self._file_logger = logging.getLogger("AniMetaFill")
+        self._file_logger.setLevel(logging.INFO)
+        self._file_logger.propagate = False
         try:
             if log_dir and not os.path.exists(log_dir):
                 os.makedirs(log_dir, exist_ok=True)
@@ -50,18 +53,16 @@ class Logger:
                 encoding='utf-8'
             )
             
-            self._file_logger = logging.getLogger("AniMetaFill")
-            self._file_logger.setLevel(logging.INFO)
-            self._file_logger.propagate = False
-            
             for h in self._file_logger.handlers[:]:
                 self._file_logger.removeHandler(h)
+                h.close()
                 
             formatter = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
             handler.setFormatter(formatter)
             self._file_logger.addHandler(handler)
-        except Exception as e:
-            print(f"  Warning: Logger fallback to console only ({e})")
+        except Exception:
+            if not self._file_logger.handlers:
+                self._file_logger.addHandler(logging.NullHandler())
 
     def reconfigure_log_file(self, new_log_file: str):
         """Update file destination dynamically if environment sets LOG_FILE."""
@@ -89,47 +90,38 @@ class Logger:
             pass
 
     def info(self, msg: str):
-        print(f"  Info: {msg}")
         self._log_to_file("INFO", msg)
 
     def success(self, msg: str):
-        print(f"  Success: {msg}")
         self._log_to_file("SUCCESS", msg)
 
     def warning(self, msg: str):
-        print(f"  Warning: {msg}")
         self._log_to_file("WARNING", msg)
 
     def error(self, msg: str):
-        print(f"  Error: {msg}")
         self._log_to_file("ERROR", msg)
 
     def system(self, msg: str):
-        print(f"\n[SYSTEM] {msg}")
         self._log_to_file("SYSTEM", msg)
 
     def db(self, msg: str):
-        print(f"  Database: {msg}")
         self._log_to_file("DATABASE", msg)
 
     def process(self, msg: str):
-        print(f"  Sync: {msg}")
         self._log_to_file("SYNC", msg)
 
     def search(self, provider: str, msg: str):
         """Logs the start of a provider-specific search."""
         full_msg = f"[{provider}] Looking for: {msg}"
-        print(f"  Search: {full_msg}")
         self._log_to_file("SEARCH", full_msg)
 
     def match(self, provider: str, msg: str):
         """Logs a successful match on a specific provider."""
         full_msg = f"[{provider}] Identified: {msg}"
-        print(f"  Match: {full_msg}")
         self._log_to_file("MATCH", full_msg)
 
     def divider(self):
-        print("-" * 50)
+        self._log_to_file("INFO", "-" * 50)
 
 # Single instance
 logger = Logger()

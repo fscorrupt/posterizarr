@@ -1,5 +1,6 @@
 from plexapi.server import PlexServer
 from typing import List
+from animetafill_core.logger import logger
 
 class PlexScanner:
     """
@@ -17,7 +18,7 @@ class PlexScanner:
             try:
                 self._server = PlexServer(self.url, self.token)
             except Exception as e:
-                print(f"[Plex] Error connecting to Plex: {e}")
+                logger.error(f"[Plex] Error connecting to Plex: {e}")
                 return None
         return self._server
 
@@ -54,7 +55,7 @@ class PlexScanner:
             
             return mapping
         except Exception as e:
-            print(f"[Plex] Error building fallback mapping for '{title}': {e}")
+            logger.error(f"[Plex] Error building fallback mapping for '{title}': {e}")
             return {}
 
     def get_shows_from_libraries(self, libraries: List[str]) -> List[str]:
@@ -68,11 +69,11 @@ class PlexScanner:
         show_titles = set()
         for lib_name in libraries:
             try:
-                print(f"[Plex] Scanning library: {lib_name}")
+                logger.info(f"[Plex] Scanning library: {lib_name}")
                 section = server.library.section(lib_name)
                 for show in section.all():
                     show_titles.add(show.title)
             except Exception as e:
-                print(f"[Plex] Error scanning library '{lib_name}': {e}")
+                logger.error(f"[Plex] Error scanning library '{lib_name}': {e}")
 
         return list(show_titles)

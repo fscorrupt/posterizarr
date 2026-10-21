@@ -4,14 +4,7 @@ import urllib.parse
 from typing import List, Dict, Optional
 import requests
 
-try:
-    from animetafill_core.logger import logger
-except Exception:
-    class DummyLogger:
-        def info(self, m): print(f"[MediaScanner] {m}")
-        def error(self, m): print(f"[MediaScanner ERROR] {m}")
-        def success(self, m): print(f"[MediaScanner SUCCESS] {m}")
-    logger = DummyLogger()
+from animetafill_core.logger import logger
 
 class MediaServerScanner:
     """

@@ -5,6 +5,7 @@ import os
 from bs4 import BeautifulSoup
 from animetafill_core.database import AnimeDatabase
 from animetafill_core.providers import AnimeFillerListProvider
+from animetafill_core.logger import logger
 
 def load_config():
     config_path = 'config.yml'
@@ -26,7 +27,7 @@ def scrape_all():
     }
 
     try:
-        print(f"[Bootstrap] Fetching master show list from {url}...")
+        logger.info(f"[Bootstrap] Fetching master show list from {url}...")
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
 
@@ -42,10 +43,10 @@ def scrape_all():
                 if slug and slug not in slugs:
                     slugs.append(slug)
 
-        print(f"[Bootstrap] Found {len(slugs)} potential shows to scrape.")
+        logger.info(f"[Bootstrap] Found {len(slugs)} potential shows to scrape.")
 
         for i, slug in enumerate(slugs):
-            print(f"[Bootstrap] Processing show {i+1}/{len(slugs)}: {slug}")
+            logger.process(f"[Bootstrap] Processing show {i+1}/{len(slugs)}: {slug}")
 
             # Use the provider to fetch and parse
             # We use the slug as the "title" here because AFLProvider slugifies it anyway
@@ -55,9 +56,9 @@ def scrape_all():
                 # Use a somewhat formatted title for the DB (replace hyphens with spaces and title case)
                 guessed_title = slug.replace('-', ' ').title()
                 db.upsert_episodes(guessed_title, episodes)
-                print(f"[Bootstrap] Successfully saved {len(episodes)} episodes for {guessed_title}.")
+                logger.success(f"[Bootstrap] Successfully saved {len(episodes)} episodes for {guessed_title}.")
             else:
-                print(f"[Bootstrap] No episodes found for {slug}.")
+                logger.warning(f"[Bootstrap] No episodes found for {slug}.")
 
             # Respectful rate limiting
             time.sleep(2.0)
@@ -65,10 +66,10 @@ def scrape_all():
         # Export to JSON for the blueprint
         json_export_path = "/data/anime_database.json"
         db.export_to_json(json_export_path)
-        print("[Bootstrap] Mass scrape complete and exported to JSON.")
+        logger.success("[Bootstrap] Mass scrape complete and exported to JSON.")
 
     except Exception as e:
-        print(f"[Bootstrap] Critical error during mass scrape: {e}")
+        logger.error(f"[Bootstrap] Critical error during mass scrape: {e}")
 
 if __name__ == "__main__":
     scrape_all()

@@ -290,7 +290,7 @@ def main():
     Application entry point. 
     Handles both immediate CLI execution and background daemon scheduling.
     """
-    print("""
+    logger.system("""
     ==================================================
        AniMetaFill
        Automated Anime Filler Classification
