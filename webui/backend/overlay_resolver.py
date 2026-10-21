@@ -2236,6 +2236,9 @@ class OverlayConfigEngine:
         Resolves active overlays, queues, groups, weights, suppressions, and returns
         canonical layer dictionaries for DynamicOverlayCompositor.
         """
+        from copy import deepcopy
+        from json import dumps
+
         applied_overlays: List[Dict[str, Any]] = []
         queue_overlays: Dict[str, List[Dict[str, Any]]] = {}
         all_queues: Dict[str, List[Dict[str, Any]]] = {}
@@ -2263,6 +2266,14 @@ class OverlayConfigEngine:
             if not res or len(res) < 4:
                 continue
             file_overlays, file_queues, file_templates, file_vars = res
+            definitions_key = dumps([file_overlays, file_templates, file_vars], sort_keys=True, default=str)
+            if not hasattr(self, "_expanded_rules_cache"):
+                self._expanded_rules_cache = {}
+            if definitions_key not in self._expanded_rules_cache:
+                if len(self._expanded_rules_cache) >= 64:
+                    self._expanded_rules_cache.pop(next(iter(self._expanded_rules_cache)))
+                self._expanded_rules_cache[definitions_key] = {}
+            expanded_definitions = self._expanded_rules_cache[definitions_key]
 
             # Resolve queues for this file
             for q_name, q_def in file_queues.items():
@@ -2300,7 +2311,12 @@ class OverlayConfigEngine:
                     elif media_type not in ("show", "series", "movie"):
                         continue
 
-                expanded_ov = self._expand_overlay_definition(str(ov_key), ov_def, file_templates, file_vars)
+                definition_key = str(ov_key)
+                if definition_key not in expanded_definitions:
+                    expanded_definitions[definition_key] = self._expand_overlay_definition(
+                        definition_key, deepcopy(ov_def), file_templates, file_vars
+                    )
+                expanded_ov = deepcopy(expanded_definitions[definition_key])
                 if not expanded_ov:
                     continue
 
