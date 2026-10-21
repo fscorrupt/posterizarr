@@ -188,6 +188,9 @@ def build_attr_snapshot(item: Dict[str, Any]) -> str:
         "has_dolby_vision": True if item.get("has_dolby_vision") else None,
         "content_rating": item.get("content_rating") or None,
         "network": item.get("network") or None,
+        "networks": item.get("networks") or [],
+        "studio": item.get("studio") or None,
+        "audio_track_title": item.get("audio_track_title") or None,
     }, sort_keys=True)
 
 # ==============================================================================
@@ -2689,6 +2692,7 @@ async def run_overlay_sync_task(
                     assets_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
                     # Query Plex detailed metadata for audio streams, guids, and native ratings only if required
                     plex_xml_bytes = None
+                    needs_snapshot_refresh = False
                     if s_type == "plex":
                         # Fast incremental check: if server_updated_at matches cache, reuse cached detected_languages & attributes
                         need_plex_detail = (scope not in ("incremental", "changed"))
@@ -2720,6 +2724,9 @@ async def run_overlay_sync_task(
                                     item["resolution"] = cached_entry["detected_resolution"]
                                 try:
                                     snap = json.loads(cached_entry["attr_snapshot"])
+                                    needs_snapshot_refresh = not all(key in snap for key in ("networks", "studio", "audio_track_title"))
+                                    if needs_snapshot_refresh:
+                                        need_plex_detail = True
                                     if snap.get("has_hdr"):
                                         item["has_hdr"] = True
                                     if snap.get("has_dolby_vision"):
@@ -2728,11 +2735,16 @@ async def run_overlay_sync_task(
                                         item["content_rating"] = snap["content_rating"]
                                     if snap.get("network") and not item.get("network"):
                                         item["network"] = snap["network"]
+                                    for key in ("networks", "studio", "audio_track_title"):
+                                        if snap.get(key) and not item.get(key):
+                                            item[key] = snap[key]
+                                    if item.get("audio_track_title"):
+                                        item["audio_title"] = item["audio_track_title"]
                                 except Exception:
                                     need_plex_detail = True
 
                         # Skip detailed XML fetch if rules do NOT require audio streams, languages, HDR, or ratings
-                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings):
+                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh):
                             need_plex_detail = False
 
                         if need_plex_detail:
@@ -2806,7 +2818,7 @@ async def run_overlay_sync_task(
 
                     # For TV Shows across all server types: resolve canonical status, networks, and content rating from TMDb API
                     # Fast-path: if status is already cached and server_updated_at matches, skip remote TMDb HTTP call!
-                    needs_tmdb = (scope not in ("incremental", "changed")) or not cached_entry or not cached_entry.get("attr_snapshot") or str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or "")
+                    needs_tmdb = (scope not in ("incremental", "changed")) or needs_snapshot_refresh or not cached_entry or not cached_entry.get("attr_snapshot") or str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or "")
                     if m_type == "show" and needs_status and (needs_tmdb or not item.get("status")):
                         if item.get("tmdb_id"):
                             tmdb_token = creds.get("tmdb_token")
