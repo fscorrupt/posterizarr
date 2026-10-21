@@ -447,7 +447,7 @@
     if ($global:runspaceStats) { $global:runspaceStats['SkipTBACount'] = 0 }
     $global:SkipJapTitleCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['SkipJapTitleCount'] = 0 }
-    
+
     # Initialize Summary Counts to prevent leakage between scheduled runs
     $FallbackCount = $null
     $TextlessCount = $null
@@ -988,7 +988,7 @@
     }
 
     # Notify Dynamic Overlays service to composite and push newly created artwork
-    if ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled) {
+    if (($posterCount -gt 0) -and ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled)) {
         try {
             $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
             $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"

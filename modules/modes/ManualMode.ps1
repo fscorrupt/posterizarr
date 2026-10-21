@@ -1177,10 +1177,10 @@
                             $uri = "$PlexUrl/library/metadata/$FinalTargetID/$($plexTargetType)"
 
                             Write-Entry -Subtext "Attempting Plex Post to: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
-                            
+
                             # Using -InFile instead of -Body with ReadAllBytes to prevent "Error while copying content to a stream"
                             $Upload = Invoke-WebRequest -Uri $uri -Method Post -Headers $extraPlexHeaders -InFile ([Management.Automation.WildcardPattern]::Escape($PosterImage)) -ContentType 'image/jpeg' -ErrorAction Stop
-                            
+
                             Write-Entry -Subtext "Manual Plex Upload Success: $PosterImage" -Path $global:configLogging -Color Green -log Info
                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
                         }
@@ -1285,7 +1285,7 @@
     }
 
     # Notify Dynamic Overlays service to composite and push newly created artwork
-    if ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled) {
+    if (($posterCount -gt 0) -and ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled)) {
         try {
             $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
             $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
