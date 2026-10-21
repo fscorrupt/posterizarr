@@ -5952,7 +5952,7 @@ async def get_upload_diagnostics():
     return diagnostics
 
 
-def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental"):
+def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental", target_items: Optional[List[Dict[str, Any]]] = None):
     """Auto-trigger Dynamic Overlays Sync in background when new media is created."""
     try:
         # Check master Dynamic Overlays feature setting first
@@ -5967,6 +5967,21 @@ def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental"):
         if not webui_cfg.get("auto_overlay_sync", webui_cfg.get("auto_kometa_overlay_sync", False)):
             return
 
+        # If target_items was explicitly passed as empty list, no assets were produced; avoid unnecessary crawl
+        if target_items is not None and len(target_items) == 0:
+            logger.info(f"[OverlaySync] No newly created assets detected after {source}. Overlay sync not needed.")
+            return
+
+        # If target_items was not passed, check if logs_watcher buffered any pending image choices
+        if target_items is None and "logs_watcher" in globals() and logs_watcher and hasattr(logs_watcher, "pending_overlay_rows"):
+            try:
+                with logs_watcher.csv_broadcast_lock:
+                    if logs_watcher.pending_overlay_rows:
+                        target_items = list(logs_watcher.pending_overlay_rows)
+                        logs_watcher.pending_overlay_rows = []
+            except Exception:
+                pass
+
         try:
             from overlay_sync_service import (
                 run_overlay_sync_task,
@@ -5979,7 +5994,8 @@ def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental"):
             logger.info("[OverlaySync] A sync task is already running. Skipping auto-trigger.")
             return
 
-        logger.info(f"[OverlaySync] Auto-triggering Dynamic Overlays Sync ({scope}) after {source}...")
+        item_count_str = f" for {len(target_items)} target item(s)" if target_items else ""
+        logger.info(f"[OverlaySync] Auto-triggering Dynamic Overlays Sync ({scope}{item_count_str}) after {source}...")
 
         def _run_bg():
             try:
@@ -5990,7 +6006,8 @@ def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental"):
                         library="all",
                         base_dir=BASE_DIR,
                         config_path=CONFIG_PATH,
-                        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log"
+                        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+                        target_items=target_items
                     )
                 )
             except Exception as task_err:
@@ -6444,7 +6461,7 @@ async def get_runtime_stats():
 
 @app.get("/api/runtime-history")
 async def get_runtime_history(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     mode: Optional[str] = Query(None),
 ):
@@ -6452,7 +6469,7 @@ async def get_runtime_history(
     Get runtime history with pagination
 
     Args:
-        limit: Maximum number of entries to return (1-500)
+        limit: Maximum number of entries to return (1-5000)
         offset: Number of entries to skip
         mode: Filter by mode (optional)
     """
@@ -6482,8 +6499,29 @@ async def get_runtime_history(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _parse_runtime_asset_date(val: Any) -> Optional[datetime]:
+    """Helper to robustly parse date strings in ISO, EU, or localized formats"""
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val
+    s = str(val).strip()
+    # DD.MM.YYYY, HH:MM:SS or DD.MM.YYYY HH:MM:SS
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", s)
+    if m:
+        return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)), int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0))
+    # YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+    m2 = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", s)
+    if m2:
+        return datetime(int(m2.group(1)), int(m2.group(2)), int(m2.group(3)), int(m2.group(4) or 0), int(m2.group(5) or 0), int(m2.group(6) or 0))
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
 @app.get("/api/runtime-history/{run_id}/assets")
-async def get_runtime_run_assets(run_id: int):
+async def get_runtime_run_assets(run_id: int, wide: bool = Query(False)):
     """
     Get image choices/assets created during a specific runtime history execution
     """
@@ -6495,17 +6533,52 @@ async def get_runtime_run_assets(run_id: int):
         if not entry:
             return {"success": False, "assets": [], "message": "Run entry not found"}
 
-        start_str = entry.get("start_time") or entry.get("timestamp")
-        end_str = entry.get("end_time") or entry.get("timestamp")
+        start_raw = entry.get("start_time") or entry.get("timestamp")
+        end_raw = entry.get("end_time") or entry.get("timestamp")
+        duration = entry.get("runtime_seconds") or 0
 
         assets = []
-        if DATABASE_AVAILABLE and db and start_str:
-            s = str(start_str).replace("T", " ")[:19]
-            e = str(end_str).replace("T", " ")[:19] if end_str else s
-            if s > e:
-                s, e = e, s
-            raw_assets = db.get_assets_created_between(s, e)
-            assets = [dict(row) for row in raw_assets]
+        if DATABASE_AVAILABLE and db and start_raw:
+            dt_start = _parse_runtime_asset_date(start_raw)
+            dt_end = _parse_runtime_asset_date(end_raw)
+
+            if dt_start:
+                if not dt_end or dt_end < dt_start:
+                    dt_end = dt_start + timedelta(seconds=max(duration, 30))
+                elif dt_end == dt_start and duration > 0:
+                    dt_end = dt_start + timedelta(seconds=duration)
+
+                # Primary query window: 60-second buffer (or 30 min if wide=True) before start and after end
+                buffer_sec = 1800 if wide else 60
+                dt_query_start = dt_start - timedelta(seconds=buffer_sec)
+                dt_query_end = dt_end + timedelta(seconds=buffer_sec)
+
+                s_iso = dt_query_start.strftime("%Y-%m-%d %H:%M:%S")
+                e_iso = dt_query_end.strftime("%Y-%m-%d %H:%M:%S")
+                s_eu = dt_query_start.strftime("%d.%m.%Y %H:%M:%S")
+                e_eu = dt_query_end.strftime("%d.%m.%Y %H:%M:%S")
+
+                raw_assets = db.get_assets_created_between(s_iso, e_iso, s_eu=s_eu, e_eu=e_eu, run_id=run_id)
+                assets = [dict(row) for row in raw_assets]
+
+                # Fallback: if total_images > 0 and 0 assets found, try wider window (±30 min)
+                expected_images = entry.get("total_images") or 0
+                if not assets and expected_images > 0 and not wide:
+                    dt_query_start_w = dt_start - timedelta(minutes=30)
+                    dt_query_end_w = dt_end + timedelta(minutes=30)
+                    s_iso_w = dt_query_start_w.strftime("%Y-%m-%d %H:%M:%S")
+                    e_iso_w = dt_query_end_w.strftime("%Y-%m-%d %H:%M:%S")
+                    s_eu_w = dt_query_start_w.strftime("%d.%m.%Y %H:%M:%S")
+                    e_eu_w = dt_query_end_w.strftime("%d.%m.%Y %H:%M:%S")
+                    raw_assets_w = db.get_assets_created_between(s_iso_w, e_iso_w, s_eu=s_eu_w, e_eu=e_eu_w, run_id=run_id)
+                    assets = [dict(row) for row in raw_assets_w]
+            else:
+                s = str(start_raw).replace("T", " ")[:19]
+                e = str(end_raw).replace("T", " ")[:19] if end_raw else s
+                if s > e:
+                    s, e = e, s
+                raw_assets = db.get_assets_created_between(s, e, run_id=run_id)
+                assets = [dict(row) for row in raw_assets]
 
         return {
             "success": True,

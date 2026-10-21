@@ -339,6 +339,20 @@ function SeasonGallery() {
     return path;
   };
 
+  const getSeasonNumberDisplay = (image) => {
+    const filename = image?.name || (image?.path ? image.path.split(/[\\/]/).pop() : "") || "";
+    const match = filename.match(/season[_\s-]*(\d+)/i) || filename.match(/^s(\d+)/i) || filename.match(/[_\s-]s(\d+)/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      return num === 0 ? "Season 0 (Specials)" : `Season ${num}`;
+    }
+    if (/specials?/i.test(filename)) {
+      return "Specials";
+    }
+    const clean = filename.replace(/\.[^/.]+$/, "");
+    return clean || "Season";
+  };
+
   // Helper function to get media type from filename/path
   const getMediaType = (assetPath, assetName) => {
     const path = assetPath.toLowerCase();
@@ -1089,10 +1103,16 @@ function SeasonGallery() {
 
                 <div className="p-3 border-t border-theme-border bg-theme-card">
                   <p
-                    className="text-sm text-theme-text truncate"
+                    className="text-sm font-semibold text-theme-text truncate"
                     title={formatDisplayPath(image.path)}
                   >
                     {image.path.split(/[\\/]/).slice(-2, -1)[0] || image.name}
+                  </p>
+                  <p
+                    className="text-xs font-medium text-theme-primary truncate mt-0.5"
+                    title={getSeasonNumberDisplay(image)}
+                  >
+                    {getSeasonNumberDisplay(image)}
                   </p>
                   <p className="text-xs text-theme-muted mt-1">
                     {(image.size / 1024).toFixed(2)} KB

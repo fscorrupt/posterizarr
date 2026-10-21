@@ -1857,6 +1857,192 @@ def get_last_sync_result() -> Optional[Dict[str, Any]]:
     return _last_sync_result
 
 
+def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, Any]]:
+    rk = it.get("ratingKey")
+    if not rk:
+        return None
+    t = it.get("title", "")
+    rf = None
+    part = it.find(".//Part")
+    part_file = part.get("file") if part is not None else None
+    if part_file:
+        rf = Path(part_file).parent.name
+    loc = it.find(".//Location")
+    if not rf and loc is not None and loc.get("path"):
+        rf = Path(loc.get("path")).name
+    if not rf:
+        rf = t
+
+    res_val = "1080p"
+    audio_c = None
+    video_f = None
+    med_elem = it.find(".//Media")
+    if med_elem is not None:
+        w = int(med_elem.get("width") or 0)
+        vr = med_elem.get("videoResolution")
+        if w >= 3840 or vr in ["4k", "2160"]:
+            res_val = "4K"
+        elif vr:
+            res_val = f"{vr}p"
+        audio_c = med_elem.get("audioCodec")
+        video_f = med_elem.get("videoProfile")
+    elif any(k in (sec_title or "").lower() or k in (rf or "").lower() or (part_file and k in part_file.lower()) for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+
+    if any(k in (sec_title or "").lower() for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+
+    dur = int(it.get("duration") or 0)
+    aud_rating = it.get("audienceRating") or it.get("rating")
+
+    year_val = None
+    if it.get("year"):
+        try:
+            year_val = int(it.get("year"))
+        except Exception:
+            pass
+
+    ed_val = it.get("editionTitle") or it.get("edition") or extract_edition(part_file, rf, t)
+    s_up_at = it.get("updatedAt") or it.get("addedAt")
+
+    p_imdb = None
+    p_tmdb = None
+    p_tvdb = None
+    for g_node in it.findall(".//Guid"):
+        gid = g_node.get("id", "")
+        if gid.startswith("imdb://"):
+            p_imdb = gid[7:]
+        elif gid.startswith("tmdb://"):
+            p_tmdb = gid[7:]
+        elif gid.startswith("tvdb://"):
+            p_tvdb = gid[7:]
+
+    return {
+        "id": rk,
+        "title": t,
+        "year": year_val,
+        "library_name": sec_title,
+        "media_type": sec_type,
+        "root_folder": rf,
+        "filepath": part_file,
+        "edition": ed_val,
+        "server_updated_at": s_up_at,
+        "resolution": res_val,
+        "rating": aud_rating,
+        "audience_rating": aud_rating,
+        "content_rating": it.get("contentRating"),
+        "runtime_mins": dur // 60000 if dur > 0 else None,
+        "studio": it.get("studio"),
+        "audio_codec": audio_c,
+        "video_format": video_f,
+        "imdb_id": p_imdb,
+        "tmdb_id": p_tmdb,
+        "tvdb_id": p_tvdb
+    }
+
+
+def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, Any]]:
+    it_id = item_obj.get("Id")
+    if not it_id:
+        return None
+    it_name = item_obj.get("Name", "")
+    it_type = "movie" if item_obj.get("Type") == "Movie" else "show"
+    it_path = item_obj.get("Path", "")
+    it_p = Path(it_path) if it_path else None
+    if it_p:
+        rf = it_p.name if (it_type == "show" or not it_p.suffix) else it_p.parent.name
+    else:
+        rf = it_name
+    streams = item_obj.get("MediaStreams", [])
+    if not streams and item_obj.get("MediaSources"):
+        for ms in item_obj.get("MediaSources", []):
+            streams.extend(ms.get("MediaStreams", []))
+
+    audio_langs = []
+    item_audio_c = None
+    item_audio_t = None
+    item_has_dv = False
+    item_has_hdr = False
+    vid_w = item_obj.get("Width") or 0
+    vid_h = item_obj.get("Height") or 0
+    for s in streams:
+        stype = s.get("Type")
+        if stype == "Audio":
+            lc = s.get("Language") or s.get("DisplayLanguage")
+            if lc:
+                norm_l = LANGUAGE_MAP.get(lc.lower(), lc.lower())
+                if norm_l not in audio_langs:
+                    audio_langs.append(norm_l)
+            if not item_audio_c and s.get("Codec"):
+                item_audio_c = s.get("Codec")
+            if not item_audio_t:
+                item_audio_t = s.get("Title") or s.get("DisplayTitle")
+        elif stype == "Video":
+            sw = s.get("Width") or 0
+            sh = s.get("Height") or 0
+            if sw > vid_w:
+                vid_w = sw
+            if sh > vid_h:
+                vid_h = sh
+            v_range = str(s.get("VideoRange") or "").lower()
+            v_title = str(s.get("VideoDoViTitle") or s.get("DisplayTitle") or "").lower()
+            if "dovi" in v_title or "dolby vision" in v_title or s.get("VideoDoViTitle"):
+                item_has_dv = True
+            if "hdr" in v_range or "hdr" in v_title or s.get("VideoRange") == "HDR":
+                item_has_hdr = True
+
+    res_val = "1080p"
+    if any(k in (lib_name or "").lower() for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+    elif vid_w >= 3800 or vid_h >= 2000:
+        res_val = "4K"
+    elif any(k in (it_path or "").lower() or k in (rf or "").lower() for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+    elif vid_w >= 1900 or vid_h >= 1000:
+        res_val = "1080p"
+    elif vid_w >= 1200 or vid_h >= 700:
+        res_val = "720p"
+    elif vid_w > 0:
+        res_val = f"{vid_h}p" if vid_h else f"{vid_w}p"
+    else:
+        res_val = "1080p"
+
+    p_ids = item_obj.get("ProviderIds") or {}
+    studios_list = [st.get("Name") for st in item_obj.get("Studios", []) if st.get("Name")]
+    primary_network = studios_list[0] if studios_list else None
+    ed_val = item_obj.get("Edition") or item_obj.get("Version") or extract_edition(it_path, it_name)
+    s_up_at = item_obj.get("DateModified") or item_obj.get("DateCreated")
+
+    return {
+        "id": it_id,
+        "title": it_name,
+        "year": item_obj.get("ProductionYear"),
+        "imdb_id": p_ids.get("Imdb"),
+        "tmdb_id": p_ids.get("Tmdb"),
+        "tvdb_id": p_ids.get("Tvdb"),
+        "library_name": lib_name,
+        "media_type": it_type,
+        "root_folder": rf,
+        "filepath": it_path,
+        "edition": ed_val,
+        "server_updated_at": s_up_at,
+        "resolution": res_val,
+        "rating": item_obj.get("CommunityRating"),
+        "critic_rating": item_obj.get("CriticRating"),
+        "content_rating": item_obj.get("OfficialRating") or item_obj.get("CustomRating"),
+        "runtime_mins": (item_obj.get("RunTimeTicks", 0) // 600000000) or None,
+        "status": item_obj.get("Status"),
+        "audio_languages": audio_langs,
+        "audio_codec": item_audio_c,
+        "audio_track_title": item_audio_t,
+        "has_dolby_vision": item_has_dv,
+        "has_hdr": item_has_hdr,
+        "network": primary_network,
+        "networks": studios_list,
+        "studio": primary_network
+    }
+
+
 async def run_overlay_sync_task(
     target_server: str = "all",
     scope: str = "incremental",
@@ -1864,11 +2050,13 @@ async def run_overlay_sync_task(
     base_dir: Optional[Path] = None,
     assets_dir: Optional[Path] = None,
     config_path: Optional[Path] = None,
-    log_file_path: Optional[Path] = None
+    log_file_path: Optional[Path] = None,
+    target_items: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
     Main execution worker for Dynamic Overlay Sync.
     Executes in-memory compositing of clean assets and uploads overlaid artwork to media servers.
+    Supports instant target mode when newly generated assets are passed via target_items.
     """
     global _is_sync_running, _last_sync_result, _cancel_requested
 
@@ -1910,15 +2098,36 @@ async def run_overlay_sync_task(
     except Exception as check_err:
         logger.debug(f"Could not verify dynamic overlays enabled state: {check_err}")
 
-    # Pre-sync: if AniMetaFill is enabled, trigger quick anime classification first
-    try:
-        from animetafill_service import is_animetafill_enabled, run_animetafill_sync
-        if is_animetafill_enabled():
-            with open(log_file_path, "a", encoding="utf-8") as f:
-                f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Notice: Running AniMetaFill anime classification prior to overlay compositing...\n")
-            run_animetafill_sync(force=False)
-    except Exception as a_err:
-        logger.debug(f"[OverlaySync] AniMetaFill pre-run skipped: {a_err}")
+    # Fast targeted item handling
+    is_target_mode = bool(target_items)
+    target_libs = set()
+    target_roots = set()
+    target_titles = set()
+    if is_target_mode:
+        for t_item in target_items:
+            lib_v = str(t_item.get("LibraryName") or t_item.get("library_name") or "").strip().lower()
+            if lib_v and lib_v != "all":
+                target_libs.add(lib_v)
+            root_v = str(t_item.get("Rootfolder") or t_item.get("root_folder") or "").strip().lower()
+            if root_v:
+                target_roots.add(root_v)
+            title_v = str(t_item.get("Title") or t_item.get("title") or "").strip().lower()
+            if title_v:
+                target_titles.add(title_v)
+
+        target_roots = {r for r in target_roots if r}
+        target_titles = {t for t in target_titles if t}
+
+    # Pre-sync: if AniMetaFill is enabled, trigger quick anime classification first (skip on fast single-item targeted runs)
+    if not is_target_mode:
+        try:
+            from animetafill_service import is_animetafill_enabled, run_animetafill_sync
+            if is_animetafill_enabled():
+                with open(log_file_path, "a", encoding="utf-8") as f:
+                    f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Notice: Running AniMetaFill anime classification prior to overlay compositing...\n")
+                run_animetafill_sync(force=False)
+        except Exception as a_err:
+            logger.debug(f"[OverlaySync] AniMetaFill pre-run skipped: {a_err}")
 
     overlays_dir = base_dir / "Overlayfiles" / "dynamic_overlays"
     if not overlays_dir.exists():
@@ -1945,7 +2154,11 @@ async def run_overlay_sync_task(
     try:
         write_log("=" * 70)
         write_log("STARTING DYNAMIC OVERLAYS SYNC TASK")
-        write_log(f"Target Server: {target_server.upper()} | Scope: {scope.upper()} | Target Library: {library}")
+        write_log(f"Target Server: {target_server.upper()} | Scope: {('TARGETED' if is_target_mode else scope).upper()} | Target Library: {library}")
+        if is_target_mode:
+            write_log(f"Instant Target Mode Active: Processing {len(target_items)} newly generated item(s).")
+            if target_libs:
+                write_log(f"Target Library Filter: {', '.join(target_libs)}")
         write_log("Clean originals in AssetPath remain untouched. Overlays composited in RAM.")
         write_log("=" * 70)
 
@@ -2047,101 +2260,63 @@ async def run_overlay_sync_task(
                                     continue
                                 if library == "all" and sec_title in excluded:
                                     continue
+                                if is_target_mode and target_libs and sec_title.lower() not in target_libs and not any(tl in sec_title.lower() for tl in target_libs):
+                                    continue
                                 matched_k, matched_rules = resolve_library_rules(sec_title, sec_type, library_rules_map)
                                 if matched_k == "none" or not matched_rules:
                                     write_log(f"  [>] Library '{sec_title}' is not configured for dynamic overlays. Skipping.")
                                     continue
 
-                                # Query section items with bulk GUIDs (IMDb, TMDb, TVDb)
-                                items_resp = await http_client.get(
-                                    f"{s_url}/library/sections/{sec_key}/all?includeGuids=1",
-                                    headers={"X-Plex-Token": token, "Accept": "application/xml"}
-                                )
-                                if items_resp.status_code == 200:
-                                    i_root = fromstring(items_resp.content)
-                                    tag = ".//Directory" if sec_type == "show" else ".//Video"
-                                    for it in i_root.findall(tag):
-                                        rk = it.get("ratingKey")
-                                        t = it.get("title", "")
-                                        rf = None
-                                        part = it.find(".//Part")
-                                        part_file = part.get("file") if part is not None else None
-                                        if part_file:
-                                            rf = Path(part_file).parent.name
-                                        loc = it.find(".//Location")
-                                        if not rf and loc is not None and loc.get("path"):
-                                            rf = Path(loc.get("path")).name
-                                        if not rf:
-                                            rf = t
-
-                                        # Media attributes
-                                        res_val = "1080p"
-                                        audio_c = None
-                                        video_f = None
-                                        med_elem = it.find(".//Media")
-                                        if med_elem is not None:
-                                            w = int(med_elem.get("width") or 0)
-                                            vr = med_elem.get("videoResolution")
-                                            if w >= 3840 or vr in ["4k", "2160"]:
-                                                res_val = "4K"
-                                            elif vr:
-                                                res_val = f"{vr}p"
-                                            audio_c = med_elem.get("audioCodec")
-                                            video_f = med_elem.get("videoProfile")
-                                        elif any(k in (sec_title or "").lower() or k in (rf or "").lower() or k in (part_file or "").lower() for k in ["4k", "uhd", "2160"]):
-                                            res_val = "4K"
-
-                                        if any(k in (sec_title or "").lower() for k in ["4k", "uhd", "2160"]):
-                                            res_val = "4K"
-
-                                        dur = int(it.get("duration") or 0)
-                                        aud_rating = it.get("audienceRating") or it.get("rating")
-
-                                        year_val = None
-                                        if it.get("year"):
+                                sec_media_items = []
+                                if is_target_mode and (target_titles or target_roots):
+                                    searched_terms = target_titles | target_roots
+                                    for s_term in searched_terms:
+                                        clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
+                                        terms_to_try = [s_term]
+                                        if clean_term and clean_term != s_term:
+                                            terms_to_try.append(clean_term)
+                                        for term in terms_to_try:
                                             try:
-                                                year_val = int(it.get("year"))
-                                            except Exception:
-                                                pass
+                                                search_url = f"{s_url}/library/sections/{sec_key}/all?title={urllib.parse.quote(term)}&includeGuids=1"
+                                                search_resp = await http_client.get(search_url, headers={"X-Plex-Token": token, "Accept": "application/xml"})
+                                                if search_resp.status_code == 200:
+                                                    sr_root = fromstring(search_resp.content)
+                                                    tag = ".//Directory" if sec_type == "show" else ".//Video"
+                                                    for it in sr_root.findall(tag):
+                                                        parsed_it = _parse_plex_item(it, sec_title, sec_type)
+                                                        if parsed_it:
+                                                            sec_media_items.append(parsed_it)
+                                            except Exception as se_err:
+                                                logger.debug(f"[OverlaySync] Targeted Plex search error for '{term}': {se_err}")
 
-                                        ed_val = it.get("editionTitle") or it.get("edition") or extract_edition(part_file, rf, t)
-                                        s_up_at = it.get("updatedAt") or it.get("addedAt")
+                                if not sec_media_items and not is_target_mode:
+                                    # Query section items with bulk GUIDs (IMDb, TMDb, TVDb)
+                                    items_resp = await http_client.get(
+                                        f"{s_url}/library/sections/{sec_key}/all?includeGuids=1",
+                                        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                                    )
+                                    if items_resp.status_code == 200:
+                                        i_root = fromstring(items_resp.content)
+                                        tag = ".//Directory" if sec_type == "show" else ".//Video"
+                                        for it in i_root.findall(tag):
+                                            parsed_it = _parse_plex_item(it, sec_title, sec_type)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
+                                elif not sec_media_items and is_target_mode:
+                                    # Fallback if targeted title search missed: fetch section XML and filter
+                                    items_resp = await http_client.get(
+                                        f"{s_url}/library/sections/{sec_key}/all?includeGuids=1",
+                                        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                                    )
+                                    if items_resp.status_code == 200:
+                                        i_root = fromstring(items_resp.content)
+                                        tag = ".//Directory" if sec_type == "show" else ".//Video"
+                                        for it in i_root.findall(tag):
+                                            parsed_it = _parse_plex_item(it, sec_title, sec_type)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
 
-                                        # Extract external GUIDs directly from bulk XML
-                                        p_imdb = None
-                                        p_tmdb = None
-                                        p_tvdb = None
-                                        for g_node in it.findall(".//Guid"):
-                                            gid = g_node.get("id", "")
-                                            if gid.startswith("imdb://"):
-                                                p_imdb = gid[7:]
-                                            elif gid.startswith("tmdb://"):
-                                                p_tmdb = gid[7:]
-                                            elif gid.startswith("tvdb://"):
-                                                p_tvdb = gid[7:]
-
-                                        media_items.append({
-                                            "id": rk,
-                                            "title": t,
-                                            "year": year_val,
-                                            "library_name": sec_title,
-                                            "media_type": sec_type,
-                                            "root_folder": rf,
-                                            "filepath": part_file,
-                                            "edition": ed_val,
-                                            "server_updated_at": s_up_at,
-                                            "resolution": res_val,
-                                            "rating": aud_rating,
-                                            "audience_rating": aud_rating,
-                                            "content_rating": it.get("contentRating"),
-                                            "runtime_mins": dur // 60000 if dur > 0 else None,
-                                            "studio": it.get("studio"),
-                                            "audio_codec": audio_c,
-                                            "video_format": video_f,
-                                            "imdb_id": p_imdb,
-                                            "tmdb_id": p_tmdb,
-                                            "tvdb_id": p_tvdb
-                                        })
+                                media_items.extend(sec_media_items)
                     except Exception as pe:
                         write_log(f"Error querying Plex API: {pe}")
 
@@ -2165,121 +2340,81 @@ async def run_overlay_sync_task(
                                 if library == "all" and any(lib_name.lower() == str(ex).lower() for ex in excluded):
                                     write_log(f"  [>] Library '{lib_name}' is in exclude list. Skipping.")
                                     continue
+                                if is_target_mode and target_libs and lib_name.lower() not in target_libs and not any(tl in lib_name.lower() for tl in target_libs):
+                                    continue
                                 matched_k, matched_rules = resolve_library_rules(lib_name, "movie", library_rules_map)
                                 if matched_k == "none" or not matched_rules:
                                     write_log(f"  [>] Library '{lib_name}' is not configured for dynamic overlays. Skipping.")
                                     continue
 
-                                # Query items with media streams, ratings, studios, and provider IDs
-                                items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
-                                it_resp = await http_client.get(items_url, headers=headers)
-                                if it_resp.status_code == 200:
-                                    lib_items = it_resp.json().get("Items", [])
-                                    write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items.")
-                                    for item_obj in lib_items:
-                                        it_id = item_obj.get("Id")
-                                        it_name = item_obj.get("Name", "")
-                                        it_type = "movie" if item_obj.get("Type") == "Movie" else "show"
-                                        it_path = item_obj.get("Path", "")
-                                        it_p = Path(it_path) if it_path else None
-                                        if it_p:
-                                            rf = it_p.name if (it_type == "show" or not it_p.suffix) else it_p.parent.name
-                                        else:
-                                            rf = it_name
-                                        streams = item_obj.get("MediaStreams", [])
-                                        if not streams and item_obj.get("MediaSources"):
-                                            for ms in item_obj.get("MediaSources", []):
-                                                streams.extend(ms.get("MediaStreams", []))
+                                sec_media_items = []
+                                if is_target_mode and (target_titles or target_roots):
+                                    searched_terms = target_titles | target_roots
+                                    for s_term in searched_terms:
+                                        clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
+                                        terms_to_try = [s_term]
+                                        if clean_term and clean_term != s_term:
+                                            terms_to_try.append(clean_term)
+                                        for term in terms_to_try:
+                                            try:
+                                                items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&SearchTerm={urllib.parse.quote(term)}&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
+                                                it_resp = await http_client.get(items_url, headers=headers)
+                                                if it_resp.status_code == 200:
+                                                    lib_items = it_resp.json().get("Items", [])
+                                                    for item_obj in lib_items:
+                                                        parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                        if parsed_it:
+                                                            sec_media_items.append(parsed_it)
+                                            except Exception as je:
+                                                pass
 
-                                        audio_langs = []
-                                        item_audio_c = None
-                                        item_audio_t = None
-                                        item_has_dv = False
-                                        item_has_hdr = False
-                                        vid_w = item_obj.get("Width") or 0
-                                        vid_h = item_obj.get("Height") or 0
-                                        for s in streams:
-                                            stype = s.get("Type")
-                                            if stype == "Audio":
-                                                lc = s.get("Language") or s.get("DisplayLanguage")
-                                                if lc:
-                                                    norm_l = LANGUAGE_MAP.get(lc.lower(), lc.lower())
-                                                    if norm_l not in audio_langs:
-                                                        audio_langs.append(norm_l)
-                                                if not item_audio_c and s.get("Codec"):
-                                                    item_audio_c = s.get("Codec")
-                                                if not item_audio_t:
-                                                    item_audio_t = s.get("Title") or s.get("DisplayTitle")
-                                            elif stype == "Video":
-                                                sw = s.get("Width") or 0
-                                                sh = s.get("Height") or 0
-                                                if sw > vid_w:
-                                                    vid_w = sw
-                                                if sh > vid_h:
-                                                    vid_h = sh
-                                                v_range = str(s.get("VideoRange") or "").lower()
-                                                v_title = str(s.get("VideoDoViTitle") or s.get("DisplayTitle") or "").lower()
-                                                if "dovi" in v_title or "dolby vision" in v_title or s.get("VideoDoViTitle"):
-                                                    item_has_dv = True
-                                                if "hdr" in v_range or "hdr" in v_title or s.get("VideoRange") == "HDR":
-                                                    item_has_hdr = True
+                                if not sec_media_items and not is_target_mode:
+                                    items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
+                                    it_resp = await http_client.get(items_url, headers=headers)
+                                    if it_resp.status_code == 200:
+                                        lib_items = it_resp.json().get("Items", [])
+                                        write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items.")
+                                        for item_obj in lib_items:
+                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
+                                    else:
+                                        write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({it_resp.status_code}): {it_resp.text[:120]}")
+                                elif not sec_media_items and is_target_mode:
+                                    items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
+                                    it_resp = await http_client.get(items_url, headers=headers)
+                                    if it_resp.status_code == 200:
+                                        lib_items = it_resp.json().get("Items", [])
+                                        for item_obj in lib_items:
+                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
 
-                                        # Resolution determination for Emby / Jellyfin
-                                        res_val = "1080p"
-                                        if any(k in (lib_name or "").lower() for k in ["4k", "uhd", "2160"]):
-                                             res_val = "4K"
-                                        elif vid_w >= 3800 or vid_h >= 2000:
-                                             res_val = "4K"
-                                        elif any(k in (it_path or "").lower() or k in (rf or "").lower() for k in ["4k", "uhd", "2160"]):
-                                             res_val = "4K"
-                                        elif vid_w >= 1900 or vid_h >= 1000:
-                                             res_val = "1080p"
-                                        elif vid_w >= 1200 or vid_h >= 700:
-                                             res_val = "720p"
-                                        elif vid_w > 0:
-                                             res_val = f"{vid_h}p" if vid_h else f"{vid_w}p"
-                                        else:
-                                             res_val = "1080p"
-                                        p_ids = item_obj.get("ProviderIds") or {}
-                                        studios_list = [st.get("Name") for st in item_obj.get("Studios", []) if st.get("Name")]
-                                        primary_network = studios_list[0] if studios_list else None
-                                        ed_val = item_obj.get("Edition") or item_obj.get("Version") or extract_edition(it_path, it_name)
-                                        s_up_at = item_obj.get("DateModified") or item_obj.get("DateCreated")
-
-                                        media_items.append({
-                                            "id": it_id,
-                                            "title": it_name,
-                                            "year": item_obj.get("ProductionYear"),
-                                            "imdb_id": p_ids.get("Imdb"),
-                                            "tmdb_id": p_ids.get("Tmdb"),
-                                            "tvdb_id": p_ids.get("Tvdb"),
-                                            "library_name": lib_name,
-                                            "media_type": it_type,
-                                            "root_folder": rf,
-                                            "filepath": it_path,
-                                            "edition": ed_val,
-                                            "server_updated_at": s_up_at,
-                                            "resolution": res_val,
-                                            "rating": item_obj.get("CommunityRating"),
-                                            "critic_rating": item_obj.get("CriticRating"),
-                                            "content_rating": item_obj.get("OfficialRating") or item_obj.get("CustomRating"),
-                                            "runtime_mins": (item_obj.get("RunTimeTicks", 0) // 600000000) or None,
-                                            "status": item_obj.get("Status"),
-                                            "audio_languages": audio_langs,
-                                            "audio_codec": item_audio_c,
-                                            "audio_track_title": item_audio_t,
-                                            "has_dolby_vision": item_has_dv,
-                                            "has_hdr": item_has_hdr,
-                                            "network": primary_network,
-                                            "networks": studios_list,
-                                            "studio": primary_network
-                                        })
-                                else:
-                                    write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({it_resp.status_code}): {it_resp.text[:120]}")
+                                media_items.extend(sec_media_items)
                         else:
                             write_log(f"  [-] Failed to fetch virtual folders on {s_type.upper()} ({vf_resp.status_code}): {vf_resp.text[:120]}")
                     except Exception as je:
                         write_log(f"Error querying {s_type} API: {je}")
+
+                if is_target_mode:
+                    matched_items = []
+                    seen_ids = set()
+                    for it in media_items:
+                        it_id = str(it.get("id"))
+                        if it_id in seen_ids:
+                            continue
+                        rf_l = (it.get("root_folder") or "").strip().lower()
+                        t_l = (it.get("title") or "").strip().lower()
+                        if (
+                            rf_l in target_roots
+                            or t_l in target_titles
+                            or any(tr in rf_l for tr in target_roots if len(tr) >= 3)
+                            or any(tt in t_l for tt in target_titles if len(tt) >= 3)
+                        ):
+                            seen_ids.add(it_id)
+                            matched_items.append(it)
+                    media_items = matched_items
+                    write_log(f"Instant Target Mode: Filtered to {len(media_items)} item(s) on {s_type.upper()}.")
 
                 write_log(f"Discovered {len(media_items)} items on {s_type.upper()}. Evaluating clean assets and cache...")
 
@@ -2619,7 +2754,7 @@ async def run_overlay_sync_task(
                             cached_entry=cached_entry
                         )
 
-                        if scope != "incremental" or not is_current:
+                        if scope != "incremental" or not is_current or is_target_mode:
                             try:
                                 with open(clean_asset, "rb") as cf:
                                     base_bytes = cf.read()
@@ -2764,7 +2899,7 @@ async def run_overlay_sync_task(
                             cached_entry=b_cached_entry
                         )
 
-                        if scope != "incremental" or not b_is_current:
+                        if scope != "incremental" or not b_is_current or is_target_mode:
                             try:
                                 with open(clean_backdrop, "rb") as bf:
                                     b_base_bytes = bf.read()

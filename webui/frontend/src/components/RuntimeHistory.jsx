@@ -68,10 +68,51 @@ const formatDuration = (seconds) => {
   return `${s}s`;
 };
 
+// Robust parser for runtime timestamps in ISO, European (DD.MM.YYYY), and localized strings
+export const parseRuntimeDate = (val) => {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val === 'number') {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const str = String(val).trim();
+  if (!str) return null;
+
+  // DD.MM.YYYY, HH:MM:SS or DD.MM.YYYY HH:MM:SS or DD.MM.YYYY
+  const ddmmyyyyMatch = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1], 10);
+    const month = parseInt(ddmmyyyyMatch[2], 10) - 1;
+    const year = parseInt(ddmmyyyyMatch[3], 10);
+    const hours = ddmmyyyyMatch[4] ? parseInt(ddmmyyyyMatch[4], 10) : 0;
+    const minutes = ddmmyyyyMatch[5] ? parseInt(ddmmyyyyMatch[5], 10) : 0;
+    const seconds = ddmmyyyyMatch[6] ? parseInt(ddmmyyyyMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hours, minutes, seconds);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+  const yyyymmddMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (yyyymmddMatch) {
+    const year = parseInt(yyyymmddMatch[1], 10);
+    const month = parseInt(yyyymmddMatch[2], 10) - 1;
+    const day = parseInt(yyyymmddMatch[3], 10);
+    const hours = yyyymmddMatch[4] ? parseInt(yyyymmddMatch[4], 10) : 0;
+    const minutes = yyyymmddMatch[5] ? parseInt(yyyymmddMatch[5], 10) : 0;
+    const seconds = yyyymmddMatch[6] ? parseInt(yyyymmddMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hours, minutes, seconds);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 const formatRelativeTime = (dateInput) => {
   if (!dateInput) return '-';
-  const date = new Date(dateInput);
-  if (isNaN(date.getTime())) return '-';
+  const date = parseRuntimeDate(dateInput);
+  if (!date || isNaN(date.getTime())) return '-';
   const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
   if (diffSec < 60) return 'Just now';
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
@@ -158,11 +199,23 @@ export default function RuntimeHistory() {
   const [searchQuery, setSearchQuery] = useState("");
   const [modeFilter, setModeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [assetFilter, setAssetFilter] = useState("all"); // 'all' | 'with_assets' | 'no_assets'
+  const [sortBy, setSortBy] = useState("date_desc"); // 'date_desc' | 'date_asc' | 'duration_desc' | 'assets_desc' | 'errors_desc'
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(15);
   const [isLivePolling, setIsLivePolling] = useState(false);
   const [copiedLogId, setCopiedLogId] = useState(null);
   const [useDemoData, setUseDemoData] = useState(false);
+  const tableSectionRef = useRef(null);
+
+  const scrollToTable = () => {
+    setViewTab(prev => (prev === "charts" ? "overview" : prev));
+    setTimeout(() => {
+      if (tableSectionRef.current) {
+        tableSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
 
   // Inspector & Modal States
   const [selectedEntry, setSelectedEntry] = useState(null);
@@ -198,7 +251,7 @@ export default function RuntimeHistory() {
       const usePlex = configData?.success && configData?.config?.UsePlex === "true";
 
       const requests = [
-        fetch(`${API_URL}/runtime-history?limit=500&offset=0`).then(r => r.json()).catch(() => ({ success: false })),
+        fetch(`${API_URL}/runtime-history?limit=1500&offset=0`).then(r => r.json()).catch(() => ({ success: false })),
         fetch(`${API_URL}/analytics/providers?days=${Math.min(rangeDays, 365)}`).then(r => r.json()).catch(() => ({ success: false })),
         fetch(`${API_URL}/assets/overview`).then(r => r.json()).catch(() => null),
         fetch(`${API_URL}/assets/stats`).then(r => r.json()).catch(() => ({ success: false })),
@@ -262,15 +315,15 @@ export default function RuntimeHistory() {
     return history;
   }, [history, useDemoData, rangeDays]);
 
-  // Filtered by Time Range
+  // Filtered by Time Range using robust date parsing
   const timeFilteredHistory = useMemo(() => {
     if (!rawDataset.length) return [];
     if (rangeDays >= 9999) return rawDataset;
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - rangeDays);
     return rawDataset.filter(entry => {
-      const d = new Date(entry.start_time || entry.timestamp);
-      return !isNaN(d.getTime()) && d >= cutoff;
+      const d = parseRuntimeDate(entry.start_time || entry.timestamp);
+      return d && d >= cutoff;
     });
   }, [rawDataset, rangeDays]);
 
@@ -349,9 +402,15 @@ export default function RuntimeHistory() {
 
   // Chart-ready Chronological Trend Data
   const chartTrends = useMemo(() => {
-    const sorted = [...timeFilteredHistory].sort((a, b) => new Date(a.start_time || a.timestamp) - new Date(b.start_time || b.timestamp));
+    const sorted = [...timeFilteredHistory].sort((a, b) => {
+      const da = parseRuntimeDate(a.start_time || a.timestamp);
+      const db = parseRuntimeDate(b.start_time || b.timestamp);
+      const ta = da ? da.getTime() : 0;
+      const tb = db ? db.getTime() : 0;
+      return ta - tb;
+    });
     return sorted.map(run => {
-      const dateObj = new Date(run.start_time || run.timestamp);
+      const dateObj = parseRuntimeDate(run.start_time || run.timestamp) || new Date();
       return {
         id: run.id,
         shortDate: dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
@@ -366,7 +425,7 @@ export default function RuntimeHistory() {
     });
   }, [timeFilteredHistory]);
 
-  // Search & Filter for Table
+  // Search, Filter & Sort for Table
   const tableEntries = useMemo(() => {
     let result = [...timeFilteredHistory];
 
@@ -380,6 +439,12 @@ export default function RuntimeHistory() {
       result = result.filter(r => (r.errors || 0) > 0);
     }
 
+    if (assetFilter === "with_assets") {
+      result = result.filter(r => (r.total_images || 0) > 0);
+    } else if (assetFilter === "no_assets") {
+      result = result.filter(r => (r.total_images || 0) === 0);
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(r =>
@@ -390,8 +455,33 @@ export default function RuntimeHistory() {
       );
     }
 
+    // Sort table entries
+    result.sort((a, b) => {
+      if (sortBy === "duration_desc") {
+        return (b.runtime_seconds || 0) - (a.runtime_seconds || 0);
+      }
+      if (sortBy === "duration_asc") {
+        return (a.runtime_seconds || 0) - (b.runtime_seconds || 0);
+      }
+      if (sortBy === "assets_desc") {
+        return (b.total_images || 0) - (a.total_images || 0);
+      }
+      if (sortBy === "errors_desc") {
+        return (b.errors || 0) - (a.errors || 0);
+      }
+      if (sortBy === "date_asc") {
+        const da = parseRuntimeDate(a.start_time || a.timestamp);
+        const db = parseRuntimeDate(b.start_time || b.timestamp);
+        return (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
+      }
+      // Default: date_desc
+      const da = parseRuntimeDate(a.start_time || a.timestamp);
+      const db = parseRuntimeDate(b.start_time || b.timestamp);
+      return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+    });
+
     return result;
-  }, [timeFilteredHistory, modeFilter, statusFilter, searchQuery]);
+  }, [timeFilteredHistory, modeFilter, statusFilter, assetFilter, searchQuery, sortBy]);
 
   // Paginated Rows
   const paginatedEntries = useMemo(() => {
@@ -400,7 +490,7 @@ export default function RuntimeHistory() {
   }, [tableEntries, currentPage, pageSize]);
 
   // Handlers
-  const handleOpenDetail = async (entry) => {
+  const handleOpenDetail = async (entry, wide = false) => {
     setSelectedEntry(entry);
     setShowDetailModal(true);
     setActiveModalTab("telemetry");
@@ -408,7 +498,10 @@ export default function RuntimeHistory() {
     setLoadingRunAssets(true);
 
     try {
-      const res = await fetch(`${API_URL}/runtime-history/${entry.id}/assets`);
+      const url = wide
+        ? `${API_URL}/runtime-history/${entry.id}/assets?wide=true`
+        : `${API_URL}/runtime-history/${entry.id}/assets`;
+      const res = await fetch(url);
       const data = await res.json();
       if (data?.success && Array.isArray(data.assets)) {
         setRunAssets(data.assets);
@@ -718,9 +811,30 @@ export default function RuntimeHistory() {
       {/* 6 TRACEARR KPI HERO CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* Card 1: Total Runs */}
-        <div className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-amber-500/40 transition-all group shadow-md relative overflow-hidden">
+        <div
+          onClick={() => {
+            setStatusFilter("all");
+            setAssetFilter("all");
+            setModeFilter("all");
+            setSearchQuery("");
+            setSortBy("date_desc");
+            setCurrentPage(0);
+            scrollToTable();
+          }}
+          className={`bg-theme-card/80 backdrop-blur-md rounded-2xl border p-4 flex flex-col justify-between transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99] ${
+            statusFilter === "all" && assetFilter === "all" && modeFilter === "all" && !searchQuery
+              ? "border-amber-500/50 shadow-amber-500/10 ring-1 ring-amber-500/30"
+              : "border-white/[0.07] hover:border-amber-500/40"
+          }`}
+          title="Click to reset filters and view all runs"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider">Total Runs</span>
+            <div>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Total Runs</span>
+              <span className="text-[9px] text-amber-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                Click to view all
+              </span>
+            </div>
             <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 group-hover:scale-110 transition-transform">
               <Activity size={15} />
             </div>
@@ -744,10 +858,27 @@ export default function RuntimeHistory() {
         </div>
 
         {/* Card 2: Success Rate */}
-        <div className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-emerald-500/40 transition-all group shadow-md relative overflow-hidden">
+        <div
+          onClick={() => {
+            setStatusFilter(prev => prev === "success" ? "all" : "success");
+            setCurrentPage(0);
+            scrollToTable();
+          }}
+          className={`bg-theme-card/80 backdrop-blur-md rounded-2xl border p-4 flex flex-col justify-between transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99] ${
+            statusFilter === "success"
+              ? "border-emerald-500 ring-2 ring-emerald-500/60 bg-emerald-500/10 shadow-emerald-500/15"
+              : "border-white/[0.07] hover:border-emerald-500/40"
+          }`}
+          title="Click to toggle filtering by successful runs"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider">Success Rate</span>
-            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:scale-110 transition-transform">
+            <div>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Success Rate</span>
+              <span className={`text-[9px] font-medium transition-opacity ${statusFilter === "success" ? "text-emerald-300 opacity-100" : "text-emerald-400 opacity-0 group-hover:opacity-100"}`}>
+                {statusFilter === "success" ? "✓ Filter Active" : "Click to filter"}
+              </span>
+            </div>
+            <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${statusFilter === "success" ? "bg-emerald-500 text-black" : "bg-emerald-500/10 text-emerald-400"}`}>
               <ShieldCheck size={15} />
             </div>
           </div>
@@ -757,7 +888,7 @@ export default function RuntimeHistory() {
             </div>
             <div className="text-[11px] mt-0.5 font-medium flex items-center gap-1">
               <span className={kpis.successRate >= 95 ? "text-emerald-400" : (kpis.successRate >= 80 ? "text-amber-400" : "text-rose-400")}>
-                {kpis.successRate >= 95 ? "Optimal Health" : (kpis.successRate >= 80 ? "Attention Needed" : "Degraded")}
+                {statusFilter === "success" ? "Showing Successful Runs" : (kpis.successRate >= 95 ? "Optimal Health" : (kpis.successRate >= 80 ? "Attention Needed" : "Degraded"))}
               </span>
             </div>
           </div>
@@ -770,10 +901,33 @@ export default function RuntimeHistory() {
         </div>
 
         {/* Card 3: Total Assets Created */}
-        <div className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-blue-500/40 transition-all group shadow-md relative overflow-hidden">
+        <div
+          onClick={() => {
+            if (assetFilter === "with_assets") {
+              setAssetFilter("all");
+              setSortBy("date_desc");
+            } else {
+              setAssetFilter("with_assets");
+              setSortBy("assets_desc");
+            }
+            setCurrentPage(0);
+            scrollToTable();
+          }}
+          className={`bg-theme-card/80 backdrop-blur-md rounded-2xl border p-4 flex flex-col justify-between transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99] ${
+            assetFilter === "with_assets"
+              ? "border-blue-500 ring-2 ring-blue-500/60 bg-blue-500/10 shadow-blue-500/15"
+              : "border-white/[0.07] hover:border-blue-500/40"
+          }`}
+          title="Click to filter runs that created assets and sort by asset count"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider">Assets Created</span>
-            <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 group-hover:scale-110 transition-transform">
+            <div>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Assets Created</span>
+              <span className={`text-[9px] font-medium transition-opacity ${assetFilter === "with_assets" ? "text-blue-300 opacity-100" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}>
+                {assetFilter === "with_assets" ? "✓ Filter Active" : "Click to filter"}
+              </span>
+            </div>
+            <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${assetFilter === "with_assets" ? "bg-blue-500 text-black" : "bg-blue-500/10 text-blue-400"}`}>
               <Image size={15} />
             </div>
           </div>
@@ -792,10 +946,27 @@ export default function RuntimeHistory() {
         </div>
 
         {/* Card 4: Avg Run Duration */}
-        <div className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-purple-500/40 transition-all group shadow-md relative overflow-hidden">
+        <div
+          onClick={() => {
+            setSortBy(prev => prev === "duration_desc" ? "date_desc" : "duration_desc");
+            setCurrentPage(0);
+            scrollToTable();
+          }}
+          className={`bg-theme-card/80 backdrop-blur-md rounded-2xl border p-4 flex flex-col justify-between transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99] ${
+            sortBy === "duration_desc"
+              ? "border-purple-500 ring-2 ring-purple-500/60 bg-purple-500/10 shadow-purple-500/15"
+              : "border-white/[0.07] hover:border-purple-500/40"
+          }`}
+          title="Click to sort runs by longest execution duration"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider">Avg Duration</span>
-            <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 group-hover:scale-110 transition-transform">
+            <div>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Avg Duration</span>
+              <span className={`text-[9px] font-medium transition-opacity ${sortBy === "duration_desc" ? "text-purple-300 opacity-100" : "text-purple-400 opacity-0 group-hover:opacity-100"}`}>
+                {sortBy === "duration_desc" ? "✓ Sorted Longest" : "Click to sort"}
+              </span>
+            </div>
+            <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${sortBy === "duration_desc" ? "bg-purple-500 text-black" : "bg-purple-500/10 text-purple-400"}`}>
               <Clock size={15} />
             </div>
           </div>
@@ -814,9 +985,18 @@ export default function RuntimeHistory() {
         </div>
 
         {/* Card 5: Space Saved / Storage Footprint */}
-        <div className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-cyan-500/40 transition-all group shadow-md relative overflow-hidden">
+        <div
+          onClick={() => navigate("/asset-overview")}
+          className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-cyan-500/40 transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99]"
+          title="Click to navigate to Asset Storage Overview"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider">Storage Footprint</span>
+            <div>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Storage Footprint</span>
+              <span className="text-[9px] text-cyan-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                Open Overview →
+              </span>
+            </div>
             <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:scale-110 transition-transform">
               <HardDrive size={15} />
             </div>
@@ -835,10 +1015,27 @@ export default function RuntimeHistory() {
         </div>
 
         {/* Card 6: System Errors */}
-        <div className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-rose-500/40 transition-all group shadow-md relative overflow-hidden">
+        <div
+          onClick={() => {
+            setStatusFilter(prev => prev === "errors" ? "all" : "errors");
+            setCurrentPage(0);
+            scrollToTable();
+          }}
+          className={`bg-theme-card/80 backdrop-blur-md rounded-2xl border p-4 flex flex-col justify-between transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99] ${
+            statusFilter === "errors"
+              ? "border-rose-500 ring-2 ring-rose-500/60 bg-rose-500/10 shadow-rose-500/15"
+              : "border-white/[0.07] hover:border-rose-500/40"
+          }`}
+          title="Click to toggle filtering by runs with errors"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider">Errors & Alerts</span>
-            <div className={`p-1.5 rounded-lg ${kpis.totalErrors > 0 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'} group-hover:scale-110 transition-transform`}>
+            <div>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Errors & Alerts</span>
+              <span className={`text-[9px] font-medium transition-opacity ${statusFilter === "errors" ? "text-rose-300 opacity-100" : "text-rose-400 opacity-0 group-hover:opacity-100"}`}>
+                {statusFilter === "errors" ? "✓ Filter Active" : "Click to filter"}
+              </span>
+            </div>
+            <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${statusFilter === "errors" ? "bg-rose-500 text-black" : (kpis.totalErrors > 0 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/10 text-emerald-400')}`}>
               <AlertTriangle size={15} />
             </div>
           </div>
@@ -848,7 +1045,7 @@ export default function RuntimeHistory() {
             </div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${kpis.totalErrors > 0 ? 'bg-rose-500' : 'bg-emerald-400'}`}></span>
-              <span>{kpis.totalErrors === 0 ? "Clean executions" : "Exceptions caught"}</span>
+              <span>{statusFilter === "errors" ? "Showing Errors Only" : (kpis.totalErrors === 0 ? "Clean executions" : "Exceptions caught")}</span>
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
@@ -863,6 +1060,24 @@ export default function RuntimeHistory() {
       {/* CHARTS GRID (Visible in 'overview' and 'charts' tabs) */}
       {(viewTab === "overview" || viewTab === "charts") && (
         <div className="space-y-6">
+
+          {/* Helpful Range Prompt when DB has runs outside selected range */}
+          {rawDataset.length > 0 && timeFilteredHistory.length === 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle size={18} className="text-amber-400 shrink-0" />
+                <span>
+                  Your database contains <strong>{rawDataset.length}</strong> recorded runs, but none occurred within the current <strong>{timeRange}</strong> window.
+                </span>
+              </div>
+              <button
+                onClick={() => setTimeRange("all")}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all shrink-0 flex items-center gap-1.5 shadow-md"
+              >
+                <Calendar size={13} /> Switch to All Time
+              </button>
+            </div>
+          )}
 
           {/* MAIN ROW: EXECUTION TIME BENCHMARK + ASSET GENERATION VELOCITY */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -893,9 +1108,17 @@ export default function RuntimeHistory() {
                     onSelectRun={handleOpenDetail}
                   />
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-2">
+                  <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-2 py-4">
                     <Clock size={28} className="opacity-30" />
-                    <span>No run telemetry available for this period</span>
+                    <span>No run telemetry available for this period ({timeRange})</span>
+                    {rawDataset.length > 0 && (
+                      <button
+                        onClick={() => setTimeRange("all")}
+                        className="mt-1 px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-medium not-italic transition-all flex items-center gap-1.5"
+                      >
+                        <Calendar size={12} /> Show All Time ({rawDataset.length} runs in DB)
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -926,9 +1149,17 @@ export default function RuntimeHistory() {
                     onSelectRun={handleOpenDetail}
                   />
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-2">
+                  <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-2 py-4">
                     <Image size={28} className="opacity-30" />
-                    <span>No asset creation data recorded for this period</span>
+                    <span>No asset creation data recorded for this period ({timeRange})</span>
+                    {rawDataset.length > 0 && (
+                      <button
+                        onClick={() => setTimeRange("all")}
+                        className="mt-1 px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-medium not-italic transition-all flex items-center gap-1.5"
+                      >
+                        <Calendar size={12} /> Show All Time ({rawDataset.length} runs in DB)
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1142,7 +1373,7 @@ export default function RuntimeHistory() {
 
       {/* EXECUTION LOG TABLE (Visible in 'overview' and 'table' tabs) */}
       {(viewTab === "overview" || viewTab === "table") && (
-        <div className="bg-theme-card/85 backdrop-blur-md rounded-2xl border border-white/[0.08] shadow-xl overflow-hidden space-y-0">
+        <div ref={tableSectionRef} className="bg-theme-card/85 backdrop-blur-md rounded-2xl border border-white/[0.08] shadow-xl overflow-hidden space-y-0">
 
           {/* Table Header Controls */}
           <div className="p-4 border-b border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 bg-black/20">
@@ -1192,6 +1423,8 @@ export default function RuntimeHistory() {
                 <option value="normal">Normal</option>
                 <option value="manual">Manual</option>
                 <option value="testing">Testing</option>
+                <option value="tautulli">Tautulli</option>
+                <option value="arr">Arr</option>
                 <option value="dynamic_overlays">Dynamic Overlays</option>
               </select>
 
@@ -1207,6 +1440,37 @@ export default function RuntimeHistory() {
                 <option value="all">All Statuses</option>
                 <option value="success">Success Only</option>
                 <option value="errors">With Errors</option>
+              </select>
+
+              {/* Assets Filter */}
+              <select
+                value={assetFilter}
+                onChange={(e) => {
+                  setAssetFilter(e.target.value);
+                  setCurrentPage(0);
+                }}
+                className="bg-black/40 border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
+              >
+                <option value="all">All Asset Counts</option>
+                <option value="with_assets">Created Assets (&gt;0)</option>
+                <option value="no_assets">Zero Assets (=0)</option>
+              </select>
+
+              {/* Sort By */}
+              <select
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setCurrentPage(0);
+                }}
+                className="bg-black/40 border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
+              >
+                <option value="date_desc">Newest First</option>
+                <option value="date_asc">Oldest First</option>
+                <option value="duration_desc">Longest Duration</option>
+                <option value="duration_asc">Shortest Duration</option>
+                <option value="assets_desc">Most Assets</option>
+                <option value="errors_desc">Most Errors</option>
               </select>
 
               {/* Page size */}
@@ -1225,6 +1489,55 @@ export default function RuntimeHistory() {
               </select>
             </div>
           </div>
+
+          {/* Active Filter Pills Bar */}
+          {(statusFilter !== "all" || assetFilter !== "all" || modeFilter !== "all" || searchQuery || sortBy !== "date_desc") && (
+            <div className="px-4 py-2 bg-amber-500/5 border-b border-white/[0.06] flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-theme-text-muted text-[11px] font-semibold uppercase">Active Filters:</span>
+              {statusFilter !== "all" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px]">
+                  Status: {statusFilter === "success" ? "Success Only" : "With Errors"}
+                  <button onClick={() => setStatusFilter("all")} className="hover:text-white"><X size={11} /></button>
+                </span>
+              )}
+              {assetFilter !== "all" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[11px]">
+                  Assets: {assetFilter === "with_assets" ? "Created Assets (>0)" : "Zero Assets"}
+                  <button onClick={() => setAssetFilter("all")} className="hover:text-white"><X size={11} /></button>
+                </span>
+              )}
+              {modeFilter !== "all" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px]">
+                  Mode: {modeFilter}
+                  <button onClick={() => setModeFilter("all")} className="hover:text-white"><X size={11} /></button>
+                </span>
+              )}
+              {searchQuery && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 text-white border border-white/20 text-[11px]">
+                  Search: "{searchQuery}"
+                  <button onClick={() => setSearchQuery("")} className="hover:text-rose-400"><X size={11} /></button>
+                </span>
+              )}
+              {sortBy !== "date_desc" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px]">
+                  Sort: {sortBy === "duration_desc" ? "Longest Duration" : (sortBy === "assets_desc" ? "Most Assets" : sortBy)}
+                  <button onClick={() => setSortBy("date_desc")} className="hover:text-white"><X size={11} /></button>
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setStatusFilter("all");
+                  setAssetFilter("all");
+                  setModeFilter("all");
+                  setSearchQuery("");
+                  setSortBy("date_desc");
+                }}
+                className="text-[11px] text-amber-400 hover:text-amber-300 underline font-medium ml-auto"
+              >
+                Clear all filters
+              </button>
+            </div>
+          )}
 
           {/* Table Container */}
           <div className="overflow-x-auto">
@@ -1248,7 +1561,8 @@ export default function RuntimeHistory() {
                     const hasError = (entry.errors || 0) > 0;
                     const modeStyle = MODE_STYLES[entry.mode?.toLowerCase()] || MODE_STYLES.default;
                     const relativeTime = formatRelativeTime(entry.start_time || entry.timestamp);
-                    const formattedDate = new Date(entry.start_time || entry.timestamp).toLocaleString();
+                    const dateObj = parseRuntimeDate(entry.start_time || entry.timestamp);
+                    const formattedDate = dateObj ? dateObj.toLocaleString() : (entry.start_time || entry.timestamp || '-');
 
                     return (
                       <tr
@@ -1422,7 +1736,7 @@ export default function RuntimeHistory() {
                     </span>
                   </div>
                   <div className="text-xs text-theme-text-muted mt-0.5 font-mono">
-                    {new Date(selectedEntry.start_time || selectedEntry.timestamp).toLocaleString()} • Duration: {selectedEntry.runtime_formatted || formatDuration(selectedEntry.runtime_seconds)}
+                    {(parseRuntimeDate(selectedEntry.start_time || selectedEntry.timestamp) || new Date()).toLocaleString()} • Duration: {selectedEntry.runtime_formatted || formatDuration(selectedEntry.runtime_seconds)}
                   </div>
                 </div>
               </div>
@@ -1617,11 +1931,19 @@ export default function RuntimeHistory() {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-center py-12 text-theme-text-muted italic space-y-2">
+                    <div className="text-center py-12 text-theme-text-muted italic space-y-3">
                       <Image size={32} className="mx-auto opacity-30" />
                       <div>No individual image records linked to this run ID in the database choices table.</div>
                       <div className="text-xs text-theme-text-muted/70">
                         (Total images generated: {selectedEntry.total_images || 0})
+                      </div>
+                      <div className="pt-2 not-italic">
+                        <button
+                          onClick={() => handleOpenDetail(selectedEntry, true)}
+                          className="px-3.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-medium transition-colors inline-flex items-center gap-1.5"
+                        >
+                          <RefreshCw size={12} /> Retry with Extended Window (±30 min)
+                        </button>
                       </div>
                     </div>
                   )}

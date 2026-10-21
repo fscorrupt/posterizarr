@@ -71,6 +71,8 @@ class LogsWatcher:
         self.last_csv_row_count = 0
         self.last_first_row_sig = ""
         self.last_csv_inode: Optional[int] = None
+        self.pending_overlay_rows: List[Dict[str, Any]] = []
+        self.overlay_sync_timer: Optional[threading.Timer] = None
 
         self.observer: Any = None  # watchdog.observers.Observer instance
         self.handler: Any = None  # LogsFileHandler instance
@@ -955,10 +957,20 @@ class LogsWatcher:
                     self._process_new_imagechoices_and_broadcast()
 
                     # Auto-trigger Dynamic Overlays Sync if callback configured
+                    if getattr(self, "overlay_sync_timer", None):
+                        try:
+                            self.overlay_sync_timer.cancel()
+                        except Exception:
+                            pass
+                        self.overlay_sync_timer = None
+
                     if getattr(self, "on_run_complete_callback", None):
                         try:
                             logger.info(f"[LogsWatcher] Auto-triggering Dynamic Overlays sync after {mode} completion...")
-                            self.on_run_complete_callback(source=f"watcher {mode} completion")
+                            with self.csv_broadcast_lock:
+                                rows_to_sync = list(getattr(self, "pending_overlay_rows", []))
+                                self.pending_overlay_rows = []
+                            self.on_run_complete_callback(source=f"watcher {mode} completion", target_items=rows_to_sync)
                         except Exception as sync_err:
                             logger.error(f"[LogsWatcher] Error triggering overlay sync: {sync_err}")
                 else:
@@ -1038,6 +1050,33 @@ class LogsWatcher:
                 self.last_csv_row_count = total_rows
                 self.last_first_row_sig = first_sig
                 logger.info(f"[WS-Events] Detected {len(new_rows)} new entries in ImageChoices.csv to broadcast")
+
+                if not hasattr(self, "pending_overlay_rows") or self.pending_overlay_rows is None:
+                    self.pending_overlay_rows = []
+                self.pending_overlay_rows.extend(new_rows)
+
+                # Schedule debounced instant overlay sync for newly created media assets
+                if getattr(self, "on_run_complete_callback", None):
+                    def _trigger_instant_overlay():
+                        with self.csv_broadcast_lock:
+                            if not self.pending_overlay_rows:
+                                return
+                            rows_to_sync = list(self.pending_overlay_rows)
+                            self.pending_overlay_rows = []
+                        try:
+                            logger.info(f"[LogsWatcher] Auto-triggering instant Dynamic Overlays sync for {len(rows_to_sync)} newly generated asset(s)...")
+                            self.on_run_complete_callback(source="instant asset creation", target_items=rows_to_sync)
+                        except Exception as e:
+                            logger.error(f"[LogsWatcher] Error triggering instant overlay sync: {e}")
+
+                    if getattr(self, "overlay_sync_timer", None):
+                        try:
+                            self.overlay_sync_timer.cancel()
+                        except Exception:
+                            pass
+                    self.overlay_sync_timer = threading.Timer(3.0, _trigger_instant_overlay)
+                    self.overlay_sync_timer.daemon = True
+                    self.overlay_sync_timer.start()
 
                 for row in new_rows:
                     self._broadcast_single_row(row)

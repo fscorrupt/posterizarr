@@ -1469,6 +1469,9 @@ export default function DynamicOverlays() {
   const [visualLanguages, setVisualLanguages] = useState("de, en, ja");
   const [visualStatusText, setVisualStatusText] = useState("");
   const [visualStatusColor, setVisualStatusColor] = useState("#FFA500");
+  const [visualFont, setVisualFont] = useState("");
+  const [visualFontSize, setVisualFontSize] = useState("");
+  const [visualFontColor, setVisualFontColor] = useState("");
   const [isSavingVariables, setIsSavingVariables] = useState(false);
 
   const fileInputRef = useRef(null);
@@ -2831,6 +2834,9 @@ export default function DynamicOverlays() {
     setVisualLanguages(Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja");
     setVisualStatusText(vars.text || vars.status_label || vars.status || "");
     setVisualStatusColor(vars.font_color || vars.status_color || "#FFA500");
+    setVisualFont(vars.font || "");
+    setVisualFontSize(vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "");
+    setVisualFontColor(vars.font_color || "");
   };
 
   // 15. Save Edited Variables
@@ -2851,6 +2857,16 @@ export default function DynamicOverlays() {
         if (visualHOffset !== "") finalVariables.horizontal_offset = Number(visualHOffset) || 0;
         if (visualVOffset !== "") finalVariables.vertical_offset = Number(visualVOffset) || 0;
         if (visualBackColor) finalVariables.back_color = visualBackColor;
+        if (visualFont) finalVariables.font = visualFont;
+        else delete finalVariables.font;
+        if (visualFontSize !== "") {
+          const fsNum = Number(visualFontSize);
+          if (!isNaN(fsNum) && fsNum > 0) finalVariables.font_size = fsNum;
+          else delete finalVariables.font_size;
+        } else {
+          delete finalVariables.font_size;
+        }
+        if (visualFontColor) finalVariables.font_color = visualFontColor;
         if (editVariablesModal.overlay.name.toLowerCase().includes("lang")) {
           finalVariables.languages = visualLanguages.split(",").map(s => s.trim()).filter(Boolean);
         }
@@ -3332,8 +3348,15 @@ export default function DynamicOverlays() {
     }
     try {
       setIsSavingLayout(true);
-      const layoutPayload = {};
-      if (previewRating && previewRating !== "Off") {
+      const curLibForSave = visualConfig?.libraries?.[libName];
+      const curBadgesForSave = curLibForSave?.badges || {};
+      const isCriticRatingEnabled = Boolean(
+        curBadgesForSave.critic_rating?.enabled ||
+        (curBadgesForSave.rating?.source === "ratings" && curBadgesForSave.rating?.enabled)
+      );
+      const isRatingEnabled = Boolean(previewRating && previewRating !== "Off");
+
+      if (isRatingEnabled && isCriticRatingEnabled) {
         layoutPayload.ratings = {
           horizontal_offset: offsets.rating.x,
           vertical_offset: offsets.rating.y,
@@ -3342,6 +3365,24 @@ export default function DynamicOverlays() {
           ...(offsets.rating.font_size ? { font_size: offsets.rating.font_size } : {}),
           ...(offsets.rating.font ? { font: offsets.rating.font } : {})
         };
+      } else {
+        // Never append default: ratings if Critic Scores are not enabled! Explicitly remove any orphan rules.
+        layoutPayload.ratings = null;
+      }
+
+      if (isRatingEnabled && !isCriticRatingEnabled) {
+        // Single audience rating badge coordinates (applied to overlays_movies.yml / overlays_tv.yml)
+        layoutPayload.rating = {
+          enabled: true,
+          horizontal_offset: offsets.rating.x,
+          vertical_offset: offsets.rating.y,
+          horizontal_align: offsets.rating.align,
+          vertical_align: offsets.rating.valign,
+          ...(offsets.rating.font_size ? { font_size: offsets.rating.font_size } : {}),
+          ...(offsets.rating.font ? { font: offsets.rating.font } : {})
+        };
+      } else if (!isRatingEnabled) {
+        layoutPayload.rating = null;
       }
       if (previewRuntime && previewRuntime !== "Off") {
         const isLandscape = isLandscapeFormat(previewTemplate);
@@ -3441,7 +3482,6 @@ export default function DynamicOverlays() {
         };
       }
 
-      const curLibForSave = visualConfig?.libraries?.[libName];
       const libMetaForSave = libraries?.[libName];
       const explicitTypeForSave = curLibForSave?.media_type || libMetaForSave?.media_type;
       const isTvForSave = explicitTypeForSave ? explicitTypeForSave === "show" : (isLandscapeFormat(previewTemplate) || previewTemplate.includes("show") || previewTemplate.includes("season"));
@@ -5668,10 +5708,10 @@ export default function DynamicOverlays() {
                         <div className="grid grid-cols-2 sm:grid-cols-5 gap-1">
                           {[
                             { label: "Compact 36px", size: 36 },
-                            { label: "Normal 44px", size: 44 },
-                            { label: "Titlecard 52px", size: 52 },
-                            { label: "Large 60px", size: 60 },
-                            { label: "Extra Large 70px", size: 70 }
+                            { label: isTv ? "Normal 44px" : "Standard 40px", size: isTv ? 44 : 40 },
+                            { label: isTv ? "Titlecard 52px" : "Medium 44px", size: isTv ? 52 : 44 },
+                            { label: isTv ? "Large 60px" : "Large 52px", size: isTv ? 60 : 52 },
+                            { label: isTv ? "Extra Large 70px" : "Extra Large 60px", size: isTv ? 70 : 60 }
                           ].map((preset) => {
                             const curSize = badges.runtime?.font_size ?? (isTv ? 52 : 40);
                             const isCurrent = Number(curSize) === preset.size;
@@ -5692,6 +5732,23 @@ export default function DynamicOverlays() {
                           })}
                         </div>
 
+                        {/* Font Family Selector */}
+                        <div className="space-y-0.5 pt-1 border-t border-theme/30">
+                          <label className="text-[9px] font-semibold text-theme-muted uppercase">Font Family</label>
+                          <select
+                            value={badges.runtime?.font || ""}
+                            onChange={(e) => updateBadge("runtime", { font: e.target.value })}
+                            className="w-full bg-theme-card border border-theme rounded-md px-2 py-1 text-xs text-theme-text font-medium"
+                          >
+                            <option value="">Default Font</option>
+                            {(availableFonts || []).map((f) => (
+                              <option key={f} value={f}>
+                                {f.replace(/\.(ttf|otf|woff2?)$/i, "")}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
                         {/* Custom px input with explanatory note */}
                         <div className="flex items-center gap-2 pt-1 border-t border-theme/30">
                           <div className="flex-1 space-y-0.5">
@@ -5706,7 +5763,11 @@ export default function DynamicOverlays() {
                             />
                           </div>
                           <p className="flex-1 text-[10px] text-theme-muted leading-tight">
-                            Default for titlecards is <span className="font-semibold text-theme-text">52px</span> so numbers stay sharp and legible in small Emby/Jellyfin thumbnails.
+                            {isTv ? (
+                              <span>Default for titlecards is <span className="font-semibold text-theme-text">52px</span> so numbers stay sharp and legible in small Emby/Jellyfin thumbnails.</span>
+                            ) : (
+                              <span>Default for movie posters is <span className="font-semibold text-theme-text">40px</span> so text remains cleanly aligned in poster margins.</span>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -11285,6 +11346,107 @@ export default function DynamicOverlays() {
                       style={{ backgroundColor: visualBackColor.length === 9 ? visualBackColor.slice(0, 7) : visualBackColor }}
                       title="Color preview"
                     />
+                  </div>
+                </div>
+
+                {/* Typography: Font Family, Size & Color */}
+                <div className="p-3.5 rounded-xl bg-theme-hover/30 border border-theme space-y-3">
+                  <div className="flex items-center justify-between border-b border-theme/40 pb-2">
+                    <span className="text-xs font-bold text-theme-text flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-theme-primary" />
+                      <span>Typography &amp; Font Styling</span>
+                    </span>
+                    {visualFontSize && (
+                      <span className="text-[10px] font-mono text-theme-primary font-bold">
+                        {visualFontSize}px
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Font Family Selector */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Family</label>
+                    <select
+                      value={visualFont}
+                      onChange={(e) => setVisualFont(e.target.value)}
+                      className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
+                    >
+                      <option value="">Default Font</option>
+                      {(availableFonts || []).map((f) => (
+                        <option key={f} value={f}>
+                          {f.replace(/\.(ttf|otf|woff2?)$/i, "")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Font Size Presets & Custom Input */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Size (px)</label>
+                      {visualFontSize && (
+                        <button
+                          type="button"
+                          onClick={() => setVisualFontSize("")}
+                          className="text-[10px] text-theme-muted hover:text-theme-primary transition-colors"
+                        >
+                          Reset to default
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {[
+                        { label: "36px", size: 36 },
+                        { label: "40px", size: 40 },
+                        { label: "44px", size: 44 },
+                        { label: "52px", size: 52 },
+                        { label: "60px", size: 60 }
+                      ].map((p) => {
+                        const isCur = Number(visualFontSize) === p.size;
+                        return (
+                          <button
+                            key={p.size}
+                            type="button"
+                            onClick={() => setVisualFontSize(String(p.size))}
+                            className={`py-1 rounded-lg text-[10px] font-semibold border transition-all text-center ${
+                              isCur
+                                ? "bg-theme-primary text-white border-theme-primary shadow-sm"
+                                : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input
+                      type="number"
+                      min="10"
+                      max="160"
+                      value={visualFontSize}
+                      onChange={(e) => setVisualFontSize(e.target.value)}
+                      placeholder="Custom font size in px (e.g. 48)"
+                      className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-1.5 text-xs text-theme-text font-mono"
+                    />
+                  </div>
+
+                  {/* Font Color */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Color (Hex)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={visualFontColor}
+                        onChange={(e) => setVisualFontColor(e.target.value)}
+                        placeholder="#FFFFFF"
+                        className="flex-1 bg-theme-hover border border-theme rounded-xl px-3 py-1.5 text-xs text-theme-text font-mono"
+                      />
+                      <div
+                        className="w-7 h-7 rounded-lg border border-theme shrink-0"
+                        style={{ backgroundColor: visualFontColor || "#FFFFFF" }}
+                        title="Font Color Preview"
+                      />
+                    </div>
                   </div>
                 </div>
 

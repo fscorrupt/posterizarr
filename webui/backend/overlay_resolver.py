@@ -1604,20 +1604,32 @@ class OverlayResolver:
 
                     # Check if layout_updates has rating and apply to overlays_movies.yml / overlays_tv.yml
                     if ("overlays_movies.yml" in rule_name or "overlays_tv.yml" in rule_name):
-                        r_coords = layout_updates.get("rating") or layout_updates.get("ratings")
-                        if r_coords:
-                            matched_entries.append(("rating", r_coords))
+                        if "rating" in layout_updates:
+                            r_coords = layout_updates.get("rating")
+                            if r_coords and isinstance(r_coords, dict) and r_coords.get("enabled") is not False:
+                                vars_dict["audience_rating"] = True
+                                vars_dict["rating_horizontal_align"] = r_coords.get("horizontal_align", "center")
+                                vars_dict["rating_horizontal_offset"] = int(r_coords.get("horizontal_offset", 375))
+                                vars_dict["rating_vertical_align"] = r_coords.get("vertical_align", "bottom")
+                                vars_dict["rating_vertical_offset"] = int(r_coords.get("vertical_offset", 0))
+                                vars_dict["rating_text_vertical_offset"] = int(r_coords.get("vertical_offset", 0)) + 70
+                                if r_coords.get("font_size"):
+                                    vars_dict["rating_font_size"] = int(r_coords["font_size"])
+                                if r_coords.get("font"):
+                                    vars_dict["rating_font"] = str(r_coords["font"])
+                            else:
+                                vars_dict["audience_rating"] = False
                             matched_keys.add("rating")
                             matched_keys.add("ratings")
 
-                    # Apply rating updates if present in matched_entries
-                    for k, c in matched_entries:
-                        if k.lower() in ("rating", "ratings") and ("overlays_movies.yml" in rule_name or "overlays_tv.yml" in rule_name):
-                            vars_dict["rating_horizontal_align"] = c.get("horizontal_align", "center")
-                            vars_dict["rating_horizontal_offset"] = int(c.get("horizontal_offset", 375))
-                            vars_dict["rating_vertical_align"] = c.get("vertical_align", "bottom")
-                            vars_dict["rating_vertical_offset"] = int(c.get("vertical_offset", 0))
-                            vars_dict["rating_text_vertical_offset"] = int(c.get("vertical_offset", 0)) + 70
+                    # Check if layout_updates has ratings (Critic scores) and apply if critic ratings rule
+                    if rule_name == "ratings" or "ratings.yml" in rule_name:
+                        r_coords = layout_updates.get("ratings")
+                        if r_coords and isinstance(r_coords, dict) and r_coords.get("enabled") is not False:
+                            for coord_k, coord_v in r_coords.items():
+                                if coord_v is not None:
+                                    vars_dict[coord_k] = coord_v
+                            matched_keys.add("ratings")
 
                     if any(k.lower() == "resolution" for k, _ in matched_entries) and ("overlays_movies.yml" in rule_name or "overlays_tv.yml" in rule_name):
                         res_coords = next(c for k, c in matched_entries if k.lower() == "resolution")
@@ -1683,7 +1695,7 @@ class OverlayResolver:
                 if key_lower == "resolution" and has_res_file:
                     continue
                 # Internal UI keys should NEVER be appended as overlay rules in config.yml
-                if key_lower in ("age_rating", "rating", "runtime"):
+                if key_lower in ("age_rating", "rating", "runtime", "ratings", "runtimes"):
                     continue
                 # If key is an age rating alias but an age rating rule is already configured, skip
                 if key_lower in age_rating_aliases and any(any(cr in str(r.get("default") or r.get("file") or "").lower() for cr in age_rating_aliases) for r in overlay_files if isinstance(r, dict)):
@@ -1691,10 +1703,6 @@ class OverlayResolver:
                 clean_vars = {k: v for k, v in coords.items() if v is not None}
                 if clean_vars:
                     def_key = key
-                    if key_lower == "rating":
-                        def_key = "ratings"
-                    elif key_lower == "runtime":
-                        def_key = "runtimes"
                     overlay_files.append({
                         "default": def_key,
                         "template_variables": clean_vars
@@ -1707,6 +1715,35 @@ class OverlayResolver:
                 cleaned_files = [r for r in overlay_files if not (isinstance(r, dict) and r.get("default") == "resolution")]
                 overlay_files.clear()
                 overlay_files.extend(cleaned_files)
+
+            # Check if Critic & Audience ratings are enabled for this library.
+            # If ratings is explicitly null/disabled in layout_updates, OR not enabled in visual badges, purge orphan default: ratings rules!
+            has_critic_enabled = False
+            try:
+                from dynamic_overlays_service import load_dynamic_overlays_visual_config
+                vis_cfg = load_dynamic_overlays_visual_config()
+                lib_badges = vis_cfg.get("libraries", {}).get(clean_lib_name, {}).get("badges", {})
+                has_critic_enabled = bool(
+                    lib_badges.get("critic_rating", {}).get("enabled") or
+                    (lib_badges.get("rating", {}).get("source") == "ratings" and lib_badges.get("rating", {}).get("enabled"))
+                )
+            except Exception:
+                pass
+
+            ratings_update_val = layout_updates.get("ratings")
+            ratings_explicitly_disabled = (
+                "ratings" in layout_updates and (
+                    ratings_update_val is None or
+                    (isinstance(ratings_update_val, dict) and ratings_update_val.get("enabled") is False)
+                )
+            )
+            if ratings_explicitly_disabled or not has_critic_enabled:
+                cleaned_ratings = [
+                    r for r in overlay_files
+                    if not (isinstance(r, dict) and (r.get("default") == "ratings" or "ratings.yml" in str(r.get("file") or "").lower()))
+                ]
+                overlay_files.clear()
+                overlay_files.extend(cleaned_ratings)
 
             if safe_path.exists():
                 backup_path = safe_path.with_suffix(f"{safe_path.suffix}.bak")
