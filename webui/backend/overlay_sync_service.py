@@ -154,6 +154,20 @@ def compute_layers_recipe_hash(layers: List[Dict[str, Any]]) -> str:
         serializable.append(item)
     return hashlib.md5(json.dumps(serializable, sort_keys=True).encode()).hexdigest()
 
+
+def build_attr_snapshot(item: Dict[str, Any]) -> str:
+    """
+    Serialize hash-relevant attributes that are not stored in dedicated cache columns
+    (HDR, Dolby Vision, content rating, network). Persisting them lets the fast incremental
+    path rebuild the exact same metadata hash as the full Plex detail path.
+    """
+    return json.dumps({
+        "has_hdr": True if item.get("has_hdr") else None,
+        "has_dolby_vision": True if item.get("has_dolby_vision") else None,
+        "content_rating": item.get("content_rating") or None,
+        "network": item.get("network") or None,
+    }, sort_keys=True)
+
 # ==============================================================================
 # DYNAMIC OVERLAY SYNC ENGINE:
 # Renders in-memory dynamic badges and overlays onto media assets for Plex/Jellyfin/Emby.
@@ -2613,6 +2627,9 @@ async def run_overlay_sync_task(
                                 need_plex_detail = True
                             elif str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or ""):
                                 need_plex_detail = True
+                            elif not cached_entry.get("attr_snapshot"):
+                                # Legacy cache row without HDR/DV snapshot: fetch details once so the hash is consistent
+                                need_plex_detail = True
                             else:
                                 c_langs = [l.strip().lower() for l in (cached_entry.get("detected_languages") or "").split(",") if l.strip()]
                                 if c_langs:
@@ -2629,6 +2646,18 @@ async def run_overlay_sync_task(
                                     item["video_format"] = cached_entry["detected_video_format"]
                                 if cached_entry.get("detected_resolution") and not item.get("resolution"):
                                     item["resolution"] = cached_entry["detected_resolution"]
+                                try:
+                                    snap = json.loads(cached_entry["attr_snapshot"])
+                                    if snap.get("has_hdr"):
+                                        item["has_hdr"] = True
+                                    if snap.get("has_dolby_vision"):
+                                        item["has_dolby_vision"] = True
+                                    if snap.get("content_rating") and not item.get("content_rating"):
+                                        item["content_rating"] = snap["content_rating"]
+                                    if snap.get("network") and not item.get("network"):
+                                        item["network"] = snap["network"]
+                                except Exception:
+                                    need_plex_detail = True
 
                         # Skip detailed XML fetch if rules do NOT require audio streams, languages, HDR, or ratings
                         if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings):
@@ -2705,7 +2734,7 @@ async def run_overlay_sync_task(
 
                     # For TV Shows across all server types: resolve canonical status, networks, and content rating from TMDb API
                     # Fast-path: if status is already cached and server_updated_at matches, skip remote TMDb HTTP call!
-                    needs_tmdb = (scope not in ("incremental", "changed")) or not cached_entry or str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or "")
+                    needs_tmdb = (scope not in ("incremental", "changed")) or not cached_entry or not cached_entry.get("attr_snapshot") or str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or "")
                     if m_type == "show" and needs_status and (needs_tmdb or not item.get("status")):
                         if item.get("tmdb_id"):
                             tmdb_token = creds.get("tmdb_token")
@@ -2863,6 +2892,7 @@ async def run_overlay_sync_task(
                                             metadata_hash=meta_hash,
                                             status="skipped",
                                             server_updated_at=item.get("server_updated_at"),
+                                            attr_snapshot=build_attr_snapshot(item),
                                             cache_map=cache_map
                                         )
                                         composited_jpeg = None
@@ -2915,6 +2945,7 @@ async def run_overlay_sync_task(
                                         detected_audio_codec=item.get("audio_codec"),
                                         detected_video_format=item.get("video_format"),
                                         detected_resolution=item.get("resolution"),
+                                        attr_snapshot=build_attr_snapshot(item),
                                         cache_map=cache_map
                                     )
                                     await _inc_stats(synced=1)
@@ -2942,6 +2973,7 @@ async def run_overlay_sync_task(
                             write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> Up-to-date")
                             if item.get("server_updated_at"):
                                 cache.update_server_updated_at(s_type, str(item_id), "poster", item.get("server_updated_at"), cache_map=cache_map)
+                            cache.update_attr_snapshot(s_type, str(item_id), "poster", build_attr_snapshot(item), cache_map=cache_map)
 
                         if _cancel_requested:
                             return
@@ -3023,6 +3055,7 @@ async def run_overlay_sync_task(
                                             metadata_hash=b_recipe_hash,
                                             status="skipped",
                                             server_updated_at=item.get("server_updated_at"),
+                                            attr_snapshot=build_attr_snapshot(item),
                                             cache_map=cache_map
                                         )
                                         b_comp = None
@@ -3075,6 +3108,7 @@ async def run_overlay_sync_task(
                                         detected_audio_codec=item.get("audio_codec"),
                                         detected_video_format=item.get("video_format"),
                                         detected_resolution=item.get("resolution"),
+                                        attr_snapshot=build_attr_snapshot(item),
                                         cache_map=cache_map
                                     )
                                     await _inc_stats(synced=1)
@@ -3101,6 +3135,7 @@ async def run_overlay_sync_task(
                             write_log(f"  [-] {w_tag}Skipped Backdrop: '{title}' ({lib_name}) -> Up-to-date")
                             if item.get("server_updated_at"):
                                 cache.update_server_updated_at(s_type, str(item_id), "background", item.get("server_updated_at"), cache_map=cache_map)
+                            cache.update_attr_snapshot(s_type, str(item_id), "background", build_attr_snapshot(item), cache_map=cache_map)
 
                     if _cancel_requested:
                         return

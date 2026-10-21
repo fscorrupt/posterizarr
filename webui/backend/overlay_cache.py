@@ -126,6 +126,7 @@ class OverlayCache:
                             detected_audio_codec TEXT,
                             detected_video_format TEXT,
                             detected_resolution TEXT,
+                            attr_snapshot TEXT,
                             UNIQUE(server_type, item_id, asset_type)
                         );
                     """)
@@ -151,7 +152,8 @@ class OverlayCache:
                         "metadata_hash": "TEXT",
                         "detected_audio_codec": "TEXT",
                         "detected_video_format": "TEXT",
-                        "detected_resolution": "TEXT"
+                        "detected_resolution": "TEXT",
+                        "attr_snapshot": "TEXT"
                     }
                     for col, col_type in new_cols.items():
                         if col not in existing_cols:
@@ -306,6 +308,24 @@ class OverlayCache:
                     if c_langs != i_langs:
                         specific_diffs.append(f"languages: {c_langs} -> {i_langs}")
 
+                # Compare persisted attribute snapshot (HDR/DV/content rating/network)
+                snap_raw = entry.get("attr_snapshot")
+                if snap_raw:
+                    try:
+                        snap = json.loads(snap_raw)
+                        for s_key, label in (("has_hdr", "hdr"), ("has_dolby_vision", "dolby vision")):
+                            c_v = bool(snap.get(s_key))
+                            i_v = bool(item_meta.get(s_key))
+                            if c_v != i_v:
+                                specific_diffs.append(f"{label}: {c_v} -> {i_v}")
+                        for s_key, label in (("content_rating", "content rating"), ("network", "network")):
+                            c_v = str(snap.get(s_key) or "").strip().lower()
+                            i_v = str(item_meta.get(s_key) or "").strip().lower()
+                            if c_v != i_v:
+                                specific_diffs.append(f"{label}: {snap.get(s_key)} -> {item_meta.get(s_key)}")
+                    except Exception:
+                        pass
+
                 if specific_diffs:
                     diff_reasons.append(f"Media metadata changed ({', '.join(specific_diffs)})")
                 elif meta_detail:
@@ -394,6 +414,79 @@ class OverlayCache:
                 logger.error(f"[OverlayCache] Error updating server_updated_at: {e}")
                 return False
 
+    def backfill_attributes(
+        self,
+        server_type: str,
+        item_id: str,
+        asset_type: str,
+        attr_snapshot: str,
+        detected_languages: Optional[str] = None,
+        runtime_mins: Optional[int] = None,
+        edition: Optional[str] = None,
+        show_status: Optional[str] = None,
+        detected_audio_codec: Optional[str] = None,
+        detected_video_format: Optional[str] = None,
+        detected_resolution: Optional[str] = None,
+        cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None
+    ) -> bool:
+        """
+        Backfill the attribute snapshot and missing detected_* columns for legacy entries,
+        so the fast incremental path can rebuild an identical metadata hash.
+        Zero-write if the in-memory snapshot already matches.
+        """
+        if not attr_snapshot:
+            return False
+        st_lower = server_type.lower()
+        it_str = str(item_id)
+        at_lower = asset_type.lower()
+        key = (st_lower, it_str, at_lower)
+        fills = {
+            "detected_languages": detected_languages,
+            "runtime_mins": runtime_mins,
+            "edition": edition,
+            "show_status": show_status,
+            "detected_audio_codec": detected_audio_codec,
+            "detected_video_format": detected_video_format,
+            "detected_resolution": detected_resolution,
+        }
+        if cache_map is not None and key in cache_map:
+            row = cache_map[key]
+            if row.get("attr_snapshot") == attr_snapshot:
+                return True
+            row["attr_snapshot"] = attr_snapshot
+            for col, val in fills.items():
+                if val is not None and row.get(col) in (None, ""):
+                    row[col] = val
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE dynamic_overlay_cache SET
+                            attr_snapshot = ?,
+                            detected_languages = COALESCE(NULLIF(detected_languages, ''), ?),
+                            runtime_mins = COALESCE(runtime_mins, ?),
+                            edition = COALESCE(NULLIF(edition, ''), ?),
+                            show_status = COALESCE(NULLIF(show_status, ''), ?),
+                            detected_audio_codec = COALESCE(NULLIF(detected_audio_codec, ''), ?),
+                            detected_video_format = COALESCE(NULLIF(detected_video_format, ''), ?),
+                            detected_resolution = COALESCE(NULLIF(detected_resolution, ''), ?)
+                        WHERE server_type = ? AND item_id = ? AND asset_type = ?
+                        """,
+                        (
+                            attr_snapshot,
+                            detected_languages, runtime_mins, edition, show_status,
+                            detected_audio_codec, detected_video_format, detected_resolution,
+                            st_lower, it_str, at_lower
+                        )
+                    )
+                conn.close()
+                return True
+            except Exception as e:
+                logger.error(f"[OverlayCache] Error backfilling attributes: {e}")
+                return False
+
 
     def record_push(
         self,
@@ -419,6 +512,7 @@ class OverlayCache:
         detected_audio_codec: Optional[str] = None,
         detected_video_format: Optional[str] = None,
         detected_resolution: Optional[str] = None,
+        attr_snapshot: Optional[str] = None,
         cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None
     ) -> bool:
         """Upsert a record marking that dynamic overlays were successfully pushed with full metadata signature."""
@@ -450,7 +544,8 @@ class OverlayCache:
                 "metadata_hash": metadata_hash,
                 "detected_audio_codec": detected_audio_codec,
                 "detected_video_format": detected_video_format,
-                "detected_resolution": detected_resolution
+                "detected_resolution": detected_resolution,
+                "attr_snapshot": attr_snapshot if attr_snapshot is not None else (cache_map.get((st_lower, it_str, at_lower)) or {}).get("attr_snapshot")
             }
         with self.lock:
             try:
@@ -463,8 +558,8 @@ class OverlayCache:
                             clean_asset_path, clean_asset_mtime, clean_asset_size, clean_asset_hash,
                             overlay_recipe_hash, last_pushed_at, item_title, library_name, status,
                             server_updated_at, detected_languages, runtime_mins, edition, show_status, metadata_hash,
-                            detected_audio_codec, detected_video_format, detected_resolution
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            detected_audio_codec, detected_video_format, detected_resolution, attr_snapshot
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id, asset_type) DO UPDATE SET
                             server_url = excluded.server_url,
                             clean_asset_path = excluded.clean_asset_path,
@@ -485,7 +580,8 @@ class OverlayCache:
                             metadata_hash = COALESCE(excluded.metadata_hash, dynamic_overlay_cache.metadata_hash),
                             detected_audio_codec = COALESCE(excluded.detected_audio_codec, dynamic_overlay_cache.detected_audio_codec),
                             detected_video_format = COALESCE(excluded.detected_video_format, dynamic_overlay_cache.detected_video_format),
-                            detected_resolution = COALESCE(excluded.detected_resolution, dynamic_overlay_cache.detected_resolution)
+                            detected_resolution = COALESCE(excluded.detected_resolution, dynamic_overlay_cache.detected_resolution),
+                            attr_snapshot = COALESCE(excluded.attr_snapshot, dynamic_overlay_cache.attr_snapshot)
                         """,
                         (
                             server_type.lower(),
@@ -510,7 +606,8 @@ class OverlayCache:
                             metadata_hash,
                             detected_audio_codec,
                             detected_video_format,
-                            detected_resolution
+                            detected_resolution,
+                            attr_snapshot
                         )
                     )
                 conn.close()
