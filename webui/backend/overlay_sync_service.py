@@ -2562,7 +2562,7 @@ async def run_overlay_sync_task(
                 async def _process_sync_item(item, worker_id: int = 1):
                     if _cancel_requested:
                         return
-                    item_started_at = time.perf_counter()
+                    item_started_at = time.perf_counter() if debug_log_enabled else 0.0
                     item_id = item["id"]
                     title = item["title"]
                     lib_name = item["library_name"]
@@ -2642,7 +2642,7 @@ async def run_overlay_sync_task(
                         await _inc_stats(skipped=1)
                         return  # No clean asset created yet by Posterizarr, skip
 
-                    assets_resolved_at = time.perf_counter()
+                    assets_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
                     # Query Plex detailed metadata for audio streams, guids, and native ratings only if required
                     plex_xml_bytes = None
                     if s_type == "plex":
@@ -2818,7 +2818,7 @@ async def run_overlay_sync_task(
                             if m_cr:
                                 item["content_rating"] = m_cr
 
-                    metadata_resolved_at = time.perf_counter()
+                    metadata_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
                     # Resolve multi-source ratings only if ratings overlays are configured for this library
                     multi_ratings = {}
                     if needs_ratings:
@@ -2841,7 +2841,7 @@ async def run_overlay_sync_task(
                             server_critic_rating=item.get("critic_rating")
                         )
                     item["multi_ratings"] = multi_ratings
-                    ratings_resolved_at = time.perf_counter()
+                    ratings_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
 
                     # -------------------------------------------------------------
                     # 2A. PROCESS POSTER OVERLAYS
@@ -3013,24 +3013,25 @@ async def run_overlay_sync_task(
                                 write_log(f"  [-] {w_tag}Error compositing/uploading '{title}' ({lib_name}): {err_details}")
                                 logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading '{title}' ({lib_name}) during {comp_phase}: {err_details}", exc_info=True)
                         else:
-                            poster_evaluated_at = time.perf_counter()
+                            poster_evaluated_at = time.perf_counter() if debug_log_enabled else 0.0
                             await _inc_stats(skipped=1)
                             write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> Up-to-date")
                             if item.get("server_updated_at"):
                                 cache.update_server_updated_at(s_type, str(item_id), "poster", item.get("server_updated_at"), cache_map=cache_map)
                             cache.update_attr_snapshot(s_type, str(item_id), "poster", build_attr_snapshot(item), cache_map=cache_map)
-                            skip_finished_at = time.perf_counter()
-                            if skip_finished_at - item_started_at >= 0.25 and skip_timing_samples["count"] < 8:
-                                skip_timing_samples["count"] += 1
-                                write_log(
-                                    f"  [Timing] {w_tag}'{title}' -> "
-                                    f"assets={(assets_resolved_at - item_started_at) * 1000:.0f}ms, "
-                                    f"metadata={(metadata_resolved_at - assets_resolved_at) * 1000:.0f}ms, "
-                                    f"ratings={(ratings_resolved_at - metadata_resolved_at) * 1000:.0f}ms, "
-                                    f"poster evaluation={(poster_evaluated_at - ratings_resolved_at) * 1000:.0f}ms, "
-                                    f"cache/logging={(skip_finished_at - poster_evaluated_at) * 1000:.0f}ms, "
-                                    f"total={(skip_finished_at - item_started_at) * 1000:.0f}ms"
-                                )
+                            if debug_log_enabled:
+                                skip_finished_at = time.perf_counter()
+                                if skip_finished_at - item_started_at >= 0.25 and skip_timing_samples["count"] < 8:
+                                    skip_timing_samples["count"] += 1
+                                    write_log(
+                                        f"  [Timing] {w_tag}'{title}' -> "
+                                        f"assets={(assets_resolved_at - item_started_at) * 1000:.0f}ms, "
+                                        f"metadata={(metadata_resolved_at - assets_resolved_at) * 1000:.0f}ms, "
+                                        f"ratings={(ratings_resolved_at - metadata_resolved_at) * 1000:.0f}ms, "
+                                        f"poster evaluation={(poster_evaluated_at - ratings_resolved_at) * 1000:.0f}ms, "
+                                        f"cache/logging={(skip_finished_at - poster_evaluated_at) * 1000:.0f}ms, "
+                                        f"total={(skip_finished_at - item_started_at) * 1000:.0f}ms"
+                                    )
 
                         if _cancel_requested:
                             return

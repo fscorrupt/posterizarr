@@ -31,7 +31,7 @@ import {
 import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
-import { formatDateTimeInTimezone } from "../utils/timeUtils";
+import { formatDateTimeInTimezone, sortSchedulesByTime } from "../utils/timeUtils";
 
 const API_URL = "/api";
 
@@ -1352,7 +1352,7 @@ const SchedulerSettings = () => {
 
         {config?.schedules?.length > 0 ? (
           <div className="space-y-3">
-            {config.schedules.map((schedule, index) => {
+            {sortSchedulesByTime(config.schedules).map(({ schedule, index }) => {
               const mode = schedule.mode || "normal";
               const mConfig = modeConfigs[mode] || modeConfigs.normal || { icon: Clock, color: "text-theme-primary", bgColor: "bg-theme-primary/10", label: mode };
               const Icon = mConfig.icon || Clock;
@@ -1376,11 +1376,11 @@ const SchedulerSettings = () => {
               const isCurrentEditing = editingIndex === index;
 
               return (
-                <div key={index} className={`flex items-center justify-between p-4 bg-theme-bg rounded-lg transition-all border ${isCurrentEditing ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500/50 shadow-sm" : "hover:bg-theme-hover border-theme hover:border-theme-primary/50"} group`}>
-                  <div className="flex items-center gap-4">
+                <div key={index} className={`flex flex-wrap items-center justify-between gap-3 p-4 bg-theme-bg rounded-lg transition-all border ${isCurrentEditing ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500/50 shadow-sm" : "hover:bg-theme-hover border-theme hover:border-theme-primary/50"} group`}>
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
                     <div className={`p-2.5 rounded-lg ${mConfig.bgColor} transition-all`}><Icon className={`w-5 h-5 ${mConfig.color}`} /></div>
-                    <div>
-                      <div className="flex items-center gap-3">
+                    <div className="min-w-0 break-words">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span className="font-semibold text-theme-text text-lg">{freqVal === "interval" ? <Activity className="w-5 h-5 text-theme-muted" /> : schedule.time}</span>
                         <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border ${mConfig.color} ${mConfig.bgColor} border-current opacity-80`}>{mConfig.label}</span>
                         <span className="text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border border-theme-muted/30 text-theme-muted">{freqLabel}{detailText ? `, ${detailText}` : ""}</span>

@@ -5,6 +5,30 @@
  * consistently across the application.
  */
 
+export const sortSchedulesByTime = (schedules = []) => {
+  const minutes = (schedule) => {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(schedule.time || "");
+    if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return Infinity;
+    return Number(match[1]) * 60 + Number(match[2]);
+  };
+
+  return schedules
+    .map((schedule, index) => ({ schedule, index }))
+    .sort((first, second) => (minutes(first.schedule) - minutes(second.schedule)) || first.index - second.index);
+};
+
+export const getUpcomingSchedules = (schedules = [], jobs = [], now = Date.now()) => {
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  return schedules
+    .map((schedule, index) => ({
+      schedule,
+      index,
+      nextRun: jobsById.get(`posterizarr_${schedule.mode || "normal"}_${index}`)?.next_run,
+    }))
+    .filter(({ nextRun }) => nextRun && new Date(nextRun).getTime() >= now)
+    .sort((first, second) => new Date(first.nextRun) - new Date(second.nextRun) || first.index - second.index);
+};
+
 /**
  * Get the browser's current timezone
  * @returns {string} IANA timezone identifier (e.g., "Europe/Berlin", "America/New_York")
