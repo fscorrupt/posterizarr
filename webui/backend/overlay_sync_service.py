@@ -1951,7 +1951,7 @@ def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, An
         rf = Path(part_file).parent.name
     loc = it.find(".//Location")
     if not rf and loc is not None and loc.get("path"):
-        rf = Path(loc.get("path")).name
+        rf = re.split(r"[\\/]+", loc.get("path").rstrip("\\/"))[-1]
     if not rf:
         rf = t
 
@@ -2030,7 +2030,7 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
     it_name = item_obj.get("Name", "")
     it_type = "movie" if item_obj.get("Type") == "Movie" else "show"
     it_path = item_obj.get("Path", "")
-    it_p = Path(it_path) if it_path else None
+    it_p = Path(it_path.replace("\\", "/")) if it_path else None
     if it_p:
         rf = it_p.name if (it_type == "show" or not it_p.suffix) else it_p.parent.name
     else:
@@ -2636,6 +2636,50 @@ async def run_overlay_sync_task(
                                 year=item.get("year"),
                                 dir_cache=dir_cache
                             )
+
+                    if not clean_asset and not clean_backdrop and s_type in ("plex", "jellyfin", "emby") and m_type == "show":
+                        try:
+                            located_item = None
+                            if s_type == "plex":
+                                location_resp = await http_client.get(
+                                    f"{s_url}/library/metadata/{item_id}",
+                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                )
+                                if location_resp.status_code == 200:
+                                    location_root = fromstring(location_resp.content)
+                                    show_node = location_root.find(".//Directory")
+                                    if show_node is not None:
+                                        located_item = _parse_plex_item(show_node, lib_name, "show")
+                            else:
+                                location_resp = await http_client.get(
+                                    f"{s_url}/Items",
+                                    params={"Ids": str(item_id), "Fields": "Path,ProviderIds,ProductionYear"},
+                                    headers={"X-Emby-Token": creds.get("api_key"), "Accept": "application/json"}
+                                )
+                                if location_resp.status_code == 200:
+                                    for show_data in location_resp.json().get("Items", []):
+                                        if str(show_data.get("Id")) == str(item_id):
+                                            located_item = _parse_jellyfin_item(show_data, lib_name)
+                                            break
+                            if located_item:
+                                root_f = located_item["root_folder"]
+                                item["root_folder"] = root_f
+                                asset_search = {
+                                    "assets_dir": real_asset_path,
+                                    "library_name": lib_name,
+                                    "root_folder": root_f,
+                                    "title": title,
+                                    "imdb_id": item.get("imdb_id") or located_item.get("imdb_id"),
+                                    "tmdb_id": item.get("tmdb_id") or located_item.get("tmdb_id"),
+                                    "tvdb_id": item.get("tvdb_id") or located_item.get("tvdb_id"),
+                                    "year": item.get("year") or located_item.get("year"),
+                                    "dir_cache": dir_cache,
+                                }
+                                clean_asset = find_clean_asset(**asset_search, asset_type="poster")
+                                if backdrop_enabled:
+                                    clean_backdrop = find_clean_asset(**asset_search, asset_type="background")
+                        except Exception as location_err:
+                            logger.debug(f"[OverlaySync] Show location lookup failed for {title}: {location_err}")
 
                     if not clean_asset and not clean_backdrop:
                         write_log(f"  [>] {w_tag}'{title}' ({lib_name}): No clean original asset found in '{real_asset_path}'. Skipping.")
