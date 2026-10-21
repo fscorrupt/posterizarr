@@ -131,11 +131,11 @@ class OverlayCache:
                         );
                     """)
                     conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_doc_lookup 
+                        CREATE INDEX IF NOT EXISTS idx_doc_lookup
                         ON dynamic_overlay_cache(server_type, item_id, asset_type);
                     """)
                     conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_doc_hashes 
+                        CREATE INDEX IF NOT EXISTS idx_doc_hashes
                         ON dynamic_overlay_cache(clean_asset_hash, overlay_recipe_hash);
                     """)
 
@@ -177,7 +177,7 @@ class OverlayCache:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT * FROM dynamic_overlay_cache 
+                    SELECT * FROM dynamic_overlay_cache
                     WHERE server_type = ? AND item_id = ? AND asset_type = ?
                     LIMIT 1
                     """,
@@ -413,6 +413,46 @@ class OverlayCache:
             except Exception as e:
                 logger.error(f"[OverlayCache] Error updating server_updated_at: {e}")
                 return False
+    def update_attr_snapshot(
+        self,
+        server_type: str,
+        item_id: str,
+        asset_type: str,
+        attr_snapshot: str,
+        cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None
+    ) -> bool:
+        """Update attr_snapshot for a cached entry without modifying hashes."""
+        if not attr_snapshot:
+            return False
+        st_lower = server_type.lower()
+        it_str = str(item_id)
+        at_lower = asset_type.lower()
+        key = (st_lower, it_str, at_lower)
+
+        # Zero-write skip: if memory cache already has this exact snapshot, skip DB write
+        if cache_map is not None and key in cache_map:
+            cached_val = cache_map[key].get("attr_snapshot")
+            if str(cached_val or "") == str(attr_snapshot):
+                return True
+            cache_map[key]["attr_snapshot"] = str(attr_snapshot)
+
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE dynamic_overlay_cache
+                        SET attr_snapshot = ?
+                        WHERE server_type = ? AND item_id = ? AND asset_type = ?
+                        """,
+                        (str(attr_snapshot), st_lower, it_str, at_lower)
+                    )
+                conn.close()
+                return True
+            except Exception as e:
+                logger.error(f"[OverlayCache] Error updating attr_snapshot: {e}")
+                return False
 
     def backfill_attributes(
         self,
@@ -626,22 +666,22 @@ class OverlayCache:
                 total = cursor.fetchone()[0]
 
                 cursor.execute("""
-                    SELECT server_type, COUNT(*) 
-                    FROM dynamic_overlay_cache 
+                    SELECT server_type, COUNT(*)
+                    FROM dynamic_overlay_cache
                     GROUP BY server_type
                 """)
                 by_server = {row[0]: row[1] for row in cursor.fetchall()}
 
                 cursor.execute("""
-                    SELECT asset_type, COUNT(*) 
-                    FROM dynamic_overlay_cache 
+                    SELECT asset_type, COUNT(*)
+                    FROM dynamic_overlay_cache
                     GROUP BY asset_type
                 """)
                 by_asset = {row[0]: row[1] for row in cursor.fetchall()}
 
                 cursor.execute("""
-                    SELECT last_pushed_at 
-                    FROM dynamic_overlay_cache 
+                    SELECT last_pushed_at
+                    FROM dynamic_overlay_cache
                     ORDER BY id DESC LIMIT 1
                 """)
                 last_row = cursor.fetchone()
@@ -686,7 +726,7 @@ class OverlayCache:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT * FROM dynamic_overlay_cache 
+                    SELECT * FROM dynamic_overlay_cache
                     ORDER BY id DESC LIMIT ?
                     """,
                     (max(1, min(limit, 200)),)
