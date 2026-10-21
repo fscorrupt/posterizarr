@@ -29,6 +29,7 @@ import hashlib
 import logging
 import asyncio
 import threading
+import traceback
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple, Union
@@ -65,6 +66,51 @@ def extract_edition(*candidates: Optional[str]) -> Optional[str]:
             if re.search(pat, cand_str):
                 return canonical
     return None
+
+def format_sync_error(err: Exception, phase: Optional[str] = None) -> str:
+    """
+    Format an exception into a clear, informative single-line error description for logs.
+    Never returns an empty or unhelpful string after the colon.
+    """
+    err_type = type(err).__name__
+    err_str = str(err).strip()
+
+    # If str(err) is empty, or merely quotes/empty repr (like KeyError() or empty custom exceptions)
+    if not err_str or err_str in ("''", '""', "None"):
+        if getattr(err, "args", None):
+            err_str = ", ".join(repr(a) for a in err.args if repr(a))
+        if not err_str or err_str in ("''", '""', "None"):
+            err_str = repr(err)
+
+    # Clean whitespace or linebreaks in single-line log output
+    err_str = " ".join(err_str.split())
+
+    # Include innermost traceback file and line number
+    tb_loc = ""
+    tb = getattr(err, "__traceback__", None)
+    if tb:
+        tb_frames = traceback.extract_tb(tb)
+        if tb_frames:
+            last_frame = tb_frames[-1]
+            fname = Path(last_frame.filename).name
+            tb_loc = f" (at {fname}:{last_frame.lineno} in {last_frame.name})"
+
+    phase_prefix = f"During {phase}: " if phase else ""
+    return f"{phase_prefix}[{err_type}] {err_str}{tb_loc}"
+
+def format_http_failure(resp: Any) -> str:
+    """Format an HTTP response failure into status code + body snippet."""
+    status = getattr(resp, "status_code", "error")
+    body_snippet = ""
+    try:
+        text = getattr(resp, "text", None)
+        if text:
+            cleaned = " ".join(str(text).split())[:150]
+            if cleaned:
+                body_snippet = f" - {cleaned}"
+    except Exception:
+        pass
+    return f"HTTP {status}{body_snippet}"
 
 AUDIO_CODEC_PATTERNS = [
     ("truehd_atmos", re.compile(r'(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))')),
@@ -2462,14 +2508,15 @@ async def run_overlay_sync_task(
                     m_type = item["media_type"]
                     root_f = item.get("root_folder") or title
 
+                    w_tag = f"[Worker {worker_id}] " if concurrency > 1 else ""
+                    item_label = f"Worker {worker_id} | '{title}'" if concurrency > 1 else f"'{title}'"
+
                     # 1. Resolve library rules immediately. If not configured, skip right away
                     matched_rule_key, lib_rules = resolve_library_rules(lib_name, m_type, library_rules_map)
                     if matched_rule_key == "none" or not lib_rules:
                         await _inc_stats(skipped=1)
+                        write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> No library overlay rules configured")
                         return
-
-                    w_tag = f"[Worker {worker_id}] " if concurrency > 1 else ""
-                    item_label = f"Worker {worker_id} | '{title}'" if concurrency > 1 else f"'{title}'"
 
                     # Master Dynamic Overlay Settings
                     dyn_settings = get_dynamic_overlays_settings()
@@ -2743,7 +2790,7 @@ async def run_overlay_sync_task(
                             has_dolby_vision=item.get("has_dolby_vision")
                         )
 
-                        is_current = cache.is_cached_and_current(
+                        is_current, cache_reason = cache.check_cache_status(
                             server_type=s_type,
                             item_id=str(item_id),
                             asset_type="poster",
@@ -2751,15 +2798,22 @@ async def run_overlay_sync_task(
                             overlay_recipe_hash=recipe_hash,
                             metadata_hash=meta_hash,
                             server_updated_at=item.get("server_updated_at"),
-                            cached_entry=cached_entry
+                            cached_entry=cached_entry,
+                            item_meta=item
                         )
 
                         if scope != "incremental" or not is_current or is_target_mode:
+                            sync_reason = (
+                                f"Forced sync (scope={scope})" if scope != "incremental"
+                                else ("Targeted sync" if is_target_mode and is_current else cache_reason)
+                            )
+                            comp_phase = "reading clean asset"
                             try:
                                 with open(clean_asset, "rb") as cf:
                                     base_bytes = cf.read()
 
                                 if overlay_layers:
+                                    comp_phase = "compositing overlays in RAM"
                                     composited_jpeg = await asyncio.to_thread(
                                         DynamicOverlayCompositor.composite_overlays,
                                         base_image_bytes=base_bytes,
@@ -2781,6 +2835,7 @@ async def run_overlay_sync_task(
                                     if not was_previously_overlaid:
                                         # Never overlaid and no overlays apply -> leave server completely untouched!
                                         await _inc_stats(skipped=1)
+                                        write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> No overlay rules apply")
                                         cache.record_push(
                                             server_type=s_type,
                                             item_id=str(item_id),
@@ -2797,6 +2852,7 @@ async def run_overlay_sync_task(
                                     composited_jpeg = base_bytes
 
                                 upload_success = False
+                                comp_phase = f"uploading to {s_type.upper()}"
                                 if s_type == "plex":
                                     upload_url = f"{s_url}/library/metadata/{item_id}/posters"
                                     headers = {
@@ -2843,22 +2899,27 @@ async def run_overlay_sync_task(
                                     )
                                     await _inc_stats(synced=1)
                                     if overlay_layers:
-                                        write_log(f"  [+] {w_tag}Overlaid & Synced: '{title}' ({lib_name}) -> {s_type.upper()}")
+                                        write_log(f"  [+] {w_tag}Overlaid & Synced: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
                                     else:
-                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()}")
+                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
                                 else:
                                     await _inc_stats(failed=1)
-                                    write_log(f"  [-] {w_tag}Failed uploading '{title}' to {s_type.upper()}: Status {getattr(resp, 'status_code', 'error')}")
+                                    http_detail = format_http_failure(resp)
+                                    write_log(f"  [-] {w_tag}Failed uploading '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                    logger.error(f"[OverlaySync] {w_tag}Failed uploading '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
 
                             except OverlayAssetMissingError as ame:
                                 await _inc_stats(failed=1)
-                                write_log(f"  [!] Aborted overlay for '{title}' (Poster): {ame.message}. Server artwork left untouched.")
-                                logger.warning(f"[OverlaySync] Aborted overlay for '{title}' (Poster): {ame.message}")
+                                write_log(f"  [!] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Poster]: {ame.message}. Server artwork left untouched.")
+                                logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Poster]: {ame.message}")
                             except Exception as comp_err:
                                 await _inc_stats(failed=1)
-                                write_log(f"  [-] Error compositing/uploading '{title}': {comp_err}")
+                                err_details = format_sync_error(comp_err, phase=comp_phase)
+                                write_log(f"  [-] {w_tag}Error compositing/uploading '{title}' ({lib_name}): {err_details}")
+                                logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading '{title}' ({lib_name}) during {comp_phase}: {err_details}", exc_info=True)
                         else:
                             await _inc_stats(skipped=1)
+                            write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> Up-to-date")
                             if item.get("server_updated_at"):
                                 cache.update_server_updated_at(s_type, str(item_id), "poster", item.get("server_updated_at"))
 
@@ -2875,7 +2936,7 @@ async def run_overlay_sync_task(
                         b_recipe_hash = compute_layers_recipe_hash(b_layers)
 
                         b_cached_entry = cache.get_entry(s_type, str(item_id), "background")
-                        b_is_current = cache.is_cached_and_current(
+                        b_is_current, b_cache_reason = cache.check_cache_status(
                             server_type=s_type,
                             item_id=str(item_id),
                             asset_type="background",
@@ -2896,15 +2957,22 @@ async def run_overlay_sync_task(
                                 has_dolby_vision=item.get("has_dolby_vision")
                             ),
                             server_updated_at=item.get("server_updated_at"),
-                            cached_entry=b_cached_entry
+                            cached_entry=b_cached_entry,
+                            item_meta=b_item_meta
                         )
 
                         if scope != "incremental" or not b_is_current or is_target_mode:
+                            b_sync_reason = (
+                                f"Forced sync (scope={scope})" if scope != "incremental"
+                                else ("Targeted sync" if is_target_mode and b_is_current else b_cache_reason)
+                            )
+                            b_phase = "reading clean backdrop"
                             try:
                                 with open(clean_backdrop, "rb") as bf:
                                     b_base_bytes = bf.read()
 
                                 if b_layers:
+                                    b_phase = "compositing backdrop overlays in RAM"
                                     b_comp = await asyncio.to_thread(
                                         DynamicOverlayCompositor.composite_overlays,
                                         base_image_bytes=b_base_bytes,
@@ -2922,6 +2990,8 @@ async def run_overlay_sync_task(
                                         and b_cached_entry.get("overlay_recipe_hash") not in (None, "", "none")
                                     )
                                     if not b_was_previously_overlaid:
+                                        await _inc_stats(skipped=1)
+                                        write_log(f"  [-] {w_tag}Skipped Backdrop: '{title}' ({lib_name}) -> No overlay rules apply")
                                         cache.record_push(
                                             server_type=s_type,
                                             item_id=str(item_id),
@@ -2939,6 +3009,7 @@ async def run_overlay_sync_task(
                                         b_comp = b_base_bytes
 
                                 b_upload_success = False
+                                b_phase = f"uploading backdrop to {s_type.upper()}"
                                 if b_comp is not None:
                                     if s_type == "plex":
                                         b_url = f"{s_url}/library/metadata/{item_id}/arts"
@@ -2986,21 +3057,26 @@ async def run_overlay_sync_task(
                                     )
                                     await _inc_stats(synced=1)
                                     if b_layers:
-                                        write_log(f"  [+] {w_tag}Overlaid & Synced Backdrop: '{title}' ({lib_name}) -> {s_type.upper()}")
+                                        write_log(f"  [+] {w_tag}Overlaid & Synced Backdrop: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
                                     else:
-                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Backdrop Restored: '{title}' ({lib_name}) -> {s_type.upper()}")
-                                else:
+                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Backdrop Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
+                                elif b_comp is not None:
                                     await _inc_stats(failed=1)
-                                    write_log(f"  [-] {w_tag}Failed uploading backdrop for '{title}' to {s_type.upper()}: Status {getattr(b_resp, 'status_code', 'error')}")
+                                    http_detail = format_http_failure(b_resp)
+                                    write_log(f"  [-] {w_tag}Failed uploading backdrop for '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                    logger.error(f"[OverlaySync] {w_tag}Failed uploading backdrop for '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
                             except OverlayAssetMissingError as ame:
                                 await _inc_stats(failed=1)
-                                write_log(f"  [!] Aborted overlay for '{title}' (Backdrop): {ame.message}. Server artwork left untouched.")
-                                logger.warning(f"[OverlaySync] Aborted overlay for '{title}' (Backdrop): {ame.message}")
+                                write_log(f"  [!] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Backdrop]: {ame.message}. Server artwork left untouched.")
+                                logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Backdrop]: {ame.message}")
                             except Exception as b_err:
                                 await _inc_stats(failed=1)
-                                write_log(f"  [-] Error compositing/uploading backdrop for '{title}': {b_err}")
+                                err_details = format_sync_error(b_err, phase=b_phase)
+                                write_log(f"  [-] {w_tag}Error compositing/uploading backdrop for '{title}' ({lib_name}): {err_details}")
+                                logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading backdrop for '{title}' ({lib_name}) during {b_phase}: {err_details}", exc_info=True)
                         else:
                             await _inc_stats(skipped=1)
+                            write_log(f"  [-] {w_tag}Skipped Backdrop: '{title}' ({lib_name}) -> Up-to-date")
                             if item.get("server_updated_at"):
                                 cache.update_server_updated_at(s_type, str(item_id), "background", item.get("server_updated_at"))
 
@@ -3094,9 +3170,8 @@ async def run_overlay_sync_task(
                                         audio_codec=item.get("audio_codec"),
                                         video_format=item.get("video_format")
                                     )
-
                                     s_cached_entry = cache.get_entry(s_type, str(s_rk), "season")
-                                    s_current = cache.is_cached_and_current(
+                                    s_current, s_cache_reason = cache.check_cache_status(
                                         server_type=s_type,
                                         item_id=str(s_rk),
                                         asset_type="season",
@@ -3104,15 +3179,19 @@ async def run_overlay_sync_task(
                                         overlay_recipe_hash=s_recipe_hash,
                                         metadata_hash=s_meta_hash,
                                         server_updated_at=item.get("server_updated_at"),
-                                        cached_entry=s_cached_entry
+                                        cached_entry=s_cached_entry,
+                                        item_meta=s_item_meta
                                     )
 
                                     if scope != "incremental" or not s_current:
+                                        s_sync_reason = f"Forced sync (scope={scope})" if scope != "incremental" else s_cache_reason
+                                        s_phase = "reading clean season poster"
                                         try:
                                             with open(clean_season, "rb") as csf:
                                                 s_base_bytes = csf.read()
 
                                             if s_layers:
+                                                s_phase = "compositing season overlays in RAM"
                                                 s_comp = await asyncio.to_thread(
                                                     DynamicOverlayCompositor.composite_overlays,
                                                     base_image_bytes=s_base_bytes,
@@ -3127,6 +3206,7 @@ async def run_overlay_sync_task(
                                                 s_comp = s_base_bytes
 
                                             s_success = False
+                                            s_phase = f"uploading season poster to {s_type.upper()}"
                                             if s_type == "plex":
                                                 s_resp = await http_client.post(
                                                     f"{s_url}/library/metadata/{s_rk}/posters",
@@ -3169,18 +3249,24 @@ async def run_overlay_sync_task(
                                                     detected_resolution=item.get("resolution")
                                                 )
                                                 await _inc_stats(synced=1)
-                                                write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' -> {s_type.upper()}")
+                                                write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {s_sync_reason}]")
                                             else:
                                                 await _inc_stats(failed=1)
+                                                http_detail = format_http_failure(s_resp)
+                                                write_log(f"  [-] {w_tag}Failed uploading season '{title} S{s_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                                logger.error(f"[OverlaySync] {w_tag}Failed uploading season '{title} S{s_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
                                         except OverlayAssetMissingError as ame:
                                             await _inc_stats(failed=1)
-                                            write_log(f"  [!] Aborted overlay for '{title} S{s_num:02d}' (Season): {ame.message}. Server artwork left untouched.")
-                                            logger.warning(f"[OverlaySync] Aborted overlay for '{title} S{s_num:02d}' (Season): {ame.message}")
+                                            write_log(f"  [!] {w_tag}Aborted overlay for '{title} S{s_num:02d}' ({lib_name}) [Season]: {ame.message}. Server artwork left untouched.")
+                                            logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title} S{s_num:02d}' ({lib_name}) [Season]: {ame.message}")
                                         except Exception as s_comp_err:
                                             await _inc_stats(failed=1)
-                                            write_log(f"  [-] Error compositing/uploading season '{title} S{s_num:02d}': {s_comp_err}")
+                                            err_details = format_sync_error(s_comp_err, phase=s_phase)
+                                            write_log(f"  [-] {w_tag}Error compositing/uploading season '{title} S{s_num:02d}' ({lib_name}): {err_details}")
+                                            logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading season '{title} S{s_num:02d}' ({lib_name}) during {s_phase}: {err_details}", exc_info=True)
                                     else:
                                         await _inc_stats(skipped=1)
+                                        write_log(f"  [-] {w_tag}Skipped Season: '{title} S{s_num:02d}' -> Up-to-date")
                                         if item.get("server_updated_at"):
                                             cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}", "season", item.get("server_updated_at"))
 
@@ -3410,9 +3496,8 @@ async def run_overlay_sync_task(
                                                 has_hdr=ep_data.get("has_hdr"),
                                                 has_dolby_vision=ep_data.get("has_dolby_vision")
                                             )
-
                                             ep_cached_entry = cache.get_entry(s_type, str(ep_rk), "titlecard")
-                                            ep_current = cache.is_cached_and_current(
+                                            ep_current, ep_cache_reason = cache.check_cache_status(
                                                 server_type=s_type,
                                                 item_id=str(ep_rk),
                                                 asset_type="titlecard",
@@ -3420,88 +3505,105 @@ async def run_overlay_sync_task(
                                                 overlay_recipe_hash=ep_recipe_hash,
                                                 metadata_hash=ep_meta_hash,
                                                 server_updated_at=item.get("server_updated_at"),
-                                                cached_entry=ep_cached_entry
+                                                cached_entry=ep_cached_entry,
+                                                item_meta=ep_data
                                             )
 
                                             if scope == "incremental" and ep_current:
                                                 await _inc_stats(skipped=1)
+                                                write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Up-to-date")
                                                 if item.get("server_updated_at"):
                                                     cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}e{ep_num}", "episode", item.get("server_updated_at"))
                                                 continue
 
-                                            with open(clean_tc, "rb") as tcf:
-                                                tc_base_bytes = tcf.read()
+                                            ep_sync_reason = f"Forced sync (scope={scope})" if scope != "incremental" else ep_cache_reason
+                                            tc_phase = "reading clean titlecard"
+                                            try:
+                                                with open(clean_tc, "rb") as tcf:
+                                                    tc_base_bytes = tcf.read()
 
-                                            if ep_layers:
-                                                tc_comp = await asyncio.to_thread(
-                                                    DynamicOverlayCompositor.composite_overlays,
-                                                    base_image_bytes=tc_base_bytes,
-                                                    layers=ep_layers,
-                                                    canvas_type="landscape",
-                                                    abort_on_missing_asset=True,
-                                                    debug_logging=debug_log_enabled,
-                                                    debug_callback=write_log,
-                                                    item_label=f"Worker {worker_id} | '{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)" if concurrency > 1 else f"'{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)"
-                                                )
-                                            else:
-                                                tc_comp = tc_base_bytes
+                                                if ep_layers:
+                                                    tc_phase = "compositing titlecard overlays in RAM"
+                                                    tc_comp = await asyncio.to_thread(
+                                                        DynamicOverlayCompositor.composite_overlays,
+                                                        base_image_bytes=tc_base_bytes,
+                                                        layers=ep_layers,
+                                                        canvas_type="landscape",
+                                                        abort_on_missing_asset=True,
+                                                        debug_logging=debug_log_enabled,
+                                                        debug_callback=write_log,
+                                                        item_label=f"Worker {worker_id} | '{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)" if concurrency > 1 else f"'{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)"
+                                                    )
+                                                else:
+                                                    tc_comp = tc_base_bytes
 
-                                        tc_success = False
-                                        if s_type == "plex":
-                                            tc_resp = await http_client.post(
-                                                f"{s_url}/library/metadata/{ep_rk}/posters",
-                                                headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
-                                                content=tc_comp
-                                            )
-                                            tc_success = (tc_resp.status_code in [200, 201])
-                                        elif s_type in ["jellyfin", "emby"]:
-                                            b64_tc = base64.b64encode(tc_comp)
-                                            tc_resp = await http_client.post(
-                                                f"{s_url}/Items/{ep_rk}/Images/Primary",
-                                                headers=headers,
-                                                content=b64_tc
-                                            )
-                                            tc_success = (tc_resp.status_code in [200, 201, 204])
+                                                tc_success = False
+                                                tc_phase = f"uploading titlecard to {s_type.upper()}"
+                                                if s_type == "plex":
+                                                    tc_resp = await http_client.post(
+                                                        f"{s_url}/library/metadata/{ep_rk}/posters",
+                                                        headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
+                                                        content=tc_comp
+                                                    )
+                                                    tc_success = (tc_resp.status_code in [200, 201])
+                                                elif s_type in ["jellyfin", "emby"]:
+                                                    b64_tc = base64.b64encode(tc_comp)
+                                                    tc_resp = await http_client.post(
+                                                        f"{s_url}/Items/{ep_rk}/Images/Primary",
+                                                        headers=headers,
+                                                        content=b64_tc
+                                                    )
+                                                    tc_success = (tc_resp.status_code in [200, 201, 204])
 
-                                        if tc_success:
-                                            cache.record_push(
-                                                server_type=s_type,
-                                                server_url=s_url,
-                                                item_id=str(ep_rk),
-                                                asset_type="titlecard",
-                                                clean_asset_path=str(clean_tc),
-                                                clean_asset_mtime=tc_mtime,
-                                                clean_asset_size=tc_size,
-                                                clean_asset_hash=tc_clean_hash,
-                                                overlay_recipe_hash=ep_recipe_hash,
-                                                item_title=f"{title} S{s_num:02d}E{ep_num:02d} - {ep_title}",
-                                                library_name=lib_name,
-                                                media_type="episode",
-                                                status="synced",
-                                                server_updated_at=item.get("server_updated_at"),
-                                                detected_languages=",".join(sorted(ep_data.get("audio_languages", []))) if ep_data.get("audio_languages") else None,
-                                                runtime_mins=ep_data.get("runtime_mins"),
-                                                edition=None,
-                                                show_status=item.get("status"),
-                                                metadata_hash=ep_meta_hash,
-                                                detected_audio_codec=ep_data.get("audio_codec"),
-                                                detected_video_format=ep_data.get("video_format"),
-                                                detected_resolution=ep_data.get("resolution")
-                                            )
-                                            await _inc_stats(synced=1)
-                                            write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> {s_type.upper()}")
-                                        else:
-                                            await _inc_stats(failed=1)
-                                            write_log(f"  [-] {w_tag}Failed uploading Titlecard '{title} S{s_num:02d}E{ep_num:02d}' to {s_type.upper()}: Status {getattr(tc_resp, 'status_code', 'error')}")
-                                    except OverlayAssetMissingError as ame:
-                                        await _inc_stats(failed=1)
-                                        write_log(f"  [!] Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}' (Titlecard): {ame.message}. Server artwork left untouched.")
-                                        logger.warning(f"[OverlaySync] Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}': {ame.message}")
-                                    except Exception as ep_err:
-                                        logger.debug(f"Episode sync error for {title} S{s_num:02d}: {ep_err}")
-                                        write_log(f"  [-] {w_tag}Error syncing episodes for {title} S{s_num:02d}: {ep_err}")
+                                                if tc_success:
+                                                    cache.record_push(
+                                                        server_type=s_type,
+                                                        server_url=s_url,
+                                                        item_id=str(ep_rk),
+                                                        asset_type="titlecard",
+                                                        clean_asset_path=str(clean_tc),
+                                                        clean_asset_mtime=tc_mtime,
+                                                        clean_asset_size=tc_size,
+                                                        clean_asset_hash=tc_clean_hash,
+                                                        overlay_recipe_hash=ep_recipe_hash,
+                                                        item_title=f"{title} S{s_num:02d}E{ep_num:02d} - {ep_title}",
+                                                        library_name=lib_name,
+                                                        media_type="episode",
+                                                        status="synced",
+                                                        server_updated_at=item.get("server_updated_at"),
+                                                        detected_languages=",".join(sorted(ep_data.get("audio_languages", []))) if ep_data.get("audio_languages") else None,
+                                                        runtime_mins=ep_data.get("runtime_mins"),
+                                                        edition=None,
+                                                        show_status=item.get("status"),
+                                                        metadata_hash=ep_meta_hash,
+                                                        detected_audio_codec=ep_data.get("audio_codec"),
+                                                        detected_video_format=ep_data.get("video_format"),
+                                                        detected_resolution=ep_data.get("resolution")
+                                                    )
+                                                    await _inc_stats(synced=1)
+                                                    write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
+                                                else:
+                                                    await _inc_stats(failed=1)
+                                                    http_detail = format_http_failure(tc_resp)
+                                                    write_log(f"  [-] {w_tag}Failed uploading Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                                    logger.error(f"[OverlaySync] {w_tag}Failed uploading Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                            except OverlayAssetMissingError as ame:
+                                                await _inc_stats(failed=1)
+                                                write_log(f"  [!] {w_tag}Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) [Titlecard]: {ame.message}. Server artwork left untouched.")
+                                                logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) [Titlecard]: {ame.message}")
+                                            except Exception as ep_err:
+                                                await _inc_stats(failed=1)
+                                                err_details = format_sync_error(ep_err, phase=tc_phase)
+                                                write_log(f"  [-] {w_tag}Error compositing/uploading titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}): {err_details}")
+                                                logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) during {tc_phase}: {err_details}", exc_info=True)
+                                    except Exception as ep_discovery_err:
+                                        err_details = format_sync_error(ep_discovery_err, phase="querying season episodes")
+                                        logger.error(f"[OverlaySync] {w_tag}Episode discovery error for '{title} S{s_num:02d}' ({lib_name}): {err_details}", exc_info=True)
+                                        write_log(f"  [-] {w_tag}Error querying episodes for '{title} S{s_num:02d}' ({lib_name}): {err_details}")
                         except Exception as season_err:
-                            logger.debug(f"Season sync error for {title}: {season_err}")
+                            err_details = format_sync_error(season_err, phase="evaluating seasons and titlecards")
+                            logger.error(f"[OverlaySync] {w_tag}Season/Titlecard scan error for '{title}' ({lib_name}): {err_details}", exc_info=True)
+                            write_log(f"  [-] {w_tag}Error evaluating seasons/titlecards for '{title}' ({lib_name}): {err_details}")
 
                 worker_pool = asyncio.Queue()
                 for wid in range(1, concurrency + 1):
@@ -3516,7 +3618,9 @@ async def run_overlay_sync_task(
                             return
                         await _process_sync_item(it, worker_id=wid)
                     except Exception as it_err:
-                        logger.error(f"[OverlaySync] Unhandled error processing {it.get('title')}: {it_err}")
+                        err_details = format_sync_error(it_err)
+                        logger.error(f"[OverlaySync] [Worker {wid}] Unhandled error processing '{it.get('title')}': {err_details}", exc_info=True)
+                        write_log(f"  [-] [Worker {wid}] Unhandled error processing '{it.get('title')}': {err_details}")
                         await _inc_stats(failed=1)
                     finally:
                         worker_pool.put_nowait(wid)

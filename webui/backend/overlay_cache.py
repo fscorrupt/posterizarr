@@ -188,6 +188,103 @@ class OverlayCache:
                 logger.error(f"[OverlayCache] Error reading entry ({server_type}, {item_id}, {asset_type}): {e}")
                 return None
 
+    def check_cache_status(
+        self,
+        server_type: str,
+        item_id: str,
+        asset_type: str,
+        clean_asset_hash: str,
+        overlay_recipe_hash: str,
+        metadata_hash: Optional[str] = None,
+        server_updated_at: Optional[str] = None,
+        cached_entry: Optional[Dict[str, Any]] = None,
+        item_meta: Optional[Dict[str, Any]] = None
+    ) -> tuple:
+        """
+        Check if the item has already been overlaid and uploaded with the EXACT same
+        clean asset image, applied overlay recipe, and media attribute signature.
+        Returns a tuple of (is_current: bool, reason: str).
+        """
+        entry = cached_entry if cached_entry is not None else self.get_entry(server_type, item_id, asset_type)
+        if not entry:
+            return False, "Not in cache (initial sync)"
+
+        if entry.get("status") != "synced":
+            st = entry.get("status") or "unknown"
+            return False, f"Previous sync status was '{st}'"
+
+        cached_clean_hash = entry.get("clean_asset_hash") or ""
+        cached_recipe_hash = entry.get("overlay_recipe_hash") or ""
+
+        diff_reasons = []
+
+        if cached_clean_hash != clean_asset_hash:
+            diff_reasons.append("Clean artwork file changed")
+
+        if cached_recipe_hash != overlay_recipe_hash:
+            diff_reasons.append("Overlay recipe/rules modified")
+
+        # Metadata signature drift check
+        meta_drift = False
+        meta_detail = ""
+        if metadata_hash and entry.get("metadata_hash"):
+            if entry["metadata_hash"] != metadata_hash:
+                meta_drift = True
+        elif server_updated_at and entry.get("server_updated_at"):
+            if str(entry["server_updated_at"]) != str(server_updated_at):
+                meta_drift = True
+                meta_detail = "server timestamp drifted"
+
+        if meta_drift:
+            if item_meta:
+                specific_diffs = []
+                if item_meta.get("resolution") and entry.get("detected_resolution"):
+                    if str(item_meta["resolution"]).strip().lower() != str(entry["detected_resolution"]).strip().lower():
+                        specific_diffs.append(f"resolution: {entry['detected_resolution']} -> {item_meta['resolution']}")
+                if item_meta.get("audio_codec") and entry.get("detected_audio_codec"):
+                    if str(item_meta["audio_codec"]).strip().lower() != str(entry["detected_audio_codec"]).strip().lower():
+                        specific_diffs.append(f"audio: {entry['detected_audio_codec']} -> {item_meta['audio_codec']}")
+                if item_meta.get("video_format") and entry.get("detected_video_format"):
+                    if str(item_meta["video_format"]).strip().lower() != str(entry["detected_video_format"]).strip().lower():
+                        specific_diffs.append(f"format: {entry['detected_video_format']} -> {item_meta['video_format']}")
+                if item_meta.get("status") and entry.get("show_status"):
+                    if str(item_meta["status"]).strip().lower() != str(entry["show_status"]).strip().lower():
+                        specific_diffs.append(f"status: {entry['show_status']} -> {item_meta['status']}")
+                if item_meta.get("edition") and entry.get("edition"):
+                    if str(item_meta["edition"]).strip().lower() != str(entry["edition"]).strip().lower():
+                        specific_diffs.append(f"edition: {entry['edition']} -> {item_meta['edition']}")
+                if item_meta.get("runtime_mins") and entry.get("runtime_mins"):
+                    try:
+                        if abs(int(item_meta["runtime_mins"]) - int(entry["runtime_mins"])) > 1:
+                            specific_diffs.append(f"runtime: {entry['runtime_mins']}m -> {item_meta['runtime_mins']}m")
+                    except (ValueError, TypeError):
+                        pass
+                if item_meta.get("audio_languages") and entry.get("detected_languages"):
+                    c_langs = sorted([l.strip().lower() for l in (entry.get("detected_languages") or "").split(",") if l.strip()])
+                    if isinstance(item_meta["audio_languages"], list):
+                        i_langs = sorted([str(l).strip().lower() for l in item_meta["audio_languages"] if str(l).strip()])
+                    else:
+                        i_langs = sorted([l.strip().lower() for l in str(item_meta["audio_languages"]).split(",") if l.strip()])
+                    if c_langs != i_langs:
+                        specific_diffs.append(f"languages: {c_langs} -> {i_langs}")
+
+                if specific_diffs:
+                    diff_reasons.append(f"Media metadata changed ({', '.join(specific_diffs)})")
+                elif meta_detail:
+                    diff_reasons.append(f"Media metadata changed ({meta_detail})")
+                else:
+                    diff_reasons.append("Media metadata/ratings modified")
+            else:
+                if meta_detail:
+                    diff_reasons.append(f"Media metadata changed ({meta_detail})")
+                else:
+                    diff_reasons.append("Media metadata/ratings modified")
+
+        if diff_reasons:
+            return False, ", ".join(diff_reasons)
+
+        return True, "Up-to-date"
+
     def is_cached_and_current(
         self,
         server_type: str,
@@ -197,37 +294,26 @@ class OverlayCache:
         overlay_recipe_hash: str,
         metadata_hash: Optional[str] = None,
         server_updated_at: Optional[str] = None,
-        cached_entry: Optional[Dict[str, Any]] = None
+        cached_entry: Optional[Dict[str, Any]] = None,
+        item_meta: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Check if the item has already been overlaid and uploaded with the EXACT same
         clean asset image, applied overlay recipe, and media attribute signature.
         If languages, cut/runtime, status, edition, or server timestamp changed, returns False.
         """
-        entry = cached_entry if cached_entry is not None else self.get_entry(server_type, item_id, asset_type)
-        if not entry:
-            return False
-
-        if entry.get("status") != "synced":
-            return False
-
-        cached_clean_hash = entry.get("clean_asset_hash") or ""
-        cached_recipe_hash = entry.get("overlay_recipe_hash") or ""
-
-        # Clean base image and overlay recipe must match exactly
-        if cached_clean_hash != clean_asset_hash or cached_recipe_hash != overlay_recipe_hash:
-            return False
-
-        # If metadata hash provided, verify attribute signature has not drifted
-        if metadata_hash and entry.get("metadata_hash"):
-            if entry["metadata_hash"] != metadata_hash:
-                return False
-        elif server_updated_at and entry.get("server_updated_at"):
-            # Fallback only when metadata_hash was not stored (e.g. legacy cache entries)
-            if str(entry["server_updated_at"]) != str(server_updated_at):
-                return False
-
-        return True
+        is_current, _ = self.check_cache_status(
+            server_type=server_type,
+            item_id=item_id,
+            asset_type=asset_type,
+            clean_asset_hash=clean_asset_hash,
+            overlay_recipe_hash=overlay_recipe_hash,
+            metadata_hash=metadata_hash,
+            server_updated_at=server_updated_at,
+            cached_entry=cached_entry,
+            item_meta=item_meta
+        )
+        return is_current
 
     def update_server_updated_at(
         self,

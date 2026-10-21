@@ -400,7 +400,7 @@ export default function RuntimeHistory() {
     };
   }, [timeFilteredHistory]);
 
-  // Chart-ready Chronological Trend Data
+  // Chart-ready Chronological Trend Data (with adaptive daily bucketing for high-density datasets)
   const chartTrends = useMemo(() => {
     const sorted = [...timeFilteredHistory].sort((a, b) => {
       const da = parseRuntimeDate(a.start_time || a.timestamp);
@@ -409,18 +409,82 @@ export default function RuntimeHistory() {
       const tb = db ? db.getTime() : 0;
       return ta - tb;
     });
-    return sorted.map(run => {
+
+    if (sorted.length <= 36) {
+      return sorted.map(run => {
+        const dateObj = parseRuntimeDate(run.start_time || run.timestamp) || new Date();
+        return {
+          id: run.id,
+          shortDate: dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+          fullDate: dateObj.toLocaleString(),
+          runtimeSec: run.runtime_seconds || 0,
+          runtimeFormatted: run.runtime_formatted || formatDuration(run.runtime_seconds),
+          assets: run.total_images || 0,
+          posters: run.posters || 0,
+          titlecards: run.titlecards || 0,
+          seasons: run.seasons || 0,
+          backgrounds: run.backgrounds || 0,
+          errors: run.errors || 0,
+          mode: run.mode || 'normal',
+          raw: run,
+          isBucket: false
+        };
+      });
+    }
+
+    // High density dataset (>36 runs): aggregate chronologically by day
+    const bucketMap = new Map();
+    for (const run of sorted) {
       const dateObj = parseRuntimeDate(run.start_time || run.timestamp) || new Date();
+      const dayKey = dateObj.toLocaleDateString('en-CA'); // YYYY-MM-DD
+      if (!bucketMap.has(dayKey)) {
+        bucketMap.set(dayKey, {
+          dayKey,
+          dateObj,
+          runs: [],
+          totalSec: 0,
+          maxSec: 0,
+          assets: 0,
+          posters: 0,
+          titlecards: 0,
+          seasons: 0,
+          backgrounds: 0,
+          errors: 0
+        });
+      }
+      const b = bucketMap.get(dayKey);
+      const sec = run.runtime_seconds || 0;
+      b.runs.push(run);
+      b.totalSec += sec;
+      if (sec > b.maxSec) b.maxSec = sec;
+      b.assets += (run.total_images || 0);
+      b.posters += (run.posters || 0);
+      b.titlecards += (run.titlecards || 0);
+      b.seasons += (run.seasons || 0);
+      b.backgrounds += (run.backgrounds || 0);
+      b.errors += (run.errors || 0);
+    }
+
+    return Array.from(bucketMap.values()).map(b => {
+      const avgSec = Math.round(b.totalSec / b.runs.length);
+      const latestRun = b.runs[b.runs.length - 1];
       return {
-        id: run.id,
-        shortDate: dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        fullDate: dateObj.toLocaleString(),
-        runtimeSec: run.runtime_seconds || 0,
-        runtimeFormatted: run.runtime_formatted || formatDuration(run.runtime_seconds),
-        assets: run.total_images || 0,
-        errors: run.errors || 0,
-        mode: run.mode || 'normal',
-        raw: run
+        id: latestRun?.id,
+        shortDate: b.dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        fullDate: b.dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
+        runtimeSec: avgSec,
+        runtimeFormatted: formatDuration(avgSec),
+        maxSec: b.maxSec,
+        maxFormatted: formatDuration(b.maxSec),
+        assets: b.assets,
+        posters: b.posters,
+        titlecards: b.titlecards,
+        seasons: b.seasons,
+        backgrounds: b.backgrounds,
+        errors: b.errors,
+        runCount: b.runs.length,
+        raw: latestRun,
+        isBucket: true
       };
     });
   }, [timeFilteredHistory]);
@@ -1132,7 +1196,9 @@ export default function RuntimeHistory() {
                     <TrendingUp size={17} className="text-emerald-400" />
                     <span>Asset Creation Velocity</span>
                   </h3>
-                  <p className="text-xs text-theme-text-muted mt-0.5">Total media images composited and generated per run.</p>
+                  <p className="text-xs text-theme-text-muted mt-0.5">
+                    {chartTrends[0]?.isBucket ? "Total media images composited and generated per day." : "Total media images composited and generated per run."}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-mono text-[11px]">
@@ -1903,27 +1969,55 @@ export default function RuntimeHistory() {
                       </div>
                       <div className="divide-y divide-white/[0.06] border border-white/[0.08] rounded-xl overflow-hidden bg-black/30">
                         {runAssets.map((asset, idx) => (
-                          <div key={idx} className="p-3 flex items-center justify-between hover:bg-white/[0.03] transition-colors text-xs">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-                                <Image size={16} />
+                          <div key={idx} className="p-3 flex items-center justify-between hover:bg-white/[0.03] transition-colors text-xs gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              {asset.DownloadSource && typeof asset.DownloadSource === 'string' && asset.DownloadSource.startsWith('http') ? (
+                                <img
+                                  src={asset.DownloadSource}
+                                  alt={asset.Title || "Asset"}
+                                  className="w-10 h-14 rounded-md object-cover border border-white/10 shadow-md bg-black/40 flex-shrink-0"
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    if (e.target.nextElementSibling) e.target.nextElementSibling.style.display = 'flex';
+                                  }}
+                                />
+                              ) : null}
+                              <div
+                                className={`p-2.5 rounded-lg bg-blue-500/10 text-blue-400 flex-shrink-0 ${
+                                  asset.DownloadSource && typeof asset.DownloadSource === 'string' && asset.DownloadSource.startsWith('http') ? 'hidden' : 'flex'
+                                }`}
+                              >
+                                <Image size={18} />
                               </div>
-                              <div>
-                                <div className="font-bold text-white text-sm">{asset.Title || "Untitled"}</div>
-                                <div className="text-[11px] text-theme-text-muted flex items-center gap-2 mt-0.5">
+                              <div className="min-w-0">
+                                <div className="font-bold text-white text-sm truncate max-w-md">{asset.Title || "Untitled"}</div>
+                                <div className="text-[11px] text-theme-text-muted flex flex-wrap items-center gap-2 mt-0.5">
                                   <span>{asset.LibraryName || asset.Rootfolder}</span>
                                   <span>•</span>
                                   <span className="capitalize">{asset.Type || "poster"}</span>
                                   {asset.DownloadSource && (
                                     <>
                                       <span>•</span>
-                                      <span className="text-amber-400 font-medium">{asset.DownloadSource}</span>
+                                      {asset.DownloadSource.startsWith('http') ? (
+                                        <a
+                                          href={asset.DownloadSource}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-amber-400 hover:text-amber-300 font-medium truncate max-w-xs hover:underline"
+                                          title={asset.DownloadSource}
+                                        >
+                                          Source Link
+                                        </a>
+                                      ) : (
+                                        <span className="text-amber-400 font-medium truncate max-w-xs">{asset.DownloadSource}</span>
+                                      )}
                                     </>
                                   )}
                                 </div>
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right flex-shrink-0">
                               <span className="font-mono text-[10px] text-theme-text-muted">{asset.created_at || asset.updated_at}</span>
                             </div>
                           </div>
@@ -2058,7 +2152,7 @@ const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
       </div>
 
       {/* Columns Container */}
-      <div className="flex items-end gap-1 w-full h-full pb-6 pl-8 pt-2 z-20">
+      <div className={`flex items-end ${data.length > 50 ? 'gap-[2px]' : data.length > 25 ? 'gap-1' : 'gap-1.5'} w-full h-full pb-6 pl-8 pt-2 z-20`}>
         {data.map((d, i) => {
           const heightPct = Math.max(4, (d.runtimeSec / maxVal) * 100);
           const isHovered = hoveredIdx === i;
@@ -2068,7 +2162,7 @@ const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
           return (
             <div
               key={i}
-              className="flex-1 h-full flex flex-col justify-end group relative cursor-pointer transition-opacity duration-150"
+              className="flex-1 min-w-0 h-full flex flex-col justify-end group relative cursor-pointer transition-opacity duration-150"
               style={{ opacity: hoveredIdx !== null && !isHovered ? 0.35 : 1 }}
               onMouseEnter={() => setHoveredIdx(i)}
               onClick={() => onSelectRun(d.raw)}
@@ -2088,22 +2182,30 @@ const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
               {isHovered && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none whitespace-nowrap bg-[#12141a] border border-white/20 p-2.5 rounded-xl shadow-2xl text-[11px]">
                   <div className="font-bold text-white flex items-center justify-between gap-3 border-b border-white/10 pb-1 mb-1.5">
-                    <span>Run #{d.id}</span>
-                    <span className="text-[10px] text-theme-text-muted">{d.shortDate}</span>
+                    <span>{d.isBucket ? (d.fullDate || d.shortDate) : `Run #${d.id}`}</span>
+                    <span className="text-[10px] text-theme-text-muted">{d.isBucket ? `${d.runCount} runs` : d.shortDate}</span>
                   </div>
                   <div className="space-y-1 font-mono">
                     <div className="flex justify-between gap-3">
-                      <span className="text-theme-text-muted">Duration:</span>
+                      <span className="text-theme-text-muted">{d.isBucket ? "Avg Duration:" : "Duration:"}</span>
                       <span className="text-amber-400 font-bold">{d.runtimeFormatted}</span>
                     </div>
+                    {d.isBucket && d.maxSec > 0 && (
+                      <div className="flex justify-between gap-3">
+                        <span className="text-theme-text-muted">Peak Run:</span>
+                        <span className="text-amber-300/80 font-medium">{d.maxFormatted || formatDuration(d.maxSec)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between gap-3">
-                      <span className="text-theme-text-muted">Assets:</span>
+                      <span className="text-theme-text-muted">Total Assets:</span>
                       <span className="text-emerald-400 font-bold">{d.assets}</span>
                     </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-theme-text-muted">Mode:</span>
-                      <span className="text-white capitalize">{d.mode}</span>
-                    </div>
+                    {!d.isBucket && (
+                      <div className="flex justify-between gap-3">
+                        <span className="text-theme-text-muted">Mode:</span>
+                        <span className="text-white capitalize">{d.mode}</span>
+                      </div>
+                    )}
                     {d.errors > 0 && (
                       <div className="flex justify-between gap-3 text-rose-400 font-bold">
                         <span>Errors:</span>
@@ -2111,7 +2213,9 @@ const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
                       </div>
                     )}
                   </div>
-                  <div className="text-[9px] text-theme-text-muted mt-1 text-center italic">Click to inspect</div>
+                  <div className="text-[9px] text-theme-text-muted mt-1 text-center italic">
+                    {d.isBucket ? "Click to inspect latest run" : "Click to inspect"}
+                  </div>
                 </div>
               )}
             </div>
@@ -2154,7 +2258,7 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
         ))}
       </div>
 
-      <div className="flex items-end gap-1 w-full h-full pb-6 pl-8 pt-2 z-20">
+      <div className={`flex items-end ${data.length > 50 ? 'gap-[2px]' : data.length > 25 ? 'gap-1' : 'gap-1.5'} w-full h-full pb-6 pl-8 pt-2 z-20`}>
         {data.map((d, i) => {
           const heightPct = Math.max(4, (d.assets / maxVal) * 100);
           const isHovered = hoveredIdx === i;
@@ -2162,7 +2266,7 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
           return (
             <div
               key={i}
-              className="flex-1 h-full flex flex-col justify-end group relative cursor-pointer transition-opacity duration-150"
+              className="flex-1 min-w-0 h-full flex flex-col justify-end group relative cursor-pointer transition-opacity duration-150"
               style={{ opacity: hoveredIdx !== null && !isHovered ? 0.35 : 1 }}
               onMouseEnter={() => setHoveredIdx(i)}
               onClick={() => onSelectRun(d.raw)}
@@ -2181,8 +2285,8 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
               {isHovered && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none whitespace-nowrap bg-[#12141a] border border-white/20 p-2.5 rounded-xl shadow-2xl text-[11px]">
                   <div className="font-bold text-white flex items-center justify-between gap-3 border-b border-white/10 pb-1 mb-1.5">
-                    <span>Run #{d.id}</span>
-                    <span className="text-[10px] text-theme-text-muted">{d.shortDate}</span>
+                    <span>{d.isBucket ? (d.fullDate || d.shortDate) : `Run #${d.id}`}</span>
+                    <span className="text-[10px] text-theme-text-muted">{d.isBucket ? `${d.runCount} runs` : d.shortDate}</span>
                   </div>
                   <div className="space-y-1 font-mono">
                     <div className="flex justify-between gap-3">
@@ -2191,12 +2295,21 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
                     </div>
                     <div className="flex justify-between gap-3 text-theme-text-muted">
                       <span>Posters:</span>
-                      <span>{d.raw?.posters || 0}</span>
+                      <span className="text-white">{d.posters ?? d.raw?.posters ?? 0}</span>
                     </div>
                     <div className="flex justify-between gap-3 text-theme-text-muted">
                       <span>Title Cards:</span>
-                      <span>{d.raw?.titlecards || 0}</span>
+                      <span className="text-white">{d.titlecards ?? d.raw?.titlecards ?? 0}</span>
                     </div>
+                    {((d.seasons || d.raw?.seasons || 0) > 0 || (d.backgrounds || d.raw?.backgrounds || 0) > 0) && (
+                      <div className="flex justify-between gap-3 text-theme-text-muted">
+                        <span>Seasons / Backdrops:</span>
+                        <span className="text-white">{(d.seasons || d.raw?.seasons || 0) + (d.backgrounds || d.raw?.backgrounds || 0)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[9px] text-theme-text-muted mt-1 text-center italic">
+                    {d.isBucket ? "Click to inspect latest run" : "Click to inspect"}
                   </div>
                 </div>
               )}

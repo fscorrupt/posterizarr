@@ -4,7 +4,7 @@ Database module for ImageChoices tracking
 
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import logging
 import csv
 import threading
@@ -234,6 +234,7 @@ class ImageChoicesDB:
         s_eu: Optional[str] = None,
         e_eu: Optional[str] = None,
         run_id: Optional[int] = None,
+        additional_ranges: Optional[List[Tuple[str, str]]] = None,
     ) -> List[sqlite3.Row]:
         """Get assets created or updated within a specific time range or linked by run_id"""
         with self.lock:
@@ -271,11 +272,27 @@ class ImageChoicesDB:
                     where_clauses.append("(updated_at >= ? AND updated_at <= ?)")
                     params.extend([s_eu, e_eu])
 
+                if additional_ranges:
+                    for r_start, r_end in additional_ranges:
+                        where_clauses.append("(replace(created_at, 'T', ' ') >= ? AND replace(created_at, 'T', ' ') <= ?)")
+                        where_clauses.append("(replace(updated_at, 'T', ' ') >= ? AND replace(updated_at, 'T', ' ') <= ?)")
+                        params.extend([r_start, r_end, r_start, r_end])
+
                 sql = f"SELECT * FROM imagechoices WHERE ({' OR '.join(where_clauses)}) ORDER BY COALESCE(updated_at, created_at) DESC"
                 cursor.execute(sql, params)
                 rows = cursor.fetchall()
+
+                # Deduplicate by id if ranges overlap
+                seen_ids = set()
+                unique_rows = []
+                for row in rows:
+                    row_id = row["id"] if "id" in row.keys() else id(row)
+                    if row_id not in seen_ids:
+                        seen_ids.add(row_id)
+                        unique_rows.append(row)
+
                 conn.close()
-                return rows
+                return unique_rows
             except sqlite3.Error as e:
                 logger.error(f"Error getting assets by date range: {e}")
                 if 'conn' in locals():

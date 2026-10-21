@@ -6548,8 +6548,8 @@ async def get_runtime_run_assets(run_id: int, wide: bool = Query(False)):
                 elif dt_end == dt_start and duration > 0:
                     dt_end = dt_start + timedelta(seconds=duration)
 
-                # Primary query window: 60-second buffer (or 30 min if wide=True) before start and after end
-                buffer_sec = 1800 if wide else 60
+                # Primary query buffer: 90 seconds (or 60 min if wide=True)
+                buffer_sec = 3600 if wide else 90
                 dt_query_start = dt_start - timedelta(seconds=buffer_sec)
                 dt_query_end = dt_end + timedelta(seconds=buffer_sec)
 
@@ -6558,19 +6558,52 @@ async def get_runtime_run_assets(run_id: int, wide: bool = Query(False)):
                 s_eu = dt_query_start.strftime("%d.%m.%Y %H:%M:%S")
                 e_eu = dt_query_end.strftime("%d.%m.%Y %H:%M:%S")
 
-                raw_assets = db.get_assets_created_between(s_iso, e_iso, s_eu=s_eu, e_eu=e_eu, run_id=run_id)
+                # Handle timezone offset discrepancies (e.g. runtime recorded in local time vs imagechoices recorded in UTC)
+                utc_offset = datetime.now().astimezone().utcoffset() or timedelta(0)
+                additional_ranges = []
+
+                if utc_offset != timedelta(0):
+                    # Local -> UTC candidate range
+                    utc_q_start = dt_start - utc_offset - timedelta(seconds=buffer_sec)
+                    utc_q_end = dt_end - utc_offset + timedelta(seconds=buffer_sec)
+                    additional_ranges.append((
+                        utc_q_start.strftime("%Y-%m-%d %H:%M:%S"),
+                        utc_q_end.strftime("%Y-%m-%d %H:%M:%S")
+                    ))
+                    # UTC -> Local candidate range
+                    loc_q_start = dt_start + utc_offset - timedelta(seconds=buffer_sec)
+                    loc_q_end = dt_end + utc_offset + timedelta(seconds=buffer_sec)
+                    additional_ranges.append((
+                        loc_q_start.strftime("%Y-%m-%d %H:%M:%S"),
+                        loc_q_end.strftime("%Y-%m-%d %H:%M:%S")
+                    ))
+
+                raw_assets = db.get_assets_created_between(
+                    s_iso, e_iso, s_eu=s_eu, e_eu=e_eu, run_id=run_id, additional_ranges=additional_ranges
+                )
                 assets = [dict(row) for row in raw_assets]
 
-                # Fallback: if total_images > 0 and 0 assets found, try wider window (±30 min)
+                # Fallback: if total_images > 0 and 0 assets found, try wider window (±60 min across local & UTC)
                 expected_images = entry.get("total_images") or 0
                 if not assets and expected_images > 0 and not wide:
-                    dt_query_start_w = dt_start - timedelta(minutes=30)
-                    dt_query_end_w = dt_end + timedelta(minutes=30)
+                    fallback_ranges = []
+                    dt_query_start_w = dt_start - timedelta(minutes=60)
+                    dt_query_end_w = dt_end + timedelta(minutes=60)
                     s_iso_w = dt_query_start_w.strftime("%Y-%m-%d %H:%M:%S")
                     e_iso_w = dt_query_end_w.strftime("%Y-%m-%d %H:%M:%S")
                     s_eu_w = dt_query_start_w.strftime("%d.%m.%Y %H:%M:%S")
                     e_eu_w = dt_query_end_w.strftime("%d.%m.%Y %H:%M:%S")
-                    raw_assets_w = db.get_assets_created_between(s_iso_w, e_iso_w, s_eu=s_eu_w, e_eu=e_eu_w, run_id=run_id)
+
+                    if utc_offset != timedelta(0):
+                        utc_w_start = dt_start - utc_offset - timedelta(minutes=60)
+                        utc_w_end = dt_end - utc_offset + timedelta(minutes=60)
+                        fallback_ranges.append((
+                            utc_w_start.strftime("%Y-%m-%d %H:%M:%S"),
+                            utc_w_end.strftime("%Y-%m-%d %H:%M:%S")
+                        ))
+                    raw_assets_w = db.get_assets_created_between(
+                        s_iso_w, e_iso_w, s_eu=s_eu_w, e_eu=e_eu_w, run_id=run_id, additional_ranges=fallback_ranges
+                    )
                     assets = [dict(row) for row in raw_assets_w]
             else:
                 s = str(start_raw).replace("T", " ")[:19]

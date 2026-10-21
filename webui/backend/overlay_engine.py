@@ -503,9 +503,11 @@ class DynamicOverlayCompositor:
                     if abort_on_missing_asset:
                         raise
                 except Exception as e:
-                    logger.warning(f"[Compositor] Error rendering layer {layer.get('name')}: {e}")
+                    layer_id = layer.get('name') or layer.get('type') or 'unnamed'
+                    logger.warning(f"[Compositor] Error rendering layer '{layer_id}': {e}", exc_info=True)
                     if abort_on_missing_asset:
-                        raise
+                        err_msg = str(e).strip() or repr(e)
+                        raise RuntimeError(f"Layer '{layer_id}' failed: [{type(e).__name__}] {err_msg}") from e
 
             # If clean asset is higher resolution (e.g. 2000x3000 portrait or 3840x2160 titlecard),
             # upscale only the transparent overlay canvas using BICUBIC to perfectly match native dimensions.
