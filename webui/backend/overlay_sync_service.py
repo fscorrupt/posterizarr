@@ -32,7 +32,7 @@ import threading
 import traceback
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any, List, Tuple, Union
+from typing import Optional, Dict, Any, List, Tuple, Union, Callable
 import urllib.parse
 from xml.etree.ElementTree import fromstring
 from PIL import Image, ImageFont
@@ -111,6 +111,28 @@ def format_http_failure(resp: Any) -> str:
     except Exception:
         pass
     return f"HTTP {status}{body_snippet}"
+
+async def _post_artwork_with_retry(
+    http_client: httpx.AsyncClient,
+    url: str,
+    *,
+    headers: Dict[str, str],
+    content: bytes,
+    item_label: str,
+    write_log: Callable[[str], None]
+) -> httpx.Response:
+    for attempt in range(1, 4):
+        try:
+            return await http_client.post(url, headers=headers, content=content)
+        except (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError) as err:
+            if attempt == 3:
+                raise
+            delay = attempt * 2
+            write_log(
+                f"  [!] {item_label}: Upload connection failed [{type(err).__name__}]. "
+                f"Retrying in {delay}s (attempt {attempt + 1}/3)."
+            )
+            await asyncio.sleep(delay)
 
 AUDIO_CODEC_PATTERNS = [
     ("truehd_atmos", re.compile(r'(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))')),
@@ -2919,7 +2941,10 @@ async def run_overlay_sync_task(
                                             "X-Plex-Token": creds.get("token"),
                                             "Content-Type": "image/jpeg"
                                         }
-                                        resp = await http_client.post(upload_url, headers=headers, content=composited_jpeg)
+                                        resp = await _post_artwork_with_retry(
+                                            http_client, upload_url, headers=headers, content=composited_jpeg,
+                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log
+                                        )
                                         upload_success = (resp.status_code in [200, 201])
                                     elif s_type in ["jellyfin", "emby"]:
                                         upload_url = f"{s_url}/Items/{item_id}/Images/Primary"
@@ -2929,7 +2954,10 @@ async def run_overlay_sync_task(
                                             "Content-Type": "image/jpeg"
                                         }
                                         b64_img = base64.b64encode(composited_jpeg)
-                                        resp = await http_client.post(upload_url, headers=headers, content=b64_img)
+                                        resp = await _post_artwork_with_retry(
+                                            http_client, upload_url, headers=headers, content=b64_img,
+                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log
+                                        )
                                         upload_success = (resp.status_code in [200, 201, 204])
 
                                 if upload_success:
@@ -3082,7 +3110,10 @@ async def run_overlay_sync_task(
                                             "X-Plex-Token": creds.get("token"),
                                             "Content-Type": "image/jpeg"
                                         }
-                                        b_resp = await http_client.post(b_url, headers=b_headers, content=b_comp)
+                                        b_resp = await _post_artwork_with_retry(
+                                            http_client, b_url, headers=b_headers, content=b_comp,
+                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log
+                                        )
                                         b_upload_success = (b_resp.status_code in [200, 201])
                                     elif s_type in ["jellyfin", "emby"]:
                                         b_url = f"{s_url}/Items/{item_id}/Images/Backdrop"
@@ -3092,7 +3123,10 @@ async def run_overlay_sync_task(
                                             "Content-Type": "image/jpeg"
                                         }
                                         b64_b_comp = base64.b64encode(b_comp)
-                                        b_resp = await http_client.post(b_url, headers=b_headers, content=b64_b_comp)
+                                        b_resp = await _post_artwork_with_retry(
+                                            http_client, b_url, headers=b_headers, content=b64_b_comp,
+                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log
+                                        )
                                         b_upload_success = (b_resp.status_code in [200, 201, 204])
 
                                 if b_upload_success:
@@ -3301,18 +3335,24 @@ async def run_overlay_sync_task(
                                             s_success = False
                                             s_phase = f"uploading season poster to {s_type.upper()}"
                                             if s_type == "plex":
-                                                s_resp = await http_client.post(
+                                                s_resp = await _post_artwork_with_retry(
+                                                    http_client,
                                                     f"{s_url}/library/metadata/{s_rk}/posters",
                                                     headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
-                                                    content=s_comp
+                                                    content=s_comp,
+                                                    item_label=f"{w_tag}Season '{title} S{s_num:02d}' ({lib_name})",
+                                                    write_log=write_log
                                                 )
                                                 s_success = (s_resp.status_code in [200, 201])
                                             elif s_type in ["jellyfin", "emby"]:
                                                 b64_s = base64.b64encode(s_comp)
-                                                s_resp = await http_client.post(
+                                                s_resp = await _post_artwork_with_retry(
+                                                    http_client,
                                                     f"{s_url}/Items/{s_rk}/Images/Primary",
                                                     headers=headers,
-                                                    content=b64_s
+                                                    content=b64_s,
+                                                    item_label=f"{w_tag}Season '{title} S{s_num:02d}' ({lib_name})",
+                                                    write_log=write_log
                                                 )
                                                 s_success = (s_resp.status_code in [200, 201, 204])
 
@@ -3628,18 +3668,24 @@ async def run_overlay_sync_task(
                                                 tc_success = False
                                                 tc_phase = f"uploading titlecard to {s_type.upper()}"
                                                 if s_type == "plex":
-                                                    tc_resp = await http_client.post(
+                                                    tc_resp = await _post_artwork_with_retry(
+                                                        http_client,
                                                         f"{s_url}/library/metadata/{ep_rk}/posters",
                                                         headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
-                                                        content=tc_comp
+                                                        content=tc_comp,
+                                                        item_label=f"{w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name})",
+                                                        write_log=write_log
                                                     )
                                                     tc_success = (tc_resp.status_code in [200, 201])
                                                 elif s_type in ["jellyfin", "emby"]:
                                                     b64_tc = base64.b64encode(tc_comp)
-                                                    tc_resp = await http_client.post(
+                                                    tc_resp = await _post_artwork_with_retry(
+                                                        http_client,
                                                         f"{s_url}/Items/{ep_rk}/Images/Primary",
                                                         headers=headers,
-                                                        content=b64_tc
+                                                        content=b64_tc,
+                                                        item_label=f"{w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name})",
+                                                        write_log=write_log
                                                     )
                                                     tc_success = (tc_resp.status_code in [200, 201, 204])
 

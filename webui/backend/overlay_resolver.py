@@ -2197,8 +2197,8 @@ class OverlayConfigEngine:
             return {}, {}, {}, {}
 
         try:
-            with open(file_path, "r", encoding="utf-8-sig") as fp:
-                data = yaml.safe_load(fp) or {}
+            from copy import deepcopy
+            data = deepcopy(load_cached_yaml_file(file_path))
         except Exception as e:
             logger.warning(f"[OverlayConfigEngine] Error parsing overlay file {file_path}: {e}")
             return {}, {}, {}, {}
@@ -2459,7 +2459,7 @@ class OverlayConfigEngine:
         seen_cs = False
         deduped_layers = []
         for l in layers:
-            is_cs = (str(l.get("name") or "").lower() in ("commonsense", "age_rating") or 
+            is_cs = (str(l.get("name") or "").lower() in ("commonsense", "age_rating") or
                      (l.get("image_path") and "commonsense" in str(l.get("image_path")).lower()))
             if is_cs:
                 if seen_cs:
