@@ -2237,7 +2237,7 @@ class OverlayConfigEngine:
         canonical layer dictionaries for DynamicOverlayCompositor.
         """
         from copy import deepcopy
-        from json import dumps
+        from pickle import dumps
 
         applied_overlays: List[Dict[str, Any]] = []
         queue_overlays: Dict[str, List[Dict[str, Any]]] = {}
@@ -2266,7 +2266,7 @@ class OverlayConfigEngine:
             if not res or len(res) < 4:
                 continue
             file_overlays, file_queues, file_templates, file_vars = res
-            definitions_key = dumps([file_overlays, file_templates, file_vars], sort_keys=True, default=str)
+            definitions_key = dumps([file_overlays, file_templates, file_vars])
             if not hasattr(self, "_expanded_rules_cache"):
                 self._expanded_rules_cache = {}
             if definitions_key not in self._expanded_rules_cache:
