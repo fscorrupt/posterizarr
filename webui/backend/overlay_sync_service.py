@@ -2570,6 +2570,7 @@ async def run_overlay_sync_task(
                     # Fast in-memory cache lookup for poster & backdrop paths
                     cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None
                     cached_backdrop_entry = cache_map.get((s_type.lower(), str(item_id), "background")) if (backdrop_enabled and scope in ("incremental", "changed")) else None
+                    legacy_skipped_entry = bool(cached_entry and cached_entry.get("status") == "skipped" and not cached_entry.get("clean_asset_path"))
 
                     # Locate clean assets on disk (reuse known cached path or search disk with indexed dir_cache)
                     clean_asset = None
@@ -2623,7 +2624,9 @@ async def run_overlay_sync_task(
                         # Fast incremental check: if server_updated_at matches cache, reuse cached detected_languages & attributes
                         need_plex_detail = (scope not in ("incremental", "changed"))
                         if not need_plex_detail:
-                            if not cached_entry or cached_entry.get("status") != "synced":
+                            if not cached_entry or cached_entry.get("status") not in ("synced", "skipped"):
+                                need_plex_detail = True
+                            elif legacy_skipped_entry:
                                 need_plex_detail = True
                             elif str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or ""):
                                 need_plex_detail = True
@@ -2847,7 +2850,7 @@ async def run_overlay_sync_task(
                             item_meta=item
                         )
 
-                        if scope != "incremental" or not is_current or is_target_mode:
+                        if scope != "incremental" or not is_current or is_target_mode or legacy_skipped_entry:
                             sync_reason = (
                                 f"Forced sync (scope={scope})" if scope != "incremental"
                                 else ("Targeted sync" if is_target_mode and is_current else cache_reason)
@@ -2885,6 +2888,7 @@ async def run_overlay_sync_task(
                                             server_type=s_type,
                                             item_id=str(item_id),
                                             asset_type="poster",
+                                            clean_asset_path=str(clean_asset),
                                             clean_asset_hash=clean_asset_hash,
                                             clean_asset_mtime=mtime,
                                             clean_asset_size=size,
@@ -2892,6 +2896,13 @@ async def run_overlay_sync_task(
                                             metadata_hash=meta_hash,
                                             status="skipped",
                                             server_updated_at=item.get("server_updated_at"),
+                                            detected_languages=",".join(sorted(item.get("audio_languages", []))) if item.get("audio_languages") else None,
+                                            runtime_mins=item.get("runtime_mins"),
+                                            edition=item.get("edition"),
+                                            show_status=item.get("status"),
+                                            detected_audio_codec=item.get("audio_codec"),
+                                            detected_video_format=item.get("video_format"),
+                                            detected_resolution=item.get("resolution"),
                                             attr_snapshot=build_attr_snapshot(item),
                                             cache_map=cache_map
                                         )
