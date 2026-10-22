@@ -1,9 +1,74 @@
 import copy
+import logging
 import re
 from collections import Counter
 from pathlib import Path
 
+from PIL import Image, ImageColor, ImageDraw, ImageOps
+
 from overlay_engine import DynamicOverlayCompositor, PORTRAIT_DIM, LANDSCAPE_DIM, get_coordinates
+
+logger = logging.getLogger(__name__)
+
+
+def _enabled(value):
+    return value is True or str(value).strip().lower() == "true"
+
+
+def apply_asset_creation_overlay(base, template, config, overlay_dir, resolution=None, media_type=None):
+    landscape = template in ("episode_card", "titlecard", "backdrop", "background")
+    reference = LANDSCAPE_DIM if landscape else PORTRAIT_DIM
+    base = ImageOps.fit(base.convert("RGBA"), reference, Image.Resampling.LANCZOS)
+    if not config or not _enabled((config.get("OverlayPart") or {}).get("ImageProcessing", "true")):
+        return base
+
+    files = config.get("PrerequisitePart") or {}
+    show = media_type == "show" or template in ("show_poster", "season_poster", "episode_card", "titlecard")
+    if template in ("episode_card", "titlecard"):
+        section, overlay, flag, tiers = "TitleCardOverlayPart", files.get("titlecardoverlayfile"), "UseTCResolutionOverlays", ("TC4k", "TC1080p")
+    elif template in ("backdrop", "background"):
+        overlay = (files.get("showbackgroundoverlayfile") if show else None) or files.get("backgroundoverlayfile")
+        section, flag, tiers = "BackgroundOverlayPart", "UseBackgroundResolutionOverlays", ("Background4k", "Background1080p")
+    elif template == "season_poster":
+        section, overlay, flag, tiers = "SeasonPosterOverlayPart", files.get("seasonoverlayfile"), None, None
+    else:
+        overlay = (files.get("showoverlayfile") if show else None) or files.get("overlayfile")
+        section, flag, tiers = "PosterOverlayPart", "UsePosterResolutionOverlays", ("poster4k", "Poster1080p")
+    sample_resolution = str(resolution or "").lower()
+    if flag and _enabled(files.get(flag)):
+        if "4k" in sample_resolution or "2160" in sample_resolution:
+            overlay = files.get(tiers[0]) or overlay
+        elif "1080" in sample_resolution:
+            overlay = files.get(tiers[1]) or overlay
+
+    part = config.get(section) or {}
+    # Posterizarr composes at 2000x3000 / 3840x2160; preview canvases are exactly half that size.
+    scale = 0.5
+    if _enabled(part.get("AddOverlay")) and overlay:
+        overlay_path = Path(overlay_dir) / Path(str(overlay)).name
+        if overlay_path.is_file():
+            with Image.open(overlay_path) as source:
+                layer = source.convert("RGBA")
+            layer = layer.resize((max(1, round(layer.width * scale)), max(1, round(layer.height * scale))), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGBA", reference, (0, 0, 0, 0))
+            canvas.paste(layer, ((reference[0] - layer.width) // 2, reference[1] - layer.height))
+            base = Image.alpha_composite(base, canvas)
+        else:
+            logger.warning("Preview overlay file '%s' was not found in %s.", overlay_path.name, overlay_dir)
+
+    if _enabled(part.get("AddBorder")):
+        try:
+            width = round(float(part.get("borderwidth") or 0) * scale)
+        except (TypeError, ValueError):
+            width = 0
+        if width > 0:
+            color = str(part.get("bordercolor") or "black")
+            try:
+                ImageColor.getrgb(color)
+            except ValueError:
+                color = "black"
+            ImageDraw.Draw(base).rectangle((0, 0, reference[0] - 1, reference[1] - 1), outline=color, width=width)
+    return base
 
 
 def _position_compound_preview_layers(layers, placements, canvas_box):

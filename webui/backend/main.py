@@ -19467,6 +19467,8 @@ async def preview_dynamic_overlay(
     video_format_align: Optional[str] = Query(None),
     video_format_valign: Optional[str] = Query(None),
     custom_image_id: Optional[str] = Query(None),
+    asset_overlay: bool = Query(False),
+    media_type: Optional[str] = Query(None),
     resolution_mode: Optional[str] = Query(None),
     resolution_back_color: Optional[str] = Query(None),
     resolution_back_radius: Optional[int] = Query(None),
@@ -19610,9 +19612,7 @@ async def preview_dynamic_overlay(
                 logger.warning(f"Failed to load sample image for dynamic overlay preview: {img_err}")
                 base = None
 
-        if base:
-            base = base.resize(dim, Image.Resampling.LANCZOS)
-        else:
+        if not base:
             base = Image.new("RGBA", dim, (24, 28, 36, 255))
             draw = ImageDraw.Draw(base)
             center_text = "SAMPLE TITLE CARD (1920x1080)" if is_landscape else "SAMPLE MOVIE POSTER (1000x1500)"
@@ -19622,6 +19622,7 @@ async def preview_dynamic_overlay(
                 anchor="mm",
                 fill=(255, 255, 255, 90)
             )
+        base = _render_preview_base(base, template_type, resolution, media_type, asset_overlay)
 
 
         base_buf = BytesIO()
@@ -19702,22 +19703,52 @@ async def preview_dynamic_overlay(
         return Response(content=b"", status_code=500)
 
 
+def _render_preview_base(image, template_type, resolution, media_type, asset_overlay):
+    from overlay_preview import apply_asset_creation_overlay
+    asset_config = {}
+    if asset_overlay:
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
+                asset_config = json.load(config_file)
+        except (OSError, ValueError) as config_err:
+            logger.warning(f"Could not read asset overlay settings for preview: {config_err}")
+    return apply_asset_creation_overlay(image, template_type, asset_config, OVERLAYFILES_DIR, resolution, media_type)
+
+
 @app.get("/api/dynamic-overlays/sample-image")
 async def get_dynamic_overlays_sample_image(
     template_type: str = Query("movie_poster"),
-    custom_image_id: Optional[str] = Query(None)
+    custom_image_id: Optional[str] = Query(None),
+    asset_overlay: bool = Query(False),
+    resolution: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None)
 ):
     """Serve base sample movie poster or landscape episode card image for canvas preview backdrop."""
     import base64
+    is_landscape = (template_type in ("episode_card", "backdrop", "background", "titlecard"))
+    dim = LANDSCAPE_DIM if is_landscape else PORTRAIT_DIM
+
+    def _respond(source):
+        if not asset_overlay:
+            if isinstance(source, Path):
+                ext = source.suffix.lower()
+                return FileResponse(source, media_type=f"image/{'png' if ext == '.png' else ('webp' if ext == '.webp' else 'jpeg')}")
+            return Response(content=source, media_type="image/jpeg")
+        with Image.open(source if isinstance(source, Path) else BytesIO(source)) as image:
+            rendered = _render_preview_base(image, template_type, resolution, media_type, True)
+        buf = BytesIO()
+        rendered.convert("RGB").save(buf, format="JPEG", quality=92)
+        return Response(content=buf.getvalue(), media_type="image/jpeg",
+                        headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
     custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
     if custom_image_id:
         safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(custom_image_id).strip())
         for ext in (".png", ".jpg", ".jpeg", ".webp"):
             cand = custom_previews_dir / f"{safe_id}{ext}"
             if cand.exists():
-                return FileResponse(cand, media_type=f"image/{'png' if ext == '.png' else ('webp' if ext == '.webp' else 'jpeg')}")
+                return _respond(cand)
 
-    is_landscape = (template_type in ("episode_card", "backdrop", "background", "titlecard"))
     try:
         try:
             from .defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
@@ -19729,22 +19760,21 @@ async def get_dynamic_overlays_sample_image(
 
         if is_landscape:
             if default_bg_path.exists():
-                return FileResponse(default_bg_path, media_type="image/jpeg")
+                return _respond(default_bg_path)
             elif DEFAULT_BACKGROUND_B64:
-                return Response(content=base64.b64decode(DEFAULT_BACKGROUND_B64.strip()), media_type="image/jpeg")
+                return _respond(base64.b64decode(DEFAULT_BACKGROUND_B64.strip()))
         else:
             if default_poster_path.exists():
-                return FileResponse(default_poster_path, media_type="image/jpeg")
+                return _respond(default_poster_path)
             elif DEFAULT_POSTER_B64:
-                return Response(content=base64.b64decode(DEFAULT_POSTER_B64.strip()), media_type="image/jpeg")
+                return _respond(base64.b64decode(DEFAULT_POSTER_B64.strip()))
     except Exception as e:
         logger.error(f"Error serving sample image: {e}")
 
-    dim = LANDSCAPE_DIM if is_landscape else PORTRAIT_DIM
     blank = Image.new("RGBA", dim, (24, 28, 36, 255))
     buf = BytesIO()
-    blank.save(buf, format="JPEG")
-    return Response(content=buf.getvalue(), media_type="image/jpeg")
+    blank.convert("RGB").save(buf, format="JPEG")
+    return _respond(buf.getvalue())
 
 
 @app.post("/api/dynamic-overlays/upload-preview-image")

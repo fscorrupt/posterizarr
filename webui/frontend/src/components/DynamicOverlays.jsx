@@ -607,6 +607,7 @@ export default function DynamicOverlays() {
   // Preview controls
   const [previewTemplate, setPreviewTemplate] = useState("movie_poster");
   const [showAssetGuides, setShowAssetGuides] = useState(true);
+  const [applyAssetOverlay, setApplyAssetOverlay] = useState(true);
   const [previewRating, setPreviewRating] = useState("8.4");
   const [previewResolution, setPreviewResolution] = useState("4K");
   const [previewStatus, setPreviewStatus] = useState("");
@@ -3322,6 +3323,8 @@ export default function DynamicOverlays() {
     }
 
     // 1. Instant local preview
+    // Uploaded artwork is usually a finished asset that already carries the overlay and border.
+    setApplyAssetOverlay(false);
     const reader = new FileReader();
     reader.onload = (ev) => {
       const dataUrl = ev.target.result;
@@ -3383,6 +3386,7 @@ export default function DynamicOverlays() {
       delete next[previewTemplate];
       return next;
     });
+    setApplyAssetOverlay(true);
     setPreviewTimestamp(Date.now());
     showSuccess("Reverted to standard sample artwork.");
   };
@@ -4102,7 +4106,11 @@ export default function DynamicOverlays() {
 
   const previewUrl = `/api/dynamic-overlays/preview?template_type=${previewTemplate}&rating=${encodeURIComponent(previewRating)}&runtime=${encodeURIComponent(previewRuntime)}&status_label=${encodeURIComponent(previewStatus)}&status_color=${encodeURIComponent(previewStatusColor)}&resolution=${encodeURIComponent(previewResolution)}&audio_codec=${encodeURIComponent(previewAudioCodec || "")}&audio_codec_style=${encodeURIComponent(previewAudioCodecStyle || "compact")}&video_format=${encodeURIComponent(previewVideoFormat || "")}&languages=${encodeURIComponent(previewLanguages)}&network=${encodeURIComponent(previewNetwork)}&anime_tag=${encodeURIComponent(previewAnimeTag)}&age_rating=${encodeURIComponent(previewAgeRating || "")}&age_rating_source=${encodeURIComponent(previewAgeSource || "commonsense")}&age_rating_x=${offsets.age_rating?.x ?? 255}&age_rating_y=${offsets.age_rating?.y ?? 37}&age_rating_align=${offsets.age_rating?.align || "left"}&age_rating_valign=${offsets.age_rating?.valign || "bottom"}&rating_x=${offsets.rating?.x ?? 30}&rating_y=${offsets.rating?.y ?? 25}&rating_align=${offsets.rating?.align || "right"}&rating_valign=${offsets.rating?.valign || "bottom"}&runtime_x=${offsets.runtime?.x ?? 140}&runtime_y=${offsets.runtime?.y ?? 37}&runtime_align=${offsets.runtime?.align || "center"}&runtime_valign=${offsets.runtime?.valign || "bottom"}&status_x=${offsets.status?.x ?? 0}&status_y=${offsets.status?.y ?? 30}&status_align=${offsets.status?.align || "center"}&status_valign=${offsets.status?.valign || "bottom"}&res_x=${offsets.resolution?.x ?? 0}&res_y=${offsets.resolution?.y ?? 0}&res_align=${offsets.resolution?.align || "center"}&res_valign=${offsets.resolution?.valign || "top"}&audio_codec_x=${offsets.audio_codec?.x ?? 30}&audio_codec_y=${offsets.audio_codec?.y ?? 70}&audio_codec_align=${offsets.audio_codec?.align || "right"}&audio_codec_valign=${offsets.audio_codec?.valign || "bottom"}&video_format_x=${offsets.video_format?.x ?? 30}&video_format_y=${offsets.video_format?.y ?? 30}&video_format_align=${offsets.video_format?.align || "right"}&video_format_valign=${offsets.video_format?.valign || "top"}&anime_x=${offsets.anime?.x ?? 20}&anime_y=${offsets.anime?.y ?? 20}&anime_align=${offsets.anime?.align || "left"}&anime_valign=${offsets.anime?.valign || "top"}&lang_x=${offsets.languages?.x ?? 30}&lang_y=${offsets.languages?.y ?? 35}&lang_align=${offsets.languages?.align ?? "left"}&lang_valign=${offsets.languages?.valign ?? "bottom"}&network_x=${offsets.network?.x ?? 25}&network_y=${offsets.network?.y ?? 25}&network_align=${offsets.network?.align ?? "right"}&network_valign=${offsets.network?.valign ?? "top"}${customImgParam}${fontParams}&t=${previewTimestamp}`;
 
-  const compositorPreviewUrl = `${previewUrl}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
+  const assetMediaType = ["show_poster", "season_poster", "episode_card"].includes(previewTemplate)
+    || (selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" && getAvailableFormats(selectedSaveLibrary).some((format) => format.id === "show_poster"))
+    ? "show" : "movie";
+  const assetOverlayQuery = `&asset_overlay=${applyAssetOverlay}&media_type=${assetMediaType}`;
+  const compositorPreviewUrl = `${previewUrl}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
 
   useEffect(() => {
     if (activeTab !== "preview" || !featureSettings?.enabled || draggingItem) return;
@@ -8276,6 +8284,12 @@ export default function DynamicOverlays() {
                   </button>
                 </div>
 
+                <label className="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-theme-text"
+                  title="Adds the configured overlay file and border behind the badges, as Posterizarr does during asset creation. Turn off for uploaded artwork that already includes them.">
+                  <input type="checkbox" checked={applyAssetOverlay} onChange={(event) => setApplyAssetOverlay(event.target.checked)} className="accent-amber-500" />
+                  Asset overlay & border
+                </label>
+
                 <label className="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-theme-text">
                   <input type="checkbox" checked={showAssetGuides} onChange={(event) => {
                     setShowAssetGuides(event.target.checked);
@@ -8284,7 +8298,7 @@ export default function DynamicOverlays() {
                   Asset boundaries
                 </label>
                 {showAssetGuides && (
-                  <button type="button" onClick={fetchServerConfig} title="Reload asset boundaries from saved configuration" aria-label="Reload asset boundaries" className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text">
+                  <button type="button" onClick={() => { fetchServerConfig(); setPreviewTimestamp(Date.now()); }} title="Reload asset boundaries and overlay from saved configuration" aria-label="Reload asset boundaries" className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text">
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                 )}
@@ -8518,7 +8532,8 @@ export default function DynamicOverlays() {
                     {/* Realistic Sample Artwork Backdrop or Custom Uploaded Image */}
                     {(() => {
                       const curCustom = customImages[previewTemplate];
-                      const imgSrc = curCustom?.dataUrl || `/api/dynamic-overlays/sample-image?template_type=${previewTemplate}${curCustom?.previewImageId ? `&custom_image_id=${encodeURIComponent(curCustom.previewImageId)}` : ""}&t=${previewTimestamp}`;
+                      const serverSrc = `/api/dynamic-overlays/sample-image?template_type=${previewTemplate}${curCustom?.previewImageId ? `&custom_image_id=${encodeURIComponent(curCustom.previewImageId)}` : ""}${assetOverlayQuery}&resolution=${encodeURIComponent(previewResolution || "")}&t=${previewTimestamp}`;
+                      const imgSrc = curCustom?.dataUrl && (!applyAssetOverlay || !curCustom.previewImageId) ? curCustom.dataUrl : serverSrc;
                       return (
                         <img
                           src={imgSrc}
