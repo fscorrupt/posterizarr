@@ -3,7 +3,8 @@ function Write-MagickLog {
         [Parameter(ValueFromPipeline=$true)]
         [string]$Message
     )
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrMagickLogMutex")
+    $mutexName = if ($IsWindows) { 'Global\PosterizarrMagickLogMutex' } else { 'PosterizarrMagickLogMutex' }
+    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
     try {
         $mutex.WaitOne() | Out-Null
         try { $Message | Out-File $global:magickLog -Append -ErrorAction Stop } catch {}
@@ -101,7 +102,8 @@ function Set-TextSizeCacheEntry {
         try { '{}' | Set-Content -LiteralPath $Path -Encoding UTF8 } catch {}
     }
 
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrTextSizeCacheMutex")
+    $mutexName = if ($IsWindows) { 'Global\PosterizarrTextSizeCacheMutex' } else { 'PosterizarrTextSizeCacheMutex' }
+    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
     $hasMutex = $false
 
     try {

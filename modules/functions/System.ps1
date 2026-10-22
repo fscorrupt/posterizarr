@@ -1,8 +1,20 @@
 function Increment-GlobalStat {
     param([string]$StatName)
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrStatsMutex")
+    $processLock = [string]::Intern('PosterizarrStatsLock')
+    $mutex = $null
+    $lockAcquired = $false
+    [System.Threading.Monitor]::Enter($processLock)
     try {
-        $mutex.WaitOne() | Out-Null
+        try {
+            $mutexName = if ($IsWindows) { 'Global\PosterizarrStatsMutex' } else { 'PosterizarrStatsMutex' }
+            $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+            try {
+                $lockAcquired = $mutex.WaitOne()
+            } catch [System.Threading.AbandonedMutexException] {
+                $lockAcquired = $true
+            }
+        } catch {}
+
         $val = 0
         if ($global:runspaceStats.ContainsKey($StatName)) {
             $val = $global:runspaceStats[$StatName] + 1
@@ -14,8 +26,17 @@ function Increment-GlobalStat {
         Set-Variable -Name $StatName -Value $val -Scope Global -Force
         return $val
     } finally {
-        $mutex.ReleaseMutex()
-        $mutex.Dispose()
+        try {
+            if ($mutex) {
+                try {
+                    if ($lockAcquired) { $mutex.ReleaseMutex() }
+                } finally {
+                    $mutex.Dispose()
+                }
+            }
+        } finally {
+            [System.Threading.Monitor]::Exit($processLock)
+        }
     }
 }
 function Sync-GlobalStats {
@@ -369,7 +390,8 @@ function Get-TextSizeFromCache {
     param([Parameter(Mandatory)][string]$Key, [string]$Path = $Global:TextSizeCachePath)
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
 
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrTextSizeCacheMutex")
+    $mutexName = if ($IsWindows) { 'Global\PosterizarrTextSizeCacheMutex' } else { 'PosterizarrTextSizeCacheMutex' }
+    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
     $hasMutex = $false
     try {
         $hasMutex = $mutex.WaitOne(5000)
