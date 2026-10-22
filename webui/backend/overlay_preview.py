@@ -1,6 +1,45 @@
 import copy
 import re
+from collections import Counter
 from pathlib import Path
+
+from overlay_engine import DynamicOverlayCompositor, PORTRAIT_DIM, LANDSCAPE_DIM, get_coordinates
+
+
+def _position_compound_preview_layers(layers, placements, canvas_box):
+    groups = {}
+    for index, layer in enumerate(layers):
+        groups.setdefault(layer["preview_key"], []).append((index, layer))
+    result = list(layers)
+    for key, group in groups.items():
+        placement = placements.get(key)
+        if not placement or len(group) < 2:
+            continue
+        rendered = []
+        for index, layer in group:
+            image = DynamicOverlayCompositor._render_layer(layer, canvas_box, abort_on_missing=True)
+            bounds = image.getbbox() if image is not None else None
+            if bounds:
+                rendered.append((index, layer, image, bounds))
+        if not rendered:
+            continue
+        left = min(part[3][0] for part in rendered)
+        top = min(part[3][1] for part in rendered)
+        right = max(part[3][2] for part in rendered)
+        bottom = max(part[3][3] for part in rendered)
+        target_left, target_top = get_coordinates(
+            canvas_box, (right - left, bottom - top),
+            horizontal_align=placement["align"], horizontal_offset=placement["x"],
+            vertical_align=placement["valign"], vertical_offset=placement["y"],
+        )
+        for index, layer, image, bounds in rendered:
+            result[index] = {
+                "name": layer.get("name"), "preview_key": key, "type": "preview",
+                "image_element": image.crop(bounds),
+                "horizontal_offset": bounds[0] + target_left - left,
+                "vertical_offset": bounds[1] + target_top - top,
+            }
+    return result
 
 
 def preview_layer_key(layer):
@@ -73,7 +112,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         for key, default in defaults.items() if key in placements
     ]
     layers = builder(metadata, rules, Path(overlays_dir), is_landscape=landscape)
-    anchors = {}
+    counts = Counter(preview_layer_key(layer) for layer in layers)
     result = []
     for original in layers:
         layer = dict(original)
@@ -83,16 +122,11 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         layer["preview_key"] = key
         placement = placements.get(key)
         if placement:
-            anchor = anchors.setdefault(key, {
-                "x": layer.get("horizontal_offset", 0), "y": layer.get("vertical_offset", 0),
-            })
-            for axis, field in (("x", "horizontal_offset"), ("y", "vertical_offset")):
-                try:
-                    layer[field] = float(layer.get(field, 0)) + float(placement[axis]) - float(anchor[axis])
-                except (ValueError, TypeError):
-                    pass
-            layer["horizontal_align"] = placement["align"]
-            layer["vertical_align"] = placement["valign"]
+            if counts[key] == 1:
+                layer["horizontal_offset"] = placement["x"]
+                layer["vertical_offset"] = placement["y"]
+                layer["horizontal_align"] = placement["align"]
+                layer["vertical_align"] = placement["valign"]
             if placement.get("font_size"):
                 layer["font_size"] = placement["font_size"]
                 if key == "runtime" and int(layer["font_size"]) in (40, 55):
@@ -102,4 +136,4 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
             if key == "status" and options.get("status_color"):
                 layer["font_color"] = options["status_color"]
         result.append(layer)
-    return result
+    return _position_compound_preview_layers(result, placements, LANDSCAPE_DIM if landscape else PORTRAIT_DIM)

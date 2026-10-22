@@ -1,6 +1,6 @@
 # Dynamic Overlays (Kometa Migration)
 
-**Native in-memory dynamic overlay engine for Posterizarr WebUI.**  
+**Native in-memory dynamic overlay engine for Posterizarr WebUI.**
 Replaces external Kometa overlay pipelines with a zero-footprint, high-performance Pillow (`PIL`) compositor.
 
 ---
@@ -11,13 +11,13 @@ Historically, applying dynamic badges, ratings, ribbons, and status banners requ
 
 **Dynamic Overlays** in Posterizarr solves this natively:
 
-1. **In-Memory Compositing (Clean Assets Preserved):**  
+1. **In-Memory Compositing (Clean Assets Preserved):**
    Clean posters and titlecards stored in `/assets` remain **100% untouched and clean on disk**. Compositing happens entirely in RAM before pushing directly to the media server API.
-2. **True Multi-Media Server Support:**  
+2. **True Multi-Media Server Support:**
    Pushes overlaid artwork directly to **Plex**, **Jellyfin**, and **Emby** via their respective REST APIs.
-3. **Change-Detection Fingerprint Cache:**  
+3. **Change-Detection Fingerprint Cache:**
    Tracks a composite hash of clean asset metadata + applied overlay parameters. If media ratings, video resolution, or series status haven't changed, items are skipped with **0 rendering and 0 network uploads**.
-4. **Predictable File Layout:**  
+4. **Predictable File Layout:**
    All Kometa-compatible configs and overlay assets reside in a dedicated subfolder inside `Overlayfiles/kometa/`.
 
 ---
@@ -129,6 +129,9 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 - View cached items in `database/overlay_cache.db` (`media_ratings_cache` table and fingerprint tables).
 - Inspect recently synchronized media items across Plex, Jellyfin, and Emby.
 - Clear rating or asset caches on demand.
+- **Generated-asset targets:** Season and episode CSV rows resolve to their parent show using TVDb/TMDb/IMDb IDs, including IDs in asset-folder tags. Decorated season/episode titles are not treated as parent-show titles. Older rows without IDs use exact parent-title or root-folder matching rather than broad substring matching.
+- **Overlapping triggers:** Targeted Arr/Tautulli and automatic asset-creation requests are queued while another overlay sync is active. Compatible pending batches are merged and identical targets deduplicated; each batch runs serially after the active sync. Stop cancels pending batches. This queue is in memory and does not survive a backend restart. Manual untargeted full-sync requests are still rejected while busy.
+- **Compound rating previews:** A separate rating plate and score are moved as one group, preserving their original internal alignment and transparency when changing badge alignment or dragging.
 
 ---
 

@@ -1919,27 +1919,94 @@ def build_overlay_layers_for_item(
 _is_sync_running = False
 _cancel_requested = False
 _last_sync_result = None
+_sync_condition = threading.Condition()
+_pending_sync_requests = []
+_sync_queue_worker_active = False
 
 
 def is_overlay_sync_running() -> bool:
-    return _is_sync_running
+    with _sync_condition:
+        return _is_sync_running or _sync_queue_worker_active
 
 
 def stop_overlay_sync() -> bool:
     global _cancel_requested
-    _cancel_requested = True
+    with _sync_condition:
+        _cancel_requested = True
+        _pending_sync_requests.clear()
+        _sync_condition.notify_all()
     return True
 
 
 def reset_overlay_sync_state() -> bool:
     global _is_sync_running, _cancel_requested
-    _is_sync_running = False
-    _cancel_requested = False
+    with _sync_condition:
+        _is_sync_running = False
+        _cancel_requested = False
+        _sync_condition.notify_all()
     return True
 
 
 def get_last_sync_result() -> Optional[Dict[str, Any]]:
     return _last_sync_result
+
+
+def submit_overlay_sync_task(**options):
+    global _sync_queue_worker_active
+    targets = options.get("target_items")
+    if targets == []:
+        return {"success": True, "queued": False, "message": "No target items supplied. Overlay sync skipped."}
+    request = dict(options)
+    if targets is not None:
+        request["target_items"] = [dict(target) for target in targets]
+    execution_keys = ("target_server", "scope", "library", "base_dir", "assets_dir", "config_path", "log_file_path")
+    request_key = tuple(str(request.get(key) or "") for key in execution_keys)
+    with _sync_condition:
+        busy = _is_sync_running or _sync_queue_worker_active
+        if busy and not targets:
+            return {"success": False, "is_running": True, "error": "A dynamic overlay sync task is already running."}
+        pending = next((item for item in _pending_sync_requests
+                        if item.get("target_items") and
+                        tuple(str(item.get(key) or "") for key in execution_keys) == request_key), None)
+        if pending is not None:
+            seen = {json.dumps(target, sort_keys=True, default=str) for target in pending["target_items"]}
+            for target in request["target_items"]:
+                identity = json.dumps(target, sort_keys=True, default=str)
+                if identity not in seen:
+                    pending["target_items"].append(target)
+                    seen.add(identity)
+        else:
+            _pending_sync_requests.append(request)
+        if not _sync_queue_worker_active:
+            _sync_queue_worker_active = True
+            try:
+                threading.Thread(target=_run_overlay_sync_queue, daemon=True).start()
+            except Exception:
+                _sync_queue_worker_active = False
+                _pending_sync_requests.remove(request)
+                raise
+        _sync_condition.notify_all()
+    logger.info("[OverlaySync] %s sync request for %s target item(s).", "Queued" if busy else "Accepted", len(targets) if targets else "all")
+    return {"success": True, "queued": busy, "message": "Dynamic overlay sync queued." if busy else "Dynamic overlay sync started."}
+
+
+def _run_overlay_sync_queue():
+    global _sync_queue_worker_active
+    while True:
+        with _sync_condition:
+            _sync_condition.wait_for(lambda: not _is_sync_running)
+            if not _pending_sync_requests:
+                _sync_queue_worker_active = False
+                _sync_condition.notify_all()
+                return
+            request = _pending_sync_requests.pop(0)
+        try:
+            result = asyncio.run(run_overlay_sync_task(**request))
+            if result.get("is_running"):
+                with _sync_condition:
+                    _pending_sync_requests.insert(0, request)
+        except Exception:
+            logger.exception("[OverlaySync] Queued overlay sync failed.")
 
 
 def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, Any]]:
@@ -2128,6 +2195,55 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
     }
 
 
+def _overlay_target_provider_ids(item):
+    identifiers = {}
+    for provider in ("tmdb", "tvdb", "imdb"):
+        value = item.get(f"{provider}_id") or item.get(f"{provider}id")
+        normalized = str(value or "").strip().lower()
+        if normalized not in ("", "false", "none", "null", "0"):
+            identifiers[provider] = normalized.removeprefix(f"{provider}://")
+    root = str(item.get("Rootfolder") or item.get("root_folder") or "")
+    for provider, value in re.findall(r"\[(tmdb|tvdb|imdb)[-=:]([^\]]+)\]", root, re.IGNORECASE):
+        identifiers.setdefault(provider.lower(), value.strip().lower())
+    return identifiers
+
+
+def _overlay_target_parent_title(item):
+    title = str(item.get("Title") or item.get("title") or "").strip()
+    asset_type = str(item.get("Type") or "").lower()
+    if asset_type == "season":
+        return re.sub(r"\s*\|\s*season\s+\d+\s*$", "", title, flags=re.IGNORECASE).strip()
+    if asset_type == "episode" or not title:
+        root = str(item.get("Rootfolder") or item.get("root_folder") or "").replace("\\", "/").rstrip("/").split("/")[-1]
+        root = re.sub(r"\s*\[[^\]]+\]", "", root).strip()
+        previous = None
+        while root != previous:
+            previous = root
+            root = re.sub(r"\s*\((?:\d{4}|[a-z]{2,3})\)\s*$", "", root, flags=re.IGNORECASE).strip()
+        return root
+    return title
+
+
+def _matches_overlay_target(item, target):
+    library_name = str(target.get("LibraryName") or target.get("library_name") or "").strip().casefold()
+    if library_name and library_name != "all" and library_name != str(item.get("library_name") or "").strip().casefold():
+        return False
+    target_id = str(target.get("id") or target.get("ratingKey") or "").strip()
+    if target_id:
+        return target_id == str(item.get("id") or "")
+    expected_ids = _overlay_target_provider_ids(target)
+    actual_ids = _overlay_target_provider_ids(item)
+    common_providers = expected_ids.keys() & actual_ids.keys()
+    if common_providers:
+        return any(expected_ids[provider] == actual_ids[provider] for provider in common_providers)
+    expected_root = str(target.get("Rootfolder") or target.get("root_folder") or "").strip().casefold()
+    actual_root = str(item.get("root_folder") or "").strip().casefold()
+    if expected_root and expected_root == actual_root:
+        return True
+    expected_title = _overlay_target_parent_title(target).casefold()
+    return bool(expected_title and expected_title == str(item.get("title") or "").strip().casefold())
+
+
 async def _fetch_overlay_target_items(
     http_client, server_type, server_url, credentials, targets, library,
     excluded_libraries, library_rules_map, write_log,
@@ -2193,17 +2309,39 @@ async def run_overlay_sync_task(
     log_file_path: Optional[Path] = None,
     target_items: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
+    global _is_sync_running
+    with _sync_condition:
+        if _is_sync_running:
+            return {"success": False, "is_running": True, "error": "A dynamic overlay sync task is already running."}
+        _is_sync_running = True
+    try:
+        return await _run_overlay_sync_task(
+            target_server=target_server, scope=scope, library=library, base_dir=base_dir,
+            assets_dir=assets_dir, config_path=config_path, log_file_path=log_file_path,
+            target_items=target_items,
+        )
+    finally:
+        with _sync_condition:
+            _is_sync_running = False
+            _sync_condition.notify_all()
+
+
+async def _run_overlay_sync_task(
+    target_server: str = "all",
+    scope: str = "incremental",
+    library: str = "all",
+    base_dir: Optional[Path] = None,
+    assets_dir: Optional[Path] = None,
+    config_path: Optional[Path] = None,
+    log_file_path: Optional[Path] = None,
+    target_items: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
     """
     Main execution worker for Dynamic Overlay Sync.
     Executes in-memory compositing of clean assets and uploads overlaid artwork to media servers.
     Supports instant target mode when newly generated assets are passed via target_items.
     """
-    global _is_sync_running, _last_sync_result, _cancel_requested
-
-    if _is_sync_running:
-        return {"success": False, "error": "A dynamic overlay sync task is already running."}
-
-    _is_sync_running = True
+    global _last_sync_result, _cancel_requested
     _cancel_requested = False
     sync_started_at = time.monotonic()
 
@@ -2265,7 +2403,7 @@ async def run_overlay_sync_task(
             root_v = str(t_item.get("Rootfolder") or t_item.get("root_folder") or "").strip().lower()
             if root_v:
                 target_roots.add(root_v)
-            title_v = str(t_item.get("Title") or t_item.get("title") or "").strip().lower()
+            title_v = _overlay_target_parent_title(t_item).lower()
             if title_v:
                 target_titles.add(title_v)
 
@@ -2462,7 +2600,7 @@ async def run_overlay_sync_task(
                                             parsed_it = _parse_plex_item(it, sec_title, sec_type)
                                             if parsed_it:
                                                 sec_media_items.append(parsed_it)
-                                elif not sec_media_items and is_target_mode:
+                                elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
                                     # Fallback if targeted title search missed: fetch section XML and filter
                                     items_resp = await http_client.get(
                                         f"{s_url}/library/sections/{sec_key}/all?includeGuids=1",
@@ -2540,7 +2678,7 @@ async def run_overlay_sync_task(
                                                 sec_media_items.append(parsed_it)
                                     else:
                                         write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({it_resp.status_code}): {it_resp.text[:120]}")
-                                elif not sec_media_items and is_target_mode:
+                                elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
                                     items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
                                     it_resp = await http_client.get(items_url, headers=headers)
                                     if it_resp.status_code == 200:
@@ -2563,18 +2701,13 @@ async def run_overlay_sync_task(
                         it_id = str(it.get("id"))
                         if it_id in seen_ids:
                             continue
-                        rf_l = (it.get("root_folder") or "").strip().lower()
-                        t_l = (it.get("title") or "").strip().lower()
-                        if (
-                            rf_l in target_roots
-                            or t_l in target_titles
-                            or any(tr in rf_l for tr in target_roots if len(tr) >= 3)
-                            or any(tt in t_l for tt in target_titles if len(tt) >= 3)
-                        ):
+                        if any(_matches_overlay_target(it, target) for target in target_items):
                             seen_ids.add(it_id)
                             matched_items.append(it)
                     media_items = matched_items
                     write_log(f"Instant Target Mode: Filtered to {len(media_items)} item(s) on {s_type.upper()}.")
+                    if not media_items:
+                        write_log("Warning: No server metadata matched the generated asset targets. No artwork will be uploaded for this batch.")
 
                 write_log(f"Discovered {len(media_items)} items on {s_type.upper()}. Evaluating clean assets and cache...")
 
@@ -3952,7 +4085,6 @@ async def run_overlay_sync_task(
         _last_sync_result = res
         return res
     finally:
-        _is_sync_running = False
         if log_file_handle and not log_file_handle.closed:
             try:
                 log_file_handle.close()

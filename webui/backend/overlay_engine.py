@@ -622,6 +622,11 @@ class DynamicOverlayCompositor:
         v_align = layer.get("vertical_align", "top")
         v_offset = layer.get("vertical_offset", 0)
 
+        if layer_type == "preview":
+            preview = Image.new("RGBA", canvas_box, (0, 0, 0, 0))
+            preview.paste(layer["image_element"], (int(h_offset), int(v_offset)))
+            return preview
+
         # 1. Pure Image Overlay (e.g. 4K Ribbon, Network Logo, Common Sense)
         if layer_type == "image":
             elem_img = layer.get("image_element")

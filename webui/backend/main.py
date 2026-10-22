@@ -5983,37 +5983,23 @@ def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental", 
                 pass
 
         try:
-            from overlay_sync_service import (
-                run_overlay_sync_task,
-                is_overlay_sync_running
-            )
+            from overlay_sync_service import submit_overlay_sync_task
         except ImportError:
-            return
-
-        if is_overlay_sync_running():
-            logger.info("[OverlaySync] A sync task is already running. Skipping auto-trigger.")
             return
 
         item_count_str = f" for {len(target_items)} target item(s)" if target_items else ""
         logger.info(f"[OverlaySync] Auto-triggering Dynamic Overlays Sync ({scope}{item_count_str}) after {source}...")
 
-        def _run_bg():
-            try:
-                asyncio.run(
-                    run_overlay_sync_task(
-                        target_server="all",
-                        scope=scope,
-                        library="all",
-                        base_dir=BASE_DIR,
-                        config_path=CONFIG_PATH,
-                        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
-                        target_items=target_items
-                    )
-                )
-            except Exception as task_err:
-                logger.error(f"[OverlaySync] Error executing background sync: {task_err}")
-
-        threading.Thread(target=_run_bg, daemon=True).start()
+        result = submit_overlay_sync_task(
+            target_server="all", scope=scope, library="all", base_dir=BASE_DIR,
+            config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+            target_items=target_items,
+        )
+        if result.get("queued"):
+            logger.info("[OverlaySync] Retained targets from %s in the pending sync queue.", source)
+        elif not result.get("success"):
+            logger.info("[OverlaySync] Auto-trigger not started: %s", result.get("error"))
+        return result
     except Exception as e:
         logger.error(f"[OverlaySync] Error auto-triggering overlay sync: {e}", exc_info=True)
 
@@ -20110,40 +20096,17 @@ async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
     except Exception as e:
         logger.debug(f"[OverlaySync] Check dynamic overlays enabled error: {e}")
     try:
-        from overlay_sync_service import (
-            run_overlay_sync_task,
-            is_overlay_sync_running
-        )
+        from overlay_sync_service import submit_overlay_sync_task
     except ImportError as e:
         return {"success": False, "error": f"Overlay sync service not available: {e}"}
 
-    if is_overlay_sync_running():
-        return {
-            "success": False,
-            "error": "A dynamic overlay sync task is already running.",
-            "is_running": True
-        }
-
-    def _run_bg():
-        try:
-            asyncio.run(
-                run_overlay_sync_task(
-                    target_server=req.target_server,
-                    scope=req.scope,
-                    library=req.library,
-                    base_dir=BASE_DIR,
-                    config_path=CONFIG_PATH,
-                    log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
-                    target_items=req.target_items
-                )
-            )
-        except Exception as bg_err:
-            logger.error(f"[OverlaySync] Error in background sync: {bg_err}", exc_info=True)
-
-    threading.Thread(target=_run_bg, daemon=True).start()
+    result = submit_overlay_sync_task(
+        target_server=req.target_server, scope=req.scope, library=req.library,
+        base_dir=BASE_DIR, config_path=CONFIG_PATH,
+        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log", target_items=req.target_items,
+    )
     return {
-        "success": True,
-        "message": f"Dynamic overlay sync started ({req.scope} mode for {req.target_server.upper()}).",
+        **result,
         "target_server": req.target_server,
         "scope": req.scope,
         "library": req.library

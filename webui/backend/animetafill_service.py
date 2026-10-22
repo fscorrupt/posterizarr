@@ -358,7 +358,7 @@ def _detect_configured_server() -> str:
     plex_part = pj_config.get("PlexPart", {})
     jf_part = pj_config.get("JellyfinPart", {})
     emby_part = pj_config.get("EmbyPart", {})
-    
+
     use_emby = str(emby_part.get("UseEmby", pj_config.get("UseEmby", ""))).lower() == "true"
     use_jf = str(jf_part.get("UseJellyfin", pj_config.get("UseJellyfin", ""))).lower() == "true"
     use_plex = str(plex_part.get("UsePlex", pj_config.get("UsePlex", ""))).lower() == "true"
@@ -1019,7 +1019,7 @@ def get_anime_shows(query: Optional[str] = None, category: Optional[str] = None,
 
         offset = max(0, (page - 1) * page_size)
         shows_sql = f"""
-            SELECT 
+            SELECT
                 e.anime_title,
                 COUNT(e.absolute_number) as total_episodes,
                 SUM(CASE WHEN e.category = 'canon' THEN 1 ELSE 0 END) as canon_count,
