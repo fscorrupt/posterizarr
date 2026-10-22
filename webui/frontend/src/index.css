@@ -504,7 +504,7 @@
 }
 
 body {
-  font-family: "DM Sans Variable", sans-serif;
+  font-family: "Segoe UI Variable", "Segoe UI", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--theme-bg);
@@ -636,7 +636,7 @@ html.hide-scrollbars * {
   --theme-border: color-mix(in srgb, var(--theme-text) 12%, var(--theme-bg-dark));
   background: linear-gradient(135deg, color-mix(in srgb, var(--theme-text) 3%, var(--ui-canvas)), var(--ui-canvas) 55%);
   background-attachment: fixed;
-  font-family: "DM Sans Variable", sans-serif;
+  font-family: "Segoe UI Variable", "Segoe UI", "Helvetica Neue", sans-serif;
   letter-spacing: 0;
 }
 
