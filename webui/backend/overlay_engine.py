@@ -430,6 +430,51 @@ class DynamicOverlayCompositor:
     """
 
     @staticmethod
+    def render_preview_groups(
+        layers: List[Dict[str, Any]],
+        canvas_type: str = "portrait"
+    ) -> List[Dict[str, Any]]:
+        canvas_box = LANDSCAPE_DIM if canvas_type == "landscape" else PORTRAIT_DIM
+        groups = {}
+        parts = {}
+        for order, layer in enumerate(layers):
+            key = layer.get("preview_key") or layer.get("name")
+            if not key:
+                continue
+            rendered = DynamicOverlayCompositor._render_layer(layer, canvas_box, abort_on_missing=True)
+            if rendered is None:
+                continue
+            if key not in groups:
+                groups[key] = Image.new("RGBA", canvas_box, (0, 0, 0, 0))
+                parts[key] = []
+            groups[key] = Image.alpha_composite(groups[key], rendered)
+            part_bounds = rendered.getbbox()
+            if part_bounds:
+                part_buffer = io.BytesIO()
+                rendered.crop(part_bounds).save(part_buffer, format="PNG")
+                parts[key].append({
+                    "order": order, "left": part_bounds[0], "top": part_bounds[1],
+                    "width": part_bounds[2] - part_bounds[0], "height": part_bounds[3] - part_bounds[1],
+                    "image_bytes": part_buffer.getvalue(),
+                })
+
+        result = []
+        for key, image in groups.items():
+            bounds = image.getbbox()
+            if not bounds:
+                continue
+            buffer = io.BytesIO()
+            image.crop(bounds).save(buffer, format="PNG")
+            result.append({
+                "key": key,
+                "left": bounds[0], "top": bounds[1],
+                "width": bounds[2] - bounds[0], "height": bounds[3] - bounds[1],
+                "image_bytes": buffer.getvalue(),
+                "parts": parts[key],
+            })
+        return result
+
+    @staticmethod
     def composite_overlays(
         base_image_bytes: bytes,
         layers: List[Dict[str, Any]],

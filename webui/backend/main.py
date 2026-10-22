@@ -19419,6 +19419,8 @@ async def delete_dynamic_overlay_config_file(filename: str = Query(...)):
 @app.get("/api/dynamic-overlays/preview")
 async def preview_dynamic_overlay(
     template_type: str = Query("movie_poster"),
+    output: str = Query("image"),
+    library_name: Optional[str] = Query(None),
     rating: Optional[str] = Query("8.4"),
     runtime: Optional[str] = Query("1h 58m"),
     status_label: Optional[str] = Query(""),
@@ -19640,648 +19642,65 @@ async def preview_dynamic_overlay(
         base.save(base_buf, format="PNG")
         base_bytes = base_buf.getvalue()
 
-        layers = []
-        assets_dir = kometa_resolver.assets_dir if (kometa_resolver and getattr(kometa_resolver, 'assets_dir', None) and kometa_resolver.assets_dir.exists()) else (BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets")
-        fonts_dir = kometa_resolver.fonts_dir if (kometa_resolver and getattr(kometa_resolver, 'fonts_dir', None) and kometa_resolver.fonts_dir.exists()) else (BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "fonts")
-        colus_font = (BASE_DIR / "Overlayfiles" / "Colus-Regular.ttf")
+        from overlay_preview import build_preview_layers
+        from overlay_sync_service import build_overlay_layers_for_item
+        from dynamic_overlays_service import get_config_yml_path, get_overlays_dir
 
-        inter_font = fonts_dir / "Inter-Bold.ttf"
-        if not inter_font.exists():
-            inter_font = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "fonts" / "Inter-Bold.ttf"
-        text_font_to_use = str(inter_font) if inter_font.exists() else (str(colus_font) if colus_font.exists() else None)
+        placements = {}
+        controls = [
+            ("rating", rating, rating_x, rating_y, rating_align, rating_valign, rating_font_size),
+            ("status", status_label, status_x, status_y, status_align, status_valign, status_font_size),
+            ("runtime", runtime, runtime_x, runtime_y, runtime_align, runtime_valign, runtime_font_size),
+            ("resolution", resolution, res_x, res_y, res_align, res_valign, None),
+            ("languages", languages, lang_x, lang_y, lang_align, lang_valign, languages_font_size),
+            ("network", network, network_x, network_y, network_align, network_valign, None),
+            ("anime", anime_tag, anime_x, anime_y, anime_align, anime_valign, None),
+            ("age_rating", age_rating, age_rating_x, age_rating_y, age_rating_align, age_rating_valign, age_rating_font_size),
+            ("audio_codec", audio_codec, audio_codec_x, audio_codec_y, audio_codec_align, audio_codec_valign, None),
+            ("video_format", video_format, video_format_x, video_format_y, video_format_align, video_format_valign, None),
+        ]
+        for key, value, offset_x, offset_y, align, valign, font_size in controls:
+            if value:
+                placements[key] = {"x": offset_x or 0, "y": offset_y or 0,
+                                   "align": align or "left", "valign": valign or "top", "font_size": font_size}
+        for key, font_name in (("rating", rating_font), ("status", status_font), ("runtime", runtime_font),
+                               ("languages", languages_font), ("age_rating", age_rating_font)):
+            if key in placements and font_name:
+                placements[key]["font"] = os.path.basename(font_name)
+        library_rules = None
+        if library_name:
+            import yaml
+            config_path = get_config_yml_path()
+            if not config_path.exists():
+                raise ValueError("The selected library's overlay configuration is missing")
+            if config_path.exists():
+                with config_path.open(encoding="utf-8") as config_file:
+                    preview_config = yaml.safe_load(config_file) or {}
+                library_config = (preview_config.get("libraries") or {}).get(library_name)
+                if library_config is None:
+                    raise ValueError("Selected preview library is not configured")
+                library_rules = library_config.get("overlay_files") or library_config.get("overlays") or []
+        layers = build_preview_layers({
+            "template_type": template_type, "rating": rating, "runtime": runtime,
+            "status_label": status_label, "status_color": status_color, "resolution": resolution, "languages": languages,
+            "network": network, "age_rating": age_rating, "age_rating_source": age_rating_source,
+            "audio_codec": audio_codec, "video_format": video_format, "anime_tag": anime_tag,
+        }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item)
 
-        def _resolve_font_file(font_name: Optional[str], fallback_font: Optional[str]) -> Optional[str]:
-            if not font_name or str(font_name).lower() in ("default", "none", "", "null"):
-                return fallback_font
-            safe = os.path.basename(str(font_name).strip())
-            cands = [
-                fonts_dir / safe,
-                BASE_DIR / "Overlayfiles" / safe,
-                fonts_dir / f"{safe}.ttf",
-                fonts_dir / f"{safe}.otf",
-                BASE_DIR / "Overlayfiles" / f"{safe}.ttf",
-                BASE_DIR / "Overlayfiles" / f"{safe}.otf",
-            ]
-            for c in cands:
-                if c.exists():
-                    return str(c)
-            return fallback_font
-
-        # 1. 4K / Resolution Ribbon or Banner
-        if resolution and str(resolution).strip().lower() not in ("none", "off", "false", ""):
-            res_clean = resolution.lower()
-            is_4k = ("4k" in res_clean or "2160" in res_clean or "uhd" in res_clean)
-            banner_file = assets_dir / "4K_banner.png"
-            if not banner_file.exists():
-                banner_file = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "4K_banner.png"
-
-            # Check if resolution_mode is banner OR (is_4k on a movie poster and res_y in (0, None) and resolution_mode != 'badge')
-            use_top_banner = (resolution_mode == "banner") or (
-                is_4k and banner_file.exists() and not is_landscape and (res_y is None or res_y == 0) and resolution_mode != "badge"
-            )
-            if use_top_banner and banner_file.exists() and not is_landscape:
-                layers.append({
-                    "name": "resolution_banner",
-                    "type": "image",
-                    "image_path": str(banner_file),
-                    "horizontal_align": "center",
-                    "horizontal_offset": 0,
-                    "vertical_align": "top",
-                    "vertical_offset": 0
-                })
-            else:
-                badge_name = "4K.png" if is_4k else ("1080p.png" if "1080" in res_clean else f"{resolution}.png")
-                badge_candidates = [
-                    assets_dir / badge_name,
-                    assets_dir / "resolution" / badge_name,
-                    assets_dir / f"{res_clean}.png",
-                    assets_dir / "resolution" / f"{res_clean}.png",
-                    BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / badge_name,
-                    BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "resolution" / badge_name,
-                ]
-                badge_file = None
-                for cand in badge_candidates:
-                    if cand.exists():
-                        badge_file = cand
-                        break
-
-                # Resolution background styling
-                if resolution_back_color is not None:
-                    res_bcol = None if resolution_back_color.lower() in ("none", "off", "#00000000", "transparent") else resolution_back_color
-                else:
-                    res_bcol = "#00000099" # Default contrast pill
-                res_brad = resolution_back_radius if resolution_back_radius is not None else 15
-                res_bw = resolution_back_width or (260 if is_landscape else 245)
-                res_bh = resolution_back_height or (85 if is_landscape else 95)
-
-                if badge_file:
-                    layers.append({
-                        "name": "resolution",
-                        "type": "image",
-                        "image_path": str(badge_file),
-                        "back_color": res_bcol,
-                        "back_width": res_bw if res_bcol else None,
-                        "back_height": res_bh if res_bcol else None,
-                        "back_radius": res_brad if res_bcol else 0,
-                        "horizontal_align": res_align or "left",
-                        "horizontal_offset": res_x if res_x is not None else 15,
-                        "vertical_align": res_valign or "top",
-                        "vertical_offset": res_y if res_y is not None else 15
-                    })
-                else:
-                    layers.append({
-                        "name": "resolution",
-                        "type": "text",
-                        "text": resolution.upper(),
-                        "font_path": text_font_to_use,
-                        "font_size": 34 if is_landscape else 38,
-                        "font_color": "#FFFFFF",
-                        "back_color": res_bcol,
-                        "back_width": 140 if res_bcol else None,
-                        "back_height": 60 if res_bcol else None,
-                        "back_radius": res_brad if res_bcol else 0,
-                        "horizontal_align": res_align or "left",
-                        "horizontal_offset": res_x if res_x is not None else 15,
-                        "vertical_align": res_valign or "top",
-                        "vertical_offset": res_y if res_y is not None else 15
-                    })
-
-        # 2. Ratings Badges (Multi-Ratings Cluster or Legacy Single Badge)
-        has_multi = multi_ratings and str(multi_ratings).strip().lower() not in ("none", "off", "false", "")
-        if has_multi or rating_sources:
-            try:
-                from overlay_sync_service import build_multi_rating_layers
-                sample_ratings = {
-                    "imdb": "8.4",
-                    "tomatoes": "94",
-                    "tomatoesaudience": "88",
-                    "tmdb": "8.1",
-                    "trakt": "82",
-                    "letterboxd": "4.2",
-                    "metacritic": "78"
-                }
-                src_list = [s.strip().lower() for s in (rating_sources or "").split(",") if s.strip() and s.strip().lower() != "true"]
-                if not src_list:
-                    try:
-                        from dynamic_overlays_service import get_dynamic_overlays_settings
-                        cur_dyn = get_dynamic_overlays_settings()
-                        src_list = cur_dyn.get("rating_sources") or ["imdb", "tomatoes", "tmdb"]
-                    except Exception:
-                        src_list = ["imdb", "tomatoes", "tmdb"]
-                dyn_cfg = {
-                    "sources": src_list,
-                    "orientation": rating_orientation or "horizontal",
-                    "position": f"{rating_valign or 'bottom'}-{rating_align or 'right'}",
-                    "offset_x": rating_x if rating_x is not None else 30,
-                    "offset_y": rating_y if rating_y is not None else 25,
-                    "spacing": rating_spacing if rating_spacing is not None else 15,
-                    "contrast_box": rating_contrast_box if rating_contrast_box is not None else True
-                }
-                if rating_font_size:
-                    dyn_cfg["font_size"] = rating_font_size
-                rating_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "rating"
-                fonts_dir_dyn = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "fonts"
-                m_layers = build_multi_rating_layers(
-                    ratings=sample_ratings,
-                    dyn_settings=dyn_cfg,
-                    canvas_type="landscape" if is_landscape else "portrait",
-                    assets_dir=rating_dir,
-                    fonts_dir=fonts_dir_dyn
-                )
-                layers.extend(m_layers)
-            except Exception as m_err:
-                logger.warning(f"Failed to generate multi-ratings in preview: {m_err}")
-        else:
-            has_rating = rating and str(rating).strip().lower() not in ("none", "off", "false", "", "0")
-            if has_rating:
-                try:
-                    score = float(rating)
-                except ValueError:
-                    score = 8.0
-
-                if score >= 6.5:
-                    badge_file = assets_dir / "Rating_High.png"
-                elif score >= 4.5:
-                    badge_file = assets_dir / "Rating_Mid.png"
-                else:
-                    badge_file = assets_dir / "Rating_Low.png"
-
-                circ_font = fonts_dir / "CircularStd-Bold.otf"
-                font_to_use = str(circ_font) if circ_font.exists() else (str(colus_font) if colus_font.exists() else None)
-                r_font = _resolve_font_file(rating_font, font_to_use)
-                r_size = rating_font_size if (rating_font_size and rating_font_size > 10) else (42 if is_landscape else 50)
-
-                if is_landscape:
-                    h_offset = rating_x if rating_x is not None else 30
-                    v_offset = rating_y if rating_y is not None else 25
-                    h_align = rating_align or "right"
-                    v_align = rating_valign or "bottom"
-                    layers.append({
-                        "name": "rating",
-                        "type": "badge",
-                        "text": str(rating).strip(),
-                        "image_path": str(badge_file) if badge_file.exists() else None,
-                        "scale_height": 60,
-                        "scale_width": 120,
-                        "font_path": r_font,
-                        "font_size": r_size,
-                        "font_color": "#282a2d" if (4.5 <= score < 6.5) else "#FFFFFF",
-                        "horizontal_align": h_align,
-                        "horizontal_offset": h_offset,
-                        "vertical_align": v_align,
-                        "vertical_offset": v_offset,
-                        "addon_position": "center"
-                    })
-                else:
-                    # Portrait poster (movie_poster, show_poster):
-                    # Matches exact Kometa Rating_High_BG plate (300x200) and user_rating text!
-                    bg_offset = rating_x if (rating_x is not None and rating_x != 30) else 375
-                    bg_align = rating_align if (rating_align and rating_align != "right") else "center"
-                    bg_v_offset = rating_y if (rating_y is not None and rating_y != 25) else 0
-                    bg_v_align = rating_valign or "bottom"
-
-                    layers.append({
-                        "name": "rating_bg",
-                        "type": "image",
-                        "image_path": str(badge_file) if badge_file.exists() else None,
-                        "horizontal_align": bg_align,
-                        "horizontal_offset": bg_offset,
-                        "vertical_align": bg_v_align,
-                        "vertical_offset": bg_v_offset
-                    })
-                    layers.append({
-                        "name": "user_rating",
-                        "type": "text",
-                        "text": str(rating).strip(),
-                        "font_path": r_font,
-                        "font_size": 85,
-                        "font_color": "#282a2d" if (4.5 <= score < 6.5) else "#FFFFFF",
-                        "horizontal_align": bg_align,
-                        "horizontal_offset": bg_offset,
-                        "vertical_align": bg_v_align,
-                        "vertical_offset": bg_v_offset + 70
-                    })
-
-        # 3. Series Status Banner (Only for TV or when explicitly enabled, never default on movie posters)
-        has_status = status_label and str(status_label).strip().lower() not in ("none", "off", "false", "")
-        # Prevent default "RETURNING SERIES" from covering movie_poster
-        if has_status and not is_landscape and status_label.strip() == "RETURNING SERIES" and status_x is None and status_y is None:
-            has_status = False
-
-        if has_status:
-            h_offset = status_x if status_x is not None else 0
-            v_offset = status_y if status_y is not None else (25 if is_landscape else 35)
-            h_align = status_align or "center"
-            v_align = status_valign or "bottom"
-            st_font = _resolve_font_file(status_font, str(colus_font) if colus_font.exists() else None)
-            st_size = status_font_size if (status_font_size and status_font_size > 10) else (64 if is_landscape else 75)
-
-            layers.append({
-                "name": "status",
-                "type": "text",
-                "text": status_label.strip(),
-                "font_path": st_font,
-                "font_size": st_size,
-                "font_color": status_color or "#FFA500",
-                "back_color": "#000000BF",
-                "back_width": 1400 if is_landscape else 920,
-                "back_height": 110 if is_landscape else 130,
-                "back_radius": 15,
-                "horizontal_align": h_align,
-                "horizontal_offset": h_offset,
-                "vertical_align": v_align,
-                "vertical_offset": v_offset
-            })
-
-        # 4. Runtime Badge (Clean formatted e.g. 1h 58m, transparent background, text stroke for legibility)
-        has_runtime = runtime and str(runtime).strip().lower() not in ("none", "off", "false", "")
-        if has_runtime:
-            rt_str = str(runtime).strip()
-            # If runtime is given in raw minutes (e.g. "124 min" or "124"), format to "2h 4m"
-            raw_digits = "".join(ch for ch in rt_str if ch.isdigit())
-            if raw_digits and ("min" in rt_str.lower() or rt_str.isdigit()):
-                try:
-                    total_m = int(raw_digits)
-                    hrs = total_m // 60
-                    mins = total_m % 60
-                    rt_str = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
-                except Exception:
-                    pass
-
-            h_offset = runtime_x if runtime_x is not None else 140
-            v_offset = runtime_y if runtime_y is not None else 37
-            h_align = runtime_align or "center"
-            v_align = runtime_valign or "bottom"
-
-            rt_font = _resolve_font_file(runtime_font, text_font_to_use)
-            rt_size = runtime_font_size if (runtime_font_size and runtime_font_size > 10) else (52 if is_landscape else 50)
-
-            layers.append({
-                "name": "runtime",
-                "type": "text",
-                "text": rt_str,
-                "font_path": rt_font,
-                "font_size": rt_size,
-                "font_color": "#FFFFFF",
-                "stroke_width": 2,
-                "stroke_color": "#000000D0",
-                "horizontal_align": h_align,
-                "horizontal_offset": h_offset,
-                "vertical_align": v_align,
-                "vertical_offset": v_offset,
-                "back_color": "#00000000",
-                "back_width": 180 if is_landscape else 205,
-                "back_height": 65 if is_landscape else 80,
-                "back_align": "center"
-            })
-
-        # 5. Audio Languages (Country Flags - Stacked vertically like Kometa / Alien style)
-        has_languages = languages and str(languages).strip().lower() not in ("none", "off", "false", "")
-        if has_languages:
-            raw_codes = [l.strip().lower() for l in languages.split(",") if l.strip()]
-            flags_dir = assets_dir / "flags" / "square"
-            if not flags_dir.exists():
-                flags_dir = assets_dir / "flag" / "square"
-            if not flags_dir.exists():
-                flags_dir = assets_dir / "flags"
-
-            flag_w = 38 if is_landscape else 46
-            flag_h = 24 if is_landscape else 28
-            h_offset = lang_x if lang_x is not None else 30
-            v_offset = lang_y if lang_y is not None else 35
-            h_align = lang_align or "left"
-            v_align = lang_valign or "bottom"
-
-            from overlay_sync_service import LANGUAGE_TO_FLAG_MAP, LANGUAGE_MAP
-
-            flag_files_found = []
-            for raw_c in raw_codes:
-                norm_c = LANGUAGE_MAP.get(raw_c, raw_c)
-                cand_name = LANGUAGE_TO_FLAG_MAP.get(norm_c, f"{norm_c}.png")
-                cand_path = flags_dir / cand_name
-                if cand_path.exists():
-                    flag_files_found.append((norm_c, cand_path))
-
-            if flag_files_found:
-                if len(flag_files_found) == 1:
-                    code, flag_path = flag_files_found[0]
-                    layers.append({
-                        "name": f"language_flag_{code}",
-                        "type": "image",
-                        "image_path": str(flag_path),
-                        "scale_width": flag_w,
-                        "scale_height": flag_h,
-                        "horizontal_align": h_align,
-                        "horizontal_offset": h_offset,
-                        "vertical_align": v_align,
-                        "vertical_offset": v_offset
-                    })
-                elif len(flag_files_found) >= 2:
-                    code_top, top_path = flag_files_found[0]
-                    code_bot, bot_path = flag_files_found[1]
-                    # Bottom flag
-                    layers.append({
-                        "name": f"language_flag_{code_bot}",
-                        "type": "image",
-                        "image_path": str(bot_path),
-                        "scale_width": flag_w,
-                        "scale_height": flag_h,
-                        "horizontal_align": h_align,
-                        "horizontal_offset": h_offset,
-                        "vertical_align": v_align,
-                        "vertical_offset": v_offset
-                    })
-                    # Top flag
-                    layers.append({
-                        "name": f"language_flag_{code_top}",
-                        "type": "image",
-                        "image_path": str(top_path),
-                        "scale_width": flag_w,
-                        "scale_height": flag_h,
-                        "horizontal_align": h_align,
-                        "horizontal_offset": h_offset,
-                        "vertical_align": v_align,
-                        "vertical_offset": v_offset + flag_h + 4
-                    })
-            else:
-                lang_clean = " · ".join([l.strip().upper() for l in raw_codes])
-                layers.append({
-                    "name": "languages",
-                    "type": "text",
-                    "text": lang_clean,
-                    "font_path": text_font_to_use,
-                    "font_size": 30 if is_landscape else 34,
-                    "font_color": "#FFFFFF",
-                    "back_color": "#000000AA",
-                    "back_width": (160 if is_landscape else 140) + (len(lang_clean) * 10),
-                    "back_height": 60 if is_landscape else 65,
-                    "back_radius": 10,
-                    "horizontal_align": h_align,
-                    "horizontal_offset": h_offset,
-                    "vertical_align": v_align,
-                    "vertical_offset": v_offset
-                })
-
-        # 6. Network Logo / Text Badge
-        has_network = network and str(network).strip().lower() not in ("none", "off", "false", "")
-        if has_network:
-            h_offset = network_x if network_x is not None else 25
-            v_offset = network_y if network_y is not None else 25
-            h_align = network_align or "right"
-            v_align = network_valign or "top"
-
-            # Search network asset across multiple subdirectories and case-insensitively
-            found_net_img = None
-            net_candidates = [
-                assets_dir / f"{network}.png",
-                assets_dir / "network" / f"{network}.png",
-                assets_dir / "network" / "color" / f"{network}.png",
-                assets_dir / "network" / "white" / f"{network}.png",
-                assets_dir / "streaming" / f"{network}.png",
-                assets_dir / "streaming" / "color" / f"{network}.png",
-                assets_dir / "streaming" / "white" / f"{network}.png",
-                assets_dir / "studio" / f"{network}.png",
-                assets_dir / "studio" / "standard" / f"{network}.png",
-            ]
-            for cand in net_candidates:
-                if cand.exists():
-                    found_net_img = cand
-                    break
-
-            if not found_net_img:
-                net_stem = str(network).lower().strip()
-                search_dirs = [
-                    assets_dir,
-                    assets_dir / "network",
-                    assets_dir / "network" / "color",
-                    assets_dir / "network" / "white",
-                    assets_dir / "streaming",
-                    assets_dir / "streaming" / "color",
-                    assets_dir / "studio",
-                    assets_dir / "studio" / "standard",
-                ]
-                for s_dir in search_dirs:
-                    if s_dir.exists() and s_dir.is_dir():
-                        try:
-                            for f in s_dir.iterdir():
-                                if f.is_file() and f.stem.lower() == net_stem and f.suffix.lower() in (".png", ".jpg", ".webp"):
-                                    found_net_img = f
-                                    break
-                        except Exception:
-                            pass
-                    if found_net_img:
-                        break
-
-            if found_net_img:
-                layers.append({
-                    "name": "network",
-                    "type": "image",
-                    "image_path": str(found_net_img),
-                    "horizontal_align": h_align,
-                    "horizontal_offset": h_offset,
-                    "vertical_align": v_align,
-                    "vertical_offset": v_offset
-                })
-            else:
-                layers.append({
-                    "name": "network",
-                    "type": "text",
-                    "text": network.upper(),
-                    "font_size": 36 if is_landscape else 48,
-                    "font_color": "#FFFFFF",
-                    "back_color": "#000000AA",
-                    "back_width": 180,
-                    "back_height": 60,
-                    "back_radius": 10,
-                    "horizontal_align": h_align,
-                    "horizontal_offset": h_offset,
-                    "vertical_align": v_align,
-                    "vertical_offset": v_offset
-                })
-
-        # 7. Anime Filler Tag
-        if anime_tag and str(anime_tag).strip().lower() not in ("none", "off", "false", ""):
-            tag_color = "#27C24CB3" if anime_tag.lower() == "canon" else ("#ED1F1FB3" if anime_tag.lower() == "filler" else "#FFA500B3")
-            layers.append({
-                "name": "anime_tag",
-                "type": "text",
-                "text": anime_tag.upper().strip(),
-                "font_path": str(colus_font) if colus_font.exists() else None,
-                "font_size": 55,
-                "font_color": "#FFFFFF",
-                "back_color": tag_color,
-                "back_width": 240,
-                "back_height": 80,
-                "back_radius": 12,
-                "horizontal_align": anime_align or "left",
-                "horizontal_offset": anime_x if anime_x is not None else 20,
-                "vertical_align": anime_valign or "top",
-                "vertical_offset": anime_y if anime_y is not None else 20
-            })
-
-        # 8. Age & Content Rating Badge (Common Sense Media, FSK, MPAA, BBFC)
-        has_age = age_rating and str(age_rating).strip().lower() not in ("none", "off", "false", "")
-        if has_age:
-            age_str = str(age_rating).strip()
-            age_src = str(age_rating_source or "commonsense").strip().lower()
-            h_offset = age_rating_x if age_rating_x is not None else (110 if has_languages else 30)
-            v_offset = age_rating_y if age_rating_y is not None else 37
-            h_align = age_rating_align or "left"
-            v_align = age_rating_valign or "bottom"
-
-            cr_dir = assets_dir / "cr"
-            if not cr_dir.exists():
-                cr_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "cr"
-
-            clean_val = age_str.lower().replace(" ", "").replace("-", "")
-            found_badge_img = None
-
-            if cr_dir.exists():
-                stems_to_try = []
-                if "fsk" in age_src or "de" in age_src or "fsk" in clean_val:
-                    digits = "".join(ch for ch in clean_val if ch.isdigit())
-                    if digits:
-                        stems_to_try.extend([f"de{digits}c", f"de{digits}", f"de{digits}cw"])
-                elif "us" in age_src or "mpaa" in age_src:
-                    stems_to_try.extend([
-                        f"us{clean_val}c", f"us{clean_val}",
-                        f"us{age_str.lower()}c", f"us{age_str.lower()}",
-                        f"ustv-{clean_val.replace('tv', '')}c", f"ustv-{clean_val.replace('tv', '')}"
-                    ])
-                elif "uk" in age_src or "bbfc" in age_src:
-                    stems_to_try.extend([f"uk{clean_val}c", f"uk{clean_val}"])
-
-                for stem in stems_to_try:
-                    for ext in (".png", ".webp"):
-                        cand = cr_dir / f"{stem}{ext}"
-                        if cand.exists():
-                            found_badge_img = cand
-                            break
-                    if found_badge_img:
-                        break
-
-            if found_badge_img:
-                layers.append({
-                    "name": "age_rating",
-                    "type": "image",
-                    "image_path": str(found_badge_img),
-                    "scale_height": 55 if is_landscape else 65,
-                    "horizontal_align": h_align,
-                    "horizontal_offset": h_offset,
-                    "vertical_align": v_align,
-                    "vertical_offset": v_offset
-                })
-            else:
-                cs_icon = assets_dir / "Commonsense.png"
-                if not cs_icon.exists():
-                    cs_icon = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "assets" / "Commonsense.png"
-                if not cs_icon.exists() and cr_dir.exists():
-                    cs_icon = cr_dir / "cs.png"
-
-                cs_display = age_str
-                if cs_icon.exists() and (age_src == "commonsense" or "+" in age_str or age_str.isdigit()):
-                    if not cs_display.endswith("+") and cs_display.isdigit():
-                        cs_display = f"{cs_display}+"
-                    cs_h = 36 if is_landscape else 44
-                    cs_w = int(cs_h * (92 / 83))
-
-                    cs_font = _resolve_font_file(age_rating_font, text_font_to_use)
-                    cs_size = age_rating_font_size if (age_rating_font_size and age_rating_font_size > 10) else cs_h
-                    layers.append({
-                        "name": "commonsense",
-                        "type": "badge",
-                        "text": cs_display,
-                        "image_path": str(cs_icon),
-                        "scale_height": cs_h,
-                        "addon_position": "left",
-                        "addon_offset": 12,
-                        "font_path": cs_font,
-                        "font_size": cs_size,
-                        "font_color": "#FFFFFF",
-                        "stroke_width": 2,
-                        "stroke_color": "#000000D0",
-                        "horizontal_align": h_align,
-                        "horizontal_offset": h_offset,
-                        "vertical_align": v_align,
-                        "vertical_offset": v_offset,
-                        "drop_shadow": True
-                    })
-                else:
-                    ar_font = _resolve_font_file(age_rating_font, text_font_to_use)
-                    ar_size = age_rating_font_size if (age_rating_font_size and age_rating_font_size > 10) else (34 if is_landscape else 38)
-                    layers.append({
-                        "name": "age_rating",
-                        "type": "text",
-                        "text": age_str.upper(),
-                        "font_path": ar_font,
-                        "font_size": ar_size,
-                        "font_color": "#FFFFFF",
-                        "back_color": "#000000AA",
-                        "back_width": 140 if is_landscape else 130,
-                        "back_height": 70 if is_landscape else 65,
-                        "back_radius": 10,
-                        "horizontal_align": h_align,
-                        "horizontal_offset": h_offset,
-                        "vertical_align": v_align,
-                        "vertical_offset": v_offset
-                    })
-
-        # 8. Audio Codec Badge (Dolby Atmos, TrueHD, DTS:X, etc.)
-        if audio_codec and str(audio_codec).strip().lower() not in ("none", "off", "false", ""):
-            ac_key = str(audio_codec).strip().lower()
-            style = audio_codec_style if audio_codec_style in ("compact", "standard") else "compact"
-            codec_candidates = [
-                assets_dir / "audio_codec" / style / f"{ac_key}.png",
-                assets_dir / "audio_codec" / "compact" / f"{ac_key}.png",
-                assets_dir / "audio_codec" / "standard" / f"{ac_key}.png",
-                assets_dir / f"{ac_key}.png"
-            ]
-            found_codec_img = None
-            for cand in codec_candidates:
-                if cand.exists():
-                    found_codec_img = cand
-                    break
-
-            if found_codec_img:
-                layers.append({
-                    "name": f"audio_codec_{ac_key}",
-                    "type": "image",
-                    "image_path": str(found_codec_img),
-                    "back_color": "#00000099",
-                    "back_width": 305,
-                    "back_height": 105,
-                    "back_radius": 12,
-                    "horizontal_align": audio_codec_align or "center",
-                    "horizontal_offset": audio_codec_x if audio_codec_x is not None else 0,
-                    "vertical_align": audio_codec_valign or "top",
-                    "vertical_offset": audio_codec_y if audio_codec_y is not None else 15
-                })
-
-        # 9. Video Format Badge (Telesync, CAM, Remux, Blu-ray, Web, etc.)
-        if video_format and str(video_format).strip().lower() not in ("none", "off", "false", ""):
-            vf_str = str(video_format).strip().upper()
-            layers.append({
-                "name": f"video_format_{vf_str.lower()}",
-                "type": "text",
-                "text": vf_str,
-                "font_path": text_font_to_use,
-                "font_size": 38 if not is_landscape else 32,
-                "font_color": "#FFFFFF",
-                "back_color": "#00000099",
-                "back_width": 305,
-                "back_height": 105,
-                "back_radius": 12,
-                "horizontal_align": video_format_align or "left",
-                "horizontal_offset": video_format_x if video_format_x is not None else 15,
-                "vertical_align": video_format_valign or "bottom",
-                "vertical_offset": video_format_y if video_format_y is not None else 15
-            })
+        if output == "sprites":
+            sprites = DynamicOverlayCompositor.render_preview_groups(layers, "landscape" if is_landscape else "portrait")
+            for sprite in sprites:
+                sprite["src"] = "data:image/png;base64," + base64.b64encode(sprite.pop("image_bytes")).decode("ascii")
+                for part in sprite["parts"]:
+                    part["src"] = "data:image/png;base64," + base64.b64encode(part.pop("image_bytes")).decode("ascii")
+                sprite["placement"] = placements.get(sprite["key"], {"x": 0, "y": 0, "align": "left", "valign": "top"})
+            return {"template_type": template_type, "width": dim[0], "height": dim[1], "sprites": sprites}
 
         rendered_bytes = DynamicOverlayCompositor.composite_overlays(
             base_image_bytes=base_bytes,
             layers=layers,
             canvas_type="landscape" if is_landscape else "portrait",
-            abort_on_missing_asset=False
+            abort_on_missing_asset=True
         )
 
         return Response(

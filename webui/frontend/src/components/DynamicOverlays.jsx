@@ -75,6 +75,57 @@ import {
   Palette
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
+import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
+import { getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
+
+const AssetPreviewGuides = ({ config, template }) => {
+  const guides = getAssetPreviewGuides(config, template);
+  if (!guides) return null;
+  return (
+    <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden" aria-label="Asset configuration boundaries">
+      {guides.borderX > 0 && (
+        <div className="absolute border border-dashed border-rose-400" style={{
+          left: `${guides.borderX}%`, right: `${guides.borderX}%`,
+          top: `${guides.borderY}%`, bottom: `${guides.borderY}%`,
+        }} />
+      )}
+      {guides.boxes.map((box) => (
+        <div key={box.label} className="absolute border-2 border-dashed" style={{
+          left: `${box.left}%`, top: `${box.top}%`, width: `${box.width}%`, height: `${box.height}%`,
+          borderColor: box.color, backgroundColor: `${box.color}26`,
+        }}>
+          <span className="absolute top-0 left-0 max-w-full truncate bg-black/85 px-1 text-[10px] leading-4 font-semibold" style={{ color: box.color }}>{box.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const AssetPreviewLegend = ({ config, template, showAssetGuides, guideMode, snapToGuides, hasBadges }) => {
+  const guides = showAssetGuides ? getAssetPreviewGuides(config, template) : null;
+  const entries = (guides?.boxes || []).map((box) => ({
+    label: `Reserved ${box.label.toLowerCase()} area`, color: box.color, dashed: true,
+  }));
+  if (guides?.borderX > 0) entries.push({ label: "Border inner edge", color: "#fb7185", dashed: true });
+  if (guideMode !== "off" && hasBadges) {
+    entries.push({ label: "Badge alignment", color: "#fbbf24" });
+    if (snapToGuides) entries.push({ label: "Magnetic snap", color: "#34d399" });
+  }
+  if (!entries.length) return null;
+  return (
+    <section aria-label="Preview legend" className="w-full border-t border-theme pt-3 text-xs text-theme-muted">
+      <h4 className="font-semibold text-theme-text mb-2">Legend</h4>
+      <ul className="flex flex-wrap gap-x-5 gap-y-2">
+        {entries.map((entry) => (
+          <li key={entry.label} className="flex items-center gap-2 min-w-0">
+            <span aria-hidden="true" className="w-6 shrink-0 border-t-2" style={{ borderColor: entry.color, borderStyle: entry.dashed ? "dashed" : "solid" }} />
+            <span>{entry.label}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
 
 const DEFAULT_OVERLAY_PRESETS = [
   // User's core favorites
@@ -555,6 +606,7 @@ export default function DynamicOverlays() {
 
   // Preview controls
   const [previewTemplate, setPreviewTemplate] = useState("movie_poster");
+  const [showAssetGuides, setShowAssetGuides] = useState(true);
   const [previewRating, setPreviewRating] = useState("8.4");
   const [previewResolution, setPreviewResolution] = useState("4K");
   const [previewStatus, setPreviewStatus] = useState("");
@@ -571,6 +623,9 @@ export default function DynamicOverlays() {
   const [isQuickStarting, setIsQuickStarting] = useState(false);
   const [previewTimestamp, setPreviewTimestamp] = useState(Date.now());
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewSprites, setPreviewSprites] = useState(null);
+  const [spriteLoading, setSpriteLoading] = useState(false);
+  const [spriteError, setSpriteError] = useState("");
 
   // Badge Alignment Guidelines & Custom Test Images
   const [guideMode, setGuideMode] = useState("active"); // "active" | "all" | "off"
@@ -852,8 +907,8 @@ export default function DynamicOverlays() {
       });
       if (res.ok) {
         setAutoOverlaySync(nextVal);
-        showSuccess(nextVal 
-          ? "Enabled automated overlay sync on new media creation!" 
+        showSuccess(nextVal
+          ? "Enabled automated overlay sync on new media creation!"
           : "Disabled automated overlay sync."
         );
       } else {
@@ -1376,6 +1431,13 @@ export default function DynamicOverlays() {
   };
 
   const getActiveBadges = () => {
+    if (previewSprites?.template_type === previewTemplate) {
+      return previewSprites.sprites.map((sprite) => sprite.key);
+    }
+    return [];
+  };
+
+  const getRequestedBadges = () => {
     const list = [];
     if (previewRating && previewRating !== "Off") list.push("rating");
     if (previewRuntime && previewRuntime !== "Off") list.push("runtime");
@@ -1394,6 +1456,16 @@ export default function DynamicOverlays() {
     const isLandscape = isLandscapeFormat(previewTemplate);
     const canvasW = isLandscape ? 1920 : 1000;
     const canvasH = isLandscape ? 1080 : 1500;
+    const sprite = previewSprites?.template_type === previewTemplate
+      ? previewSprites.sprites.find((item) => item.key === key) : null;
+    if (sprite) {
+      const bounds = getPreviewSpriteBounds(sprite, offsets[key], canvasW, canvasH);
+      if (!customCenter) return bounds;
+      return getPreviewSpriteBounds(sprite, {
+        align: "left", valign: "top",
+        x: customCenter.x - bounds.w / 2, y: customCenter.y - bounds.h / 2,
+      }, canvasW, canvasH);
+    }
     const dims = (isLandscape ? BADGE_DIMS.landscape : BADGE_DIMS.portrait)[key] || { w: 200, h: 70 };
     const hw = dims.w / 2;
     const hh = dims.h / 2;
@@ -3163,9 +3235,17 @@ export default function DynamicOverlays() {
       vo = Math.round(elemCenterY - canvasH / 2);
     }
 
+    const sprite = previewSprites?.sprites.find((item) => item.key === draggingItem);
+    if (sprite) {
+      const corrected = getPreviewSpriteOffset(sprite, elemLeft, elemTop, hAlign, vAlign, canvasW, canvasH);
+      ho = corrected.x;
+      vo = corrected.y;
+    }
+
     setOffsets(prev => ({
       ...prev,
       [draggingItem]: {
+        ...prev[draggingItem],
         x: ho,
         y: vo,
         align: hAlign,
@@ -3590,19 +3670,7 @@ export default function DynamicOverlays() {
       ? explicitType === "show"
       : (effectiveLib && (effectiveLib.toLowerCase().includes("tv") || effectiveLib.toLowerCase().includes("show") || effectiveLib.toLowerCase().includes("series")));
 
-    if (isTv) {
-      return [
-        { id: "show_poster", label: "Show Poster (2:3)", isLandscape: false, level: "show" },
-        { id: "season_poster", label: "Season (2:3)", isLandscape: false, level: "season" },
-        { id: "episode_card", label: "Titlecard (16:9)", isLandscape: true, level: "episode" },
-        { id: "backdrop", label: "Background (16:9)", isLandscape: true, level: "backdrop" },
-      ];
-    }
-
-    return [
-      { id: "movie_poster", label: "Movie Poster (2:3)", isLandscape: false, level: "movie" },
-      { id: "backdrop", label: "Background (16:9)", isLandscape: true, level: "backdrop" },
-    ];
+    return getAssetPreviewFormats(effectiveLib ? (isTv ? "show" : "movie") : undefined);
   };
 
   const syncPreviewWithLibraryAndFormat = (libName, targetFormat, configOverride = null) => {
@@ -3643,8 +3711,8 @@ export default function DynamicOverlays() {
     // 1. RESOLUTION BADGE / 4K BANNER
     // Landscape formats (Titlecards, Backdrops) NEVER use top banner ribbons!
     const isResBanner = !isLandscape && Boolean(
-      badges.resolution?.banner_4k || 
-      badges.resolution?.mode === "banner" || 
+      badges.resolution?.banner_4k ||
+      badges.resolution?.mode === "banner" ||
       badges.resolution?.mode === "ribbon" ||
       (!badges.resolution?.offset_y && badges.resolution?.position?.includes("top"))
     );
@@ -3739,8 +3807,8 @@ export default function DynamicOverlays() {
         font_size: badges.audio_languages?.font_size ?? "",
         font: badges.audio_languages?.font ?? ""
       };
-      const langs = badges.audio_languages.languages?.length > 0 
-        ? badges.audio_languages.languages.join(",") 
+      const langs = badges.audio_languages.languages?.length > 0
+        ? badges.audio_languages.languages.join(",")
         : "de,en";
       setPreviewLanguages(langs);
     } else {
@@ -4023,6 +4091,35 @@ export default function DynamicOverlays() {
   ].join("");
 
   const previewUrl = `/api/dynamic-overlays/preview?template_type=${previewTemplate}&rating=${encodeURIComponent(previewRating)}&runtime=${encodeURIComponent(previewRuntime)}&status_label=${encodeURIComponent(previewStatus)}&status_color=${encodeURIComponent(previewStatusColor)}&resolution=${encodeURIComponent(previewResolution)}&audio_codec=${encodeURIComponent(previewAudioCodec || "")}&audio_codec_style=${encodeURIComponent(previewAudioCodecStyle || "compact")}&video_format=${encodeURIComponent(previewVideoFormat || "")}&languages=${encodeURIComponent(previewLanguages)}&network=${encodeURIComponent(previewNetwork)}&anime_tag=${encodeURIComponent(previewAnimeTag)}&age_rating=${encodeURIComponent(previewAgeRating || "")}&age_rating_source=${encodeURIComponent(previewAgeSource || "commonsense")}&age_rating_x=${offsets.age_rating?.x ?? 255}&age_rating_y=${offsets.age_rating?.y ?? 37}&age_rating_align=${offsets.age_rating?.align || "left"}&age_rating_valign=${offsets.age_rating?.valign || "bottom"}&rating_x=${offsets.rating?.x ?? 30}&rating_y=${offsets.rating?.y ?? 25}&rating_align=${offsets.rating?.align || "right"}&rating_valign=${offsets.rating?.valign || "bottom"}&runtime_x=${offsets.runtime?.x ?? 140}&runtime_y=${offsets.runtime?.y ?? 37}&runtime_align=${offsets.runtime?.align || "center"}&runtime_valign=${offsets.runtime?.valign || "bottom"}&status_x=${offsets.status?.x ?? 0}&status_y=${offsets.status?.y ?? 30}&status_align=${offsets.status?.align || "center"}&status_valign=${offsets.status?.valign || "bottom"}&res_x=${offsets.resolution?.x ?? 0}&res_y=${offsets.resolution?.y ?? 0}&res_align=${offsets.resolution?.align || "center"}&res_valign=${offsets.resolution?.valign || "top"}&audio_codec_x=${offsets.audio_codec?.x ?? 30}&audio_codec_y=${offsets.audio_codec?.y ?? 70}&audio_codec_align=${offsets.audio_codec?.align || "right"}&audio_codec_valign=${offsets.audio_codec?.valign || "bottom"}&video_format_x=${offsets.video_format?.x ?? 30}&video_format_y=${offsets.video_format?.y ?? 30}&video_format_align=${offsets.video_format?.align || "right"}&video_format_valign=${offsets.video_format?.valign || "top"}&anime_x=${offsets.anime?.x ?? 20}&anime_y=${offsets.anime?.y ?? 20}&anime_align=${offsets.anime?.align || "left"}&anime_valign=${offsets.anime?.valign || "top"}&lang_x=${offsets.languages?.x ?? 30}&lang_y=${offsets.languages?.y ?? 35}&lang_align=${offsets.languages?.align ?? "left"}&lang_valign=${offsets.languages?.valign ?? "bottom"}&network_x=${offsets.network?.x ?? 25}&network_y=${offsets.network?.y ?? 25}&network_align=${offsets.network?.align ?? "right"}&network_valign=${offsets.network?.valign ?? "top"}${customImgParam}${fontParams}&t=${previewTimestamp}`;
+
+  const compositorPreviewUrl = `${previewUrl}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
+
+  useEffect(() => {
+    if (activeTab !== "preview" || !featureSettings?.enabled || draggingItem) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSpriteLoading(true);
+      setSpriteError("");
+      try {
+        const response = await fetch(`${compositorPreviewUrl}&output=sprites`, { signal: controller.signal });
+        if (!response.ok) throw new Error("Could not render badges. Check the library recipe, overlay assets, and fonts.");
+        const data = await response.json();
+        if (!Array.isArray(data.sprites)) throw new Error("The overlay renderer returned an invalid preview.");
+        if (!controller.signal.aborted) setPreviewSprites(data);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setPreviewSprites(null);
+          setSpriteError(error.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) setSpriteLoading(false);
+      }
+    }, 180);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [compositorPreviewUrl, activeTab, featureSettings?.enabled, draggingItem]);
 
   const renderGuidelinesOverlay = (isLandscape) => {
     if (guideMode === "off") return null;
@@ -6107,7 +6204,7 @@ export default function DynamicOverlays() {
                   </div>
                 </div>
 
-                
+
                 {/* ASSET TARGET SELECTOR (POSTERS / BACKDROPS / SEASONS / TITLE CARDS) */}
                 {(() => {
                   const effectiveAssetTarget = (!isTv && (activeAssetTarget === "season" || activeAssetTarget === "titlecard"))
@@ -6301,7 +6398,7 @@ export default function DynamicOverlays() {
                     </>
                   );
                 })()}
-                
+
                 {/* CENTRAL ENGINE SETTINGS & PROVIDER KEYS (ACCORDION CARD) */}
                 {/* RATINGS PROVIDERS & AUTO-REFRESH (ACCORDION CARD) */}
                 <div className="bg-theme-card border border-theme rounded-2xl shadow-sm overflow-hidden transition-all mt-6">
@@ -8169,6 +8266,24 @@ export default function DynamicOverlays() {
                   </button>
                 </div>
 
+                <label className="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-theme-text">
+                  <input type="checkbox" checked={showAssetGuides} onChange={(event) => {
+                    setShowAssetGuides(event.target.checked);
+                    if (event.target.checked) fetchServerConfig();
+                  }} className="accent-amber-500" />
+                  Asset boundaries
+                </label>
+                {showAssetGuides && (
+                  <button type="button" onClick={fetchServerConfig} title="Reload asset boundaries from saved configuration" aria-label="Reload asset boundaries" className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text">
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {showAssetGuides && (
+                  <p className="order-last basis-full text-xs text-theme-muted">
+                    Configuration changes aren't applied automatically. Save your settings, then click the refresh icon beside Asset boundaries.
+                  </p>
+                )}
+
                 {/* Badge Alignment Lines Button & Magnetic Snap Toggle */}
                 <div className="flex items-center rounded-xl bg-theme-hover/60 p-1 border border-theme gap-1">
                   <button
@@ -8387,7 +8502,7 @@ export default function DynamicOverlays() {
                     onDragLeave={handleCanvasDragLeave}
                     onDrop={handleCanvasDrop}
                     className={`relative select-none border border-theme rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-b from-[#181c24] to-[#0f1117] ${
-                      isLandscapeFormat(previewTemplate) ? "w-full max-w-[680px] aspect-[16/9]" : "w-[360px] aspect-[2/3]"
+                      isLandscapeFormat(previewTemplate) ? "w-full max-w-[680px] aspect-[16/9]" : "w-full max-w-[360px] aspect-[2/3]"
                     }`}
                   >
                     {/* Realistic Sample Artwork Backdrop or Custom Uploaded Image */}
@@ -8398,11 +8513,10 @@ export default function DynamicOverlays() {
                         <img
                           src={imgSrc}
                           alt="Sample backdrop"
-                          className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none opacity-90"
+                          className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
                         />
                       );
                     })()}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none select-none" />
 
                     {/* Active Custom Image Indicator Badge */}
                     {customImages[previewTemplate] && (
@@ -8438,320 +8552,53 @@ export default function DynamicOverlays() {
 
                     {/* Guidelines Overlay (Rule of Thirds, Center Crosshair, Snap Guides) */}
                     {renderGuidelinesOverlay(isLandscapeFormat(previewTemplate))}
-
-                    {/* Draggable: 4K / Resolution Badge or Banner */}
-                    {previewResolution && previewResolution !== "None" && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      const isTopBanner = !isLandscape && (previewResolution === "4K" || previewResolution === "4K UHD") && (resolutionMode === "banner" || offsets.resolution?.mode === "banner" || (offsets.resolution?.y === 0 && offsets.resolution?.valign === "top"));
-
-                      if (isTopBanner) {
-                        return (
-                          <div
-                            onPointerDown={(e) => { setSelectedBadge("resolution"); handlePointerDown("resolution", e); }}
-                            onPointerEnter={() => setHoveredBadge("resolution")}
-                            onPointerLeave={() => setHoveredBadge(null)}
-                            onClick={() => setSelectedBadge("resolution")}
-                            className={`cursor-move absolute top-0 left-0 right-0 h-10 sm:h-11 bg-black border-b border-white/20 text-white font-bold shadow-2xl flex items-center justify-center gap-2 select-none z-20 ${
-                              draggingItem === "resolution" ? "ring-2 ring-emerald-400 scale-102" : ""
-                            }`}
-                            style={{ position: "absolute", top: 0, left: 0, right: 0 }}
-                            title="Top 4K Ultra HD Banner (Drag to reposition)"
-                          >
-                            <div className="px-3.5 py-0.5 rounded-full border border-zinc-400/90 bg-gradient-to-b from-zinc-800 to-black text-[11px] font-black tracking-wider text-zinc-100 shadow flex items-center gap-1.5">
-                              <span className="text-white font-extrabold">4K</span>
-                              <span className="w-px h-2.5 bg-zinc-500" />
-                              <span className="tracking-widest text-[9px] text-zinc-300">ULTRA HD</span>
-                            </div>
-                            <Move className="w-3 h-3 text-emerald-400 opacity-60" />
-                          </div>
-                        );
-                      }
-
-                      const resBColor = offsets.resolution?.back_color ?? "#00000099";
-                      const resBRadius = offsets.resolution?.back_radius ?? 15;
-                      const hasResBg = resBColor && !["transparent", "none", "#00000000"].includes(resBColor.toLowerCase());
-
+                    {showAssetGuides && <AssetPreviewGuides config={serverConfig} template={previewTemplate} />}
+                    {previewSprites?.template_type === previewTemplate && previewSprites.sprites.flatMap((sprite) => {
+                      const bounds = getBadgeBounds(sprite.key);
+                      return (sprite.parts || [{ ...sprite, order: 0 }]).map((part) => ({
+                        ...part, key: sprite.key,
+                        left: part.left + bounds.left - sprite.left,
+                        top: part.top + bounds.top - sprite.top,
+                      }));
+                    }).sort((first, second) => first.order - second.order).map((part) => (
+                      <img key={`${part.key}-${part.order}`} src={part.src} alt="" draggable={false}
+                        className="absolute pointer-events-none select-none"
+                        style={{ left: `${part.left / previewSprites.width * 100}%`, top: `${part.top / previewSprites.height * 100}%`, width: `${part.width / previewSprites.width * 100}%`, height: `${part.height / previewSprites.height * 100}%` }} />
+                    ))}
+                    {previewSprites?.template_type === previewTemplate && previewSprites.sprites.map((sprite) => {
+                      const bounds = getBadgeBounds(sprite.key);
                       return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("resolution"); handlePointerDown("resolution", e); }}
-                          onPointerEnter={() => setHoveredBadge("resolution")}
+                        <div key={sprite.key} data-preview-badge={sprite.key}
+                          onPointerDown={(event) => { setSelectedBadge(sprite.key); handlePointerDown(sprite.key, event); }}
+                          onPointerEnter={() => setHoveredBadge(sprite.key)}
                           onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("resolution")}
-                          className={`cursor-move text-white font-bold shadow-xl flex items-center gap-1.5 backdrop-blur-sm ${
-                            isLandscape ? "px-3.5 py-2 text-xs sm:text-sm" : "px-3 py-1.5 text-xs"
-                          } ${draggingItem === "resolution" ? "ring-2 ring-emerald-400 scale-105 z-30" : "z-10"}`}
-                          style={{
-                            ...getItemStyle("resolution", offsets.resolution),
-                            backgroundColor: hasResBg ? resBColor : "transparent",
-                            borderRadius: `${resBRadius}px`,
-                            border: hasResBg ? "1px solid rgba(255,255,255,0.2)" : "1px dashed rgba(255,255,255,0.4)"
-                          }}
-                        >
-                          <Move className="w-3.5 h-3.5 text-emerald-400 opacity-70" />
-                          <span>{previewResolution}</span>
-                          <span className="text-[10px] text-emerald-300/80 font-mono hidden sm:inline">
-                            ({offsets.resolution?.align || "left"} {offsets.resolution?.x ?? 0}px, {offsets.resolution?.valign || "top"} {offsets.resolution?.y ?? 0}px)
-                          </span>
+                          className={`absolute z-20 cursor-move touch-none ${draggingItem === sprite.key ? "outline outline-1 outline-emerald-400" : ""}`}
+                          aria-label={`Move ${BADGE_NAMES[sprite.key] || sprite.key}`}
+                          title={BADGE_NAMES[sprite.key] || sprite.key}
+                          style={{ left: `${bounds.leftPct}%`, top: `${bounds.topPct}%`, width: `${bounds.w / bounds.canvasW * 100}%`, height: `${bounds.h / bounds.canvasH * 100}%` }}>
                         </div>
                       );
-                    })()}
+                    })}
 
-                    {/* Draggable: Audience Rating Badge (Sleek Green Pill matching Rating_High) */}
-                    {previewRating && previewRating !== "Off" && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("rating"); handlePointerDown("rating", e); }}
-                          onPointerEnter={() => setHoveredBadge("rating")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("rating")}
-                          className={`cursor-move rounded-2xl bg-[#27C24C] hover:bg-[#23ad44] border border-white/30 text-white font-black shadow-xl flex items-center justify-center gap-1.5 select-none ${
-                            isLandscape ? "px-3.5 py-1.5 text-xs sm:text-sm" : "px-3 py-1 text-xs"
-                          } ${draggingItem === "rating" ? "ring-2 ring-white scale-105 z-30" : "z-10"}`}
-                          style={getItemStyle("rating", offsets.rating)}
-                        >
-                          <span className="text-sm font-black tracking-tight">{previewRating}</span>
-                          <Move className="w-3 h-3 text-white/70" />
-                        </div>
-                      );
-                    })()}
+                    
 
-                    {/* Draggable: Status Banner */}
-                    {previewStatus && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("status"); handlePointerDown("status", e); }}
-                          onPointerEnter={() => setHoveredBadge("status")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("status")}
-                          className={`cursor-move rounded-xl bg-black/85 border border-white/30 font-bold uppercase tracking-wider shadow-2xl flex items-center justify-center gap-2 backdrop-blur-md ${
-                            isLandscape ? "w-[78%] px-5 py-2.5 text-xs sm:text-sm" : "w-[88%] px-4 py-2 text-xs"
-                          } ${draggingItem === "status" ? "ring-2 ring-white scale-102 z-30" : "z-10"}`}
-                          style={{
-                            ...getItemStyle("status", offsets.status),
-                            color: previewStatusColor
-                          }}
-                        >
-                          <Move className="w-3.5 h-3.5 opacity-60" />
-                          <span className="truncate">{previewStatus}</span>
-                          <span className="text-[10px] opacity-75 font-mono hidden sm:inline">
-                            ({offsets.status?.align || "center"} {offsets.status?.x ?? 0}px, {offsets.status?.valign || "bottom"} {offsets.status?.y ?? 30}px)
-                          </span>
-                        </div>
-                      );
-                    })()}
+                    
 
-                    {/* Draggable: Runtime Badge (Kometa Container Box with transparent outline) */}
-                    {previewRuntime && previewRuntime !== "Off" && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      const effectiveFontSize = offsets.runtime?.font_size ?? (isLandscape ? 52 : 40);
-                      const scaledFontSizePx = Math.max(10, Math.round(effectiveFontSize * (isLandscape ? 0.32 : 0.36)));
-                      const dims = (isLandscape ? BADGE_DIMS.landscape : BADGE_DIMS.portrait).runtime;
-                      const canvasW = isLandscape ? 1920 : 1000;
-                      const canvasH = isLandscape ? 1080 : 1500;
+                    
 
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("runtime"); handlePointerDown("runtime", e); }}
-                          onPointerEnter={() => setHoveredBadge("runtime")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("runtime")}
-                          className={`cursor-move select-none rounded-xl border-2 border-dashed transition-all flex items-center justify-center gap-1.5 ${
-                            draggingItem === "runtime"
-                              ? "border-blue-400 bg-blue-500/25 ring-2 ring-blue-400/80 scale-105 z-30 shadow-lg"
-                              : hoveredBadge === "runtime" || selectedBadge === "runtime"
-                              ? "border-blue-400/90 bg-blue-500/20 z-20 shadow-sm"
-                              : "border-blue-400/40 bg-blue-500/10 hover:border-blue-400/70 hover:bg-blue-500/20 z-10"
-                          }`}
-                          style={{
-                            ...getItemStyle("runtime", offsets.runtime),
-                            width: `${(dims.w / canvasW) * 100}%`,
-                            height: `${(dims.h / canvasH) * 100}%`,
-                            fontSize: `${scaledFontSizePx}px`
-                          }}
-                          title={`Runtime Container Box: ${dims.w}x${dims.h}px (${offsets.runtime?.align || "center"} ${offsets.runtime?.x ?? 140}px, ${offsets.runtime?.valign || "bottom"} ${offsets.runtime?.y ?? 37}px)`}
-                        >
-                          <span className="text-white font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-wide">{previewRuntime}</span>
-                          <Move className="w-3 h-3 text-blue-200/70" />
-                        </div>
-                      );
-                    })()}
+                    
 
-                    {/* Draggable: Audio Languages Badge (Stacked Flags like Alien image) */}
-                    {previewLanguages && previewLanguages !== "Off" && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("languages"); handlePointerDown("languages", e); }}
-                          onPointerEnter={() => setHoveredBadge("languages")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("languages")}
-                          className={`cursor-move flex flex-col gap-1 shadow-xl select-none ${
-                            draggingItem === "languages" ? "ring-2 ring-purple-400 scale-105 z-30" : "z-10"
-                          }`}
-                          style={getItemStyle("languages", offsets.languages)}
-                          title={`Audio Language Flags: ${previewLanguages}`}
-                        >
-                          {/* German Flag */}
-                          <div className="w-8 h-4.5 rounded-[2px] overflow-hidden border border-black/80 flex flex-col shadow">
-                            <div className="h-1.5 bg-black" />
-                            <div className="h-1.5 bg-red-600" />
-                            <div className="h-1.5 bg-amber-400" />
-                          </div>
-                          {/* US Flag */}
-                          <div className="w-8 h-4.5 rounded-[2px] overflow-hidden border border-black/80 bg-red-600 flex flex-col justify-between shadow relative">
-                            <div className="absolute top-0 left-0 w-3.5 h-2.5 bg-blue-800" />
-                            <div className="h-0.5 bg-white ml-3.5" />
-                            <div className="h-0.5 bg-white ml-3.5" />
-                            <div className="h-0.5 bg-white" />
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    
 
-                    {/* Draggable: Network Logo Badge */}
-                    {previewNetwork && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("network"); handlePointerDown("network", e); }}
-                          onPointerEnter={() => setHoveredBadge("network")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("network")}
-                          className={`cursor-move rounded-xl bg-black/85 border border-red-500/80 text-white font-bold uppercase tracking-wider shadow-xl flex items-center gap-1.5 backdrop-blur-sm ${
-                            isLandscape ? "px-4 py-2 text-xs sm:text-sm" : "px-3.5 py-1.5 text-xs"
-                          } ${draggingItem === "network" ? "ring-2 ring-red-400 scale-105 z-30" : "z-10"}`}
-                          style={getItemStyle("network", offsets.network)}
-                        >
-                          <Move className="w-3.5 h-3.5 text-red-400 opacity-70" />
-                          <span>{previewNetwork}</span>
-                          <span className="text-[10px] text-red-300/80 font-mono hidden sm:inline">
-                            ({offsets.network?.align || "right"} {offsets.network?.x ?? 25}px, {offsets.network?.valign || "top"} {offsets.network?.y ?? 25}px)
-                          </span>
-                        </div>
-                      );
-                    })()}
+                    
 
-                    {/* Draggable: Anime Episode Tag */}
-                    {previewAnimeTag && isLandscapeFormat(previewTemplate) && (() => {
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("anime"); handlePointerDown("anime", e); }}
-                          onPointerEnter={() => setHoveredBadge("anime")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("anime")}
-                          className={`cursor-move px-4 py-2 rounded-xl text-xs sm:text-sm font-bold uppercase shadow-xl flex items-center gap-2 ${
-                            previewAnimeTag.toLowerCase() === "canon" ? "bg-emerald-600 text-white" : (previewAnimeTag.toLowerCase() === "filler" ? "bg-red-600 text-white" : "bg-amber-600 text-white")
-                          } ${draggingItem === "anime" ? "ring-2 ring-white scale-105 z-30" : "z-10"}`}
-                          style={getItemStyle("anime", offsets.anime)}
-                        >
-                          <Move className="w-3.5 h-3.5 opacity-70" />
-                          <span>{previewAnimeTag}</span>
-                          <span className="text-[10px] opacity-80 font-mono hidden sm:inline">
-                            ({offsets.anime?.align || "left"} {offsets.anime?.x ?? 20}px, {offsets.anime?.valign || "top"} {offsets.anime?.y ?? 20}px)
-                          </span>
-                        </div>
-                      );
-                    })()}
+                    
 
-                    {/* Draggable: Age & Content Ratings Badge (Common Sense Checkmark or Authority Pill) */}
-                    {previewAgeRating && previewAgeRating !== "Off" && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      const sourceLabel = previewAgeSource === "content_rating_de" ? "FSK" : (previewAgeSource === "content_rating_us_movie" ? "MPAA" : (previewAgeSource === "content_rating_uk" ? "BBFC" : "CS"));
+                    
 
-                      if (previewAgeSource === "commonsense") {
-                        return (
-                          <div
-                            onPointerDown={(e) => { setSelectedBadge("age_rating"); handlePointerDown("age_rating", e); }}
-                            onPointerEnter={() => setHoveredBadge("age_rating")}
-                            onPointerLeave={() => setHoveredBadge(null)}
-                            onClick={() => setSelectedBadge("age_rating")}
-                            className={`cursor-move flex items-center gap-1.5 text-white font-extrabold select-none ${
-                              draggingItem === "age_rating" ? "ring-2 ring-emerald-400 scale-105 z-30" : "z-10"
-                            }`}
-                            style={getItemStyle("age_rating", offsets.age_rating)}
-                            title="Common Sense Media Age Rating"
-                          >
-                            <div className="w-6 h-6 rounded-full border-2 border-emerald-400 flex items-center justify-center bg-black/70 shadow">
-                              <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                            </div>
-                            <span className="text-sm drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] font-bold text-white">{previewAgeRating}</span>
-                            <Move className="w-3 h-3 text-white/50" />
-                          </div>
-                        );
-                      }
+                    
 
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("age_rating"); handlePointerDown("age_rating", e); }}
-                          onPointerEnter={() => setHoveredBadge("age_rating")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("age_rating")}
-                          className={`cursor-move rounded-xl bg-black/85 border border-amber-500/80 text-white font-bold shadow-xl flex items-center gap-1.5 backdrop-blur-sm select-none ${
-                            isLandscape ? "px-3.5 py-2 text-xs sm:text-sm" : "px-3 py-1.5 text-xs"
-                          } ${draggingItem === "age_rating" ? "ring-2 ring-amber-400 scale-105 z-30" : "z-10"}`}
-                          style={getItemStyle("age_rating", offsets.age_rating)}
-                        >
-                          <Move className="w-3.5 h-3.5 text-amber-400 opacity-70" />
-                          <span className="text-amber-400 font-black text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-amber-500/20">
-                            {sourceLabel}
-                          </span>
-                          <span>{previewAgeRating}</span>
-                          <span className="text-[10px] text-amber-300/80 font-mono hidden sm:inline">
-                            ({offsets.age_rating?.align || "left"} {offsets.age_rating?.x ?? 255}px, {offsets.age_rating?.valign || "bottom"} {offsets.age_rating?.y ?? 37}px)
-                          </span>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Draggable Audio Codec Badge */}
-                    {previewAudioCodec && previewAudioCodec !== "Off" && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("audio_codec"); handlePointerDown("audio_codec", e); }}
-                          onPointerEnter={() => setHoveredBadge("audio_codec")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("audio_codec")}
-                          className={`cursor-move rounded-xl bg-black/85 border border-indigo-500/80 text-white font-bold shadow-xl flex items-center gap-1.5 backdrop-blur-sm select-none ${
-                            isLandscape ? "px-3.5 py-1.5 text-xs sm:text-sm" : "px-3 py-1 text-xs"
-                          } ${draggingItem === "audio_codec" ? "ring-2 ring-indigo-400 scale-105 z-30" : "z-10"}`}
-                          style={getItemStyle("audio_codec", offsets.audio_codec)}
-                          title={`Audio Codec: ${previewAudioCodec}`}
-                        >
-                          <Volume2 className="w-3.5 h-3.5 text-indigo-400 opacity-80" />
-                          <span className="font-mono text-xs font-black tracking-tight text-indigo-300">
-                            {previewAudioCodec.toUpperCase()}
-                          </span>
-                          <Move className="w-3 h-3 text-white/50" />
-                        </div>
-                      );
-                    })()}
-
-                    {/* Draggable Video Format Badge */}
-                    {previewVideoFormat && previewVideoFormat !== "Off" && (() => {
-                      const isLandscape = isLandscapeFormat(previewTemplate);
-                      return (
-                        <div
-                          onPointerDown={(e) => { setSelectedBadge("video_format"); handlePointerDown("video_format", e); }}
-                          onPointerEnter={() => setHoveredBadge("video_format")}
-                          onPointerLeave={() => setHoveredBadge(null)}
-                          onClick={() => setSelectedBadge("video_format")}
-                          className={`cursor-move rounded-xl bg-black/85 border border-cyan-500/80 text-white font-bold shadow-xl flex items-center gap-1.5 backdrop-blur-sm select-none ${
-                            isLandscape ? "px-3.5 py-1.5 text-xs sm:text-sm" : "px-3 py-1 text-xs"
-                          } ${draggingItem === "video_format" ? "ring-2 ring-cyan-400 scale-105 z-30" : "z-10"}`}
-                          style={getItemStyle("video_format", offsets.video_format)}
-                          title={`Video Format: ${previewVideoFormat}`}
-                        >
-                          <Clapperboard className="w-3.5 h-3.5 text-cyan-400 opacity-80" />
-                          <span className="font-mono text-xs font-black tracking-tight text-cyan-300">
-                            {previewVideoFormat}
-                          </span>
-                          <Move className="w-3 h-3 text-white/50" />
-                        </div>
-                      );
-                    })()}
+                    
                   </div>
                   <p className="text-xs text-theme-muted mt-3 text-center flex items-center justify-center gap-1.5">
                     <Move className="w-3.5 h-3.5 text-theme-primary shrink-0" />
@@ -8769,7 +8616,7 @@ export default function DynamicOverlays() {
                   >
                     <div className="relative inline-block leading-none rounded-xl overflow-hidden">
                       <img
-                        src={previewUrl}
+                        src={compositorPreviewUrl}
                         alt="Dynamic Overlay Preview"
                         onLoad={() => setPreviewLoading(false)}
                         className={`max-h-[540px] w-auto block object-contain transition-opacity duration-300 ${
@@ -8778,6 +8625,7 @@ export default function DynamicOverlays() {
                       />
                       {/* Alignment Guidelines in Rendered Mode */}
                       {renderGuidelinesOverlay(isLandscapeFormat(previewTemplate))}
+                      {showAssetGuides && <AssetPreviewGuides config={serverConfig} template={previewTemplate} />}
                     </div>
 
                     {/* Active Custom Image Indicator Badge in Rendered Mode */}
@@ -8811,6 +8659,19 @@ export default function DynamicOverlays() {
                 </div>
               )}
             </div>
+            <AssetPreviewLegend
+              config={serverConfig}
+              template={previewTemplate}
+              showAssetGuides={showAssetGuides}
+              guideMode={guideMode}
+              snapToGuides={snapToGuides}
+              hasBadges={getActiveBadges().length > 0}
+            />
+            {spriteLoading && <p role="status" className="text-xs text-theme-muted">Rendering badges...</p>}
+            {spriteError && <p role="alert" className="text-xs text-red-400">{spriteError}</p>}
+            {!spriteLoading && !spriteError && previewSprites?.template_type === previewTemplate && getRequestedBadges().length > 0 && previewSprites.sprites.length === 0 && (
+              <p role="status" className="text-xs text-theme-muted">No badges in this recipe match the sample metadata.</p>
+            )}
           </div>
         </div>
       )}
