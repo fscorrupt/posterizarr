@@ -4,8 +4,9 @@ FROM --platform=$BUILDPLATFORM node:current-alpine3.24 AS frontend-builder
 WORKDIR /app/frontend
 
 # Copy frontend files and install dependencies
-COPY webui/frontend/package*.json ./
-RUN npm install --force
+COPY webui/frontend/package.json webui/frontend/package-lock.json ./
+RUN npm ci --include=dev --include=optional --no-audit --no-fund \
+    && node -e "console.log('DM Sans CSS:', require.resolve('@fontsource-variable/dm-sans/index.css'))"
 
 COPY webui/frontend/ ./
 RUN npm run build
