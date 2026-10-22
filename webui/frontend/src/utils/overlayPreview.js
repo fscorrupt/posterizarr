@@ -4,6 +4,22 @@ const anchorPosition = (size, elementSize, align, offset) => {
   return offset;
 };
 
+export function getAniMetaFillPreview(config, library, template) {
+  if (!config?.enabled || !["episode_card", "titlecard"].includes(template) || !library) return null;
+  const selected = library.trim().toLowerCase();
+  const libraries = config.target_libraries ?? config.plex_libraries ?? [];
+  if (!libraries.some((name) => String(name).trim().toLowerCase() === selected)) return null;
+  const aesthetic = config.aesthetic || {};
+  return {
+    tag: "Canon",
+    offset: {
+      x: Number(aesthetic.horizontal_offset ?? 0), y: Number(aesthetic.vertical_offset ?? 15),
+      align: aesthetic.horizontal_align || "left", valign: aesthetic.vertical_align || "top",
+      font_size: aesthetic.font_size ?? 70, font: aesthetic.font || "Colus-Regular.ttf",
+    },
+  };
+}
+
 export function getPreviewSpriteBounds(sprite, offset, canvasW, canvasH) {
   const source = sprite.placement;
   const target = offset || source;

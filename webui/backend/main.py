@@ -19631,6 +19631,7 @@ async def preview_dynamic_overlay(
         from overlay_preview import build_preview_layers
         from overlay_sync_service import build_overlay_layers_for_item
         from dynamic_overlays_service import get_config_yml_path, get_overlays_dir
+        from animetafill_service import get_animetafill_config
 
         placements = {}
         controls = [
@@ -19671,7 +19672,9 @@ async def preview_dynamic_overlay(
             "status_label": status_label, "status_color": status_color, "resolution": resolution, "languages": languages,
             "network": network, "age_rating": age_rating, "age_rating_source": age_rating_source,
             "audio_codec": audio_codec, "video_format": video_format, "anime_tag": anime_tag,
-        }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item)
+            "library_name": library_name,
+        }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item,
+            animetafill_config=get_animetafill_config())
 
         if output == "sprites":
             sprites = DynamicOverlayCompositor.render_preview_groups(layers, "landscape" if is_landscape else "portrait")

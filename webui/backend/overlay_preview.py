@@ -68,7 +68,38 @@ def preview_layer_key(layer):
     return layer.get("name") or "overlay"
 
 
-def build_preview_layers(options, placements, library_rules, overlays_dir, builder):
+def _animetafill_preview_layer(options, config):
+    if not config or not config.get("enabled") or options["template_type"] not in ("episode_card", "titlecard"):
+        return None
+    library = str(options.get("library_name") or "").strip().casefold()
+    libraries = config.get("target_libraries", config.get("plex_libraries", [])) or []
+    if not library or library not in {str(name).strip().casefold() for name in libraries}:
+        return None
+    category = str(options.get("anime_tag") or "").strip().casefold()
+    if category not in ("canon", "filler", "mixed"):
+        return None
+    aesthetic = config.get("aesthetic") or {}
+    label = str((config.get("labels") or {}).get(category) or category.title())
+    if aesthetic.get("uppercase"):
+        label = label.upper()
+    return {
+        "name": "anime", "type": "text", "text": label,
+        "font_path": aesthetic.get("font") or "Colus-Regular.ttf",
+        "font_size": int(aesthetic.get("font_size", 70)),
+        "font_color": (config.get("colors") or {}).get(category) or {
+            "canon": "#27C24CB3", "filler": "#FF0000B3", "mixed": "#FFA500B3",
+        }[category],
+        "back_color": aesthetic.get("back_color", "#000000BF"),
+        "back_width": int(aesthetic.get("back_width", 300)),
+        "back_height": int(aesthetic.get("back_height", 100)),
+        "horizontal_align": aesthetic.get("horizontal_align", "left"),
+        "vertical_align": aesthetic.get("vertical_align", "top"),
+        "horizontal_offset": int(aesthetic.get("horizontal_offset", 0)),
+        "vertical_offset": int(aesthetic.get("vertical_offset", 15)),
+    }
+
+
+def build_preview_layers(options, placements, library_rules, overlays_dir, builder, animetafill_config=None):
     template = options["template_type"]
     landscape = template in ("episode_card", "titlecard", "backdrop", "background")
     episode = template in ("episode_card", "titlecard")
@@ -112,6 +143,10 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         for key, default in defaults.items() if key in placements
     ]
     layers = builder(metadata, rules, Path(overlays_dir), is_landscape=landscape)
+    anime_layer = _animetafill_preview_layer(options, animetafill_config)
+    if anime_layer:
+        layers = [layer for layer in layers if preview_layer_key(layer) != "anime"]
+        layers.append(anime_layer)
     counts = Counter(preview_layer_key(layer) for layer in layers)
     result = []
     for original in layers:

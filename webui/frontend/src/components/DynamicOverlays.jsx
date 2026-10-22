@@ -76,7 +76,7 @@ import {
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
-import { getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
+import { getAniMetaFillPreview, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
 
 const AssetPreviewGuides = ({ config, template }) => {
   const guides = getAssetPreviewGuides(config, template);
@@ -3970,6 +3970,16 @@ export default function DynamicOverlays() {
     setOffsets(nextOffsets);
     setPreviewTimestamp(Date.now());
   };
+
+  useEffect(() => {
+    const animePreview = getAniMetaFillPreview(animetafillConfig, selectedSaveLibrary, previewTemplate);
+    if (animePreview) {
+      setPreviewAnimeTag(animePreview.tag);
+      setOffsets((previous) => ({ ...previous, anime: animePreview.offset }));
+    } else if (!visualConfig?.libraries?.[selectedSaveLibrary]?.badges?.anime?.enabled) {
+      setPreviewAnimeTag("");
+    }
+  }, [animetafillConfig, selectedSaveLibrary, previewTemplate, visualConfig?.libraries?.[selectedSaveLibrary]?.badges?.anime?.enabled]);
 
   const handleResetLayout = () => {
     setOffsets(isLandscapeFormat(previewTemplate) ? defaultLandscapeOffsets : defaultPortraitOffsets);
@@ -8580,25 +8590,25 @@ export default function DynamicOverlays() {
                       );
                     })}
 
-                    
 
-                    
 
-                    
 
-                    
 
-                    
 
-                    
 
-                    
 
-                    
 
-                    
 
-                    
+
+
+
+
+
+
+
+
+
+
                   </div>
                   <p className="text-xs text-theme-muted mt-3 text-center flex items-center justify-center gap-1.5">
                     <Move className="w-3.5 h-3.5 text-theme-primary shrink-0" />
