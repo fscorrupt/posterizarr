@@ -3,14 +3,8 @@ function Write-MagickLog {
         [Parameter(ValueFromPipeline=$true)]
         [string]$Message
     )
-    $mutexName = if ($IsWindows) { 'Global\PosterizarrMagickLogMutex' } else { 'PosterizarrMagickLogMutex' }
-    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
-    try {
-        $mutex.WaitOne() | Out-Null
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrMagickLogMutex' -Action {
         try { $Message | Out-File $global:magickLog -Append -ErrorAction Stop } catch {}
-    } finally {
-        $mutex.ReleaseMutex()
-        $mutex.Dispose()
     }
 }
 
@@ -102,38 +96,28 @@ function Set-TextSizeCacheEntry {
         try { '{}' | Set-Content -LiteralPath $Path -Encoding UTF8 } catch {}
     }
 
-    $mutexName = if ($IsWindows) { 'Global\PosterizarrTextSizeCacheMutex' } else { 'PosterizarrTextSizeCacheMutex' }
-    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
-    $hasMutex = $false
-
-    try {
-        $hasMutex = $mutex.WaitOne(5000)
-
-        $raw = if (Test-Path -LiteralPath $Path) { Get-Content -LiteralPath $Path -Raw -Encoding UTF8 } else { '{}' }
-        if (-not $raw) { $raw = '{}' }
-
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrTextSizeCacheMutex' -TimeoutMilliseconds 5000 -Action {
         try {
-            $db = $raw | ConvertFrom-Json -ErrorAction Stop
+            $raw = if (Test-Path -LiteralPath $Path) { Get-Content -LiteralPath $Path -Raw -Encoding UTF8 } else { '{}' }
+            if (-not $raw) { $raw = '{}' }
+
+            try {
+                $db = $raw | ConvertFrom-Json -ErrorAction Stop
+            }
+            catch {
+                # If JSON is corrupt, log it and reset cache so we don't crash next time
+                Write-Entry -Message "TextSizeCache JSON is corrupt. Resetting cache." -Path $global:configLogging -Color Yellow -log Warning
+                $db = @{}
+            }
+
+            if ($null -eq $db) { $db = @{ } }
+
+            $db | Add-Member -NotePropertyName $Key -NotePropertyValue $Result -Force
+            ($db | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $Path -Encoding UTF8
         }
         catch {
-            # If JSON is corrupt, log it and reset DB so we don't crash next time
-            Write-Entry -Message "TextSizeCache JSON is corrupt. Resetting cache." -Path $global:configLogging -Color Yellow -log Warning
-            $db = @{}
+            Write-Entry -Message "Failed to write to TextSizeCache: $_" -Path $global:configLogging -Color Red -log Error
         }
-
-        if ($null -eq $db) { $db = @{ } }
-
-        $db | Add-Member -NotePropertyName $Key -NotePropertyValue $Result -Force
-        ($db | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $Path -Encoding UTF8
-    }
-    catch {
-        Write-Entry -Message "Failed to write to TextSizeCache: $_" -Path $global:configLogging -Color Red -log Error
-    }
-    finally {
-        if ($hasMutex) {
-            $mutex.ReleaseMutex()
-        }
-        $mutex.Dispose()
     }
 }
 function Get-OptimalPointSize {

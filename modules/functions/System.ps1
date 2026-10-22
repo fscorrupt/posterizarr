@@ -1,30 +1,30 @@
-function Increment-GlobalStat {
-    param([string]$StatName)
-    $processLock = [string]::Intern('PosterizarrStatsLock')
+function Invoke-PosterizarrMutexLock {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Action,
+        [int]$TimeoutMilliseconds = -1
+    )
+
+    $processLock = [string]::Intern("PosterizarrLock:$Name")
     $mutex = $null
     $lockAcquired = $false
     [System.Threading.Monitor]::Enter($processLock)
     try {
         try {
-            $mutexName = if ($IsWindows) { 'Global\PosterizarrStatsMutex' } else { 'PosterizarrStatsMutex' }
+            $mutexName = if ($IsWindows) { "Global\$Name" } else { $Name }
             $mutex = [System.Threading.Mutex]::new($false, $mutexName)
             try {
-                $lockAcquired = $mutex.WaitOne()
+                if ($TimeoutMilliseconds -lt 0) {
+                    $lockAcquired = $mutex.WaitOne()
+                } else {
+                    $lockAcquired = $mutex.WaitOne($TimeoutMilliseconds)
+                }
             } catch [System.Threading.AbandonedMutexException] {
                 $lockAcquired = $true
             }
         } catch {}
 
-        $val = 0
-        if ($global:runspaceStats.ContainsKey($StatName)) {
-            $val = $global:runspaceStats[$StatName] + 1
-            $global:runspaceStats[$StatName] = $val
-        } else {
-            $val = 1
-            $global:runspaceStats[$StatName] = $val
-        }
-        Set-Variable -Name $StatName -Value $val -Scope Global -Force
-        return $val
+        & $Action
     } finally {
         try {
             if ($mutex) {
@@ -37,6 +37,23 @@ function Increment-GlobalStat {
         } finally {
             [System.Threading.Monitor]::Exit($processLock)
         }
+    }
+}
+
+function Increment-GlobalStat {
+    param([string]$StatName)
+
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrStatsMutex' -Action {
+        $val = 0
+        if ($global:runspaceStats.ContainsKey($StatName)) {
+            $val = $global:runspaceStats[$StatName] + 1
+            $global:runspaceStats[$StatName] = $val
+        } else {
+            $val = 1
+            $global:runspaceStats[$StatName] = $val
+        }
+        Set-Variable -Name $StatName -Value $val -Scope Global -Force
+        return $val
     }
 }
 function Sync-GlobalStats {
@@ -390,28 +407,19 @@ function Get-TextSizeFromCache {
     param([Parameter(Mandatory)][string]$Key, [string]$Path = $Global:TextSizeCachePath)
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
 
-    $mutexName = if ($IsWindows) { 'Global\PosterizarrTextSizeCacheMutex' } else { 'PosterizarrTextSizeCacheMutex' }
-    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
-    $hasMutex = $false
-    try {
-        $hasMutex = $mutex.WaitOne(5000)
-        $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop
-        if (-not $raw) { return $null }
+    return Invoke-PosterizarrMutexLock -Name 'PosterizarrTextSizeCacheMutex' -TimeoutMilliseconds 5000 -Action {
+        try {
+            $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop
+            if (-not $raw) { return $null }
 
-        $db = $raw | ConvertFrom-Json -ErrorAction Stop
-        if ($db.PSObject.Properties.Name -contains $Key) { return $db.$Key }
-    }
-    catch {
-        # If any file read or json parse error occurs, return null (miss)
+            $db = $raw | ConvertFrom-Json -ErrorAction Stop
+            if ($db.PSObject.Properties.Name -contains $Key) { return $db.$Key }
+        } catch {
+            # If any file read or json parse error occurs, return null (miss)
+            return $null
+        }
         return $null
     }
-    finally {
-        if ($hasMutex) {
-            $mutex.ReleaseMutex()
-        }
-        $mutex.Dispose()
-    }
-    return $null
 }
 function InvokeIMChecks {
     # Check for latest Imagemagick Version
@@ -1095,34 +1103,7 @@ function Get-DynamicOverlaysEnabled {
 function Invoke-PosterizarrLogLock {
     param([scriptblock]$Action)
 
-    $processLock = [string]::Intern('PosterizarrLogLock')
-    $mutex = $null
-    $lockAcquired = $false
-    [System.Threading.Monitor]::Enter($processLock)
-    try {
-        try {
-            $mutexName = if ($IsWindows) { 'Global\PosterizarrLogMutex' } else { 'PosterizarrLogMutex' }
-            $mutex = [System.Threading.Mutex]::new($false, $mutexName)
-            try {
-                $lockAcquired = $mutex.WaitOne()
-            } catch [System.Threading.AbandonedMutexException] {
-                $lockAcquired = $true
-            }
-        } catch {}
-        & $Action
-    } finally {
-        try {
-            if ($mutex) {
-                try {
-                    if ($lockAcquired) { $mutex.ReleaseMutex() }
-                } finally {
-                    $mutex.Dispose()
-                }
-            }
-        } finally {
-            [System.Threading.Monitor]::Exit($processLock)
-        }
-    }
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrLogMutex' -Action $Action
 }
 function Write-Entry {
     [CmdletBinding()]
