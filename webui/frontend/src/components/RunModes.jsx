@@ -660,7 +660,7 @@ function RunModes() {
 
   useEffect(() => {
     fetchStatus();
-    
+
     // Load custom blueprints
     fetch("/api/custom-blueprints")
       .then(res => res.json())
@@ -1484,19 +1484,20 @@ function RunModes() {
       if (manualForm.posterType === "season" && tmdbSearch.seasonNumber) {
         // 1. Create the text once based on config or fallback to translation
         let seasonPrefix = t("runModes.manual.types.season");
-        
+        let specialSeasonText = null;
+
         if (globalConfig) {
           const seasonOverlay = globalConfig.SeasonPosterOverlayPart || globalConfig;
           const overrideVal = seasonOverlay.OverrideSeasonName ?? globalConfig.SeasonPosterOverrideSeasonName;
           const overrideSeasonName = String(overrideVal).toLowerCase() === "true";
-          
+
           if (overrideSeasonName) {
             const specialText = seasonOverlay.SpecialSeasonOverrideText ?? globalConfig.SeasonPosterSpecialSeasonOverrideText;
             const seasonTextOverride = seasonOverlay.SeasonOverrideText ?? globalConfig.SeasonPosterSeasonOverrideText;
 
             if (tmdbSearch.seasonNumber === "0" || tmdbSearch.seasonNumber === "00") {
               if (specialText && specialText.trim() !== "") {
-                seasonPrefix = specialText;
+                specialSeasonText = specialText;
               }
             } else {
               if (seasonTextOverride && seasonTextOverride.trim() !== "") {
@@ -1505,8 +1506,8 @@ function RunModes() {
             }
           }
         }
-        
-        const seasonText = `${seasonPrefix} ${tmdbSearch.seasonNumber}`;
+
+        const seasonText = specialSeasonText || `${seasonPrefix} ${tmdbSearch.seasonNumber}`;
 
         // 2. Apply it to both fields
         setManualForm(prev => ({

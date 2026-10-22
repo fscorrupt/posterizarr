@@ -19,6 +19,11 @@ import { BLUEPRINTS } from "./Blueprints";
 
 const API_URL = "/api";
 
+function getSeasonPosterName(seasonNumber, overrideEnabled, seasonText, specialText) {
+  if (seasonNumber === 0) return overrideEnabled ? specialText : "Specials";
+  return `${overrideEnabled ? seasonText : "Season"} ${seasonNumber}`;
+}
+
 function AssetReplacer({ asset, onClose, onSuccess }) {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
@@ -955,12 +960,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     // Check if season_number exists (including 0 for specials)
     if (metadata.season_number !== null && metadata.season_number !== undefined) {
       if (metadata.asset_type === "season") {
-        // Always format as standard "Season X" or "Specials" for folder/file structure
-        const standardSeasonNum = metadata.season_number === 0 ? "Specials" : `Season ${metadata.season_number}`;
+        const seasonName = getSeasonPosterName(metadata.season_number, overrideSeasonName, seasonOverrideText, specialSeasonOverrideText);
 
         setManualForm((prev) => ({
           ...prev,
-          seasonPosterName: standardSeasonNum,
+          seasonPosterName: seasonName,
         }));
         setManualSearchForm((prev) => ({
           ...prev,
@@ -978,7 +982,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         }));
       }
     }
-  }, [metadata.season_number, metadata.asset_type]);
+  }, [metadata.season_number, metadata.asset_type, overrideSeasonName, seasonOverrideText, specialSeasonOverrideText]);
 
   // Initialize episode data from metadata (for titlecards)
   useEffect(() => {
@@ -1020,11 +1024,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       let finalTitle = metadata.title;
       if (metadata.asset_type === "season" && overrideSeasonName) {
         if (metadata.season_number !== null && metadata.season_number !== undefined) {
-          if (metadata.season_number === 0) {
-            finalTitle = specialSeasonOverrideText;
-          } else {
-            finalTitle = `${seasonOverrideText} ${metadata.season_number}`;
-          }
+          finalTitle = getSeasonPosterName(metadata.season_number, overrideSeasonName, seasonOverrideText, specialSeasonOverrideText);
         }
       }
       setManualForm((prev) => ({
@@ -1554,8 +1554,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const availableLanguages = ["all", ...new Set(currentProviderPreviews.map(p => (p.language || "xx").toLowerCase()))];
   const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
 
-  const filteredPreviews = effectiveLanguageFilter === "all" 
-    ? currentProviderPreviews 
+  const filteredPreviews = effectiveLanguageFilter === "all"
+    ? currentProviderPreviews
     : currentProviderPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
 
   return (
@@ -2058,7 +2058,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         </select>
                       </div>
                     )}
-                    
+
 
                   </div>
 
