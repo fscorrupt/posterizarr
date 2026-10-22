@@ -1070,6 +1070,38 @@ function Get-DynamicOverlaysEnabled {
     $global:DynamicOverlaysEnabled = $isEnabled
     return $isEnabled
 }
+function Invoke-PosterizarrLogLock {
+    param([scriptblock]$Action)
+
+    $processLock = [string]::Intern('PosterizarrLogLock')
+    $mutex = $null
+    $lockAcquired = $false
+    [System.Threading.Monitor]::Enter($processLock)
+    try {
+        try {
+            $mutexName = if ($IsWindows) { 'Global\PosterizarrLogMutex' } else { 'PosterizarrLogMutex' }
+            $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+            try {
+                $lockAcquired = $mutex.WaitOne()
+            } catch [System.Threading.AbandonedMutexException] {
+                $lockAcquired = $true
+            }
+        } catch {}
+        & $Action
+    } finally {
+        try {
+            if ($mutex) {
+                try {
+                    if ($lockAcquired) { $mutex.ReleaseMutex() }
+                } finally {
+                    $mutex.Dispose()
+                }
+            }
+        } finally {
+            [System.Threading.Monitor]::Exit($processLock)
+        }
+    }
+}
 function Write-Entry {
     [CmdletBinding()]
     param(
@@ -1232,13 +1264,8 @@ function Write-Entry {
 "@
         }
         Write-Host $Header
-        $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrLogMutex")
-        try {
-            $mutex.WaitOne() | Out-Null
+        Invoke-PosterizarrLogLock {
             try { $Header | Out-File $Path -Append -ErrorAction Stop } catch {}
-        } finally {
-            $mutex.ReleaseMutex()
-            $mutex.Dispose()
         }
         $global:HeaderWritten = $true
     }
@@ -1273,10 +1300,7 @@ function Write-Entry {
             $lineToWrite = $FormattedLine1
         }
 
-        $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrLogMutex")
-        try {
-            $mutex.WaitOne() | Out-Null
-
+        Invoke-PosterizarrLogLock {
             if ($Subtext) {
                 Write-Host $FormattedLineWritehost -NoNewline
                 Write-Host $Subtext -ForegroundColor $Color
@@ -1291,9 +1315,6 @@ function Write-Entry {
             } catch {
                 # Silently continue if log file is locked by another process
             }
-        } finally {
-            $mutex.ReleaseMutex()
-            $mutex.Dispose()
         }
     }
 }

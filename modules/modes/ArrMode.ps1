@@ -1437,13 +1437,35 @@
         try {
             $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
             $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
-            $body = @{
-                target_server = "all"
-                scope = "incremental"
-                library = "all"
-            } | ConvertTo-Json
-            Invoke-RestMethod -Uri $syncUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction SilentlyContinue | Out-Null
-            Write-Entry -Subtext "Notified Dynamic Overlays service to composite and push new artwork." -Path $global:configLogging -Color DarkMagenta -log Info
+            $overlayServer = if ($UseEmby -eq 'true') { 'emby' } elseif ($UseJellyfin -eq 'true') { 'jellyfin' } else { 'plex' }
+            $overlayTargets = @(foreach ($overlayItem in $Libraries) {
+                $overlayId = if ($overlayServer -eq 'plex') { $overlayItem.ratingKey } else { $overlayItem.Id }
+                if ($overlayId -and $overlayItem.'Library Name') {
+                    @{
+                        id = [string]$overlayId
+                        server_type = $overlayServer
+                        library_name = $overlayItem.'Library Name'
+                        title = $overlayItem.title
+                        root_folder = $overlayItem.RootFoldername
+                        media_type = if ($overlayItem.'Library Type' -in @('show', 'Series')) { 'show' } else { 'movie' }
+                    }
+                }
+            })
+            if ($overlayTargets.Count -gt 0) {
+                $overlayLibraries = @($overlayTargets.library_name | Select-Object -Unique)
+                $body = @{
+                    target_server = $overlayServer
+                    scope = "incremental"
+                    library = if ($overlayLibraries.Count -eq 1) { $overlayLibraries[0] } else { "all" }
+                    target_items = $overlayTargets
+                } | ConvertTo-Json -Depth 6
+                $overlayResponse = Invoke-RestMethod -Uri $syncUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction Stop
+                if ($overlayResponse.success) {
+                    Write-Entry -Subtext "Notified Dynamic Overlays service for $($overlayTargets.Count) target item(s) on $overlayServer." -Path $global:configLogging -Color DarkMagenta -log Info
+                } else {
+                    Write-Entry -Subtext "Dynamic Overlays trigger skipped: $($overlayResponse.error)" -Path $global:configLogging -Color Yellow -log Warning
+                }
+            }
         } catch {}
     }
 

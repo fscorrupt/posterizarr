@@ -2128,6 +2128,61 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
     }
 
 
+async def _fetch_overlay_target_items(
+    http_client, server_type, server_url, credentials, targets, library,
+    excluded_libraries, library_rules_map, write_log,
+):
+    items = []
+    seen = set()
+    excluded = {str(name).lower() for name in excluded_libraries}
+    for target in targets:
+        target_server = str(target.get("server_type") or server_type).lower()
+        if target_server != server_type:
+            continue
+        item_id = str(target.get("id") or target.get("ratingKey") or "").strip()
+        library_name = str(target.get("library_name") or target.get("LibraryName") or "").strip()
+        if not item_id or not library_name or library_name.lower() == "all" or item_id in seen:
+            continue
+        if library_name.lower() in excluded or (library != "all" and library.lower() != library_name.lower()):
+            continue
+        media_type = str(target.get("media_type") or "show").lower()
+        if not resolve_library_rules(library_name, media_type, library_rules_map)[1]:
+            continue
+        seen.add(item_id)
+        try:
+            if server_type == "plex":
+                response = await http_client.get(
+                    f"{server_url}/library/metadata/{urllib.parse.quote(item_id, safe='')}",
+                    headers={"X-Plex-Token": credentials.get("token"), "Accept": "application/xml"},
+                )
+                if response.status_code != 200:
+                    write_log(f"  [-] Target '{item_id}' ({library_name}): HTTP {response.status_code}. Skipping.")
+                    continue
+                root = fromstring(response.content)
+                for node in list(root):
+                    if node.tag in ("Directory", "Video") and str(node.get("ratingKey")) == item_id and node.get("type") in ("movie", "show"):
+                        item = _parse_plex_item(node, root.get("librarySectionTitle") or library_name, node.get("type"))
+                        if item:
+                            items.append(item)
+            else:
+                response = await http_client.get(
+                    f"{server_url}/Items",
+                    params={"Ids": item_id, "Fields": "Path,ProviderIds,ProductionYear,MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,Studios,CommunityRating,CriticRating,DateModified,DateCreated"},
+                    headers={"X-Emby-Token": credentials.get("api_key"), "Accept": "application/json"},
+                )
+                if response.status_code != 200:
+                    write_log(f"  [-] Target '{item_id}' ({library_name}): HTTP {response.status_code}. Skipping.")
+                    continue
+                for node in response.json().get("Items", []):
+                    if str(node.get("Id")) == item_id and node.get("Type") in ("Movie", "Series"):
+                        item = _parse_jellyfin_item(node, library_name)
+                        if item:
+                            items.append(item)
+        except Exception as error:
+            write_log(f"  [-] Target '{item_id}' ({library_name}): {format_sync_error(error, phase='fetching targeted metadata')}")
+    return items
+
+
 async def run_overlay_sync_task(
     target_server: str = "all",
     scope: str = "incremental",
@@ -2198,6 +2253,7 @@ async def run_overlay_sync_task(
 
     # Fast targeted item handling
     is_target_mode = bool(target_items)
+    direct_id_targets = [item for item in (target_items or []) if item.get("id") or item.get("ratingKey")]
     target_libs = set()
     target_roots = set()
     target_titles = set()
@@ -2338,7 +2394,13 @@ async def run_overlay_sync_task(
 
                 # Discover items
                 media_items = []
-                if s_type == "plex":
+                if direct_id_targets:
+                    media_items = await _fetch_overlay_target_items(
+                        http_client, s_type, s_url, creds, direct_id_targets, library,
+                        excluded, library_rules_map, write_log,
+                    )
+                    write_log(f"Instant Target Mode: Fetched {len(media_items)} item(s) directly by ID on {s_type.upper()}.")
+                elif s_type == "plex":
                     token = creds.get("token")
                     try:
                         # Query Plex library sections
@@ -2494,7 +2556,7 @@ async def run_overlay_sync_task(
                     except Exception as je:
                         write_log(f"Error querying {s_type} API: {je}")
 
-                if is_target_mode:
+                if is_target_mode and not direct_id_targets:
                     matched_items = []
                     seen_ids = set()
                     for it in media_items:

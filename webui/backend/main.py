@@ -20348,30 +20348,30 @@ async def upload_dynamic_overlay_preview_image(
     try:
         if not file.filename:
             return {"success": False, "error": "No file selected."}
-        
+
         safe_type = re.sub(r'[^a-zA-Z0-9_\-]', '', str(template_type).strip()) or "movie_poster"
         ext = Path(file.filename).suffix.lower()
         if ext not in (".png", ".jpg", ".jpeg", ".webp"):
             return {"success": False, "error": f"Unsupported image format '{ext}'. Please upload PNG, JPG, or WebP."}
-        
+
         contents = await file.read()
         if len(contents) > 30 * 1024 * 1024:
             return {"success": False, "error": "Image file too large (max 30MB)."}
-            
+
         try:
             img = Image.open(BytesIO(contents))
             orig_w, orig_h = img.size
         except Exception as img_err:
             return {"success": False, "error": f"Invalid or corrupted image: {img_err}"}
-            
+
         custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
         custom_previews_dir.mkdir(parents=True, exist_ok=True)
-        
+
         dest_path = custom_previews_dir / f"{safe_type}.png"
         if not _is_within_root(dest_path.resolve(), custom_previews_dir.resolve()):
             return {"success": False, "error": "Invalid destination path."}
         img.convert("RGBA").save(dest_path, format="PNG")
-        
+
         import time
         t = int(time.time())
         return {
@@ -20668,6 +20668,7 @@ class DynamicOverlaysSyncRequest(BaseModel):
     target_server: str = "all"  # "all", "plex", "jellyfin", "emby"
     scope: str = "incremental"   # "incremental" (changes only) or "all" (all assets)
     library: str = "all"        # "all" or specific library name
+    target_items: Optional[List[Dict[str, Any]]] = None
 
 
 @app.post("/api/dynamic-overlays/sync")
@@ -20677,6 +20678,8 @@ async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
     - scope="incremental": Detects changes (skips unmodified via overlay_cache.db).
     - scope="all": Full sync (re-evaluates and pushes all assets).
     """
+    if req.target_items is not None and not req.target_items:
+        return {"success": True, "message": "No target items supplied. Overlay sync skipped."}
     try:
         from dynamic_overlays_service import is_dynamic_overlays_enabled
         if not is_dynamic_overlays_enabled():
@@ -20711,7 +20714,8 @@ async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
                     library=req.library,
                     base_dir=BASE_DIR,
                     config_path=CONFIG_PATH,
-                    log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log"
+                    log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+                    target_items=req.target_items
                 )
             )
         except Exception as bg_err:

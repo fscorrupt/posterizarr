@@ -10,6 +10,34 @@ The following API endpoints are available.
 
 ---
 
+## Dynamic Overlays
+
+### `POST /api/dynamic-overlays/sync`
+
+Starts a background overlay sync. Without `target_items`, `library` and `target_server` select the libraries and servers to scan. `scope: "incremental"` skips unchanged artwork; `scope: "all"` forces uploads.
+
+For an item-only request, supply its media-server ID, server, and library:
+
+```json
+{
+  "target_server": "plex",
+  "scope": "incremental",
+  "library": "Kids Shows",
+  "target_items": [
+    {
+      "id": "12345",
+      "server_type": "plex",
+      "library_name": "Kids Shows",
+      "media_type": "show"
+    }
+  ]
+}
+```
+
+ID targets are fetched directly, without listing unrelated libraries. Missing targets are skipped rather than falling back to a broad scan. An empty `target_items` list does not start a sync. Use `jellyfin` or `emby` and the corresponding item IDs for those servers.
+
+A show target also evaluates its season posters and titlecards. Tautulli and Arr notifications submit the movie/show IDs and libraries processed by their trigger run. Requests received while a sync is running are rejected, not queued.
+
 ## ⚙️ System
 
 ### `/api`
