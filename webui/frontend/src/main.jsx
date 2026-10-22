@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import "@fontsource-variable/dm-sans/index.css";
 import "./index.css";
 import "./i18n.js"; // Import i18n configuration
 
