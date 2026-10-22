@@ -39,6 +39,7 @@ import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import { formatDateTimeInTimezone, getUpcomingSchedules } from "../utils/timeUtils";
+import WorkspaceHeader from "./WorkspaceHeader";
 
 const API_URL = "/api";
 const isDev = import.meta.env.DEV;
@@ -800,30 +801,18 @@ function Dashboard() {
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="relative overflow-hidden rounded-3xl bg-theme-card border border-theme p-8 shadow-2xl">
-         <div className="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-theme-primary/5 rounded-full blur-3xl"></div>
-         <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-64 h-64 bg-theme-primary/5 rounded-full blur-3xl"></div>
-         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-             <div className="flex flex-col gap-2">
-                 <h1 className="text-3xl md:text-4xl font-black text-theme-primary tracking-tight">{t("dashboard.title")}</h1>
-                 <p className="text-theme-muted font-medium text-sm md:text-base max-w-xl">
-                    {t("dashboard.welcome")}. {t("dashboard.status")}: <span className={`font-bold ${status.running ? "text-green-400" : "text-theme-text"}`}>{status.running ? t("dashboard.controlDeck.active").toLowerCase() : t("dashboard.controlDeck.idle").toLowerCase()}</span>.
-                 </p>
-             </div>
-             <div className="flex items-center gap-3 w-full md:w-auto">
+     <div className="workspace-page space-y-6 pb-12">
+      <WorkspaceHeader icon={Activity} title={t("dashboard.title")} subtitle={<>{t("dashboard.status")}: <span className={status.running ? "text-green-400" : "text-theme-text"}>{status.running ? t("dashboard.controlDeck.active") : t("dashboard.controlDeck.idle")}</span></>}>
                 {!status.running && (
-                   <Link to="/run-modes" className="flex-1 md:flex-none group flex items-center justify-center gap-2 px-6 py-3 bg-theme-primary hover:bg-theme-primary/90 text-white rounded-xl font-bold shadow-lg shadow-theme-primary/20 transition-all hover:-translate-y-0.5 active:translate-y-0">
-                      <Play className="w-5 h-5 fill-current" />
+               <Link to="/run-modes" className="workspace-command">
+                 <Play className="w-4 h-4" />
                       <span>{t("dashboard.runScript")}</span>
                    </Link>
                 )}
-                <button onClick={() => setShowCardsModal(true)} className="px-4 py-3 bg-theme-hover border border-theme text-theme-text hover:text-theme-primary hover:border-theme-primary/30 rounded-xl transition-all" title={t("dashboard.customize")}>
-                   <Edit3 className="w-5 h-5" />
+             <button onClick={() => setShowCardsModal(true)} className="workspace-icon-button" title={t("dashboard.customize")} aria-label={t("dashboard.customize")}>
+               <Edit3 className="w-4 h-4" />
                 </button>
-             </div>
-         </div>
-      </div>
+      </WorkspaceHeader>
       {status.already_running_detected && (
         <div className="rounded-2xl bg-yellow-900/20 border border-yellow-500/30 p-5 flex items-start gap-4 backdrop-blur-sm animate-in fade-in slide-in-from-top-2">
            <AlertTriangle className="w-6 h-6 text-yellow-500 flex-shrink-0" />

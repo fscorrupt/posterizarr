@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Palette, User, LogOut, Activity, Zap, Square, Trash2, ChevronDown, AlertTriangle } from "lucide-react";
+import { Palette, User, LogOut, Activity, Zap, Square, Trash2, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
+import { useSidebar } from "../context/SidebarContext";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
 import ConfirmDialog from "./ConfirmDialog";
@@ -10,6 +12,14 @@ const TopNavbar = () => {
   const { t } = useTranslation();
   const { theme, setTheme, themes } = useTheme();
   const { isAuthEnabled, logout } = useAuth();
+  const { isCollapsed } = useSidebar();
+  const { pathname } = useLocation();
+  const viewNames = {
+    "/": "Dashboard", "/runtime-history": "Insights", "/run-modes": "Run Modes",
+    "/scheduler": "Scheduler", "/queue": "Queue", "/dynamic-overlays": "Dynamic Overlays",
+    "/assets-manager": "Asset Manager", "/blueprints": "Blueprints", "/logs": "Logs",
+  };
+  const viewName = viewNames[pathname] || pathname.split("/").filter(Boolean).map(segment => segment.replaceAll("-", " ")).join(" / ");
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
@@ -110,11 +120,16 @@ const TopNavbar = () => {
   }));
 
   return (
-    <div className="hidden md:block fixed top-0 left-0 right-0 bg-theme-card/90 backdrop-blur-md z-40 h-20 md:pl-80 shadow-sm transition-all duration-300">
-      <div className="flex items-center justify-end h-full px-8">
+    <div className={`app-topbar hidden md:block fixed top-0 left-0 right-0 z-40 h-16 transition-all duration-300 ${isCollapsed ? "md:pl-20" : "md:pl-64"}`}>
+      <div className="flex items-center justify-between gap-4 h-full px-6 lg:px-8">
+        <nav aria-label="Current view" className="hidden lg:flex min-w-0 items-center gap-2 text-xs text-theme-muted">
+          <Link to="/" className="shrink-0 hover:text-theme-text">Posterizarr</Link>
+          <ChevronRight size={13} className="shrink-0" />
+          <span aria-current="page" className="truncate capitalize text-theme-text">{viewName}</span>
+        </nav>
 
         {/* Right Side: Tools & Status */}
-        <div className="flex items-center gap-4">
+        <div className="ml-auto flex shrink-0 items-center gap-3">
 
            {/* System Status Indicators */}
            {/* 1. Active Running Tasks (Posterizarr, Overlay Sync, AniMetaFill, Metadata Refresh) */}

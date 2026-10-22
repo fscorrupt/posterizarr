@@ -189,11 +189,11 @@ const Sidebar = () => {
   return (
     <>
       {/* REMOVED border-r, added shadow-2xl for cleaner separation */}
-      <div className={`hidden md:flex flex-col fixed left-0 top-0 h-screen bg-theme-card shadow-2xl transition-all duration-300 z-50 ${isCollapsed ? "w-20" : "w-80"}`}>
+      <div className={`app-sidebar hidden md:flex flex-col fixed left-0 top-0 h-screen transition-all duration-300 z-50 ${isCollapsed ? "w-20" : "w-64"}`}>
 
         {/* Header Logo Area - REMOVED border-b */}
-        <div className="flex items-center p-5 h-20">
-          <button onClick={() => setIsCollapsed(!isCollapsed)} className="p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-muted hover:text-theme-text">
+        <div className="flex items-center px-4 h-16 shrink-0">
+          <button onClick={() => setIsCollapsed(!isCollapsed)} title={isCollapsed ? "Expand navigation" : "Collapse navigation"} aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"} className="p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-muted hover:text-theme-text">
             <Menu className="w-5 h-5" />
           </button>
           {!isCollapsed && (
@@ -204,7 +204,7 @@ const Sidebar = () => {
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-6 px-3 scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
+        <nav aria-label="Main navigation" className="flex-1 overflow-y-auto py-6 px-3 scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
           <div className="space-y-1.5">
             {navItems.map((item, index) => {
               const Icon = item.icon;
@@ -265,6 +265,7 @@ const Sidebar = () => {
                             <Link
                               key={subItem.path}
                               to={subItem.path}
+                              aria-current={isSubActive ? "page" : undefined}
                               className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${isSubActive ? activeClass : "text-theme-muted hover:bg-theme-hover hover:text-theme-text"}`}
                             >
                               <div className="flex items-center">
@@ -289,6 +290,7 @@ const Sidebar = () => {
                 <div key={item.id} draggable={!isCollapsed} onDragStart={(e) => handleDragStart(e, index)} onDragOver={(e) => handleDragOver(e, index)} onDragEnd={handleDragEnd} onMouseEnter={() => setHoveredItem(index)} onMouseLeave={() => setHoveredItem(null)} className={`relative ${isDragging ? "opacity-50" : ""}`}>
                   <Link
                     to={item.path}
+                    aria-current={isActive ? "page" : undefined}
                     className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between px-4"} py-3 rounded-xl text-sm font-medium transition-all duration-200 group relative ${isActive ? activeClass : inactiveClass}`}
                     title={isCollapsed ? item.label : ""}
                   >
@@ -341,7 +343,7 @@ const Sidebar = () => {
       </div>
 
       {/* Mobile Menu */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-theme-card/90 backdrop-blur-md border-b border-theme z-50 h-16 shadow-lg">
+      <div className="app-topbar md:hidden fixed top-0 left-0 right-0 border-b border-theme z-50 h-16">
         <div className="flex items-center justify-between h-full px-4">
           <div className="flex items-center">
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-text">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import {
   ImageIcon,
   Folder,
@@ -661,11 +662,12 @@ function ManualAssets() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       <ScrollToButtons />
+      <WorkspaceHeader title="Manual Assets" />
 
       {/* View Mode Card */}
-      <div className="bg-theme-card border border-theme-border rounded-lg p-4">
+      <div className="workspace-toolbar">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex-1 min-w-0">
             <h3 className="text-base sm:text-lg font-semibold text-theme-text mb-1">

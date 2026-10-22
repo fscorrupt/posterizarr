@@ -11,6 +11,7 @@ import {
   Share2, ArrowUpDown
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
+import OverlayDatabaseBrowser from "./OverlayDatabaseBrowser";
 
 const API_URL = "/api";
 
@@ -190,6 +191,8 @@ export default function RuntimeHistory() {
   const [assetStats, setAssetStats] = useState(null);
   const [exportStats, setExportStats] = useState(null);
   const [overlayStats, setOverlayStats] = useState([]);
+  const [overlayDatabaseStats, setOverlayDatabaseStats] = useState(null);
+  const [overlayDatabaseError, setOverlayDatabaseError] = useState("");
 
   // UI & Filter States
   const [loading, setLoading] = useState(true);
@@ -256,10 +259,18 @@ export default function RuntimeHistory() {
         fetch(`${API_URL}/assets/overview`).then(r => r.json()).catch(() => null),
         fetch(`${API_URL}/assets/stats`).then(r => r.json()).catch(() => ({ success: false })),
         fetch(`${API_URL}/overlayfiles`).then(r => r.json()).catch(() => ({ success: false })),
-        fetch(usePlex ? `${API_URL}/plex-export/statistics` : `${API_URL}/other-media-export/statistics`).then(r => r.json()).catch(() => ({ success: false }))
+        fetch(usePlex ? `${API_URL}/plex-export/statistics` : `${API_URL}/other-media-export/statistics`).then(r => r.json()).catch(() => ({ success: false })),
+        fetch(`${API_URL}/dynamic-overlays/database-stats`).then(r => r.json()).catch(() => ({ success: false }))
       ];
 
-      const [histData, provData, overData, statsData, overlayData, expData] = await Promise.all(requests);
+      const [histData, provData, overData, statsData, overlayData, expData, databaseData] = await Promise.all(requests);
+
+      if (databaseData?.success && Array.isArray(databaseData.databases)) {
+        setOverlayDatabaseStats(databaseData.databases);
+        setOverlayDatabaseError("");
+      } else {
+        setOverlayDatabaseError(databaseData?.error || "Database statistics are unavailable.");
+      }
 
       if (histData?.success && Array.isArray(histData.history)) {
         setHistory(histData.history);
@@ -1348,6 +1359,69 @@ export default function RuntimeHistory() {
 
           {/* THIRD ROW: OVERLAY ENGINE & MEDIA EXPORTS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <section className="lg:col-span-2 border-y border-theme py-5" aria-label="Dynamic overlay databases">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3 className="text-base font-semibold text-theme-text flex items-center gap-2">
+                  <Database size={17} className="text-emerald-400" /> Dynamic Overlay Databases
+                </h3>
+                <a href="#overlay-database-records" className="ml-auto inline-flex items-center gap-2 text-xs text-theme-primary hover:text-theme-text">
+                  <Eye size={14} /> Browse records
+                </a>
+                {overlayDatabaseStats && !overlayDatabaseError && (
+                  <span className="text-xs text-theme-muted font-mono">
+                    {formatBytes(overlayDatabaseStats.reduce((total, database) => total + database.size_bytes + database.wal_bytes, 0))}
+                  </span>
+                )}
+              </div>
+              {overlayDatabaseError ? (
+                <p role="status" className="text-sm text-amber-400">{overlayDatabaseError}</p>
+              ) : overlayDatabaseStats ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {overlayDatabaseStats.map(database => (
+                    <div key={database.filename} className="min-w-0">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                        <h4 className="text-sm font-semibold text-theme-text">{database.name}</h4>
+                        <span className="font-mono text-xs text-theme-muted">{formatBytes(database.size_bytes + database.wal_bytes)}</span>
+                      </div>
+                      <div className="text-xs text-theme-muted font-mono break-all mb-3">{database.filename}</div>
+                      {database.error ? (
+                        <p className="text-xs text-amber-400 break-words">{database.error}</p>
+                      ) : !database.exists ? (
+                        <p className="text-xs text-theme-muted">Not created yet</p>
+                      ) : (
+                        <dl className="space-y-3">
+                          {database.tables.map(table => (
+                            <div key={table.name}>
+                              <div className="flex justify-between items-baseline gap-3 text-xs">
+                                <dt className="text-theme-text break-all">{({dynamic_overlay_cache: 'Artwork fingerprints', media_ratings_cache: 'Ratings and show metadata', episodes: 'Classified episodes', updates: 'Tracked shows'})[table.name] || table.name}</dt>
+                                <dd className="font-mono font-semibold tabular-nums text-theme-text">{table.records.toLocaleString()}</dd>
+                              </div>
+                              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-theme-muted mt-1">
+                                {table.valid !== undefined && <span>{table.valid.toLocaleString()} valid / {table.expired.toLocaleString()} expired</span>}
+                                {table.shows !== undefined && <span>{table.shows.toLocaleString()} shows</span>}
+                                {['status', 'server_type', 'asset_type', 'category'].map(group => table[group] && (
+                                  <span key={group} className="break-words">
+                                    {Object.entries(table[group]).map(([label, count]) => `${label || 'unknown'}: ${count.toLocaleString()}`).join(' / ')}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="flex justify-between border-t border-theme pt-2 text-xs">
+                            <dt className="text-theme-muted">Total records</dt>
+                            <dd className="font-mono font-semibold text-theme-text">{database.total_records.toLocaleString()}</dd>
+                          </div>
+                          {database.wal_bytes > 0 && <div className="text-[11px] text-theme-muted">WAL: {formatBytes(database.wal_bytes)}</div>}
+                        </dl>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : <p role="status" className="text-sm text-theme-muted">Loading database statistics...</p>}
+            </section>
+
+            <OverlayDatabaseBrowser databases={overlayDatabaseStats} />
 
             {/* Overlay Cache Resources */}
             <div

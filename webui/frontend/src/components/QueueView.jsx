@@ -17,6 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
+import WorkspaceHeader from "./WorkspaceHeader";
 
 const ITEMS_PER_PAGE = 50;
 
@@ -238,7 +239,7 @@ const QueueView = () => {
     };
 
     return (
-        <div className="container mx-auto p-6 max-w-7xl animate-in fade-in duration-500">
+        <div className="workspace-page space-y-6">
             {/* Confirm Dialog */}
             <ConfirmDialog
                 isOpen={confirmOpen}
@@ -252,20 +253,15 @@ const QueueView = () => {
 
             <div className="flex flex-col gap-6 mb-8">
                 {/* Header Section */}
-                <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-theme-primary via-purple-500 to-pink-500">
-                        {t("queue.title")}
-                    </h1>
-                    <p className="text-theme-muted mt-1 text-lg">{t("queue.description")}</p>
-                </div>
+                <WorkspaceHeader icon={List} title={t("queue.title")} />
 
                 {/* Integrated How-To Section - Prominent & Above Buttons */}
-                <div className="bg-theme-primary/5 border-l-4 border-theme-primary rounded-r-xl p-5 flex flex-col md:flex-row items-start md:items-center gap-6 shadow-sm">
-                    <div className="flex items-center gap-2 font-bold text-theme-primary whitespace-nowrap min-w-fit">
+                <details className="workspace-help">
+                    <summary className="flex items-center gap-2 text-sm text-theme-muted cursor-pointer">
                         <AlertCircle className="w-5 h-5" />
                         {t("queue.howTo.title")}
-                    </div>
-                    <div className="grid grid-cols-2 md:flex md:flex-wrap items-center gap-x-8 gap-y-4 w-full">
+                    </summary>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
                         <div className="flex items-center gap-3">
                             <span className="text-2xl font-bold text-theme-primary/40">1</span>
                             <span className="text-sm font-medium opacity-90">{t("queue.howTo.step1")}</span>
@@ -286,10 +282,10 @@ const QueueView = () => {
                             <span className="text-sm font-medium opacity-90">{t("queue.howTo.step4")}</span>
                         </div>
                     </div>
-                </div>
+                </details>
 
                 {/* Actions Toolbar */}
-                <div className="flex justify-end gap-3 border-b border-theme/20 pb-6">
+                <div className="workspace-toolbar justify-end">
                     <button
                         onClick={fetchQueue}
                         className="p-2 rounded-lg bg-theme-card border border-theme hover:bg-theme-hover transition-colors"

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useTranslation } from "react-i18next";
 import {
   RefreshCw,
@@ -579,12 +580,11 @@ function AssetsManager() {
   const currentActivePreview = customPreviews[options.overlay_type];
 
   return (
-    <div className="space-y-6" onClick={() => setSelectedLayerId(null)}>
+    <div className="workspace-page space-y-6" onClick={() => setSelectedLayerId(null)}>
       <ScrollToButtons />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="text-theme-muted"><p>{t("overlayAssets.description")}</p></div>
+            <WorkspaceHeader icon={FileImage} title={t("overlayAssets.title", "Overlay Assets")}>
         <div className="flex bg-theme-hover p-1 rounded-lg border border-theme self-end sm:self-auto">
             <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 rounded-md flex items-center gap-2 transition-colors text-sm font-medium ${viewMode === "list" ? "bg-theme-primary text-white shadow-sm" : "text-theme-muted hover:text-white"}`}>
                 <FileImage className="w-4 h-4" /> {t("overlayAssets.list") || "Asset Library"}
@@ -593,7 +593,7 @@ function AssetsManager() {
                 <LayoutTemplate className="w-4 h-4" /> {t("overlayAssets.create") || "Overlay Creator"}
             </button>
         </div>
-      </div>
+    </WorkspaceHeader>
 
       {/* ================= CREATOR MODE ================= */}
       {viewMode === "create" && (

@@ -2150,6 +2150,7 @@ async def run_overlay_sync_task(
 
     _is_sync_running = True
     _cancel_requested = False
+    sync_started_at = time.monotonic()
 
     if not base_dir:
         base_dir = Path(".")
@@ -3845,10 +3846,14 @@ async def run_overlay_sync_task(
                     write_log("Dynamic overlay sync was stopped by user. Halting.")
                     break
 
+        runtime_seconds = max(0, time.monotonic() - sync_started_at)
+        runtime_hours, runtime_remainder = divmod(int(runtime_seconds), 3600)
+        runtime_minutes, runtime_secs = divmod(runtime_remainder, 60)
+        runtime_text = f"{runtime_hours}h {runtime_minutes}m {runtime_secs}s"
         if _cancel_requested:
             write_log("=" * 70)
             write_log("DYNAMIC OVERLAYS SYNC STOPPED BY USER")
-            write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed")
+            write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed | Runtime: {runtime_text}")
             write_log("=" * 70)
             res = {
                 "success": True,
@@ -3856,6 +3861,7 @@ async def run_overlay_sync_task(
                 "total_synced": total_synced,
                 "total_skipped": total_skipped,
                 "total_failed": total_failed,
+                "runtime_seconds": runtime_seconds,
                 "message": "Dynamic overlay sync was stopped by user.",
                 "log_file": "DynamicOverlaysSync.log"
             }
@@ -3864,7 +3870,7 @@ async def run_overlay_sync_task(
 
         write_log("=" * 70)
         write_log(f"DYNAMIC OVERLAYS SYNC COMPLETE")
-        write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed")
+        write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed | Runtime: {runtime_text}")
         write_log("=" * 70)
 
         res = {
@@ -3872,6 +3878,7 @@ async def run_overlay_sync_task(
             "total_synced": total_synced,
             "total_skipped": total_skipped,
             "total_failed": total_failed,
+            "runtime_seconds": runtime_seconds,
             "log_file": "DynamicOverlaysSync.log"
         }
         _last_sync_result = res

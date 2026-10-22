@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { Loader2, Palette, Image, Layers, CheckCircle2, AlertCircle, Type, Square, Languages, Sparkles, Download, Upload, Info, Sliders, LayoutTemplate, ChevronDown, ChevronRight, Settings, ImagePlus, RotateCcw, Wand2, MousePointerClick, Trash2, Save, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
@@ -1530,7 +1531,7 @@ export default function Blueprints() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       <style>{`
         @font-face {
           font-family: 'PosterFont';
@@ -1545,14 +1546,8 @@ export default function Blueprints() {
           src: url('${API_URL}/fonts/download/${config?.PrerequisitePart?.titlecardfont || 'Impact.ttf'}');
         }
       `}</style>
-      <div className="bg-theme-card border border-theme rounded-xl p-6 shadow-sm">
-        <div className="mb-6 flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-theme-text">{t("blueprints.pageTitle")}</h1>
-            <p className="text-theme-muted mt-2">
-              {t("blueprints.pageDescription")}
-            </p>
-          </div>
+      <div className="space-y-6">
+        <WorkspaceHeader icon={LayoutTemplate} title={t("blueprints.pageTitle")}>
           <div className="flex gap-3">
             <button onClick={handleExportBlueprint} className="flex items-center gap-2 px-4 py-2 bg-theme-bg border border-theme hover:border-theme-primary/50 text-theme-text rounded-lg transition-colors">
               <Download className="w-4 h-4" />
@@ -1566,7 +1561,7 @@ export default function Blueprints() {
               </button>
             </div>
           </div>
-        </div>
+        </WorkspaceHeader>
 
         <div className="flex border-b border-theme mb-6">
           <button

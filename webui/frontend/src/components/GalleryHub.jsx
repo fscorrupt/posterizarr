@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import WorkspaceHeader from "./WorkspaceHeader";
 import {
   LayoutGrid,
   FolderTree,
@@ -134,10 +135,11 @@ function GalleryHub() {
   ].includes(activeTab);
 
   return (
-    <div className="space-y-4">
+    <div className="workspace-page space-y-6">
+      <WorkspaceHeader icon={LayoutGrid} title={({ posters: "Poster Gallery", backgrounds: "Background Gallery", seasons: "Season Gallery", titlecards: "Titlecard Gallery", backupAssets: "Asset Backups", manualAssets: "Manual Assets", testGallery: "Test Gallery", assetOverview: "Asset Overview" })[activeTab] || "Gallery"} />
       {/* View Mode Toggle - Only show for relevant tabs */}
       {showViewModeToggle && (
-        <div className="bg-theme-card border border-theme-border rounded-lg p-3 sm:p-4">
+        <div className="workspace-toolbar">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
             <div className="flex-1 min-w-0">
               <h3 className="text-base sm:text-lg font-semibold text-theme-text mb-1">

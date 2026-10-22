@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   RefreshCw,
@@ -772,10 +773,10 @@ function LogViewer() {
   const StatusIcon = displayStatus.icon;
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       {/* Header */}
       {/* +++ MODIFIED: Added gap-4 and new button +++ */}
-      <div className="flex items-center justify-end gap-4">
+      <WorkspaceHeader title={t("sidebar.logs", "Logs")}>
         {/* Gather Support Logs Button */}
         <button
           onClick={gatherSupportZip}
@@ -821,7 +822,7 @@ function LogViewer() {
             </span>
           </div>
         </div>
-      </div>
+      </WorkspaceHeader>
       {/* +++ END MODIFICATION +++ */}
 
 

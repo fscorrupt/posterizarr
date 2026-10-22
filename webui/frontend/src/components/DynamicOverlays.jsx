@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -3056,7 +3057,8 @@ export default function DynamicOverlays() {
 
     let elemCenterX = elemLeft + elemW / 2;
     let elemCenterY = elemTop + elemH / 2;
-    const snapIndicators = [];
+
+    const snapIndicators = [];
     if (snapToGuides && guideMode !== "off") {
       const snapThreshold = 14;
 
@@ -4167,32 +4169,10 @@ export default function DynamicOverlays() {
   }
 
   return (
-    <div className="space-y-6 pb-12 animate-in fade-in duration-300">
+    <div className="workspace-page space-y-6 pb-12">
       {/* HEADER WITH TITLE & MASTER SWITCH */}
-      <div className="bg-theme-card border border-theme rounded-xl p-5 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="p-2.5 bg-theme-primary/10 border border-theme-primary/20 rounded-lg text-theme-primary shrink-0">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-theme-text">
-                  {t("dynamicOverlays.title", "Dynamic Overlays")}
-                </h1>
-                <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium border ${
-                  featureSettings?.enabled
-                    ? "bg-theme-primary/10 border-theme-primary/30 text-theme-primary"
-                    : "bg-theme-hover border-theme text-theme-muted"
-                }`}>
-                  {featureSettings?.enabled ? "Active" : "Disabled (Off by Default)"}
-                </span>
-              </div>
-              <p className="text-xs text-theme-muted mt-1">
-                Add ratings, audio flags, and resolution badges to your posters and backdrops. Your original files stay untouched.
-              </p>
-            </div>
-          </div>
+      <div className="space-y-4">
+        <WorkspaceHeader icon={Sparkles} title={t("dynamicOverlays.title", "Dynamic Overlays")} subtitle={featureSettings?.enabled ? "Active" : "Disabled"}>
 
           {/* MASTER FEATURE TOGGLE & QUICK STATS */}
           <div className="flex flex-wrap items-center gap-2.5">
@@ -4201,6 +4181,9 @@ export default function DynamicOverlays() {
               <button
                 type="button"
                 onClick={() => handleToggleMasterEnabled(!featureSettings?.enabled)}
+                role="switch"
+                aria-checked={Boolean(featureSettings?.enabled)}
+                aria-label="Enable Dynamic Overlays"
                 disabled={isUpdatingFeatureSettings}
                 className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                   featureSettings?.enabled ? "bg-theme-primary" : "bg-theme-card border border-theme"
@@ -4275,7 +4258,7 @@ export default function DynamicOverlays() {
               </>
             )}
           </div>
-        </div>
+        </WorkspaceHeader>
 
         {/* WELCOME ONBOARDING BANNER (NEW USER COMPANION) */}
         {featureSettings?.enabled && !hasCompletedWizard && (

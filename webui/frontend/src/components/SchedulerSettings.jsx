@@ -32,6 +32,7 @@ import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import { formatDateTimeInTimezone, sortSchedulesByTime } from "../utils/timeUtils";
+import WorkspaceHeader from "./WorkspaceHeader";
 
 const API_URL = "/api";
 
@@ -766,7 +767,7 @@ const SchedulerSettings = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       <ConfirmDialog
         isOpen={clearAllConfirm}
         onClose={() => setClearAllConfirm(false)}
@@ -776,7 +777,9 @@ const SchedulerSettings = () => {
         type="danger"
       />
 
-      <div className="bg-blue-900/20 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+      <WorkspaceHeader icon={Calendar} title={t("sidebar.scheduler", "Scheduler")} subtitle={timezone} />
+
+      <div className="workspace-notice">
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -806,7 +809,7 @@ const SchedulerSettings = () => {
         </div>
       </div>
 
-      <div className="bg-theme-card rounded-xl shadow-sm border border-theme p-6 space-y-6">
+      <div className="workspace-section space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-theme-primary/10"><Settings className="w-6 h-6 text-theme-primary" /></div>
@@ -1292,7 +1295,7 @@ const SchedulerSettings = () => {
                 Overlay Defaults Auto-Updater
               </div>
               <p className="text-xs text-theme-muted leading-relaxed">
-                Automatically checks the official overlay template repositories on this schedule. 
+                Automatically checks the official overlay template repositories on this schedule.
                 New default overlay templates will be downloaded to <span className="text-cyan-300 font-mono">Overlayfiles/dynamic_overlays/defaults/</span>, and existing defaults will be updated with upstream improvements.
               </p>
             </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import {
   AlertTriangle,
   Globe,
@@ -1894,7 +1895,8 @@ const AssetOverview = () => {
 
   // Main Render
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
+      <WorkspaceHeader title={t("assetOverview.title", "Asset Overview")} />
       {/* Tabs */}
       <div className="flex border-b border-theme-muted/30">
         <button

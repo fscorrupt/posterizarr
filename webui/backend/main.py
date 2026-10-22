@@ -21123,6 +21123,40 @@ async def get_dynamic_overlays_ratings_cache_endpoint():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.get("/api/dynamic-overlays/database-stats")
+async def get_dynamic_overlays_database_stats_endpoint():
+    try:
+        from overlay_cache import get_overlay_database_stats
+        from animetafill_service import DEFAULT_DB_PATH
+        stats = await asyncio.to_thread(get_overlay_database_stats, BASE_DIR / "database", DEFAULT_DB_PATH)
+        return {"success": True, **stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/dynamic-overlays/database-entries")
+async def get_dynamic_overlays_database_entries_endpoint(
+    database: str = Query("overlay_cache.db"),
+    table: str = Query("dynamic_overlay_cache"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    search: str = Query("", max_length=300),
+    sort_by: Optional[str] = Query(None),
+    descending: bool = Query(True),
+):
+    try:
+        from overlay_cache import get_overlay_database_entries
+        from animetafill_service import DEFAULT_DB_PATH
+        data = await asyncio.to_thread(
+            get_overlay_database_entries, BASE_DIR / "database", database, table,
+            page, limit, search, sort_by, descending, DEFAULT_DB_PATH,
+        )
+        return {"success": True, **data}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        logger.error(f"Error browsing overlay database: {error}")
+        return {"success": False, "error": "Could not read overlay database records."}
+
 @app.post("/api/dynamic-overlays/ratings-cache/clear")
 async def clear_dynamic_overlays_ratings_cache_endpoint():
     """Clear media ratings cache to force fresh ratings on next sync."""

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import {
@@ -532,10 +533,10 @@ function JellyfinEmbyExport() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       <ScrollToButtons />
       {/* Top Actions */}
-      <div className="flex justify-end items-start gap-2">
+      <WorkspaceHeader icon={Film} title="Jellyfin & Emby Library Data">
         <button
           onClick={async () => {
             setRefreshing(true);
@@ -560,7 +561,7 @@ function JellyfinEmbyExport() {
             {importing ? t("plexExport.importing", "Importing...") : t("plexExport.import", "Import")}
           </span>
         </button>
-      </div>
+      </WorkspaceHeader>
 
       {/* Stats Cards */}
       {statistics && (

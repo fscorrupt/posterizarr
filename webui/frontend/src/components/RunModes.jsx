@@ -34,6 +34,7 @@ import NormalModeModal from "./modals/NormalModeModal";
 import TestingModeModal from "./modals/TestingModeModal";
 import { useToast } from "../context/ToastContext";
 import { BLUEPRINTS } from "./Blueprints";
+import WorkspaceHeader from "./WorkspaceHeader";
 
 const API_URL = "/api";
 
@@ -2136,7 +2137,7 @@ const LogoUpdaterModal = React.memo(({
   const hints = getHints(manualForm.posterType);
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={resetConfirm}
@@ -2320,7 +2321,7 @@ const LogoUpdaterModal = React.memo(({
       />
 
       {/* Header */}
-      <div className="flex items-center justify-end">
+      <WorkspaceHeader icon={Play} title={t("runModes.title", "Run Modes")}>
         {/* Status Badge */}
         {status.running && (
           <div className="flex items-center gap-3 bg-theme-card px-4 py-2 rounded-lg border border-theme-primary/50">
@@ -2339,7 +2340,7 @@ const LogoUpdaterModal = React.memo(({
             </div>
           </div>
         )}
-      </div>
+      </WorkspaceHeader>
 
       {/* Stop Button (shown when running) */}
       {status.running && (
@@ -2369,7 +2370,7 @@ const LogoUpdaterModal = React.memo(({
       )}
 
       {/* Quick Run Modes */}
-      <div className="bg-theme-card rounded-xl p-6 border border-theme">
+      <div className="workspace-section">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="text-xl font-semibold text-theme-text flex items-center gap-2">
             <Play className="w-5 h-5 text-theme-primary" />
@@ -2388,7 +2389,7 @@ const LogoUpdaterModal = React.memo(({
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+        <div className="run-mode-actions grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {/* Normal Mode */}
           <button
             onClick={handleNormalModeClick}
@@ -3103,8 +3104,8 @@ const LogoUpdaterModal = React.memo(({
               {t("runModes.manual.libraryName")}{" "}
               <span className="text-red-400">*</span>
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative min-w-0 flex-1">
                 <input
                   type="text"
                   value={manualForm.libraryName}
@@ -3146,8 +3147,8 @@ const LogoUpdaterModal = React.memo(({
             <label className="block text-sm font-medium text-theme-text mb-2">
               {hints.folderName.label} <span className="text-red-400">*</span>
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative min-w-0 flex-1">
                 <input
                   type="text"
                   value={manualForm.folderName}

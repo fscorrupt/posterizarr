@@ -18,11 +18,115 @@ import hashlib
 import sqlite3
 import threading
 import logging
+from contextlib import closing
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union, Tuple
 
 logger = logging.getLogger("overlay_cache")
+def get_overlay_database_stats(database_dir: Path, anime_db_path: Optional[Path] = None) -> Dict[str, Any]:
+    databases = []
+    for name, db_path in (
+        ("Overlay Cache", database_dir / "overlay_cache.db"),
+        ("AniMetaFill", anime_db_path or database_dir / "animetafill.db"),
+    ):
+        entry = {
+            "name": name, "filename": db_path.name, "exists": db_path.is_file(),
+            "size_bytes": 0, "wal_bytes": 0, "total_records": 0, "tables": [],
+        }
+        try:
+            if entry["exists"]:
+                entry["size_bytes"] = db_path.stat().st_size
+                wal_path = Path(f"{db_path}-wal")
+                entry["wal_bytes"] = wal_path.stat().st_size if wal_path.is_file() else 0
+                with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)) as conn:
+                    table_names = [row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                    )]
+                    for table_name in table_names:
+                        quoted_name = '"' + table_name.replace('"', '""') + '"'
+                        row_count = conn.execute(f"SELECT COUNT(*) FROM {quoted_name}").fetchone()[0]
+                        table = {"name": table_name, "records": row_count}
+                        if table_name == "dynamic_overlay_cache":
+                            for column in ("status", "server_type", "asset_type"):
+                                table[column] = dict(conn.execute(
+                                    f'SELECT "{column}", COUNT(*) FROM {quoted_name} GROUP BY "{column}"'
+                                ))
+                        elif table_name == "media_ratings_cache":
+                            valid = conn.execute(
+                                f"SELECT COUNT(*) FROM {quoted_name} WHERE expires_at > ?",
+                                (datetime.utcnow().isoformat(),)
+                            ).fetchone()[0]
+                            table.update(valid=valid, expired=row_count - valid)
+                        elif table_name == "episodes":
+                            table["shows"] = conn.execute(f"SELECT COUNT(DISTINCT anime_title) FROM {quoted_name}").fetchone()[0]
+                            table["category"] = dict(conn.execute(
+                                f"SELECT category, COUNT(*) FROM {quoted_name} GROUP BY category"
+                            ))
+                        entry["tables"].append(table)
+                        entry["total_records"] += row_count
+        except (sqlite3.Error, OSError) as error:
+            entry["error"] = str(error)
+        databases.append(entry)
+    return {"databases": databases}
+
+def get_overlay_database_entries(
+    database_dir: Path,
+    database: str,
+    table: str,
+    page: int = 1,
+    limit: int = 50,
+    search: str = "",
+    sort_by: Optional[str] = None,
+    descending: bool = True,
+    anime_db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    paths = {
+        "overlay_cache.db": database_dir / "overlay_cache.db",
+        "animetafill.db": anime_db_path or database_dir / "animetafill.db",
+    }
+    if database not in paths:
+        raise ValueError("Unknown overlay database")
+    db_path = paths[database]
+    page = max(1, int(page))
+    limit = max(1, min(200, int(limit)))
+    result = {"database": database, "table": table, "page": page, "limit": limit,
+              "exists": db_path.is_file(), "columns": [], "entries": [], "total": 0, "total_pages": 0}
+    if not result["exists"]:
+        return result
+    with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)) as conn:
+        conn.row_factory = sqlite3.Row
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        )}
+        if table not in tables:
+            raise ValueError("Unknown overlay database table")
+        quoted_table = '"' + table.replace('"', '""') + '"'
+        schema = list(conn.execute(f"PRAGMA table_info({quoted_table})"))
+        columns = [column["name"] for column in schema]
+        result["columns"] = columns
+        if sort_by and sort_by not in columns:
+            raise ValueError("Unknown sort column")
+        order_column = sort_by or next((column["name"] for column in schema if column["pk"]), columns[0])
+        quote = lambda name: '"' + name.replace('"', '""') + '"'
+        parameters = []
+        where = ""
+        if search:
+            pattern = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            where = " WHERE " + " OR ".join(f"CAST({quote(column)} AS TEXT) LIKE ? ESCAPE '\\'" for column in columns)
+            parameters = [pattern] * len(columns)
+        result["total"] = conn.execute(f"SELECT COUNT(*) FROM {quoted_table}{where}", parameters).fetchone()[0]
+        result["total_pages"] = (result["total"] + limit - 1) // limit
+        result["page"] = min(page, max(1, result["total_pages"]))
+        order_columns = [order_column] + [column for column in columns if column != order_column and any(field["name"] == column and field["pk"] for field in schema)]
+        order = ", ".join(f"{quote(column)} {'DESC' if descending else 'ASC'}" for column in order_columns)
+        rows = conn.execute(
+            f"SELECT * FROM {quoted_table}{where} ORDER BY {order} LIMIT ? OFFSET ?",
+            [*parameters, limit, (result["page"] - 1) * limit],
+        )
+        result["entries"] = [dict(row) for row in rows]
+    return result
+
 def compute_metadata_hash(
     languages: Optional[Union[List[str], str]] = None,
     runtime_mins: Optional[int] = None,

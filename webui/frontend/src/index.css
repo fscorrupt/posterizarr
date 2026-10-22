@@ -1,3 +1,5 @@
+@import "@fontsource-variable/dm-sans";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -504,9 +506,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
+  font-family: "DM Sans Variable", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--theme-bg);
@@ -622,6 +622,321 @@ html.hide-scrollbars * {
    ======================================== */
 
 /* Background Colors */
+.app-shell {
+  --ui-canvas: color-mix(in srgb, var(--theme-bg-dark) 97%, var(--theme-text) 3%);
+  --ui-surface: color-mix(in srgb, var(--theme-bg-dark) 92%, var(--theme-text) 8%);
+  --ui-raised: color-mix(in srgb, var(--theme-bg-dark) 87%, var(--theme-text) 13%);
+  --ui-glass: color-mix(in srgb, var(--ui-surface) 88%, transparent);
+  --ui-glass-raised: color-mix(in srgb, var(--ui-raised) 92%, transparent);
+  --ui-edge: color-mix(in srgb, var(--theme-text) 13%, transparent);
+  --ui-highlight: color-mix(in srgb, var(--theme-text) 7%, transparent);
+  --ui-sheen: linear-gradient(145deg, var(--ui-highlight), transparent 48%);
+  --ui-shadow: 0 8px 28px rgb(0 0 0 / 18%), 0 2px 6px rgb(0 0 0 / 10%), inset 0 1px 0 var(--ui-highlight);
+  --theme-bg: var(--ui-canvas);
+  --theme-bg-card: var(--ui-surface);
+  --theme-bg-hover: var(--ui-raised);
+  --theme-border: color-mix(in srgb, var(--theme-text) 12%, var(--theme-bg-dark));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--theme-text) 3%, var(--ui-canvas)), var(--ui-canvas) 55%);
+  background-attachment: fixed;
+  font-family: "DM Sans Variable", sans-serif;
+  letter-spacing: 0;
+}
+
+.app-shell :is(h1, h2, h3, h4, button, label, nav, th, p, span) {
+  letter-spacing: 0;
+}
+
+.app-topbar {
+  background: linear-gradient(180deg, var(--ui-highlight), transparent), color-mix(in srgb, var(--ui-canvas) 85%, transparent);
+  border-bottom: 1px solid var(--ui-edge);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgb(0 0 0 / 12%), inset 0 1px 0 var(--ui-highlight);
+}
+
+.app-sidebar {
+  background: linear-gradient(160deg, var(--ui-highlight), transparent 45%), color-mix(in srgb, var(--ui-surface) 93%, transparent);
+  border-right: 1px solid var(--ui-edge);
+  backdrop-filter: blur(16px);
+  box-shadow: 8px 0 32px rgb(0 0 0 / 10%), inset -1px 0 0 color-mix(in srgb, var(--theme-text) 3%, transparent);
+}
+
+.app-sidebar > div:first-child {
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.app-sidebar nav {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.app-shell :is(.app-sidebar, .app-topbar) :is(button, a):not(.rounded-full) {
+  border-radius: 6px;
+}
+
+.app-sidebar nav :is(a, button) {
+  min-height: 38px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  font-size: 13px;
+}
+
+.app-sidebar nav a:hover,
+.app-sidebar nav button:hover {
+  background: var(--ui-raised);
+}
+
+.app-sidebar nav a[aria-current="page"] {
+  background: linear-gradient(110deg, color-mix(in srgb, var(--theme-primary) 15%, transparent), color-mix(in srgb, var(--theme-primary) 4%, transparent)), var(--ui-sheen);
+  color: var(--theme-text);
+  box-shadow: inset 2px 0 var(--theme-primary), inset 0 1px 0 var(--ui-highlight), 0 2px 8px rgb(0 0 0 / 10%);
+}
+
+.app-sidebar nav a[aria-current="page"] svg {
+  color: var(--theme-primary);
+}
+
+.app-content {
+  min-width: 0;
+}
+
+.app-content h1 {
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.app-content h1.bg-clip-text {
+  background: none;
+  color: var(--theme-text);
+  -webkit-text-fill-color: currentColor;
+}
+
+.app-content button:not(.rounded-full) {
+  border-radius: 6px;
+}
+
+.app-content :is(.rounded-3xl, .rounded-2xl, .rounded-xl):not(button):not(input):not(select) {
+  border-radius: 8px;
+}
+
+.app-content :is(.shadow-lg, .shadow-xl, .shadow-2xl) {
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--ui-shadow);
+}
+
+.app-content :is([class~="bg-theme-card/80"], [class~="bg-theme-card/85"], [class~="bg-theme-card/90"], [class~="bg-theme-card/95"], .bg-theme-card) {
+  background: var(--ui-sheen), var(--ui-glass);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--ui-shadow);
+}
+
+.app-content :is([class~="bg-theme-card/80"], [class~="bg-theme-card/85"], [class~="bg-theme-card/90"], [class~="bg-theme-card/95"], .bg-theme-card):not(:has(.fixed)) {
+  backdrop-filter: blur(12px);
+}
+
+.app-content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
+  border-radius: 6px;
+  border-color: var(--theme-border);
+  background-color: var(--ui-canvas);
+  color: var(--theme-text);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 18%), 0 1px 0 color-mix(in srgb, var(--theme-text) 3%, transparent);
+}
+
+.app-shell :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 3px;
+}
+
+.app-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.app-content thead {
+  background: linear-gradient(180deg, var(--ui-highlight), transparent), var(--ui-raised);
+}
+
+.app-content th {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.app-content tbody tr {
+  transition: background-color 120ms ease;
+}
+
+.app-content tbody tr:hover {
+  background: color-mix(in srgb, var(--theme-primary) 5%, var(--ui-surface));
+}
+
+.insight-records {
+  min-width: 0;
+  border: 1px solid var(--ui-edge);
+  border-radius: 8px;
+  background: var(--ui-sheen), var(--ui-glass);
+  box-shadow: var(--ui-shadow);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.workspace-page {
+  min-width: 0;
+}
+
+.workspace-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--ui-edge);
+  border-radius: 8px;
+  background: var(--ui-sheen), linear-gradient(110deg, color-mix(in srgb, var(--theme-primary) 5%, transparent), transparent 65%), var(--ui-glass);
+  box-shadow: var(--ui-shadow);
+  backdrop-filter: blur(12px);
+}
+
+.workspace-header h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.workspace-header-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--theme-primary) 25%, transparent);
+  border-radius: 6px;
+  color: var(--theme-primary);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--theme-primary) 18%, transparent), color-mix(in srgb, var(--theme-primary) 6%, transparent));
+  box-shadow: inset 0 1px 0 var(--ui-highlight), 0 3px 10px rgb(0 0 0 / 12%);
+}
+
+.workspace-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-section {
+  min-width: 0;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.workspace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-block: 1px solid var(--theme-border);
+}
+
+.workspace-command,
+.workspace-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  background: var(--ui-sheen), var(--ui-glass-raised);
+  box-shadow: inset 0 1px 0 var(--ui-highlight), 0 2px 6px rgb(0 0 0 / 14%);
+  color: var(--theme-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace-icon-button { width: 36px; padding: 8px; }
+.workspace-command:hover, .workspace-icon-button:hover { border-color: var(--theme-primary); }
+.workspace-help { padding: 14px 0; border-bottom: 1px solid var(--theme-border); }
+.workspace-notice { padding: 16px; border-left: 2px solid var(--theme-primary); background: color-mix(in srgb, var(--theme-primary) 4%, var(--ui-surface)); }
+
+.workspace-media-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid var(--ui-edge);
+  border-radius: 8px;
+  background: var(--ui-glass);
+  box-shadow: var(--ui-shadow);
+}
+
+.workspace-media-grid > .workspace-header {
+  grid-column: 1 / -1;
+  border: 0;
+  border-bottom: 1px solid var(--theme-border);
+  border-radius: 0;
+}
+
+@media (min-width: 768px) {
+  .workspace-media-grid {
+    grid-template-columns: 224px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    height: calc(100dvh - 112px);
+  }
+}
+
+.run-mode-actions > button {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 4px 12px;
+  align-content: center;
+  justify-items: start;
+  min-height: 92px;
+  padding: 16px;
+  border-color: var(--theme-border);
+  background: var(--ui-sheen), var(--ui-glass);
+  box-shadow: var(--ui-shadow);
+  backdrop-filter: blur(12px);
+  text-align: left;
+}
+
+.run-mode-actions > button > svg {
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
+.run-mode-actions > button :is(h3, p) {
+  grid-column: 2;
+  margin: 0;
+  text-align: left;
+}
+
+.run-mode-actions > button h3 { font-size: 14px; }
+.run-mode-actions > button p { font-size: 12px; line-height: 1.5; }
+
+.run-mode-actions > button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--theme-primary) 50%, var(--theme-border));
+  background: var(--ui-sheen), var(--ui-glass-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 22%), inset 0 1px 0 var(--ui-highlight), 0 0 0 1px color-mix(in srgb, var(--theme-primary) 10%, transparent);
+}
+
+.insight-record-dialog {
+  margin: auto;
+  max-height: calc(100dvh - 32px);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *, .app-shell *::before, .app-shell *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .bg-theme-bg {
   background: var(--theme-bg);
 }

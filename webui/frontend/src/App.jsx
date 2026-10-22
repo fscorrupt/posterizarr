@@ -244,12 +244,12 @@ function AppContent() {
       )}
 
       {/* Main App - rendered in background while loading screen is shown */}
-      <div className="min-h-screen bg-gradient-to-br from-theme-dark via-theme-darker to-theme-dark text-theme-text">
+      <div className="app-shell min-h-screen text-theme-text">
         <TopNavbar />
         <Sidebar />
 
         <main
-          className={`pt-16 transition-all duration-300 ${isCollapsed ? "md:ml-20" : "md:ml-80"
+          className={`app-content pt-16 transition-all duration-300 ${isCollapsed ? "md:ml-20" : "md:ml-64"
             }`}
         >
           {/* Extra padding on mobile for sidebar menu */}

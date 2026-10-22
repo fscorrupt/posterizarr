@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Save,
@@ -666,9 +667,10 @@ function ConfigEditor() {
   const displayedGroups = getVisibleGroups();
 
   return (
-    <div className="space-y-6">
+        <div className="workspace-page space-y-6">
+            <WorkspaceHeader title="Configuration" subtitle={activeTab} />
       {/* Header */}
-      <div className="sticky top-[85px] z-30 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-theme-card/95 backdrop-blur-md border border-theme rounded-xl p-4 shadow-md">
+            <div className="workspace-toolbar sticky top-16 z-30 bg-theme-card flex-col md:flex-row items-start md:items-center justify-between">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-muted" />
           <input
@@ -700,7 +702,7 @@ function ConfigEditor() {
 
       <div className="flex gap-6">
          {!searchQuery && (
-            <div className="w-64 flex-shrink-0 bg-theme-card rounded-xl border border-theme p-2 overflow-y-auto hidden lg:block h-fit sticky top-6">
+            <div className="w-56 flex-shrink-0 p-2 overflow-y-auto hidden lg:block h-fit sticky top-36 border-r border-theme">
                 <div className="mb-2 px-3 py-2 text-xs font-semibold text-theme-muted uppercase tracking-wider">Config Groups</div>
                 {Object.entries(tabs).map(([tabName, tabData]) => (
                     <button key={tabName} onClick={() => navigate(tabData.path)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-all text-left ${activeTab === tabName ? "bg-theme-primary/10 text-theme-primary border border-theme-primary/30" : "text-theme-text hover:bg-theme-hover"}`}>

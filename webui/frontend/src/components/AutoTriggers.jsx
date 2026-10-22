@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useTranslation } from "react-i18next";
 import {
   Zap,
@@ -588,16 +589,15 @@ function AutoTriggers() {
   ];
 
   return (
-    <div className="px-4 py-6 space-y-8">
+    <div className="workspace-page space-y-6">
       {/* Header */}
-      <div className="text-center mb-10">
-        <div className="flex justify-center gap-4 mb-4">
-          <img src="/sonarr.png" alt="Sonarr" className="h-16 w-auto" />
-          <img src="/radarr.png" alt="Radarr" className="h-16 w-auto" />
-          <img src="/tautulli.png" alt="Tautulli" className="h-16 w-auto" />
-        </div>
-        <h1 className="text-4xl font-bold text-theme-text mb-3">{t("autoTriggers.header.title")}</h1>
-        <p className="text-lg text-theme-muted max-w-2xl mx-auto mb-5">{t("autoTriggers.header.subtitle")}</p>
+      <WorkspaceHeader icon={Zap} title={t("autoTriggers.header.title")}>
+        <img src="/sonarr.png" alt="Sonarr" className="h-7 w-auto" />
+        <img src="/radarr.png" alt="Radarr" className="h-7 w-auto" />
+        <img src="/tautulli.png" alt="Tautulli" className="h-7 w-auto" />
+      </WorkspaceHeader>
+      <details className="workspace-help">
+        <summary className="text-sm text-theme-muted cursor-pointer">{t("autoTriggers.header.subtitle")}</summary>
 
         {/* Compact Info Box */}
         <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 text-left inline-block max-w-2xl">
@@ -616,7 +616,7 @@ function AutoTriggers() {
             </li>
           </ul>
         </div>
-      </div>
+      </details>
 
       {/* Tabs */}
       <div className="bg-theme-card border border-theme rounded-lg p-2">

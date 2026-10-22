@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import {
   Layers,
   Download,
@@ -137,22 +138,12 @@ function HowItWorks() {
   ];
 
   return (
-    <div className="px-4 py-6 space-y-8">
+    <div className="workspace-page space-y-6">
       {/* Header */}
-      <div className="text-center mb-12">
-        <div className="flex justify-center mb-4">
-          <img src="/logo.png" alt="Posterizarr" className="h-12 w-auto" />
-        </div>
-        <h1 className="text-4xl font-bold text-theme-text mb-4">
-          {t("howItWorks.header.title")}
-        </h1>
-        <p className="text-xl text-theme-muted max-w-3xl mx-auto">
-          {t("howItWorks.header.subtitle")}
-        </p>
-      </div>
+      <WorkspaceHeader icon={Zap} title={t("howItWorks.header.title")} />
 
       {/* Workflow Steps */}
-      <div className="bg-theme-card border border-theme rounded-lg p-6 space-y-6">
+      <div className="workspace-section space-y-6">
         <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
           <Zap className="w-6 h-6 text-theme-primary" />
           {t("howItWorks.workflow.title")}
