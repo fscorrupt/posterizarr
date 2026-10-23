@@ -19413,6 +19413,12 @@ async def preview_dynamic_overlay(
     status_color: Optional[str] = Query("#FFA500"),
     resolution: Optional[str] = Query("4K"),
     languages: Optional[str] = Query("de,en"),
+    subtitle_languages: Optional[str] = Query(None),
+    aspect_ratio: Optional[float] = Query(None, gt=0, lt=10),
+    studio: Optional[str] = Query(None),
+    supplemental_layout: Optional[str] = Query(None),
+    streaming: Optional[str] = Query(None),
+    streaming_options: Optional[str] = Query(None),
     anime_tag: Optional[str] = Query(None),
     network: Optional[str] = Query(None),
     multi_ratings: Optional[str] = Query(None),
@@ -19420,6 +19426,7 @@ async def preview_dynamic_overlay(
     rating_orientation: Optional[str] = Query("horizontal"),
     rating_contrast_box: Optional[bool] = Query(True),
     rating_spacing: Optional[int] = Query(15),
+    rating_options: Optional[str] = Query(None),
     # Optional layout offsets
     rating_x: Optional[int] = Query(None),
     rating_y: Optional[int] = Query(None),
@@ -19523,6 +19530,9 @@ async def preview_dynamic_overlay(
         status_color = _clean_str(status_color)
         resolution = _clean_str(resolution)
         languages = _clean_str(languages)
+        subtitle_languages = _clean_str(subtitle_languages)
+        studio = _clean_str(studio)
+        streaming = _clean_str(streaming)
         anime_tag = _clean_str(anime_tag)
         network = _clean_str(network)
         multi_ratings = _clean_str(multi_ratings)
@@ -19651,6 +19661,16 @@ async def preview_dynamic_overlay(
             if value:
                 placements[key] = {"x": offset_x or 0, "y": offset_y or 0,
                                    "align": align or "left", "valign": valign or "top", "font_size": font_size}
+        extra_layout = json.loads(supplemental_layout or "{}")
+        for key, value in (("subtitle_languages", subtitle_languages), ("aspect", aspect_ratio), ("studio", studio), ("streaming", streaming)):
+            if value:
+                position = extra_layout.get(key) or {}
+                placements[key] = {
+                    "x": _clean_int(position.get("x")) or 0,
+                    "y": _clean_int(position.get("y")) or 0,
+                    "align": position.get("align") if position.get("align") in ("left", "center", "right") else "center",
+                    "valign": position.get("valign") if position.get("valign") in ("top", "center", "bottom") else "bottom",
+                }
         for key, font_name in (("rating", rating_font), ("status", status_font), ("runtime", runtime_font),
                                ("languages", languages_font), ("age_rating", age_rating_font)):
             if key in placements and font_name:
@@ -19671,9 +19691,12 @@ async def preview_dynamic_overlay(
         layers = build_preview_layers({
             "template_type": template_type, "rating": rating, "runtime": runtime,
             "status_label": status_label, "status_color": status_color, "resolution": resolution, "languages": languages,
+            "subtitle_languages": subtitle_languages, "aspect_ratio": aspect_ratio, "studio": studio,
             "network": network, "age_rating": age_rating, "age_rating_source": age_rating_source,
             "audio_codec": audio_codec, "video_format": video_format, "anime_tag": anime_tag,
             "library_name": library_name,
+            "rating_options": json.loads(rating_options or "{}"),
+            "streaming": streaming, "streaming_options": json.loads(streaming_options or "{}"),
         }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item,
             animetafill_config=get_animetafill_config())
 

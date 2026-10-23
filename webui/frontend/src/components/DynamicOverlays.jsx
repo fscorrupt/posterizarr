@@ -131,6 +131,7 @@ const DEFAULT_OVERLAY_PRESETS = [
   // User's core favorites
   { id: "runtimes", label: "Media Runtime", desc: "Duration badge (e.g. 124 min) - Recommended for Titlecards / Movies", level: "episode", category: "Core Overlays" },
   { id: "languages", label: "Audio Languages", desc: "Flags/badges for available audio tracks (DE, EN, JA, etc.) - Recommended for Titlecards / Movies", level: "episode", category: "Core Overlays" },
+  { id: "aspect", label: "Aspect Ratio", desc: "Video display ratio (1.33, 1.78, 2.35, etc.)", level: "movie", category: "Quality & Codecs" },
   { id: "ratings", label: "Audience / Critic Rating", desc: "IMDb / Rotten Tomatoes / TMDB / Metacritic score badges", level: "movie", category: "Core Overlays" },
   { id: "network", label: "Network Logo", desc: "TV network logos on season posters (HBO, Netflix, Apple TV+, etc.)", level: "season", category: "Core Overlays" },
   { id: "status", label: "Series Status", desc: "Airing, Returning, Ended, Canceled banner for TV series", level: "show", category: "Core Overlays" },
@@ -138,7 +139,7 @@ const DEFAULT_OVERLAY_PRESETS = [
   { id: "resolution", label: "Quality / Resolution Ribbon", desc: "4K, 1080p, HDR badges (used in overlays_movies.yml / overlays_tv.yml)", level: "movie", category: "Quality & Codecs" },
   { id: "ribbon", label: "Corner Ribbon", desc: "Corner ribbons for 4K UHD, Remux, HDR10+", level: "movie", category: "Quality & Codecs" },
   { id: "audio_codec", label: "Audio Codec", desc: "Dolby Atmos, TrueHD, DTS:X, DTS-HD MA, EAC3 badges", level: "movie", category: "Quality & Codecs" },
-  { id: "video_format", label: "Video Format", desc: "HDR10, Dolby Vision, H.265 / HEVC format badges", level: "movie", category: "Quality & Codecs" },
+  { id: "video_format", label: "Video Source", desc: "WEB, Blu-ray, Remux, HDTV, DVD from the media filename", level: "movie", category: "Quality & Codecs" },
   { id: "streaming", label: "Streaming Service", desc: "Platform badges (Netflix, Prime, Disney+, Apple TV+, Paramount+)", level: "show", category: "Branding" },
   { id: "studio", label: "Movie Studio", desc: "Studio logo overlays (Universal, Warner Bros, 20th Century, etc.)", level: "movie", category: "Branding" },
   { id: "content_rating_us_movie", label: "US Content Rating (Movie)", desc: "MPAA age rating (G, PG, PG-13, R, NC-17)", level: "movie", category: "Content Ratings" },
@@ -609,11 +610,16 @@ export default function DynamicOverlays() {
   const [showAssetGuides, setShowAssetGuides] = useState(true);
   const [applyAssetOverlay, setApplyAssetOverlay] = useState(true);
   const [previewRating, setPreviewRating] = useState("8.4");
+  const [previewRatingDefaults, setPreviewRatingDefaults] = useState({ sources: ["imdb", "tomatoes", "tmdb"], theme: "dark", orientation: "horizontal", contrast_box: true, spacing: 15 });
   const [previewResolution, setPreviewResolution] = useState("4K");
   const [previewStatus, setPreviewStatus] = useState("");
   const [previewStatusColor, setPreviewStatusColor] = useState("#FFA500");
   const [previewRuntime, setPreviewRuntime] = useState("1h 58m");
   const [previewLanguages, setPreviewLanguages] = useState("de,en");
+  const [previewSubtitles, setPreviewSubtitles] = useState("");
+  const [previewAspect, setPreviewAspect] = useState("");
+  const [previewStudio, setPreviewStudio] = useState("");
+  const [previewStreaming, setPreviewStreaming] = useState("");
   const [previewNetwork, setPreviewNetwork] = useState("");
   const [previewAnimeTag, setPreviewAnimeTag] = useState("");
   const [previewAgeRating, setPreviewAgeRating] = useState("15+");
@@ -677,6 +683,10 @@ export default function DynamicOverlays() {
     status: { x: 0, y: 30, align: "center", valign: "bottom", font_size: "", font: "" },
     resolution: { x: 0, y: 0, align: "center", valign: "top", mode: "banner", back_color: "#00000099", back_radius: 15, back_width: 245, back_height: 95 },
     languages: { x: 30, y: 35, align: "left", valign: "bottom", font_size: "", font: "" },
+    subtitle_languages: { x: 30, y: 135, align: "left", valign: "bottom" },
+    aspect: { x: 0, y: 150, align: "center", valign: "bottom" },
+    studio: { x: 30, y: 150, align: "right", valign: "top" },
+    streaming: { x: 30, y: 250, align: "left", valign: "bottom" },
     network: { x: 25, y: 25, align: "right", valign: "top" },
     anime: { x: 20, y: 20, align: "left", valign: "top", font_size: "", font: "" },
     age_rating: { x: 255, y: 37, align: "left", valign: "bottom", font_size: "", font: "" },
@@ -689,6 +699,10 @@ export default function DynamicOverlays() {
     status: { x: 0, y: 25, align: "center", valign: "bottom" },
     resolution: { x: 15, y: 15, align: "left", valign: "top", mode: "corner_badge", back_color: "#00000099", back_radius: 15, back_width: 260, back_height: 85 },
     languages: { x: 30, y: 30, align: "left", valign: "bottom" },
+    subtitle_languages: { x: 30, y: 130, align: "left", valign: "bottom" },
+    aspect: { x: 0, y: 100, align: "center", valign: "bottom" },
+    studio: { x: 30, y: 100, align: "right", valign: "top" },
+    streaming: { x: 30, y: 150, align: "left", valign: "bottom" },
     network: { x: 25, y: 25, align: "right", valign: "top" },
     anime: { x: 20, y: 20, align: "left", valign: "top" },
     age_rating: { x: 110, y: 30, align: "left", valign: "bottom" },
@@ -1424,6 +1438,10 @@ export default function DynamicOverlays() {
     age_rating: "Age Rating",
     resolution: "Resolution",
     languages: "Audio Languages",
+    subtitle_languages: "Subtitle Languages",
+    aspect: "Aspect Ratio",
+    studio: "Studio Logo",
+    streaming: "Streaming Services",
     network: "Network Logo",
     anime: "Anime Tag",
     status: "Show Status",
@@ -1445,6 +1463,10 @@ export default function DynamicOverlays() {
     if (previewAgeRating && previewAgeRating !== "Off") list.push("age_rating");
     if (previewResolution && previewResolution !== "None") list.push("resolution");
     if (previewLanguages && previewLanguages !== "Off") list.push("languages");
+    if (previewSubtitles) list.push("subtitle_languages");
+    if (previewAspect) list.push("aspect");
+    if (previewStudio) list.push("studio");
+    if (previewStreaming) list.push("streaming");
     if (previewNetwork && previewNetwork !== "Off") list.push("network");
     if (previewAnimeTag && previewAnimeTag !== "Off" && isLandscapeFormat(previewTemplate)) list.push("anime");
     if (previewStatus) list.push("status");
@@ -1541,6 +1563,7 @@ export default function DynamicOverlays() {
   const [visualVOffset, setVisualVOffset] = useState("0");
   const [visualBackColor, setVisualBackColor] = useState("#00000000");
   const [visualLanguages, setVisualLanguages] = useState("de, en, ja");
+  const [visualUseSubtitles, setVisualUseSubtitles] = useState(false);
   const [visualStatusText, setVisualStatusText] = useState("");
   const [visualStatusColor, setVisualStatusColor] = useState("#FFA500");
   const [visualFont, setVisualFont] = useState("");
@@ -2906,6 +2929,7 @@ export default function DynamicOverlays() {
     setVisualVOffset(vars.vertical_offset !== undefined ? String(vars.vertical_offset) : "0");
     setVisualBackColor(vars.back_color || "#00000000");
     setVisualLanguages(Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja");
+    setVisualUseSubtitles(vars.use_subtitles === true || vars.use_subtitles === "true");
     setVisualStatusText(vars.text || vars.status_label || vars.status || "");
     setVisualStatusColor(vars.font_color || vars.status_color || "#FFA500");
     setVisualFont(vars.font || "");
@@ -2943,6 +2967,7 @@ export default function DynamicOverlays() {
         if (visualFontColor) finalVariables.font_color = visualFontColor;
         if (editVariablesModal.overlay.name.toLowerCase().includes("lang")) {
           finalVariables.languages = visualLanguages.split(",").map(s => s.trim()).filter(Boolean);
+          finalVariables.use_subtitles = visualUseSubtitles;
         }
         if (editVariablesModal.overlay.name.toLowerCase().includes("status") || visualStatusText) {
           if (visualStatusText) finalVariables.text = visualStatusText;
@@ -3013,7 +3038,7 @@ export default function DynamicOverlays() {
       const curLib = { ...nextLibs[activeLib] };
       const curBadges = { ...curLib.badges };
       const badgeKeyMap = {
-        rating: "rating",
+        rating: curBadges.critic_rating?.enabled ? "critic_rating" : "rating",
         runtime: "runtime",
         status: "status",
         resolution: "resolution",
@@ -3273,7 +3298,7 @@ export default function DynamicOverlays() {
           const curLib = { ...nextLibs[activeLib] };
           const curBadges = { ...curLib.badges };
           const badgeKeyMap = {
-            rating: "rating",
+            rating: curBadges.critic_rating?.enabled ? "critic_rating" : "rating",
             runtime: "runtime",
             status: "status",
             resolution: "resolution",
@@ -3434,16 +3459,19 @@ export default function DynamicOverlays() {
     }
     try {
       setIsSavingLayout(true);
+      const layoutPayload = {};
       const curLibForSave = visualConfig?.libraries?.[libName];
       const curBadgesForSave = curLibForSave?.badges || {};
       const isCriticRatingEnabled = Boolean(
-        curBadgesForSave.critic_rating?.enabled ||
+        !curLibForSave || curBadgesForSave.critic_rating?.enabled ||
         (curBadgesForSave.rating?.source === "ratings" && curBadgesForSave.rating?.enabled)
       );
       const isRatingEnabled = Boolean(previewRating && previewRating !== "Off");
 
       if (isRatingEnabled && isCriticRatingEnabled) {
         layoutPayload.ratings = {
+          enabled: true,
+          ...previewRatingOptions,
           horizontal_offset: offsets.rating.x,
           vertical_offset: offsets.rating.y,
           horizontal_align: offsets.rating.align,
@@ -3520,6 +3548,18 @@ export default function DynamicOverlays() {
           vertical_align: offsets.languages?.valign ?? "bottom",
           ...(offsets.languages?.font_size ? { font_size: offsets.languages.font_size } : {}),
           ...(offsets.languages?.font ? { font: offsets.languages.font } : {})
+        };
+      }
+      for (const [key, enabled] of [["subtitle_languages", previewSubtitles], ["aspect", previewAspect], ["studio", previewStudio], ["streaming", previewStreaming]]) {
+        if (!enabled) continue;
+        const position = offsets[key];
+        layoutPayload[key] = {
+          horizontal_offset: position?.x ?? 0,
+          vertical_offset: position?.y ?? 0,
+          horizontal_align: position?.align || "center",
+          vertical_align: position?.valign || "bottom",
+          ...(key === "subtitle_languages" ? { use_subtitles: true } : {}),
+          ...(key === "streaming" ? previewStreamingOptions : {})
         };
       }
       if (previewNetwork && previewNetwork !== "Off") {
@@ -3624,9 +3664,11 @@ export default function DynamicOverlays() {
                 back_height: offsets.resolution.back_height || (isLandscapeFormat(previewTemplate) ? 85 : 95)
               };
             }
-            if (curBadges.rating && offsets.rating) {
-              curBadges.rating = {
-                ...curBadges.rating,
+            const scoreBadgeKey = curBadges.critic_rating?.enabled ? "critic_rating" : "rating";
+            if (curBadges[scoreBadgeKey] && offsets.rating) {
+              curBadges[scoreBadgeKey] = {
+                ...curBadges[scoreBadgeKey],
+                ...(scoreBadgeKey === "critic_rating" ? previewRatingOptions : {}),
                 offset_x: offsets.rating.x,
                 offset_y: offsets.rating.y,
                 position: `${offsets.rating.valign || "bottom"}-${offsets.rating.align || "right"}`
@@ -3690,6 +3732,10 @@ export default function DynamicOverlays() {
       setPreviewResolution("");
       setPreviewStatus("");
       setPreviewLanguages("");
+      setPreviewSubtitles("");
+      setPreviewAspect("");
+      setPreviewStudio("");
+      setPreviewStreaming("");
       setPreviewRuntime("");
       setPreviewRating("");
       setPreviewAgeRating("Off");
@@ -3819,6 +3865,18 @@ export default function DynamicOverlays() {
       setPreviewLanguages("");
     }
 
+    for (const [key, setter, sample] of [["subtitle_languages", setPreviewSubtitles, "de,en"], ["aspect", setPreviewAspect, "2.35"], ["studio", setPreviewStudio, "Universal Pictures"], ["streaming", setPreviewStreaming, "netflix,disney"]]) {
+      const badge = badges[key];
+      const level = badge?.level || (targetFormat === "episode_card" ? "episode" : isTv ? "show" : "movie");
+      const targetLevel = { movie_poster: "movie", show_poster: "show", season_poster: "season", episode_card: "episode", backdrop: "backdrop" }[targetFormat];
+      const enabled = badge?.enabled && (level === "all" || level === targetLevel);
+      setter(enabled ? (key === "subtitle_languages" ? (badge.languages || ["de", "en"]).join(",") : sample) : "");
+      if (enabled) {
+        const position = parsePos(badge.position, "center", "bottom");
+        nextOffsets[key] = { x: badge.offset_x ?? 0, y: badge.offset_y ?? 150, align: position.align, valign: position.valign };
+      }
+    }
+
     // 4. RUNTIME DURATION
     const runtimeLevel = (badges.runtime?.level || (isTv ? "episode" : "movie")).toLowerCase();
     const shouldShowRuntime = Boolean(badges.runtime?.enabled) && (
@@ -3847,7 +3905,9 @@ export default function DynamicOverlays() {
     }
 
     // 5. AUDIENCE / CRITIC RATINGS
-    const ratingBadge = badges.rating || badges.critic_rating;
+    const ratingBadge = badges.critic_rating?.enabled
+      ? badges.critic_rating
+      : (badges.rating?.enabled && ["ratings", "audience_rating"].includes(badges.rating.source) ? badges.rating : null);
     const ratingLevel = (ratingBadge?.level || (isTv ? "show" : "movie")).toLowerCase();
     const shouldShowRating = Boolean(ratingBadge?.enabled) && (
       (targetFormat === "movie_poster" && (ratingLevel === "movie" || ratingLevel === "all")) ||
@@ -4088,7 +4148,39 @@ export default function DynamicOverlays() {
   const activeCustomImageId = customImages[previewTemplate]?.previewImageId;
   const customImgParam = activeCustomImageId ? `&custom_image_id=${encodeURIComponent(activeCustomImageId)}` : "";
 
+  const selectedScoreBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.critic_rating;
+  const selectedStreamingBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.streaming;
+  const previewStreamingOptions = {
+    region: selectedStreamingBadge?.region || "US",
+    availability_types: selectedStreamingBadge?.availability_types || ["flatrate"],
+    style: selectedStreamingBadge?.style || "color",
+    overlay_limit: selectedStreamingBadge?.limit ?? 3,
+    spacing: selectedStreamingBadge?.spacing ?? 115,
+    orientation: selectedStreamingBadge?.orientation || "vertical"
+  };
+  const previewRatingOptions = {
+    sources: selectedScoreBadge?.sources || previewRatingDefaults.sources,
+    theme: selectedScoreBadge?.theme || previewRatingDefaults.theme,
+    orientation: selectedScoreBadge?.orientation || previewRatingDefaults.orientation,
+    contrast_box: selectedScoreBadge?.contrast_box ?? previewRatingDefaults.contrast_box,
+    spacing: selectedScoreBadge?.spacing ?? previewRatingDefaults.spacing
+  };
+  const updatePreviewRatingOptions = (patch) => {
+    setPreviewRatingDefaults(previous => ({ ...previous, ...patch }));
+    const library = selectedSaveLibrary || selectedVisualLib;
+    setVisualConfig(previous => {
+      if (!previous?.libraries?.[library]?.badges?.critic_rating) return previous;
+      const current = previous.libraries[library];
+      return { ...previous, libraries: { ...previous.libraries, [library]: { ...current, badges: { ...current.badges, critic_rating: { ...current.badges.critic_rating, ...patch } } } } };
+    });
+    setPreviewTimestamp(Date.now());
+  };
+
   const fontParams = [
+    `&streaming=${encodeURIComponent(previewStreaming)}&streaming_options=${encodeURIComponent(JSON.stringify(previewStreamingOptions))}`,
+    `&rating_options=${encodeURIComponent(JSON.stringify(previewRatingOptions))}`,
+    `&subtitle_languages=${encodeURIComponent(previewSubtitles)}&studio=${encodeURIComponent(previewStudio)}${previewAspect ? `&aspect_ratio=${encodeURIComponent(previewAspect)}` : ""}`,
+    `&supplemental_layout=${encodeURIComponent(JSON.stringify({ subtitle_languages: offsets.subtitle_languages, aspect: offsets.aspect, studio: offsets.studio, streaming: offsets.streaming }))}`,
     offsets.runtime?.font_size ? `&runtime_font_size=${offsets.runtime.font_size}` : (isLandscapeFormat(previewTemplate) ? `&runtime_font_size=52` : `&runtime_font_size=40`),
     offsets.runtime?.font ? `&runtime_font=${encodeURIComponent(offsets.runtime.font)}` : "",
     offsets.rating?.font_size ? `&rating_font_size=${offsets.rating.font_size}` : "",
@@ -4904,6 +4996,23 @@ export default function DynamicOverlays() {
                           </label>
                         </div>
                       </div>
+
+                      <div className="space-y-0.5 pt-0.5">
+                        <label className="text-[9px] font-semibold text-theme-muted uppercase">Badge Theme</label>
+                        <select
+                          value={criticBadge.theme || (isBackdrop ? (featureSettings?.rating_theme || "dark") : "dark")}
+                          onChange={(e) => {
+                            updateBadge("critic_rating", { theme: e.target.value });
+                            if (isBackdrop) handleUpdateDynamicSettings({ rating_theme: e.target.value });
+                          }}
+                          className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium"
+                        >
+                          <option value="dark">Dark (uses Dark Pill Box setting)</option>
+                          <option value="brand">Brand colors (IMDb yellow, RT red, TMDb navy…)</option>
+                          <option value="score">Score colors (green / yellow / red)</option>
+                        </select>
+                        <p className="text-[10px] text-theme-muted">Shown as the rating badge in Live Preview after saving.</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -5685,6 +5794,49 @@ export default function DynamicOverlays() {
               );
             };
 
+            const renderSupplementalBadges = () => (
+              <div className="space-y-4">
+                {[["subtitle_languages", "Subtitle Languages"], ["aspect", "Aspect Ratio"], ["studio", "Studio Logo"], ["streaming", "Streaming Services"]].map(([key, label]) => {
+                  const badge = badges[key] || {};
+                  return (
+                    <section key={key} className="border border-theme rounded-lg p-3 space-y-3">
+                      <label className="flex items-center justify-between gap-3 text-xs font-semibold text-theme-text">
+                        {label}
+                        <input type="checkbox" checked={Boolean(badge.enabled)} onChange={(event) => updateBadge(key, { enabled: event.target.checked })} />
+                      </label>
+                      {badge.enabled && <>
+                        <select aria-label={`${label} target`} value={badge.level || (isTv ? "episode" : "movie")} onChange={(event) => updateBadge(key, { level: event.target.value })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
+                          {["movie", "show", "season", "episode", "all"].map(level => <option key={level} value={level}>{level}</option>)}
+                        </select>
+                        {key === "subtitle_languages" && <input aria-label="Subtitle language codes" value={(badge.languages || ["de", "en"]).join(", ")} onChange={(event) => updateBadge(key, { languages: event.target.value.split(",").map(code => code.trim()).filter(Boolean) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />}
+                        {key === "streaming" && <>
+                          <label className="text-xs text-theme-muted">Country
+                            <input aria-label="Streaming country code" maxLength={2} value={badge.region || "US"} onChange={event => updateBadge(key, { region: event.target.value.toUpperCase() })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
+                          </label>
+                          <div className="flex flex-wrap gap-3">
+                            {[["flatrate", "Subscription"], ["free", "Free"], ["ads", "With Ads"], ["rent", "Rent"], ["buy", "Buy"]].map(([availability, text]) => (
+                              <label key={availability} className="flex items-center gap-1 text-xs text-theme-text"><input type="checkbox" checked={(badge.availability_types || ["flatrate"]).includes(availability)} onChange={event => updateBadge(key, { availability_types: event.target.checked ? [...(badge.availability_types || ["flatrate"]), availability] : (badge.availability_types || ["flatrate"]).filter(value => value !== availability) })} />{text}</label>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <select aria-label="Streaming logo style" value={badge.style || "color"} onChange={event => updateBadge(key, { style: event.target.value })} className="bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"><option value="color">Color</option><option value="white">White</option></select>
+                            <select aria-label="Streaming logo direction" value={badge.orientation || "vertical"} onChange={event => updateBadge(key, { orientation: event.target.value })} className="bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select>
+                            <label className="text-xs text-theme-muted">Logo Limit<input aria-label="Streaming logo limit" type="number" min="0" max="22" value={badge.limit ?? 3} onChange={event => updateBadge(key, { limit: Number(event.target.value) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" /></label>
+                            <label className="text-xs text-theme-muted">Spacing<input aria-label="Streaming logo spacing" type="number" min="0" value={badge.spacing ?? 115} onChange={event => updateBadge(key, { spacing: Number(event.target.value) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" /></label>
+                          </div>
+                          <a href="https://www.justwatch.com/" target="_blank" rel="noreferrer" className="text-xs text-theme-muted underline">Availability: TMDb / JustWatch</a>
+                        </>}
+                        <PositionPicker value={badge.position || "bottom-center"} onChange={position => updateBadge(key, { position })} />
+                        <div className="grid grid-cols-2 gap-2">
+                          {["x", "y"].map(axis => <label key={axis} className="text-xs text-theme-muted">{axis.toUpperCase()}<input type="number" value={badge[`offset_${axis}`] ?? (axis === "y" ? 150 : 0)} onChange={event => updateBadge(key, { [`offset_${axis}`]: Number(event.target.value) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-theme-text" /></label>)}
+                        </div>
+                      </>}
+                    </section>
+                  );
+                })}
+              </div>
+            );
+
             // 5. Media Runtime Duration Card
             const renderRuntimeCard = (contextDesc = "Duration badge (e.g. 24 min / 124 min)") => {
               const isRtEnabled = Boolean(badges.runtime?.enabled);
@@ -6385,6 +6537,7 @@ export default function DynamicOverlays() {
                               {renderVideoFormatCard()}
                               {renderAudioCodecCard()}
                               {renderAudioLanguagesCard(isTv ? "Audio tracks on Show posters" : "Audio tracks on Movie posters")}
+                              {renderSupplementalBadges()}
                               {isTv && renderStatusCard()}
                               {isTv && renderNetworkCard()}
                             </>
@@ -6395,6 +6548,7 @@ export default function DynamicOverlays() {
                               {renderVideoFormatCard()}
                               {renderAudioCodecCard()}
                               {renderAudioLanguagesCard("Audio tracks on 16:9 Backdrops")}
+                              {renderSupplementalBadges()}
                               {isTv && renderStatusCard()}
                               {isTv && renderNetworkCard()}
                             </>
@@ -6408,6 +6562,7 @@ export default function DynamicOverlays() {
                             <>
                               {renderAudioCodecCard()}
                               {renderAudioLanguagesCard("Audio tracks on Episode titlecards")}
+                              {renderSupplementalBadges()}
                               {renderCriticRatingCard(false)}
                             </>
                           )}
@@ -7616,7 +7771,11 @@ export default function DynamicOverlays() {
               <div className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <label className="text-xs font-semibold text-theme-text">Audience Rating Badge</label>
+                    <label className="text-xs font-semibold text-theme-text">
+                      {(!selectedSaveLibrary || visualConfig?.libraries?.[selectedSaveLibrary]?.badges?.critic_rating?.enabled
+                        || visualConfig?.libraries?.[selectedSaveLibrary]?.badges?.rating?.source === "ratings")
+                        ? "Critic & Audience Scores" : "Legacy Single-Score Badge"}
+                    </label>
                     {previewTemplate === "episode_card" && (
                       <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 rounded">
                         Titlecard
@@ -7670,6 +7829,21 @@ export default function DynamicOverlays() {
                       {score}
                     </button>
                   ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-xs text-theme-muted">Badge Theme
+                    <select aria-label="Rating badge theme" value={previewRatingOptions.theme} onChange={event => updatePreviewRatingOptions({ theme: event.target.value })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
+                      <option value="dark">Dark</option>
+                      <option value="brand">Brand Colors</option>
+                      <option value="score">Score Colors</option>
+                    </select>
+                  </label>
+                  <label className="text-xs text-theme-muted">Direction
+                    <select aria-label="Rating badge direction" value={previewRatingOptions.orientation} onChange={event => updatePreviewRatingOptions({ orientation: event.target.value })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
+                      <option value="horizontal">Horizontal</option>
+                      <option value="vertical">Vertical</option>
+                    </select>
+                  </label>
                 </div>
                 <input
                   type="range"
@@ -8010,6 +8184,14 @@ export default function DynamicOverlays() {
                   />
                 )}
               </div>
+
+              {[["subtitle_languages", "Subtitle Language Flags", previewSubtitles, setPreviewSubtitles], ["aspect", "Aspect Ratio", previewAspect, setPreviewAspect], ["studio", "Studio Logo", previewStudio, setPreviewStudio], ["streaming", "Streaming Services", previewStreaming, setPreviewStreaming]].map(([key, label, value, setter]) => (
+                <div key={key} className="space-y-2 border border-theme rounded-lg p-3">
+                  <label className="text-xs font-semibold text-theme-text" htmlFor={`preview-${key}`}>{label}</label>
+                  <input id={`preview-${key}`} type={key === "aspect" ? "number" : "text"} min={key === "aspect" ? "0.1" : undefined} max={key === "aspect" ? "9.99" : undefined} step={key === "aspect" ? "0.01" : undefined} value={value} onChange={event => { setter(event.target.value); setPreviewTimestamp(Date.now()); }} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
+                  {value && <BadgeOffsetControls itemKey={key} offset={offsets[key]} onChange={handleOffsetChange} fonts={availableFonts} />}
+                </div>
+              ))}
 
               {/* Runtime Duration */}
               <div className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
@@ -11367,8 +11549,12 @@ export default function DynamicOverlays() {
                 )}
 
                 {/* Optional Languages input */}
-                {(editVariablesModal.overlay.name.toLowerCase().includes("lang") || visualLanguages) && (
+                {editVariablesModal.overlay.name.toLowerCase().includes("lang") && (
                   <div className="space-y-1.5">
+                    <label className="flex items-center gap-2 text-xs text-theme-text">
+                      <input type="checkbox" checked={visualUseSubtitles} onChange={event => setVisualUseSubtitles(event.target.checked)} />
+                      Subtitle languages
+                    </label>
                     <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Languages (comma-separated)</label>
                     <input
                       type="text"

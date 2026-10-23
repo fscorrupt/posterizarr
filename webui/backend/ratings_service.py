@@ -22,6 +22,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 import hashlib
+from contextlib import closing
 from xml.etree.ElementTree import fromstring
 from PIL import Image, ImageDraw, ImageFont
 
@@ -126,6 +127,15 @@ class RatingsCacheManager:
                         CREATE INDEX IF NOT EXISTS idx_mrc_ids 
                         ON media_ratings_cache(imdb_id, tmdb_id);
                     """)
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS streaming_provider_cache (
+                            media_type TEXT NOT NULL,
+                            tmdb_id TEXT NOT NULL,
+                            provider_results TEXT NOT NULL,
+                            expires_at TEXT NOT NULL,
+                            PRIMARY KEY (media_type, tmdb_id)
+                        )
+                    """)
                     for col_sql in [
                         "ALTER TABLE media_ratings_cache ADD COLUMN show_status TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN network TEXT;",
@@ -139,6 +149,27 @@ class RatingsCacheManager:
             except Exception as e:
                 logger.error(f"[RatingsCache] Error initializing database: {e}")
 
+
+    def get_watch_providers(self, media_type: str, tmdb_id: str, allow_stale: bool = False) -> Optional[Dict[str, Any]]:
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                row = connection.execute(
+                    "SELECT provider_results, expires_at FROM streaming_provider_cache WHERE media_type = ? AND tmdb_id = ?",
+                    (media_type, str(tmdb_id))
+                ).fetchone()
+            if row is None or (not allow_stale and datetime.fromisoformat(row["expires_at"]) <= datetime.now()):
+                return None
+            return json.loads(row["provider_results"])
+
+    def save_watch_providers(self, media_type: str, tmdb_id: str, results: Dict[str, Any]) -> None:
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                with connection:
+                    connection.execute(
+                        "INSERT INTO streaming_provider_cache (media_type, tmdb_id, provider_results, expires_at) VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(media_type, tmdb_id) DO UPDATE SET provider_results = excluded.provider_results, expires_at = excluded.expires_at",
+                        (media_type, str(tmdb_id), json.dumps(results, sort_keys=True), (datetime.now() + timedelta(days=1)).isoformat())
+                    )
 
     def get_cached_ratings(self, server_type: str, item_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve unexpired cached ratings for a specific item."""

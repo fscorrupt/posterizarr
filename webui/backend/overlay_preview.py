@@ -92,17 +92,27 @@ def _position_compound_preview_layers(layers, placements, canvas_box):
         top = min(part[3][1] for part in rendered)
         right = max(part[3][2] for part in rendered)
         bottom = max(part[3][3] for part in rendered)
+        size = (right - left, bottom - top)
+        anchor = rendered[0][1]
+        # The recipe's own anchor offsets reproduce the production position exactly; drags shift relative to it.
+        original_left, original_top = get_coordinates(
+            canvas_box, size,
+            horizontal_align=anchor.get("horizontal_align") or "left", horizontal_offset=anchor.get("horizontal_offset", 0),
+            vertical_align=anchor.get("vertical_align") or "top", vertical_offset=anchor.get("vertical_offset", 0),
+        )
         target_left, target_top = get_coordinates(
-            canvas_box, (right - left, bottom - top),
+            canvas_box, size,
             horizontal_align=placement["align"], horizontal_offset=placement["x"],
             vertical_align=placement["valign"], vertical_offset=placement["y"],
         )
+        shift_x = target_left - original_left
+        shift_y = target_top - original_top
         for index, layer, image, bounds in rendered:
             result[index] = {
                 "name": layer.get("name"), "preview_key": key, "type": "preview",
                 "image_element": image.crop(bounds),
-                "horizontal_offset": bounds[0] + target_left - left,
-                "vertical_offset": bounds[1] + target_top - top,
+                "horizontal_offset": bounds[0] + shift_x,
+                "vertical_offset": bounds[1] + shift_y,
             }
     return result
 
@@ -110,6 +120,14 @@ def _position_compound_preview_layers(layers, placements, canvas_box):
 def preview_layer_key(layer):
     name = str(layer.get("name") or "").lower()
     path = str(layer.get("image_path") or "").lower().replace("\\", "/")
+    if name.startswith("streaming_") or "/streaming/" in path:
+        return "streaming"
+    if name.startswith("subtitle_languages_"):
+        return "subtitle_languages"
+    if name.startswith("aspect_"):
+        return "aspect"
+    if "studio" in name or "/studio/" in path:
+        return "studio"
     if "audio_codec" in name or "/audio_codec/" in path:
         return "audio_codec"
     if "video_format" in name:
@@ -177,22 +195,39 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
     if not hours and not minutes and runtime.isdigit():
         runtime_mins = int(runtime)
     status = str(options.get("status_label") or "").lower().replace(" series", "").strip()
+    try:
+        imdb_sample = f"{float(options.get('rating')):.1f}"
+    except (TypeError, ValueError):
+        imdb_sample = "8.4"
     metadata = {
         "title": "Preview", "media_type": "episode" if episode else "show" if show else "movie",
         "is_episode": episode, "is_season": season,
         "is_landscape": landscape,
         "is_backdrop": template in ("backdrop", "background"),
         "rating": options.get("rating"), "audience_rating": options.get("rating"),
+        "multi_ratings": {
+            "imdb": imdb_sample, "tomatoes": "93", "tomatoesaudience": "88", "tmdb": "8.1",
+            "trakt": "85", "letterboxd": "4.1", "metacritic": "78",
+        } if options.get("rating") else None,
         "runtime_mins": runtime_mins, "status": status,
         "resolution": options.get("resolution"),
         "languages": [code.strip() for code in str(options.get("languages") or "").split(",") if code.strip()],
         "audio_languages": [code.strip() for code in str(options.get("languages") or "").split(",") if code.strip()],
+        "subtitle_languages": [code.strip() for code in str(options.get("subtitle_languages") or "").split(",") if code.strip()],
+        "aspect_ratio": options.get("aspect_ratio"),
+        "studio": options.get("studio"),
         "network": options.get("network"), "networks": [options["network"]] if options.get("network") else [],
         "content_rating": options.get("age_rating"),
         "audio_codec": options.get("audio_codec"),
         "filepath": str(options.get("video_format") or ""),
         "anime_tag": options.get("anime_tag"),
     }
+    if options.get("streaming"):
+        from overlay_sync_service import STREAMING_PROVIDER_BADGES
+        requested = {value.strip().lower() for value in str(options["streaming"]).split(",")}
+        providers = [{"provider_id": min(identifiers)} for key, _, identifiers in STREAMING_PROVIDER_BADGES if key in requested]
+        region = str((options.get("streaming_options") or {}).get("region") or "US").upper()
+        metadata["streaming_providers"] = {region: {availability: providers for availability in ("flatrate", "free", "ads", "rent", "buy")}}
     if season:
         metadata["season_number"] = 1
     if episode:
@@ -202,11 +237,21 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         "resolution": "resolution", "languages": "languages", "network": "network",
         "age_rating": options.get("age_rating_source") or "commonsense",
         "audio_codec": "audio_codec", "video_format": "video_format", "anime": "anime",
+        "subtitle_languages": "languages", "aspect": "aspect", "studio": "studio",
+        "streaming": "streaming",
     }
     rules = copy.deepcopy(library_rules) if library_rules is not None else [
-        {"default": default, "template_variables": {"builder_level": "all"}}
+        {"default": default, "template_variables": {"builder_level": "all", **({"use_subtitles": True} if key == "subtitle_languages" else {})}}
         for key, default in defaults.items() if key in placements
     ]
+    rating_options = options.get("rating_options") or {}
+    allowed_rating_options = {"sources", "theme", "orientation", "contrast_box", "spacing"}
+    for rule in rules:
+        if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating"):
+            rule.setdefault("template_variables", {}).update({key: value for key, value in rating_options.items() if key in allowed_rating_options})
+        if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming":
+            allowed_streaming_options = {"region", "availability_types", "style", "overlay_limit", "spacing", "orientation"}
+            rule.setdefault("template_variables", {}).update({key: value for key, value in (options.get("streaming_options") or {}).items() if key in allowed_streaming_options})
     layers = builder(metadata, rules, Path(overlays_dir), is_landscape=landscape)
     anime_layer = _animetafill_preview_layer(options, animetafill_config)
     if anime_layer:

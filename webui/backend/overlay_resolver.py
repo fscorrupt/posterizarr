@@ -17,7 +17,7 @@ import asyncio
 import socket
 import ipaddress
 import urllib.parse
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional, Dict, Any, List, Set, Union, Tuple
 import httpx
 
@@ -134,6 +134,10 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
         return None
 
     clean = image_name.replace("\\", "/").strip().lstrip("/")
+    parts = PurePosixPath(clean).parts
+    asset_indices = [index for index, part in enumerate(parts) if part.lower() == "assets"]
+    if asset_indices:
+        clean = str(PurePosixPath(*parts[asset_indices[-1] + 1:]))
     clean_lower = clean.lower()
 
     # 1. Direct path with official subfolder (e.g. flag/square/ad.png, resolution/4k.png, rating/imdb.png)
@@ -1553,6 +1557,8 @@ class OverlayResolver:
                 if not rule_default and not rule_file:
                     continue
                 rule_name = (rule_default or rule_file).lower()
+                if rule_name == "languages" and str((rule.get("template_variables") or {}).get("use_subtitles", False)).lower() in ("true", "1"):
+                    rule_name = "subtitle_languages"
                 is_res_rule = (
                     "overlays_movies.yml" in rule_name or
                     "overlays_tv.yml" in rule_name or
@@ -1573,6 +1579,8 @@ class OverlayResolver:
                         (key_lower in ("rating", "ratings") and "rating" in rule_name and not any(cr in rule_name for cr in age_rating_aliases)) or
                         (key_lower in ("runtime", "runtimes") and "runtime" in rule_name)
                     )
+                    if key_lower in ("languages", "subtitle_languages") and rule_name in ("languages", "subtitle_languages"):
+                        is_match = key_lower == rule_name
                     if is_match:
                         matched_entries.append((key, coords))
                         matched_keys.add(key)
@@ -1695,14 +1703,22 @@ class OverlayResolver:
                 if key_lower == "resolution" and has_res_file:
                     continue
                 # Internal UI keys should NEVER be appended as overlay rules in config.yml
-                if key_lower in ("age_rating", "rating", "runtime", "ratings", "runtimes"):
+                if key_lower in ("age_rating", "rating", "runtime", "runtimes"):
                     continue
                 # If key is an age rating alias but an age rating rule is already configured, skip
                 if key_lower in age_rating_aliases and any(any(cr in str(r.get("default") or r.get("file") or "").lower() for cr in age_rating_aliases) for r in overlay_files if isinstance(r, dict)):
                     continue
                 clean_vars = {k: v for k, v in coords.items() if v is not None}
                 if clean_vars:
-                    def_key = key
+                    target_level = {
+                        "movie_poster": "movie", "show_poster": "show", "season_poster": "season",
+                        "episode_card": "episode", "titlecard": "episode", "backdrop": "all", "background": "all"
+                    }.get(target_format)
+                    if target_level:
+                        clean_vars.setdefault("builder_level", target_level)
+                    def_key = "languages" if key_lower == "subtitle_languages" else key
+                    if key_lower == "subtitle_languages":
+                        clean_vars["use_subtitles"] = True
                     overlay_files.append({
                         "default": def_key,
                         "template_variables": clean_vars
@@ -1720,8 +1736,8 @@ class OverlayResolver:
             # If ratings is explicitly null/disabled in layout_updates, OR not enabled in visual badges, purge orphan default: ratings rules!
             has_critic_enabled = False
             try:
-                from dynamic_overlays_service import load_dynamic_overlays_visual_config
-                vis_cfg = load_dynamic_overlays_visual_config()
+                from dynamic_overlays_service import load_visual_config
+                vis_cfg = load_visual_config()
                 lib_badges = vis_cfg.get("libraries", {}).get(clean_lib_name, {}).get("badges", {})
                 has_critic_enabled = bool(
                     lib_badges.get("critic_rating", {}).get("enabled") or
@@ -1731,6 +1747,8 @@ class OverlayResolver:
                 pass
 
             ratings_update_val = layout_updates.get("ratings")
+            if isinstance(ratings_update_val, dict) and ratings_update_val.get("enabled") is not False:
+                has_critic_enabled = True
             ratings_explicitly_disabled = (
                 "ratings" in layout_updates and (
                     ratings_update_val is None or
@@ -1790,6 +1808,9 @@ class OverlayResolver:
                     badge_map = {
                         "languages": "audio_languages",
                         "audio_languages": "audio_languages",
+                        "subtitle_languages": "subtitle_languages",
+                        "aspect": "aspect",
+                        "studio": "studio",
                         "runtimes": "runtime",
                         "runtime": "runtime",
                         "status": "status",
@@ -2266,6 +2287,8 @@ class OverlayConfigEngine:
             if not res or len(res) < 4:
                 continue
             file_overlays, file_queues, file_templates, file_vars = res
+            subtitle_rule = str(file_vars.get("use_subtitles", False)).lower() in ("true", "1")
+            queue_prefix = "subtitle_" if subtitle_rule else ""
             definitions_key = dumps([file_overlays, file_templates, file_vars])
             if not hasattr(self, "_expanded_rules_cache"):
                 self._expanded_rules_cache = {}
@@ -2279,7 +2302,7 @@ class OverlayConfigEngine:
             for q_name, q_def in file_queues.items():
                 if isinstance(q_def, dict) and "settings" in q_def:
                     slots = self._resolve_queue_slots(q_def["settings"], file_vars)
-                    all_queues[q_name] = slots
+                    all_queues[queue_prefix + q_name] = slots
 
             # Process each overlay in file
             for ov_key, ov_def in file_overlays.items():
@@ -2421,6 +2444,13 @@ class OverlayConfigEngine:
                     "scale_width": _clean_int(ov_data.get("scale_width")),
                     "scale_height": _clean_int(ov_data.get("scale_height")),
                 }
+
+                if subtitle_rule:
+                    resolved_ov["mapping_name"] = "subtitle_languages_" + mapping_name
+                    if resolved_ov.get("queue"):
+                        resolved_ov["queue"] = queue_prefix + resolved_ov["queue"]
+                elif str(rule_entry.get("default", "")).lower() == "aspect":
+                    resolved_ov["mapping_name"] = "aspect_" + mapping_name
 
                 # Resolution badge contrast fallback: if back_color not specified, default to dark glass pill
                 if str(resolved_ov.get("name") or "").lower() in ("4k", "1080p", "720p", "576p", "480p", "resolution"):
@@ -2768,6 +2798,22 @@ class OverlayConfigEngine:
             item_langs = [str(l).strip().lower() for l in meta.get("subtitle_languages", [])]
             targets = [str(x).strip().lower() for x in (v if isinstance(v, list) else [v])]
             return any(t in item_langs for t in targets)
+        if k.split(".")[0] in ("aspect", "aspect_ratio"):
+            try:
+                aspect = float(meta.get("aspect_ratio"))
+                target = float(v)
+            except (ValueError, TypeError):
+                return False
+            operator = k.partition(".")[2]
+            if operator == "gt":
+                return aspect > target
+            if operator == "gte":
+                return aspect >= target
+            if operator == "lt":
+                return aspect < target
+            if operator == "lte":
+                return aspect <= target
+            return abs(aspect - target) < 0.01
         if k.startswith("audience_rating") or k.startswith("rating"):
             raw_score = meta.get("audience_rating") or meta.get("rating")
             try:

@@ -642,11 +642,15 @@ class DynamicOverlayCompositor:
                         resolved_ip = ip
                     else:
                         ip_name = ip.name
+                        streaming_parts = [index for index, part in enumerate(ip.parts) if part.lower() == "streaming"]
+                        streaming_path = Path(*ip.parts[streaming_parts[-1]:]) if streaming_parts else None
                         for ad in candidate_asset_dirs:
-                            cand = ad / ip_name
+                            cand = ad / (streaming_path if streaming_path is not None else ip_name)
                             if cand.exists():
                                 resolved_ip = cand
                                 break
+                            if streaming_path is not None:
+                                continue
                             for sub in ["rating", "flag/square", "flags/square", "flag/round", "flags/round", "resolution", "commonsense", "ribbon"]:
                                 cand_sub = ad / sub / ip_name
                                 if cand_sub.exists():

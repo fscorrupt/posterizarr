@@ -911,15 +911,17 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 raw_x = vars_dict.get("horizontal_offset")
                 raw_y = vars_dict.get("vertical_offset")
                 def_y = 35 if media_type == "movie" else 30
-                badges["audio_languages"] = {
+                language_key = "subtitle_languages" if str(vars_dict.get("use_subtitles", False)).lower() in ("true", "1") else "audio_languages"
+                badges[language_key] = {
                     "enabled": True,
                     "languages": vars_dict.get("languages", ["de", "en"]),
                     "level": vars_dict.get("builder_level", "episode" if media_type == "show" else "movie"),
                     "position": _to_unified_position(h_pos, v_pos),
                     "style": vars_dict.get("style", "square"),
-                    "offset_x": int(raw_x) if (raw_x is not None and int(raw_x) > 0) else 30,
-                    "offset_y": int(raw_y) if (raw_y is not None and int(raw_y) > 0) else def_y,
-                    "limit": vars_dict.get("overlay_limit", 5)
+                    "offset_x": int(raw_x) if raw_x is not None else 30,
+                    "offset_y": int(raw_y) if raw_y is not None else def_y,
+                    "limit": vars_dict.get("overlay_limit", 5),
+                    "template_variables": dict(vars_dict)
                 }
 
             # 2. Runtime
@@ -961,7 +963,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 }
 
             # 4. Network
-            elif default_name in ("network", "studio"):
+            elif default_name == "network":
                 h_pos = vars_dict.get("horizontal_position") or vars_dict.get("horizontal_align", "center")
                 v_pos = vars_dict.get("vertical_position") or vars_dict.get("vertical_align", "bottom")
                 badges["network"] = {
@@ -1005,6 +1007,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "orientation": vars_dict.get("orientation", "horizontal"),
                     "spacing": vars_dict.get("spacing", 15),
                     "contrast_box": vars_dict.get("contrast_box", True),
+                    "theme": vars_dict.get("theme", "dark"),
                     "back_radius": vars_dict.get("back_radius", 8),
                     "back_padding": vars_dict.get("back_padding", 6),
                     "font_size": vars_dict.get("font_size", 30)
@@ -1091,6 +1094,26 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "formats": vars_dict.get("formats", ["remux", "bluray", "web", "hdtv", "dvd", "telesync", "cam"])
                 }
 
+            elif default_name in ("aspect", "studio", "streaming"):
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "center")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
+                badges[default_name] = {
+                    "enabled": True,
+                    "level": vars_dict.get("builder_level", "movie" if media_type == "movie" else "show"),
+                    "position": _to_unified_position(h_pos, v_pos),
+                    "offset_x": int(vars_dict.get("horizontal_offset", 0)),
+                    "offset_y": int(vars_dict.get("vertical_offset", 150)),
+                    "template_variables": dict(vars_dict),
+                    **({
+                        "region": vars_dict.get("region", "US"),
+                        "availability_types": vars_dict.get("availability_types", ["flatrate"]),
+                        "style": vars_dict.get("style", "color"),
+                        "limit": vars_dict.get("overlay_limit", 3),
+                        "spacing": vars_dict.get("spacing", 115),
+                        "orientation": vars_dict.get("orientation", "vertical")
+                    } if default_name == "streaming" else {})
+                }
+
             # 9. Anime Overlays
             elif "anime_overlays.yml" in file_name or default_name == "anime":
                 h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "left")
@@ -1174,6 +1197,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 score_vars["spacing"] = int(b_score["spacing"])
             if b_score.get("contrast_box") is not None:
                 score_vars["contrast_box"] = bool(b_score["contrast_box"])
+            if b_score.get("theme") in ("dark", "brand", "score"):
+                score_vars["theme"] = b_score["theme"]
             if b_score.get("back_radius") is not None:
                 score_vars["back_radius"] = int(b_score["back_radius"])
             if b_score.get("back_padding") is not None:
@@ -1203,24 +1228,52 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             })
 
         # 3. Audio Languages
-        b_lang = badges.get("audio_languages", {})
-        if b_lang.get("enabled"):
+        for language_key in ("audio_languages", "subtitle_languages"):
+            b_lang = badges.get(language_key, {})
+            if not b_lang.get("enabled"):
+                continue
             h, v = _split_unified_position(b_lang.get("position", "bottom-left"))
             overlay_files.append({
                 "default": "languages",
                 "template_variables": {
+                    **b_lang.get("template_variables", {}),
+                    "use_subtitles": language_key == "subtitle_languages",
                     "languages": b_lang.get("languages", ["de", "en"]),
                     "builder_level": b_lang.get("level", "episode" if media_type == "show" else "movie"),
                     "overlay_limit": int(b_lang.get("limit", 5)),
                     "horizontal_position": h,
                     "vertical_position": v,
                     "style": b_lang.get("style", "square"),
-                    "horizontal_offset": int(b_lang.get("offset_x")) if (b_lang.get("offset_x") is not None and int(b_lang.get("offset_x")) > 0) else 30,
-                    "vertical_offset": int(b_lang.get("offset_y")) if (b_lang.get("offset_y") is not None and int(b_lang.get("offset_y")) > 0) else (35 if media_type == "movie" else 30),
+                    "horizontal_offset": int(b_lang.get("offset_x", 30)),
+                    "vertical_offset": int(b_lang.get("offset_y", 35 if media_type == "movie" else 30)),
                     "back_color": "#00000000",
                     "font_color": "#00000000",
                     "text": "",
                     "final_name": "<<key>>"
+                }
+            })
+
+        for badge_key in ("aspect", "studio", "streaming"):
+            badge = badges.get(badge_key, {})
+            if not badge.get("enabled"):
+                continue
+            h, v = _split_unified_position(badge.get("position", "bottom-center"))
+            overlay_files.append({
+                "default": badge_key,
+                "template_variables": {
+                    **badge.get("template_variables", {}),
+                    "builder_level": badge.get("level", "movie" if media_type == "movie" else "show"),
+                    "horizontal_align": h, "vertical_align": v,
+                    "horizontal_offset": int(badge.get("offset_x", 0)),
+                    "vertical_offset": int(badge.get("offset_y", 150)),
+                    **({
+                        "region": str(badge.get("region", "US")).upper(),
+                        "availability_types": badge.get("availability_types", ["flatrate"]),
+                        "style": badge.get("style", "color"),
+                        "overlay_limit": int(badge.get("limit", 3)),
+                        "spacing": int(badge.get("spacing", 115)),
+                        "orientation": badge.get("orientation", "vertical")
+                    } if badge_key == "streaming" else {})
                 }
             })
 
