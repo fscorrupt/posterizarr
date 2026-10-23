@@ -248,12 +248,23 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         rules = [rule for rule in rules if not (isinstance(rule, dict) and rule.get("default") in ("ratings", "rating", "single_rating"))]
         rules.append({"default": defaults["rating"], "template_variables": {"builder_level": "all", **(options.get("rating_options") or {})}})
     if "resolution" in placements and options.get("resolution_mode"):
+        resolution_mode = "corner_badge" if options["resolution_mode"] == "badge" else options["resolution_mode"]
+        for rule in rules:
+            if isinstance(rule, dict) and any(name in str(rule.get("file") or "") for name in ("overlays_movies.yml", "overlays_tv.yml")):
+                variables = rule.setdefault("template_variables", {})
+                for key in ("4K_banner", "1080p_banner", "720p_banner", "4K", "1080p", "720p"):
+                    variables[key] = False
         resolution_rules = [rule for rule in rules if isinstance(rule, dict) and rule.get("default") == "resolution"]
         if not resolution_rules:
             resolution_rules = [{"default": "resolution", "template_variables": {"builder_level": "all"}}]
             rules.extend(resolution_rules)
         for rule in resolution_rules:
-            rule.setdefault("template_variables", {})["mode"] = options["resolution_mode"]
+            rule.setdefault("template_variables", {}).update({"mode": resolution_mode, "4K_banner": resolution_mode == "banner"})
+            variables = rule["template_variables"]
+            for key in ("back_color", "back_radius", "back_width", "back_height"):
+                value = options.get("resolution_" + key)
+                if value is not None:
+                    variables[key] = value
     for key in ("subtitle_languages", "aspect", "studio", "streaming", "audio_codec"):
         if key not in placements:
             continue

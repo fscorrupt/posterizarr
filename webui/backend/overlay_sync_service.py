@@ -1629,7 +1629,7 @@ def build_overlay_layers_for_item(
     )
     rating_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating")]
     single_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "single_rating"]
-    banner_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "resolution" and str((rule.get("template_variables") or {}).get("mode", "")).lower() == "banner" and not is_landscape]
+    resolution_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "resolution" and str((rule.get("template_variables") or {}).get("mode", "")).lower() in ("banner", "badge", "corner_badge")]
     streaming_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming"]
     native_rating_layers = []
     for rule in single_rules:
@@ -1647,22 +1647,44 @@ def build_overlay_layers_for_item(
         for layer in single_layers:
             layer.update({"name": "single_rating", "type": "text", "image_path": None})
         native_rating_layers.extend(single_layers)
-    for rule in banner_rules:
+    for rule in resolution_rules:
         variables = rule.get("template_variables") or {}
-        if str(variables.get("builder_level", "all")).lower() not in ("all", item_level):
+        target = str(variables.get("builder_level", "all")).lower()
+        if target not in ("all", item_level) and not (item_level == "backdrop" and target in ("movie", "show")):
             continue
-        if str(item_metadata.get("resolution", "")).lower() not in ("4k", "2160", "2160p", "uhd"):
+        resolution = str(item_metadata.get("resolution") or "").strip().lower()
+        if resolution in ("", "none", "off", "unknown"):
             continue
-        artwork = next((path for path in (overlays_dir / "assets" / "4K_banner.png", overlays_dir.parent / "4K_banner.png") if path.exists()), None)
-        native_rating_layers.append({
-            "name": "resolution_banner", "type": "image" if artwork else "text",
-            "image_path": str(artwork) if artwork else None, "text": "4K ULTRA HD",
-            "font_path": str(overlays_dir / "fonts" / "Inter-Bold.ttf"), "font_size": 54,
-            "font_color": "#FFFFFF", "back_color": "#111111EE",
-            "back_width": PORTRAIT_DIM[0], "back_height": 100,
-            "scale_width": PORTRAIT_DIM[0], "horizontal_align": "center", "horizontal_offset": 0,
-            "vertical_align": "top", "vertical_offset": 0,
-        })
+        tier = next((name for name, terms in (
+            ("4k", ("4k", "2160", "3840", "uhd")), ("1080p", ("1080", "fhd")),
+            ("720p", ("720",)), ("576p", ("576", "pal")), ("480p", ("480", "sd", "ntsc"))
+        ) if any(term in resolution for term in terms)), None)
+        if tier is None:
+            continue
+        if variables.get("mode") == "banner" and not is_landscape and tier == "4k":
+            artwork = next((path for path in (overlays_dir / "assets" / "4K_banner.png", overlays_dir.parent / "4K_banner.png") if path.exists()), None)
+            banner = {"name": "resolution_banner", "horizontal_align": "center", "horizontal_offset": 0, "vertical_align": "top", "vertical_offset": 0}
+            if artwork:
+                banner.update({"type": "image", "image_path": str(artwork), "scale_width": PORTRAIT_DIM[0]})
+            else:
+                banner.update({"type": "text", "text": "4K ULTRA HD", "font_path": str(overlays_dir / "fonts" / "Inter-Bold.ttf"),
+                               "font_size": 54, "font_color": "#FFFFFF", "back_color": "#111111EE", "back_width": PORTRAIT_DIM[0], "back_height": 100})
+            native_rating_layers.append(banner)
+        else:
+            variant = "dvhdr" if item_metadata.get("has_dolby_vision") and item_metadata.get("has_hdr") else ("dv" if item_metadata.get("has_dolby_vision") else ("hdr" if item_metadata.get("has_hdr") else ""))
+            badge_dir = overlays_dir / "assets" / "resolution"
+            artwork = badge_dir / f"{tier}{variant}.png"
+            if not artwork.exists():
+                artwork = badge_dir / f"{tier}.png"
+            native_rating_layers.append({
+                "name": "resolution", "type": "image", "image_path": str(artwork), "scale_height": int(variables.get("scale_height", 55)),
+                "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position") or "left",
+                "vertical_align": variables.get("vertical_align") or variables.get("vertical_position") or "top",
+                "horizontal_offset": int(variables.get("horizontal_offset", 15)), "vertical_offset": int(variables.get("vertical_offset", 15)),
+                "back_color": variables.get("back_color", "#00000099"), "back_radius": int(variables.get("back_radius", 15)),
+                "back_width": int(variables.get("back_width") or (260 if is_landscape else 245)),
+                "back_height": int(variables.get("back_height") or (85 if is_landscape else 95)),
+            })
     for rule in rating_rules:
         variables = rule.get("template_variables") or {}
         target = str(variables.get("builder_level", "all")).lower()
@@ -1680,7 +1702,7 @@ def build_overlay_layers_for_item(
         target = str(variables.get("builder_level", "show" if item_level == "show" else "movie")).lower()
         if target in ("all", item_level) or (item_level == "backdrop" and target in ("movie", "show")):
             native_rating_layers.extend(build_streaming_layers(item_metadata, variables, overlays_dir))
-    engine_rules = [rule for rule in library_rules if rule not in rating_rules and rule not in single_rules and rule not in banner_rules and rule not in streaming_rules]
+    engine_rules = [rule for rule in library_rules if rule not in rating_rules and rule not in single_rules and rule not in resolution_rules and rule not in streaming_rules]
     try:
         from overlay_resolver import OverlayConfigEngine, PROJECT_ROOT
         global _CACHED_CONFIG_ENGINE, _CACHED_CONFIG_ENGINE_ROOT
@@ -1692,7 +1714,7 @@ def build_overlay_layers_for_item(
             _CACHED_CONFIG_ENGINE_ROOT = project_root
         engine = _CACHED_CONFIG_ENGINE
         layers = engine.evaluate_item(item_metadata, engine_rules)
-        if any(layer.get("name") == "resolution_banner" for layer in native_rating_layers):
+        if any(layer.get("name") in ("resolution_banner", "resolution") for layer in native_rating_layers):
             layers = [layer for layer in layers if str(layer.get("name") or "").lower() not in ("4k_banner", "resolution_banner", "resolution", "4k", "1080p", "720p", "576p", "480p")]
 
         if layers or native_rating_layers or not engine_rules:
@@ -2177,7 +2199,8 @@ _sync_queue_worker_active = False
 
 def is_overlay_sync_running() -> bool:
     with _sync_condition:
-        return _is_sync_running or _sync_queue_worker_active
+        from plex_image_cleanup import is_cleanup_running
+        return _is_sync_running or _sync_queue_worker_active or is_cleanup_running()
 
 
 def stop_overlay_sync() -> bool:
@@ -2213,7 +2236,8 @@ def submit_overlay_sync_task(**options):
     execution_keys = ("target_server", "scope", "library", "base_dir", "assets_dir", "config_path", "log_file_path")
     request_key = tuple(str(request.get(key) or "") for key in execution_keys)
     with _sync_condition:
-        busy = _is_sync_running or _sync_queue_worker_active
+        from plex_image_cleanup import is_cleanup_running
+        busy = _is_sync_running or _sync_queue_worker_active or is_cleanup_running()
         if busy and not targets:
             return {"success": False, "is_running": True, "error": "A dynamic overlay sync task is already running."}
         pending = next((item for item in _pending_sync_requests
@@ -2245,7 +2269,8 @@ def _run_overlay_sync_queue():
     global _sync_queue_worker_active
     while True:
         with _sync_condition:
-            _sync_condition.wait_for(lambda: not _is_sync_running)
+            from plex_image_cleanup import is_cleanup_running
+            _sync_condition.wait_for(lambda: not _is_sync_running and not is_cleanup_running())
             if not _pending_sync_requests:
                 _sync_queue_worker_active = False
                 _sync_condition.notify_all()
@@ -2564,7 +2589,8 @@ async def run_overlay_sync_task(
 ) -> Dict[str, Any]:
     global _is_sync_running
     with _sync_condition:
-        if _is_sync_running:
+        from plex_image_cleanup import is_cleanup_running
+        if _is_sync_running or is_cleanup_running():
             return {"success": False, "is_running": True, "error": "A dynamic overlay sync task is already running."}
         _is_sync_running = True
     try:

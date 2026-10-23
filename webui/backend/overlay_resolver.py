@@ -1575,6 +1575,10 @@ class OverlayResolver:
                 if not rule_default and not rule_file:
                     continue
                 rule_name = (rule_default or rule_file).lower()
+                if rule_name == "resolution" and target_format in ("movie_poster", "show_poster", "season_poster", "episode_card", "titlecard"):
+                    target_resolution_level = {"movie_poster": "movie", "show_poster": "show", "season_poster": "season", "episode_card": "episode", "titlecard": "episode"}[target_format]
+                    if (rule.get("template_variables") or {}).get("builder_level", "all") not in ("all", target_resolution_level):
+                        continue
                 if rule_name == "single_rating":
                     rule_name = "rating"
                 if rule_name == "languages" and str((rule.get("template_variables") or {}).get("use_subtitles", False)).lower() in ("true", "1"):
@@ -1661,6 +1665,17 @@ class OverlayResolver:
 
                     if any(k.lower() == "resolution" for k, _ in matched_entries) and ("overlays_movies.yml" in rule_name or "overlays_tv.yml" in rule_name):
                         res_coords = next(c for k, c in matched_entries if k.lower() == "resolution")
+                        if res_coords.get("mode") in ("banner", "badge", "corner_badge"):
+                            if "overlays_tv.yml" in rule_name and target_format in ("episode_card", "titlecard"):
+                                for flag in ("4K", "1080p", "720p"):
+                                    vars_dict[flag] = False
+                            elif "overlays_tv.yml" in rule_name and target_format in ("show_poster", "season_poster"):
+                                vars_dict["4K_banner"] = False
+                            else:
+                                for flag in ("4K_banner", "1080p_banner", "720p_banner", "4K", "1080p", "720p"):
+                                    vars_dict[flag] = False
+                            updated_count += 1
+                            continue
                         is_landscape_target = (target_format in ("episode_card", "titlecard", "backdrop", "background"))
                         is_banner = (not is_landscape_target) and bool(res_coords.get("mode") == "banner" or res_coords.get("banner_4k"))
 
@@ -1748,9 +1763,21 @@ class OverlayResolver:
 
             # Remove any orphan/duplicate default: resolution rules if custom files are used
             if has_res_file:
-                cleaned_files = [r for r in overlay_files if not (isinstance(r, dict) and r.get("default") == "resolution")]
+                cleaned_files = [r for r in overlay_files if not (isinstance(r, dict) and r.get("default") == "resolution" and (r.get("template_variables") or {}).get("mode") not in ("banner", "badge", "corner_badge"))]
                 overlay_files.clear()
                 overlay_files.extend(cleaned_files)
+
+            resolution_update = layout_updates.get("resolution")
+            if isinstance(resolution_update, dict) and resolution_update.get("mode") in ("banner", "badge", "corner_badge"):
+                target_level = {"movie_poster": "movie", "show_poster": "show", "season_poster": "season", "episode_card": "episode", "titlecard": "episode"}.get(target_format, "all")
+                native_rule = next((rule for rule in overlay_files if isinstance(rule, dict) and rule.get("default") == "resolution" and (rule.get("template_variables") or {}).get("builder_level", "all") in (target_level, "all")), None)
+                if native_rule is None:
+                    native_rule = {"default": "resolution", "template_variables": {"builder_level": target_level}}
+                    overlay_files.append(native_rule)
+                    updated_count += 1
+                native_variables = native_rule.setdefault("template_variables", {})
+                native_variables.update({key: value for key, value in resolution_update.items() if value is not None})
+                native_variables["mode"] = "corner_badge" if resolution_update["mode"] == "badge" else resolution_update["mode"]
 
             # Check if Critic & Audience ratings are enabled for this library.
             # If ratings is explicitly null/disabled in layout_updates, OR not enabled in visual badges, purge orphan default: ratings rules!

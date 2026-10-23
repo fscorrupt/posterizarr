@@ -3530,7 +3530,7 @@ export default function DynamicOverlays() {
       }
       if (previewResolution && previewResolution !== "None") {
         const isLandscape = isLandscapeFormat(previewTemplate);
-        const isBanner = !isLandscape && (resolutionMode === "banner" || offsets.resolution?.mode === "banner");
+        const isBanner = !isLandscape && (offsets.resolution?.mode || resolutionMode) === "banner";
         layoutPayload.resolution = {
           mode: isBanner ? "banner" : "corner_badge",
           horizontal_offset: isBanner ? 0 : (offsets.resolution.x ?? 15),
@@ -3775,7 +3775,7 @@ export default function DynamicOverlays() {
       badges.resolution?.mode === "ribbon" ||
       (!badges.resolution?.offset_y && badges.resolution?.position?.includes("top"))
     );
-    setResolutionMode(isLandscape ? "badge" : (isResBanner ? "banner" : "badge"));
+    setResolutionMode(isLandscape ? "corner_badge" : (isResBanner ? "banner" : "corner_badge"));
     if (badges.resolution?.enabled || badges.resolution?.banner_4k || badges.resolution?.banner_1080p || badges.resolution?.titlecard_enabled) {
       if (targetFormat === "movie_poster" || targetFormat === "show_poster") {
         if (isResBanner) {
@@ -4205,11 +4205,11 @@ export default function DynamicOverlays() {
     offsets.age_rating?.font ? `&age_rating_font=${encodeURIComponent(offsets.age_rating.font)}` : "",
     offsets.status?.font_size ? `&status_font_size=${offsets.status.font_size}` : "",
     offsets.status?.font ? `&status_font=${encodeURIComponent(offsets.status.font)}` : "",
-    `&resolution_mode=${encodeURIComponent(resolutionMode || (offsets.resolution?.mode || "banner"))}`,
-    offsets.resolution?.back_color !== undefined ? `&resolution_back_color=${encodeURIComponent(offsets.resolution.back_color)}` : "",
-    offsets.resolution?.back_radius !== undefined ? `&resolution_back_radius=${offsets.resolution.back_radius}` : "",
-    offsets.resolution?.back_width ? `&resolution_back_width=${offsets.resolution.back_width}` : "",
-    offsets.resolution?.back_height ? `&resolution_back_height=${offsets.resolution.back_height}` : ""
+    `&resolution_mode=${encodeURIComponent(offsets.resolution?.mode || resolutionMode || "banner")}`,
+    `&resolution_back_color=${encodeURIComponent(offsets.resolution?.back_color ?? "#00000099")}`,
+    `&resolution_back_radius=${offsets.resolution?.back_radius ?? 15}`,
+    `&resolution_back_width=${offsets.resolution?.back_width || (isLandscapeFormat(previewTemplate) ? 260 : 245)}`,
+    `&resolution_back_height=${offsets.resolution?.back_height || (isLandscapeFormat(previewTemplate) ? 85 : 95)}`
   ].join("");
 
   const previewUrl = `/api/dynamic-overlays/preview?template_type=${previewTemplate}&rating=${encodeURIComponent(previewRating)}&runtime=${encodeURIComponent(previewRuntime)}&status_label=${encodeURIComponent(previewStatus)}&status_color=${encodeURIComponent(previewStatusColor)}&resolution=${encodeURIComponent(previewResolution)}&audio_codec=${encodeURIComponent(previewAudioCodec || "")}&audio_codec_style=${encodeURIComponent(previewAudioCodecStyle || "compact")}&video_format=${encodeURIComponent(previewVideoFormat || "")}&languages=${encodeURIComponent(previewLanguages)}&network=${encodeURIComponent(previewNetwork)}&anime_tag=${encodeURIComponent(previewAnimeTag)}&age_rating=${encodeURIComponent(previewAgeRating || "")}&age_rating_source=${encodeURIComponent(previewAgeSource || "commonsense")}&age_rating_x=${offsets.age_rating?.x ?? 255}&age_rating_y=${offsets.age_rating?.y ?? 37}&age_rating_align=${offsets.age_rating?.align || "left"}&age_rating_valign=${offsets.age_rating?.valign || "bottom"}&rating_x=${offsets.rating?.x ?? 30}&rating_y=${offsets.rating?.y ?? 25}&rating_align=${offsets.rating?.align || "right"}&rating_valign=${offsets.rating?.valign || "bottom"}&runtime_x=${offsets.runtime?.x ?? 140}&runtime_y=${offsets.runtime?.y ?? 37}&runtime_align=${offsets.runtime?.align || "center"}&runtime_valign=${offsets.runtime?.valign || "bottom"}&status_x=${offsets.status?.x ?? 0}&status_y=${offsets.status?.y ?? 30}&status_align=${offsets.status?.align || "center"}&status_valign=${offsets.status?.valign || "bottom"}&res_x=${offsets.resolution?.x ?? 0}&res_y=${offsets.resolution?.y ?? 0}&res_align=${offsets.resolution?.align || "center"}&res_valign=${offsets.resolution?.valign || "top"}&audio_codec_x=${offsets.audio_codec?.x ?? 30}&audio_codec_y=${offsets.audio_codec?.y ?? 70}&audio_codec_align=${offsets.audio_codec?.align || "right"}&audio_codec_valign=${offsets.audio_codec?.valign || "bottom"}&video_format_x=${offsets.video_format?.x ?? 30}&video_format_y=${offsets.video_format?.y ?? 30}&video_format_align=${offsets.video_format?.align || "right"}&video_format_valign=${offsets.video_format?.valign || "top"}&anime_x=${offsets.anime?.x ?? 20}&anime_y=${offsets.anime?.y ?? 20}&anime_align=${offsets.anime?.align || "left"}&anime_valign=${offsets.anime?.valign || "top"}&lang_x=${offsets.languages?.x ?? 30}&lang_y=${offsets.languages?.y ?? 35}&lang_align=${offsets.languages?.align ?? "left"}&lang_valign=${offsets.languages?.valign ?? "bottom"}&network_x=${offsets.network?.x ?? 25}&network_y=${offsets.network?.y ?? 25}&network_align=${offsets.network?.align ?? "right"}&network_valign=${offsets.network?.valign ?? "top"}${customImgParam}${fontParams}&t=${previewTimestamp}`;
@@ -7687,7 +7687,7 @@ export default function DynamicOverlays() {
                               handleOffsetChange("resolution", { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true }, true);
                             }}
                             className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
-                              resolutionMode === "banner" || offsets.resolution?.mode === "banner"
+                              (offsets.resolution?.mode || resolutionMode) === "banner"
                                 ? "bg-theme-primary text-white border-theme-primary"
                                 : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                             }`}
@@ -7697,11 +7697,11 @@ export default function DynamicOverlays() {
                           <button
                             type="button"
                             onClick={() => {
-                              setResolutionMode("badge");
+                              setResolutionMode("corner_badge");
                               handleOffsetChange("resolution", { x: 15, y: 15, align: "left", valign: "top", mode: "corner_badge", banner_4k: false }, true);
                             }}
                             className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
-                              resolutionMode === "badge" || offsets.resolution?.mode === "corner_badge"
+                              (offsets.resolution?.mode || resolutionMode) === "corner_badge"
                                 ? "bg-theme-primary text-white border-theme-primary"
                                 : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                             }`}
@@ -7711,7 +7711,7 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
                     )}
-                    {(isLandscapeFormat(previewTemplate) || resolutionMode === "badge" || offsets.resolution?.mode === "corner_badge") && (
+                    {(isLandscapeFormat(previewTemplate) || (offsets.resolution?.mode || resolutionMode) === "corner_badge") && (
                       <div className="pt-2 border-t border-theme/40 space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-theme-muted font-medium flex items-center gap-1">

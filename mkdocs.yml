@@ -60,6 +60,7 @@ nav:
     - 'Action Center Guide': 'action_center.md'
     - 'Blueprints & Recipes': 'blueprints.md'
     - 'Dynamic Overlays (Kometa)': 'dynamic_overlays.md'
+    - 'Plex Image Cleanup (ImageMaid)': 'plex_image_cleanup.md'
     - 'Agregarr Integration': 'agregarrintegration.md'
     - 'Kometa Integration': 'kometaintegration.md'
     - 'Jellyfin Plugin': 'jellyfin_plugin.md'

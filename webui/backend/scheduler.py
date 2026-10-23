@@ -209,8 +209,12 @@ class PosterizarrScheduler:
         schedule_config: dict = None,
         force_run: bool = False,
         retry_attempt: int = 0,
+        scheduled_execution: bool = False,
     ):
         """Execute Posterizarr script in normal mode (non-blocking)"""
+        if mode.lower() == "pleximagecleanup" and not scheduled_execution:
+            logger.warning("Plex Image Cleanup is scheduled-only; manual execution refused")
+            return
         with self._lock:
             config = self.load_config()
             is_already_running = False
@@ -241,13 +245,13 @@ class PosterizarrScheduler:
                             f"Scheduled run ({mode}) skipped because {reason}. "
                             f"Rescheduling retry attempt {next_attempt}/{self.MAX_RETRIES} in {self.RETRY_DELAY} seconds."
                         )
-                        
+
                         tz = pytz.timezone(self._get_timezone())
                         retry_time = datetime.now(tz) + timedelta(seconds=self.RETRY_DELAY)
-                        
+
                         import uuid
                         retry_job_id = f"retry_{mode}_{uuid.uuid4().hex[:8]}"
-                        
+
                         try:
                             self.scheduler.add_job(
                                 self.run_script,
@@ -256,6 +260,7 @@ class PosterizarrScheduler:
                                 id=retry_job_id,
                                 name=f"Retry {mode} (Attempt {next_attempt})",
                                 args=[mode, schedule_config, force_run, next_attempt],
+                                kwargs={"scheduled_execution": scheduled_execution},
                             )
                             self.update_schedule_status(schedule_config, "retrying")
                         except Exception as e:
@@ -275,6 +280,20 @@ class PosterizarrScheduler:
             self.save_config(config)
 
         try:
+            if mode.lower() == "pleximagecleanup":
+                try:
+                    from plex_image_cleanup import run_scheduled_image_cleanup
+                    result = await asyncio.to_thread(run_scheduled_image_cleanup, self.base_dir, schedule_config or {}, scheduled=True)
+                    self.update_schedule_status(schedule_config, "skipped" if result.get("skipped") else ("success" if result.get("success") else "failed"))
+                    logger.info("Scheduled Plex Image Cleanup finished: %s", result)
+                except Exception:
+                    logger.exception("Scheduled Plex Image Cleanup failed")
+                    self.update_schedule_status(schedule_config, "failed")
+                finally:
+                    with self._lock:
+                        self.is_running = False
+                        self.update_next_run()
+                return
             if platform.system() == "Windows":
                 ps_command = "pwsh"
                 try:
@@ -444,13 +463,13 @@ class PosterizarrScheduler:
             if mode.lower() == "logoupdater" and schedule_config:
                 library = schedule_config.get("library", "all")
                 switches.extend(["-LibraryName", library])
-                
+
                 if schedule_config.get("force_replace"):
                     switches.append("-ForceReplace")
 
                 if schedule_config.get("exif_check"):
                     switches.append("-LogoExifCheck")
-                
+
                 if schedule_config.get("revert"):
                     # Swap LogoUpdater for LogoRevert if revert is requested
                     if "-LogoUpdater" in switches:
@@ -564,6 +583,7 @@ class PosterizarrScheduler:
                     id=job_id,
                     name=job_name,
                     args=[mode, schedule],
+                    kwargs={"scheduled_execution": True},
                     replace_existing=True,
                 )
                 logger.info(f"Added job: {job_name}")

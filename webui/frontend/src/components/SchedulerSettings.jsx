@@ -26,7 +26,8 @@ import {
   Pencil,
   Download,
   Layers,
-  Sparkles
+  Sparkles,
+  FileText
 } from "lucide-react";
 import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
@@ -108,6 +109,11 @@ const SchedulerSettings = () => {
 
   // --- PLEX SYNC OPTIONS ---
   const [plexSyncLibrary, setPlexSyncLibrary] = useState("all");
+  const [cleanupPath, setCleanupPath] = useState("");
+  const [cleanupAction, setCleanupAction] = useState("report");
+  const [cleanupSource, setCleanupSource] = useState("plex");
+  const [cleanupAge, setCleanupAge] = useState(7);
+  const [cleanupRemovalConfirmed, setCleanupRemovalConfirmed] = useState(false);
   const [plexSyncAssetTypes, setPlexSyncAssetTypes] = useState([
     "collection", "poster", "season", "titlecard", "background"
   ]);
@@ -296,6 +302,7 @@ const SchedulerSettings = () => {
     { id: "backup", label: t("schedulerSettings.modes.backup") || "System Backup" },
     ...(isAnyServerConfigured() ? [{ id: "logoupdater", label: t("schedulerSettings.modes.logoupdater") || "Logo Updater" }] : []),
     ...(isPlexConfigured() ? [{ id: "plexsync", label: t("schedulerSettings.modes.plexsync") || "Plex Sync" }] : []),
+    ...(isPlexConfigured() ? [{ id: "pleximagecleanup", label: "Plex Image Cleanup" }] : []),
     { id: "kometadefaults", label: t("schedulerSettings.modes.kometadefaults") || "Overlay Defaults (GitHub)" },
     ...(isAnyServerConfigured() ? [{ id: "dynamicoverlays", label: t("schedulerSettings.modes.dynamicoverlays") || "Dynamic Overlays Sync" }] : []),
     ...(isAnyServerConfigured() ? [{ id: "animetafill", label: t("schedulerSettings.modes.animetafill") || "AniMetaFill Anime Sync" }] : []),
@@ -304,6 +311,7 @@ const SchedulerSettings = () => {
   useEffect(() => {
     if (appConfig) {
       if (newMode === "plexsync" && !isPlexConfigured()) setNewMode("normal");
+      if (newMode === "pleximagecleanup" && !isPlexConfigured()) setNewMode("normal");
       if (newMode === "logoupdater" && !isAnyServerConfigured()) setNewMode("normal");
       if (newMode === "syncjelly" && !isJellyfinConfigured()) setNewMode("normal");
       if (newMode === "syncemby" && !isEmbyConfigured()) setNewMode("normal");
@@ -329,6 +337,7 @@ const SchedulerSettings = () => {
     backup: { icon: Database, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.backup") || "Backup" },
     logoupdater: { icon: Grid, color: "text-purple-400", bgColor: "bg-purple-400/10", label: t("schedulerSettings.modes.logoupdater") || "Logo Updater" },
     plexsync: { icon: Zap, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.plexsync") || "Plex Sync" },
+    pleximagecleanup: { icon: Trash2, color: "text-rose-400", bgColor: "bg-rose-500/10", label: "Plex Image Cleanup" },
     kometadefaults: { icon: Download, color: "text-cyan-400", bgColor: "bg-cyan-400/10", label: t("schedulerSettings.modes.kometadefaults") || "Overlay Defaults" },
     dynamicoverlays: { icon: Layers, color: "text-emerald-400", bgColor: "bg-emerald-400/10", label: t("schedulerSettings.modes.dynamicoverlays") || "Dynamic Overlays Sync" },
     animetafill: { icon: Sparkles, color: "text-pink-400", bgColor: "bg-pink-400/10", label: t("schedulerSettings.modes.animetafill") || "AniMetaFill Anime Sync" }
@@ -456,6 +465,10 @@ const SchedulerSettings = () => {
       }
     }
     if (isUpdating) return;
+    if (newMode === "pleximagecleanup" && (!cleanupPath.trim() || !Number.isInteger(Number(cleanupAge)) || Number(cleanupAge) < 1 || Number(cleanupAge) > 3650 || (cleanupAction === "remove" && !cleanupRemovalConfirmed))) {
+      showError("Set the Plex data path and a valid grace period; permanent removal requires confirmation.");
+      return;
+    }
     setIsUpdating(true);
     try {
       const payload = {
@@ -474,6 +487,12 @@ const SchedulerSettings = () => {
       } else if (newMode === "plexsync") {
         payload.library = plexSyncLibrary;
         payload.asset_types = plexSyncAssetTypes;
+      } else if (newMode === "pleximagecleanup") {
+        payload.plex_data_path = cleanupPath.trim();
+        payload.cleanup_action = cleanupAction;
+        payload.database_source = cleanupSource;
+        payload.minimum_age_days = Number(cleanupAge);
+        payload.confirm_image_removal = cleanupRemovalConfirmed;
       }
 
       if (frequency === "weekly") {
@@ -547,6 +566,12 @@ const SchedulerSettings = () => {
           ? schedule.asset_types
           : ["collection", "poster", "season", "titlecard", "background"]
       );
+    } else if (schedule.mode === "pleximagecleanup") {
+      setCleanupPath(schedule.plex_data_path || "");
+      setCleanupAction(schedule.cleanup_action || "report");
+      setCleanupSource(schedule.database_source || "plex");
+      setCleanupAge(schedule.minimum_age_days ?? 7);
+      setCleanupRemovalConfirmed(schedule.confirm_image_removal === true);
     }
 
     setTimeout(() => {
@@ -569,6 +594,11 @@ const SchedulerSettings = () => {
     setLogoForceReplace(false);
     setLogoExifCheck(false);
     setLogoRevert(false);
+    setCleanupPath("");
+    setCleanupAction("report");
+    setCleanupSource("plex");
+    setCleanupAge(7);
+    setCleanupRemovalConfirmed(false);
   };
 
   const removeSchedule = async (time, index) => {
@@ -703,6 +733,10 @@ const SchedulerSettings = () => {
   };
 
   const triggerScheduleNow = async (schedule) => {
+    if (schedule?.mode === "pleximagecleanup") {
+      showError("Plex Image Cleanup only runs at its configured schedule.");
+      return;
+    }
     if (isUpdating) return;
     setIsUpdating(true);
     try {
@@ -1288,6 +1322,20 @@ const SchedulerSettings = () => {
             </div>
           )}
 
+          {newMode === "pleximagecleanup" && (
+            <section aria-label="Plex image cleanup settings" className="border-t border-theme pt-4 space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-theme-text"><Trash2 className="w-4 h-4" />Plex Image Cleanup · Scheduled Only</h3>
+              <label className="block text-xs text-theme-muted">Plex Data Directory<input aria-label="Plex cleanup data directory" value={cleanupPath} onChange={event => setCleanupPath(event.target.value)} placeholder="/plex" className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text" /></label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-xs text-theme-muted">Action<select aria-label="Plex cleanup action" value={cleanupAction} onChange={event => { setCleanupAction(event.target.value); setCleanupRemovalConfirmed(false); }} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text"><option value="report">Report Only</option><option value="quarantine">Move to Quarantine</option><option value="remove">Permanently Remove</option></select></label>
+                <label className="text-xs text-theme-muted">Database Snapshot<select aria-label="Plex cleanup database source" value={cleanupSource} onChange={event => setCleanupSource(event.target.value)} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text"><option value="plex">Plex API Export (Preferences.xml required)</option><option value="local">Local Database (Plex stopped)</option></select></label>
+                <label className="text-xs text-theme-muted">Minimum Image Age (Days)<input aria-label="Plex cleanup minimum age" type="number" min="1" max="3650" step="1" value={cleanupAge} onChange={event => setCleanupAge(event.target.value)} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text" /></label>
+              </div>
+              {cleanupAction === "remove" && <label className="flex items-start gap-2 text-xs text-rose-400"><input type="checkbox" checked={cleanupRemovalConfirmed} onChange={event => setCleanupRemovalConfirmed(event.target.checked)} className="mt-0.5" />I confirm permanent removal of old, unselected uploaded images. This cannot be undone.</label>}
+              <div className="text-xs text-theme-muted"><a href="https://github.com/Kometa-Team/ImageMaid" target="_blank" rel="noreferrer" className="underline">Inspired by ImageMaid, by Kometa-Team / meisnate12</a></div>
+            </section>
+          )}
+
           {newMode === "kometadefaults" && (
             <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl space-y-2">
               <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
@@ -1414,15 +1462,17 @@ const SchedulerSettings = () => {
                           <span>Target: Overlayfiles/dynamic_overlays/defaults/</span>
                         </div>
                       )}
+                      {mode === "pleximagecleanup" && <div className="mt-1 text-xs text-theme-muted break-words">Scheduled only · {schedule.cleanup_action || "report"} · {schedule.minimum_age_days ?? 7} days · {schedule.plex_data_path}</div>}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {mode === "pleximagecleanup" && <button type="button" onClick={() => navigate("/logs", { state: { logFile: "PlexImageCleanup.log" } })} className="p-2 text-theme-muted hover:text-theme-text rounded-lg" title="View image cleanup log"><FileText className="w-4 h-4" /></button>}
                     <button
                       type="button"
                       onClick={() => triggerScheduleNow(schedule)}
-                      disabled={isUpdating || status?.is_executing}
+                      disabled={isUpdating || status?.is_executing || mode === "pleximagecleanup"}
                       className="p-2 text-green-400 hover:bg-green-500/10 rounded-lg transition-all disabled:opacity-50"
-                      title={`Run ${mConfig.label} now`}
+                      title={mode === "pleximagecleanup" ? "Scheduled only" : `Run ${mConfig.label} now`}
                     >
                       <Play className="w-4 h-4" />
                     </button>

@@ -1,0 +1,80 @@
+# Scheduled Plex Image Cleanup
+
+Repeated custom poster/titlecard uploads can leave old, unselected images in Plex's metadata directory. Changing the selected poster does not necessarily remove those files.
+
+Posterizarr provides a separate **Plex Image Cleanup** scheduler task inspired by [ImageMaid](https://github.com/Kometa-Team/ImageMaid), by **meisnate12 and the Kometa Team**. ImageMaid in turn credits **bullmoose20's Plex Bloat Fix**. Selected-artwork protection in this integration adapts ImageMaid's MIT-licensed helpers. This is a limited image-cleanup integration, not the complete ImageMaid application.
+
+## Scheduled Only
+
+- No cleanup schedule is created or enabled by default.
+- Cleanup does not run on startup, after an upload, after overlay sync, or when previewing artwork.
+- Add a **Plex Image Cleanup** task in Scheduler and explicitly enable the scheduler. Its Run Now control is disabled, and the manual-run API rejects this mode.
+- Schedule it in a separate maintenance window after Posterizarr, Kometa, TitleCardMaker, and other artwork writers. In-app overlay work and queued requests exclude cleanup; overlay requests arriving during cleanup wait until it finishes. Existing scheduled tasks remain serialized by the scheduler. A loaded active Plex Sync worker also causes cleanup to skip.
+- API snapshot mode refuses to proceed while Plex reports active playback sessions. External tools and users changing artwork are not locked by Posterizarr; keep them idle throughout cleanup. Cleanup is not a transaction with the live Plex server.
+
+## Configuration
+
+The **Plex Data Directory** is the Plex application-data directory containing `Metadata`, `Cache`, and `Plug-in Support`. It is not Posterizarr's clean-asset folder or the media-library directory.
+
+For Docker, explicitly mount that directory into Posterizarr. For example, add a volume such as `/path/to/Plex Media Server:/plex:rw` and configure `/plex` in the cleanup schedule. Report-only mode can use a read-only mount; moving/removing files requires write permission. No mount is added automatically.
+
+Choose the snapshot source:
+
+- **Plex API Export:** Uses the existing configured Plex URL/token to download a fresh database export. Mounted `Preferences.xml` must contain a `MachineIdentifier` matching the connected server. This prevents cleaning one server's files using another server's selections. Redirects are not followed; oversized or ambiguous exports are rejected. Only the database member is read from ZIP exports, without extracting archive paths.
+- **Local Database:** Reads `Plug-in Support/Databases/com.plexapp.plugins.library.db` into a temporary SQLite backup. Plex must be stopped; the task refuses this mode if WAL/SHM files exist before or after the snapshot. There is no ignore-running override. On platforms without `Preferences.xml`, use this stopped-Plex mode.
+
+The snapshot is queried read-only and removed when the task finishes. Posterizarr never edits the Plex database. Database exports are limited to 20 GiB.
+
+## Actions
+
+| Action | Behavior |
+|---|---|
+| Report Only | Default. Counts eligible images and bytes without modifying images. Start here. |
+| Move to Quarantine | Moves eligible images to a unique directory under `database/plex-image-quarantine/` in Posterizarr's writable data directory. Original metadata-relative paths are preserved. |
+| Permanently Remove | Deletes eligible images. Requires an explicit confirmation checkbox saved with that schedule. Cannot be undone. |
+
+Quarantine is not automatically purged. It removes files from Plex's metadata tree but does not reclaim total disk space when the quarantine is on the same filesystem. Review it before manually deleting it. To recover a quarantined image, stop artwork writers and copy it back under Plex's `Metadata` directory using its preserved relative path; existing files must not be overwritten blindly.
+
+## Protection Rules
+
+- Only valid JPEG/PNG/WebP images with extensionless SHA-1-style names under metadata `Uploads` directories are considered.
+- Selected posters, backgrounds, banners, clear logos, and square artwork are protected by every available supported `metadata_items` selection column, across the entire database.
+- Unsupported or empty metadata databases abort cleanup rather than assuming nothing is selected.
+- Provider/default images outside `Uploads`, `Contents` trees, uploaded themes, symlinks, junctions, and non-image files are excluded.
+- A grace period defaults to **7 days** and cannot be shorter than **1 day**.
+- Before moving/removing anything, the task refreshes selected-artwork data. Each candidate's path, size, modification timestamp, and selected status are rechecked. Files changed or selected since discovery are skipped.
+- The task does not clear PhotoTranscoder, empty Plex trash, clean bundles, optimize databases, or touch Posterizarr's original assets.
+
+An older unselected upload may still be a useful alternative poster. Quarantine is preferable to permanent removal until you have reviewed a Report run.
+
+## Reports
+
+Each executed task appends a summary to `UILogs/PlexImageCleanup.log` and writes `UILogs/last_image_cleanup_report.json`. Reports include action, candidate/changed counts and bytes, skipped files, errors, and the quarantine path when applicable. Use the log button on a saved cleanup schedule to open its output. Busy skips are recorded by the scheduler.
+
+## ImageMaid License
+
+The following notice applies to the ImageMaid-derived selected-artwork protection logic. Upstream: <https://github.com/Kometa-Team/ImageMaid>.
+
+```text
+MIT License
+
+Copyright (c) 2026 meisnate12
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

@@ -11399,6 +11399,10 @@ async def add_schedule(request: Request):
             raise HTTPException(status_code=400, detail="Time is required for non-interval schedules")
 
         # Pass all arguments to the updated scheduler logic
+        cleanup_options = {}
+        if mode.lower() == "pleximagecleanup":
+            from plex_image_cleanup import cleanup_schedule_options
+            cleanup_options = cleanup_schedule_options(data)
         success = scheduler.add_schedule(
             time_str=time_str,
             description=description,
@@ -11413,7 +11417,8 @@ async def add_schedule(request: Request):
             asset_types=data.get("asset_types"),
             force_replace=data.get("force_replace", False),
             exif_check=data.get("exif_check", False),
-            revert=data.get("revert", False)
+            revert=data.get("revert", False),
+            **cleanup_options
         )
 
         if success:
@@ -11421,6 +11426,10 @@ async def add_schedule(request: Request):
         else:
             raise HTTPException(status_code=400, detail="Schedule already exists or is invalid")
 
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except Exception as e:
         logger.error(f"Error adding schedule: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -11449,6 +11458,10 @@ async def update_schedule(index: int, request: Request):
         if frequency != "interval" and not time_str:
             raise HTTPException(status_code=400, detail="Time is required for non-interval schedules")
 
+        cleanup_options = {}
+        if mode.lower() == "pleximagecleanup":
+            from plex_image_cleanup import cleanup_schedule_options
+            cleanup_options = cleanup_schedule_options(data)
         success = scheduler.update_schedule(
             index=index,
             time_str=time_str,
@@ -11464,7 +11477,8 @@ async def update_schedule(index: int, request: Request):
             asset_types=data.get("asset_types"),
             force_replace=data.get("force_replace", False),
             exif_check=data.get("exif_check", False),
-            revert=data.get("revert", False)
+            revert=data.get("revert", False),
+            **cleanup_options
         )
 
         if success:
@@ -11474,6 +11488,8 @@ async def update_schedule(index: int, request: Request):
 
     except HTTPException:
         raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except Exception as e:
         logger.error(f"Error updating schedule at index {index}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -11603,12 +11619,16 @@ async def run_scheduler_now(request: Request):
             pass
 
         # Use asyncio.create_task to run it asynchronously
+        if mode.lower() == "pleximagecleanup":
+            raise HTTPException(status_code=400, detail="Plex Image Cleanup is scheduled-only and cannot be run manually")
         asyncio.create_task(scheduler.run_script(mode=mode, schedule_config=schedule_config, force_run=True))
         return {"success": True, "message": f"Manual run triggered successfully for mode '{mode}'"}
     except RuntimeError as e:
         logger.warning(f"Cannot trigger run: {e}")
         raise HTTPException(status_code=400, detail="A script execution is already in progress or the scheduler is busy.")
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error triggering scheduled run: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -19708,6 +19728,8 @@ async def preview_dynamic_overlay(
             "library_name": library_name,
             "rating_options": json.loads(rating_options or "{}"),
             "rating_mode": rating_mode, "resolution_mode": resolution_mode,
+            "resolution_back_color": resolution_back_color, "resolution_back_radius": resolution_back_radius,
+            "resolution_back_width": resolution_back_width, "resolution_back_height": resolution_back_height,
             "audio_codec_style": audio_codec_style,
             "streaming": streaming, "streaming_options": json.loads(streaming_options or "{}"),
         }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item,
