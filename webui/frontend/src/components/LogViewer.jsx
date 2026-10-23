@@ -362,7 +362,7 @@ function LogViewer() {
         setIsLoadingFullLog(false);
         return;
       }
-      
+
       const response = await fetch(`${API_URL}/logs/${encodeURIComponent(logName)}?tail=0`); // tail=0
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -912,7 +912,7 @@ function LogViewer() {
       )}
 
       {/* Controls Section */}
-      <div className="bg-theme-card rounded-xl p-6 border border-theme shadow-sm">
+      <div className="relative z-20 bg-theme-card rounded-xl p-6 border border-theme shadow-sm">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           {/* Log Selector */}
           <div className="flex-1 w-full lg:max-w-md">
@@ -949,7 +949,7 @@ function LogViewer() {
               </button>
 
               {dropdownOpen && (
-                <div className="absolute z-10 w-full mt-2 bg-theme-card border border-theme-primary rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute z-30 w-full mt-2 bg-theme-card border border-theme-primary rounded-lg shadow-lg max-h-60 overflow-y-auto">
                   {availableLogs.map((log) => (
                     <button
                       key={log.name}
@@ -1084,7 +1084,7 @@ function LogViewer() {
       </div>
 
       {/* Log Display Section */}
-      <div className="bg-theme-card rounded-xl border border-theme shadow-sm overflow-hidden">
+      <div className="relative z-0 bg-theme-card rounded-xl border border-theme shadow-sm overflow-hidden">
         {/* Log Container Header */}
         <div className="bg-theme-bg px-6 py-3 border-b border-theme flex items-center justify-between">
           <div className="flex items-center gap-3">

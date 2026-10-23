@@ -64,10 +64,12 @@ An optional Docker `:ro` mount provides an additional operating-system-level wri
 
 Choose the snapshot source:
 
-- **Plex API Export:** Uses the existing configured Plex URL/token to download a fresh database export. Mounted `Preferences.xml` must contain a `MachineIdentifier` matching the connected server. This prevents cleaning one server's files using another server's selections. Redirects are not followed; oversized or ambiguous exports are rejected. Only the database member is read from ZIP exports, without extracting archive paths.
+- **Plex API Export:** Uses the existing configured Plex URL/token to download a fresh database export. The `machineIdentifier` returned by Plex's `/identity` endpoint must match either `MachineIdentifier` or `ProcessedMachineIdentifier` in the mounted `Preferences.xml`; Plex installations can expose the processed identifier instead of the raw value. This prevents cleaning one server's files using another server's selections. Redirects are not followed; oversized or ambiguous exports are rejected. Only the database member is read from ZIP exports, without extracting archive paths.
 - **Local Database:** Reads `Plug-in Support/Databases/com.plexapp.plugins.library.db` into a temporary SQLite backup. Plex must be stopped; the task refuses this mode if WAL/SHM files exist before or after the snapshot. There is no ignore-running override. On platforms without `Preferences.xml`, use this stopped-Plex mode.
 
 The snapshot is queried read-only and removed when the task finishes. Posterizarr never edits the Plex database. Database exports are limited to 20 GiB.
+
+If an identity mismatch remains after updating Posterizarr, verify that the configured Plex URL points to the server whose data directory is mounted at `/plex`. Compare only the two identifier attributes above with `/identity`; do not share the entire `Preferences.xml`, which can contain tokens and other private settings. Do not bypass the mismatch check.
 
 ## Actions
 

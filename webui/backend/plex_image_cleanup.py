@@ -143,11 +143,20 @@ def _read_current_selection(plex_root, options, credentials, work_dir, client):
         preferences = plex_root / "Preferences.xml"
         if not preferences.is_file():
             raise ValueError("API mode requires mounted Plex Preferences.xml to verify the data directory belongs to this server")
-        expected_server = fromstring(preferences.read_bytes()).get("MachineIdentifier")
+        preferences_root = fromstring(preferences.read_bytes())
+        expected_servers = {
+            value.strip() for value in (
+                preferences_root.get("MachineIdentifier"),
+                preferences_root.get("ProcessedMachineIdentifier"),
+            ) if value and value.strip()
+        }
+        if not expected_servers:
+            raise ValueError("Mounted Plex Preferences.xml has no server identifiers; cleanup aborted")
         identity = client.get(url + "/identity", headers=headers)
         identity.raise_for_status()
-        if not expected_server or fromstring(identity.content).get("machineIdentifier") != expected_server:
-            raise ValueError("Configured Plex data directory does not match the connected server; cleanup aborted")
+        connected_server = str(fromstring(identity.content).get("machineIdentifier") or "").strip()
+        if not connected_server or connected_server not in expected_servers:
+            raise ValueError("Configured Plex data directory does not match the connected server: neither mounted MachineIdentifier nor ProcessedMachineIdentifier matches Plex /identity; verify the Plex URL and mounted Preferences.xml. Cleanup aborted")
         sessions = client.get(url + "/status/sessions", headers=headers)
         sessions.raise_for_status()
         if int(fromstring(sessions.content).get("size") or 0):
