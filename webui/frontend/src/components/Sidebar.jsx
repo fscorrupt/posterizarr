@@ -42,6 +42,7 @@ const Sidebar = () => {
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [missingAssetsCount, setMissingAssetsCount] = useState(0);
   const [manualAssetsCount, setManualAssetsCount] = useState(0);
+  const [showPlexQuarantine, setShowPlexQuarantine] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null);
   const [hoveredItem, setHoveredItem] = useState(null);
 
@@ -91,6 +92,28 @@ const Sidebar = () => {
     return () => { window.removeEventListener("viewModeChanged", handleStorageChange); clearInterval(interval); };
   }, []);
 
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const checkPlexQuarantine = async () => {
+      try {
+        const response = await fetch("/api/plex-image-cleanup/availability", { signal: controller.signal });
+        if (!response.ok) throw new Error("Availability lookup failed");
+        const result = await response.json();
+        if (!controller.signal.aborted) setShowPlexQuarantine(result.visible === true);
+      } catch (error) {
+        if (error.name !== "AbortError") setShowPlexQuarantine(false);
+      }
+    };
+    checkPlexQuarantine();
+    const interval = setInterval(checkPlexQuarantine, 60000);
+    window.addEventListener("plexQuarantineChanged", checkPlexQuarantine);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      window.removeEventListener("plexQuarantineChanged", checkPlexQuarantine);
+    };
+  }, [location.pathname]);
+
   const themeArray = Object.entries(themes).map(([id, config]) => ({
     id, name: config.name, color: config.variables["--theme-primary"],
   }));
@@ -122,6 +145,7 @@ const Sidebar = () => {
           { path: "/gallery/posters", label: t("assets.assetsFolders"), icon: FolderKanban },
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
+          ...(showPlexQuarantine ? [{ path: "/image-quarantine", label: "Plex Image Quarantine", icon: Archive }] : []),
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ]
@@ -132,6 +156,7 @@ const Sidebar = () => {
           { path: "/gallery/titlecards", label: t("assets.titleCards"), icon: Tv },
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
+          ...(showPlexQuarantine ? [{ path: "/image-quarantine", label: "Plex Image Quarantine", icon: Archive }] : []),
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ],
@@ -181,7 +206,7 @@ const Sidebar = () => {
   const handleDragOver = (e, index) => { e.preventDefault(); if (draggedItem === null || draggedItem === index) return; const newOrder = [...navOrder]; const draggedId = newOrder[draggedItem]; newOrder.splice(draggedItem, 1); newOrder.splice(index, 0, draggedId); setDraggedItem(index); setNavOrder(newOrder); };
   const handleDragEnd = () => { if (draggedItem !== null) saveNavOrder(navOrder); setDraggedItem(null); };
 
-  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
+  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/image-quarantine") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
   const isInMediaServerSection = location.pathname.startsWith("/media-server-export");
   const isInConfigSection = location.pathname.startsWith("/config");
   const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/dynamic-overlays") || location.pathname.startsWith("/blueprints");
@@ -316,7 +341,7 @@ const Sidebar = () => {
 
         {!isCollapsed && (
           <div className="mt-auto p-4 flex flex-col items-center bg-theme-hover/5">
-            
+
             {/* External Links Section */}
             <div className="flex items-center gap-4 mb-4">
               {externalLinks.map((link) => (

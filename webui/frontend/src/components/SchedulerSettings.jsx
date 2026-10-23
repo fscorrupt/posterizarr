@@ -525,6 +525,7 @@ const SchedulerSettings = () => {
       const data = await response.json();
       if (data.success) {
         showSuccess(isEditing ? (t("schedulerSettings.success.scheduleUpdated") || "Schedule updated successfully") : t("schedulerSettings.success.scheduleAdded"));
+        window.dispatchEvent(new Event("plexQuarantineChanged"));
         handleCancelEdit();
         await new Promise((resolve) => setTimeout(resolve, 500));
         await fetchSchedulerData();
@@ -621,6 +622,7 @@ const SchedulerSettings = () => {
           setEditingIndex(editingIndex - 1);
         }
         showSuccess(t("schedulerSettings.success.scheduleRemoved"));
+        window.dispatchEvent(new Event("plexQuarantineChanged"));
         await new Promise((resolve) => setTimeout(resolve, 200));
         await fetchSchedulerData();
       } else {
@@ -649,6 +651,7 @@ const SchedulerSettings = () => {
         const configData = await configRes.json();
         if (configData.success) setConfig(configData.config);
         showSuccess(t("schedulerSettings.success.allCleared"));
+        window.dispatchEvent(new Event("plexQuarantineChanged"));
       } else {
         showError(data.detail || t("schedulerSettings.errors.clearSchedules"));
       }

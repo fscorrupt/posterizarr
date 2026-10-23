@@ -19935,6 +19935,44 @@ async def delete_custom_preview_image(image_id: str):
     return {"success": True}
 
 
+class QuarantineDeletionRequest(BaseModel):
+    confirmation: str
+
+
+@app.get("/api/plex-image-cleanup/availability")
+async def get_plex_quarantine_availability():
+    from plex_image_cleanup import quarantine_availability
+    return {"success": True, **await asyncio.to_thread(quarantine_availability, BASE_DIR, CONFIG_PATH)}
+
+
+@app.get("/api/plex-image-cleanup/quarantine")
+async def get_plex_image_quarantine():
+    from plex_image_cleanup import list_quarantine_runs, quarantine_availability
+    try:
+        availability = await asyncio.to_thread(quarantine_availability, BASE_DIR, CONFIG_PATH)
+        if not availability["visible"]:
+            raise HTTPException(status_code=403, detail="Plex quarantine requires enabled Plex and a cleanup schedule or cleanup history")
+        return {"success": True, **await asyncio.to_thread(list_quarantine_runs, BASE_DIR)}
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.delete("/api/plex-image-cleanup/quarantine/{run_id}")
+async def delete_plex_image_quarantine(run_id: str, request: QuarantineDeletionRequest):
+    from plex_image_cleanup import delete_quarantine_run, quarantine_availability
+    try:
+        availability = await asyncio.to_thread(quarantine_availability, BASE_DIR, CONFIG_PATH)
+        if not availability["visible"]:
+            raise HTTPException(status_code=403, detail="Plex quarantine requires enabled Plex and a cleanup schedule or cleanup history")
+        return await asyncio.to_thread(delete_quarantine_run, BASE_DIR, run_id, request.confirmation)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
 class SaveLayoutRequest(BaseModel):
     library_name: str
     layout: Dict[str, Optional[Dict[str, Any]]]

@@ -36,6 +36,7 @@ import AutoTriggers from "./components/AutoTriggers";
 import SchedulerSettings from "./components/SchedulerSettings";
 import RunModes from "./components/RunModes";
 import AssetOverview from "./components/AssetOverview";
+import ImageQuarantine from "./components/ImageQuarantine";
 import RuntimeHistory from "./components/RuntimeHistory";
 import PlexExport from "./components/PlexExport";
 import JellyfinEmbyExport from "./components/JellyfinEmbyExport";
@@ -163,7 +164,7 @@ function AppContent() {
       fetch("/api/config")
         .then(res => res.json())
         .then(data => {
-          // If onboarding_completed is explicitly false or doesn't exist but we seeded it, 
+          // If onboarding_completed is explicitly false or doesn't exist but we seeded it,
           // check if we need to show the onboarding modal.
           // In config_database.py we seeded it in _root if it was empty.
           if (data && data._root && data._root.onboarding_completed === false) {
@@ -264,6 +265,7 @@ function AppContent() {
                 <Route path="/manual-assets" element={<ManualAssets />} />
                 {/* Route for Backup Assets - pointing to GalleryHub which handles the rendering */}
                 <Route path="/asset-backups" element={<GalleryHub />} />
+                <Route path="/image-quarantine" element={<ImageQuarantine />} />
                 <Route path="/asset-overview" element={<AssetOverview />} />
                 <Route path="/runtime-history" element={<RuntimeHistory />} />
                 <Route

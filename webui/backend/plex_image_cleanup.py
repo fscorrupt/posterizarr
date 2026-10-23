@@ -12,6 +12,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -32,10 +33,135 @@ ARTWORK_COLUMNS = (
 logger = logging.getLogger(__name__)
 _cleanup_running = False
 MAX_DATABASE_BYTES = 20 * 1024 * 1024 * 1024
+QUARANTINE_RUN_ID = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-f0-9]{8}$")
+_quarantine_delete_lock = threading.Lock()
 
 
 def is_cleanup_running():
     return _cleanup_running
+
+
+def _is_link(path):
+    return path.is_symlink() or getattr(os.path, "isjunction", lambda value: False)(path)
+
+
+def _quarantine_root(base_dir):
+    base = Path(base_dir).resolve(strict=True)
+    database = base / "database"
+    root = database / "plex-image-quarantine"
+    if _is_link(database) or _is_link(root) or not root.resolve().is_relative_to(base):
+        raise ValueError("Quarantine storage must be a real directory inside Posterizarr's data directory")
+    if root.exists() and not root.is_dir():
+        raise ValueError("Quarantine storage is not a directory")
+    return root
+
+
+def quarantine_availability(base_dir, config_path=None):
+    base = Path(base_dir)
+    config_file = Path(config_path) if config_path is not None else base / "config.json"
+    try:
+        config = json.loads(config_file.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        config = {}
+    if not isinstance(config, dict):
+        config = {}
+    plex = config if config.get("using_flat_structure") or "UsePlex" in config else (config.get("PlexPart") or {})
+    enabled = str(plex.get("UsePlex", False)).strip().lower() in ("true", "1", "yes") and bool(str(plex.get("PlexUrl") or "").strip())
+    result = {"visible": False, "plex_enabled": enabled, "cleanup_configured": False, "has_history": False}
+    if not enabled:
+        return result
+    try:
+        scheduler_config = json.loads((base / "scheduler.json").read_text(encoding="utf-8-sig"))
+        if not isinstance(scheduler_config, dict):
+            scheduler_config = {}
+        result["cleanup_configured"] = any(isinstance(schedule, dict) and str(schedule.get("mode", "")).lower() == "pleximagecleanup" for schedule in scheduler_config.get("schedules", []))
+    except (OSError, ValueError, TypeError):
+        pass
+    try:
+        root = _quarantine_root(base)
+        if root.exists():
+            result["has_history"] = any(QUARANTINE_RUN_ID.fullmatch(path.name) and not _is_link(path) and path.is_dir() for path in root.iterdir())
+        reports = (base / "UILogs" / "last_image_cleanup_report.json", base / "UILogs" / "PlexImageCleanup.log")
+        result["has_history"] = result["has_history"] or any(path.is_file() and not _is_link(path) and path.stat().st_size > 0 for path in reports)
+    except (OSError, ValueError):
+        pass
+    result["visible"] = bool(result["cleanup_configured"] or result["has_history"])
+    return result
+
+
+def _quarantine_run_summary(path):
+    files = 0
+    size = 0
+    unsafe_entries = False
+
+    def unreadable(error):
+        nonlocal unsafe_entries
+        unsafe_entries = True
+
+    for parent, directories, filenames in os.walk(path, followlinks=False, onerror=unreadable):
+        safe_directories = []
+        for name in directories:
+            directory = Path(parent, name)
+            if _is_link(directory):
+                unsafe_entries = True
+            else:
+                safe_directories.append(name)
+        directories[:] = safe_directories
+        for name in filenames:
+            image = Path(parent, name)
+            if _is_link(image) or not image.is_file():
+                unsafe_entries = True
+                continue
+            stat = image.stat()
+            files += 1
+            size += stat.st_size
+    created_at = datetime.strptime(path.name[:15], "%Y%m%d-%H%M%S").isoformat()
+    return {"id": path.name, "created_at": created_at, "files": files, "bytes": size,
+            "deletable": not unsafe_entries, "warning": "Contains linked, unreadable or non-regular entries" if unsafe_entries else None}
+
+
+def list_quarantine_runs(base_dir):
+    root = _quarantine_root(base_dir)
+    runs = []
+    if root.exists():
+        for path in sorted(root.iterdir(), key=lambda entry: entry.name, reverse=True):
+            if not QUARANTINE_RUN_ID.fullmatch(path.name) or _is_link(path) or not path.is_dir():
+                continue
+            try:
+                runs.append(_quarantine_run_summary(path))
+            except (OSError, ValueError):
+                continue
+    return {"runs": runs, "total_bytes": sum(run["bytes"] for run in runs),
+            "total_files": sum(run["files"] for run in runs), "cleanup_running": is_cleanup_running(),
+            "deletion_running": _quarantine_delete_lock.locked()}
+
+
+def delete_quarantine_run(base_dir, run_id, confirmation):
+    if not isinstance(run_id, str) or not QUARANTINE_RUN_ID.fullmatch(run_id):
+        raise ValueError("Invalid quarantine run ID")
+    if confirmation != run_id:
+        raise ValueError("Quarantine deletion requires confirmation of the selected run ID")
+    from overlay_sync_service import _sync_condition
+    if not _quarantine_delete_lock.acquire(blocking=False):
+        raise RuntimeError("Another quarantine deletion is already active")
+    try:
+        with _sync_condition:
+            if _cleanup_running:
+                raise RuntimeError("Image cleanup is active; quarantine deletion is temporarily unavailable")
+        root = _quarantine_root(base_dir)
+        path = root / run_id
+        if _is_link(path) or path.resolve().parent != root.resolve():
+            raise ValueError("Quarantine run must be a real directory inside quarantine storage")
+        if not path.is_dir():
+            raise FileNotFoundError("Quarantine run was not found")
+        summary = _quarantine_run_summary(path)
+        if not summary["deletable"]:
+            raise ValueError("Quarantine run contains linked or non-regular entries; deletion refused")
+        shutil.rmtree(path)
+        logger.info("[PlexImageCleanup] Manually deleted quarantine run %s: %s files, %s bytes", run_id, summary["files"], summary["bytes"])
+        return {"success": True, "deleted_run": run_id, "deleted_files": summary["files"], "deleted_bytes": summary["bytes"]}
+    finally:
+        _quarantine_delete_lock.release()
 
 
 def cleanup_schedule_options(data):
@@ -253,8 +379,8 @@ def run_scheduled_image_cleanup(base_dir, options, *, scheduled=False):
     with _sync_condition:
         plex_push = sys.modules.get("plex_push_service")
         plex_push_running = bool(plex_push and getattr(plex_push, "is_plex_sync_running", lambda: False)())
-        if _cleanup_running or is_overlay_sync_running() or plex_push_running:
-            return {"success": True, "skipped": True, "reason": "Artwork sync is active or queued"}
+        if _cleanup_running or is_overlay_sync_running() or plex_push_running or _quarantine_delete_lock.locked():
+            return {"success": True, "skipped": True, "reason": "Artwork sync is active/queued or quarantine deletion is active"}
         _cleanup_running = True
     base_dir = Path(base_dir)
     log_file = base_dir / "UILogs" / "PlexImageCleanup.log"

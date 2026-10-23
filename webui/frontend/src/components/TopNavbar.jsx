@@ -18,6 +18,7 @@ const TopNavbar = () => {
     "/": "Dashboard", "/runtime-history": "Insights", "/run-modes": "Run Modes",
     "/scheduler": "Scheduler", "/queue": "Queue", "/dynamic-overlays": "Dynamic Overlays",
     "/assets-manager": "Asset Manager", "/blueprints": "Blueprints", "/logs": "Logs",
+    "/image-quarantine": "Plex Image Quarantine",
   };
   const viewName = viewNames[pathname] || pathname.split("/").filter(Boolean).map(segment => segment.replaceAll("-", " ")).join(" / ");
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);

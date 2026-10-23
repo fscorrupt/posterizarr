@@ -81,7 +81,15 @@ If an identity mismatch remains after updating Posterizarr, verify that the conf
 | Move to Quarantine | Moves eligible images to a unique directory under `database/plex-image-quarantine/` in Posterizarr's writable data directory. Original metadata-relative paths are preserved. |
 | Permanently Remove | Deletes eligible images. Requires an explicit confirmation checkbox saved with that schedule. Cannot be undone. |
 
-Quarantine is not automatically purged. It removes files from Plex's metadata tree but does not reclaim total disk space when the quarantine is on the same filesystem. Review it before manually deleting it. To recover a quarantined image, stop artwork writers and copy it back under Plex's `Metadata` directory using its preserved relative path; existing files must not be overwritten blindly.
+Quarantine is not automatically purged. It removes files from Plex's metadata tree but does not reclaim total disk space when the quarantine is on the same filesystem. Review it before deleting it. To recover a quarantined image, stop artwork writers and copy it back under Plex's `Metadata` directory using its preserved relative path; existing files must not be overwritten blindly.
+
+### Delete Reviewed Quarantine Runs
+
+Open **Asset Management > Plex Image Quarantine** to see each cleanup run, its server-local creation time, file count, and stored size. This view is available only when Plex is enabled with a configured URL and either a Plex Image Cleanup schedule exists or previous cleanup data is present (a quarantine run, report, or nonempty cleanup log). It stays hidden for Emby/Jellyfin-only installations, even if old Plex cleanup data remains on disk. After checking the artwork in Plex and keeping any recovery buffer you need, use the trash icon beside that run and confirm **Delete Permanently**. Only that run's quarantined recovery copies are removed; other runs and active Plex artwork are not touched. Deletion cannot be undone.
+
+This is an explicit user action, not an automatic purge or a manual execution of the scheduled Plex cleanup task. The scheduled task's Read Only setting does not prevent separately confirmed deletion of already quarantined copies. Deletion is disabled while cleanup or another purge is active, and linked/unreadable run contents are refused. The backend accepts only generated run IDs inside Posterizarr's `database/plex-image-quarantine` directory, never arbitrary filesystem paths.
+
+The **Remove** action in the scheduler still deletes eligible images directly from Plex's metadata directory; it does not empty quarantine. Quarantined copies can alternatively be deleted through the host filesystem after review.
 
 ## Protection Rules
 
