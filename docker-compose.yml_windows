@@ -16,3 +16,13 @@ services:
       - 'C:\Docker\Posterizarr\assets:/assets:rw'
       - 'C:\Docker\Posterizarr\assetsbackup:/assetsbackup:rw'
       - 'C:\Docker\Posterizarr\manualassets:/manualassets:rw'
+      # OPTIONAL: Scheduled Plex Image Cleanup (see docs/plex_image_cleanup.md).
+      # Mount the Plex DATA directory containing Metadata, Plug-in Support and Preferences.xml.
+      # - 'C:\Docker\Plex\Library\Application Support\Plex Media Server:/plex:rw'
+      # Replace the host path with your actual Plex data directory.
+      # Scheduler Read Only is ON by default and forces Report Only; disable it to allow cleanup.
+      # Optional :ro adds a Docker-level write block that the scheduler switch cannot override.
+      # In the UI Scheduler, select Plex Image Cleanup, data path /plex, and Plex API Export.
+      # API Export keeps Plex running; Local Database requires manually stopping Plex first.
+      # Change RUN_TIME above to disabled before enabling the UI scheduler; do not use both.
+      # This optional mount does not create a cleanup schedule or enable cleanup.

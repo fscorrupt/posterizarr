@@ -46,16 +46,21 @@ def cleanup_schedule_options(data):
     source = data.get("database_source", "plex")
     if action not in ("report", "quarantine", "remove"):
         raise ValueError("Image cleanup action must be report, quarantine, or remove")
+    read_only = data.get("cleanup_read_only", True)
+    if not isinstance(read_only, bool):
+        raise ValueError("Image cleanup Read Only must be true or false")
+    if read_only:
+        action = "report"
     if source not in ("plex", "local"):
         raise ValueError("Image cleanup database source must be plex or local")
     age = data.get("minimum_age_days", 7)
     if isinstance(age, bool) or not str(age).isdigit() or not 1 <= int(age) <= 3650:
         raise ValueError("Image cleanup grace period must be between 1 and 3650 whole days")
-    confirmed = data.get("confirm_image_removal") is True
+    confirmed = not read_only and data.get("confirm_image_removal") is True
     if action == "remove" and not confirmed:
         raise ValueError("Permanent image removal requires explicit confirmation")
     return {"plex_data_path": path, "cleanup_action": action, "database_source": source,
-            "minimum_age_days": int(age), "confirm_image_removal": confirmed}
+            "minimum_age_days": int(age), "confirm_image_removal": confirmed, "cleanup_read_only": read_only}
 
 
 def selected_artwork(connection):
@@ -243,7 +248,7 @@ def run_scheduled_image_cleanup(base_dir, options, *, scheduled=False):
             if action != "report" and candidates:
                 selected = _read_current_selection(plex_root, options, credentials, work_dir, client)
             report.update(apply_image_cleanup(metadata, candidates, selected, action, quarantine))
-        report.update({"success": True, "action": action, "plex_data_path": str(plex_root), "quarantine_path": str(quarantine) if action == "quarantine" and report["changed"] else None})
+        report.update({"success": True, "action": action, "read_only": options["cleanup_read_only"], "plex_data_path": str(plex_root), "quarantine_path": str(quarantine) if action == "quarantine" and report["changed"] else None})
     except Exception as error:
         report["error"] = str(error)
         logger.warning("[PlexImageCleanup] %s", error)

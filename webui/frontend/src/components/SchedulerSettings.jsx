@@ -111,6 +111,7 @@ const SchedulerSettings = () => {
   const [plexSyncLibrary, setPlexSyncLibrary] = useState("all");
   const [cleanupPath, setCleanupPath] = useState("");
   const [cleanupAction, setCleanupAction] = useState("report");
+  const [cleanupReadOnly, setCleanupReadOnly] = useState(true);
   const [cleanupSource, setCleanupSource] = useState("plex");
   const [cleanupAge, setCleanupAge] = useState(7);
   const [cleanupRemovalConfirmed, setCleanupRemovalConfirmed] = useState(false);
@@ -465,7 +466,7 @@ const SchedulerSettings = () => {
       }
     }
     if (isUpdating) return;
-    if (newMode === "pleximagecleanup" && (!cleanupPath.trim() || !Number.isInteger(Number(cleanupAge)) || Number(cleanupAge) < 1 || Number(cleanupAge) > 3650 || (cleanupAction === "remove" && !cleanupRemovalConfirmed))) {
+    if (newMode === "pleximagecleanup" && (!cleanupPath.trim() || !Number.isInteger(Number(cleanupAge)) || Number(cleanupAge) < 1 || Number(cleanupAge) > 3650 || (!cleanupReadOnly && cleanupAction === "remove" && !cleanupRemovalConfirmed))) {
       showError("Set the Plex data path and a valid grace period; permanent removal requires confirmation.");
       return;
     }
@@ -489,10 +490,11 @@ const SchedulerSettings = () => {
         payload.asset_types = plexSyncAssetTypes;
       } else if (newMode === "pleximagecleanup") {
         payload.plex_data_path = cleanupPath.trim();
-        payload.cleanup_action = cleanupAction;
+        payload.cleanup_read_only = cleanupReadOnly;
+        payload.cleanup_action = cleanupReadOnly ? "report" : cleanupAction;
         payload.database_source = cleanupSource;
         payload.minimum_age_days = Number(cleanupAge);
-        payload.confirm_image_removal = cleanupRemovalConfirmed;
+        payload.confirm_image_removal = !cleanupReadOnly && cleanupRemovalConfirmed;
       }
 
       if (frequency === "weekly") {
@@ -568,10 +570,11 @@ const SchedulerSettings = () => {
       );
     } else if (schedule.mode === "pleximagecleanup") {
       setCleanupPath(schedule.plex_data_path || "");
-      setCleanupAction(schedule.cleanup_action || "report");
+      setCleanupReadOnly(schedule.cleanup_read_only !== false);
+      setCleanupAction(schedule.cleanup_read_only !== false ? "report" : (schedule.cleanup_action || "report"));
       setCleanupSource(schedule.database_source || "plex");
       setCleanupAge(schedule.minimum_age_days ?? 7);
-      setCleanupRemovalConfirmed(schedule.confirm_image_removal === true);
+      setCleanupRemovalConfirmed(schedule.cleanup_read_only === false && schedule.confirm_image_removal === true);
     }
 
     setTimeout(() => {
@@ -596,6 +599,7 @@ const SchedulerSettings = () => {
     setLogoRevert(false);
     setCleanupPath("");
     setCleanupAction("report");
+    setCleanupReadOnly(true);
     setCleanupSource("plex");
     setCleanupAge(7);
     setCleanupRemovalConfirmed(false);
@@ -1325,13 +1329,17 @@ const SchedulerSettings = () => {
           {newMode === "pleximagecleanup" && (
             <section aria-label="Plex image cleanup settings" className="border-t border-theme pt-4 space-y-3">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-theme-text"><Trash2 className="w-4 h-4" />Plex Image Cleanup · Scheduled Only</h3>
+              <label className="flex items-center justify-between gap-3 text-sm text-theme-text">
+                Read Only (Report)
+                <input type="checkbox" role="switch" aria-label="Plex cleanup read only" checked={cleanupReadOnly} onChange={event => { setCleanupReadOnly(event.target.checked); setCleanupRemovalConfirmed(false); if (event.target.checked) setCleanupAction("report"); }} />
+              </label>
               <label className="block text-xs text-theme-muted">Plex Data Directory<input aria-label="Plex cleanup data directory" value={cleanupPath} onChange={event => setCleanupPath(event.target.value)} placeholder="/plex" className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text" /></label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="text-xs text-theme-muted">Action<select aria-label="Plex cleanup action" value={cleanupAction} onChange={event => { setCleanupAction(event.target.value); setCleanupRemovalConfirmed(false); }} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text"><option value="report">Report Only</option><option value="quarantine">Move to Quarantine</option><option value="remove">Permanently Remove</option></select></label>
+                <label className="text-xs text-theme-muted">Action<select aria-label="Plex cleanup action" disabled={cleanupReadOnly} value={cleanupReadOnly ? "report" : cleanupAction} onChange={event => { setCleanupAction(event.target.value); setCleanupRemovalConfirmed(false); }} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text disabled:opacity-60"><option value="report">Report Only</option><option value="quarantine">Move to Quarantine</option><option value="remove">Permanently Remove</option></select></label>
                 <label className="text-xs text-theme-muted">Database Snapshot<select aria-label="Plex cleanup database source" value={cleanupSource} onChange={event => setCleanupSource(event.target.value)} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text"><option value="plex">Plex API Export (Preferences.xml required)</option><option value="local">Local Database (Plex stopped)</option></select></label>
                 <label className="text-xs text-theme-muted">Minimum Image Age (Days)<input aria-label="Plex cleanup minimum age" type="number" min="1" max="3650" step="1" value={cleanupAge} onChange={event => setCleanupAge(event.target.value)} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text" /></label>
               </div>
-              {cleanupAction === "remove" && <label className="flex items-start gap-2 text-xs text-rose-400"><input type="checkbox" checked={cleanupRemovalConfirmed} onChange={event => setCleanupRemovalConfirmed(event.target.checked)} className="mt-0.5" />I confirm permanent removal of old, unselected uploaded images. This cannot be undone.</label>}
+              {!cleanupReadOnly && cleanupAction === "remove" && <label className="flex items-start gap-2 text-xs text-rose-400"><input type="checkbox" checked={cleanupRemovalConfirmed} onChange={event => setCleanupRemovalConfirmed(event.target.checked)} className="mt-0.5" />I confirm permanent removal of old, unselected uploaded images. This cannot be undone.</label>}
               <div className="text-xs text-theme-muted"><a href="https://github.com/Kometa-Team/ImageMaid" target="_blank" rel="noreferrer" className="underline">Inspired by ImageMaid, by Kometa-Team / meisnate12</a></div>
             </section>
           )}
@@ -1462,7 +1470,7 @@ const SchedulerSettings = () => {
                           <span>Target: Overlayfiles/dynamic_overlays/defaults/</span>
                         </div>
                       )}
-                      {mode === "pleximagecleanup" && <div className="mt-1 text-xs text-theme-muted break-words">Scheduled only · {schedule.cleanup_action || "report"} · {schedule.minimum_age_days ?? 7} days · {schedule.plex_data_path}</div>}
+                      {mode === "pleximagecleanup" && <div className="mt-1 text-xs text-theme-muted break-words">Scheduled only · {schedule.cleanup_read_only !== false ? "Read only / report" : (schedule.cleanup_action || "report")} · {schedule.minimum_age_days ?? 7} days · {schedule.plex_data_path}</div>}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">

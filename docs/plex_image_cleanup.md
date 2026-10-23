@@ -16,7 +16,51 @@ Posterizarr provides a separate **Plex Image Cleanup** scheduler task inspired b
 
 The **Plex Data Directory** is the Plex application-data directory containing `Metadata`, `Cache`, and `Plug-in Support`. It is not Posterizarr's clean-asset folder or the media-library directory.
 
-For Docker, explicitly mount that directory into Posterizarr. For example, add a volume such as `/path/to/Plex Media Server:/plex:rw` and configure `/plex` in the cleanup schedule. Report-only mode can use a read-only mount; moving/removing files requires write permission. No mount is added automatically.
+For Docker, explicitly mount that directory into Posterizarr with `:rw` and configure `/plex` in the cleanup schedule. Leave the scheduler's **Read Only (Report)** switch enabled initially. It is on by default and prevents image changes even when the mount is writable. No mount is added automatically.
+
+### Docker Compose Examples
+
+Merge the relevant fragment into your existing `posterizarr` service, retaining its current environment entries and volumes. These are additions, not complete replacement Compose files.
+
+Linux host:
+
+```yaml
+services:
+    posterizarr:
+        environment:
+            - "RUN_TIME=disabled"
+        volumes:
+            - "/path/to/Plex Media Server:/plex:rw"
+```
+
+Windows host with Plex container data:
+
+```yaml
+services:
+    posterizarr:
+        environment:
+            - "RUN_TIME=disabled"
+        volumes:
+            - 'C:\Docker\Plex\Library\Application Support\Plex Media Server:/plex:rw'
+```
+
+Replace the host path with the actual Plex data directory. API Export also requires `Preferences.xml` in that directory. A native Windows Plex installation without this file must use the stopped-Plex Local Database mode instead.
+
+Keep **Read Only (Report)** enabled in the scheduler for the initial run. After reviewing the report, switch it off and choose Quarantine or Remove. With the `:rw` mount shown above, this does not require recreating the container. Ensure the container user has the required permissions; a writable mount alone does not grant filesystem permissions.
+
+An optional Docker `:ro` mount provides an additional operating-system-level write block. The scheduler switch cannot change Docker mount permissions: if you deliberately use `:ro`, writable cleanup still requires changing the mount to `:rw` and recreating the container.
+
+`RUN_TIME=disabled` disables the container's separate script timer so it does not compete with the UI scheduler. Neither the volume mount nor this setting creates or enables a cleanup schedule.
+
+### Scheduling With Plex Running
+
+**Posterizarr does not start or stop Plex.** Use **Plex API Export** for an unattended cleanup schedule while Plex stays running. Local Database mode requires you to stop Plex separately beforehand and is intended for offline maintenance.
+
+1. Configure the Plex URL/token in Posterizarr and mount the data directory as shown above.
+2. In Scheduler, select **Plex Image Cleanup**, set **Plex Data Directory** to `/plex`, and select **Plex API Export**.
+3. Keep **Read Only (Report)** enabled and the default seven-day minimum age for the first scheduled run.
+4. Choose a maintenance window with no playback or other artwork-writing jobs, add the schedule, and explicitly enable the UI scheduler.
+5. Review the cleanup log before disabling Read Only and selecting Quarantine or confirmed permanent removal.
 
 Choose the snapshot source:
 
@@ -26,6 +70,8 @@ Choose the snapshot source:
 The snapshot is queried read-only and removed when the task finishes. Posterizarr never edits the Plex database. Database exports are limited to 20 GiB.
 
 ## Actions
+
+**Read Only (Report)** is enabled by default for new schedules and schedules that do not yet have a `cleanup_read_only` setting. While enabled, it locks the Action field to Report Only, clears permanent-removal confirmation, and forces Report mode in the backend even if a saved request contains Quarantine or Remove. Switching it off permits selecting a writable action; permanent removal still needs its separate confirmation.
 
 | Action | Behavior |
 |---|---|
