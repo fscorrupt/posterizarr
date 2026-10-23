@@ -1185,7 +1185,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         if (
           metadata.asset_type === "poster" ||
-          metadata.asset_type === "season"
+          metadata.asset_type === "season" ||
+          metadata.asset_type === "collection"
         ) {
           expectedRatio = POSTER_RATIO;
           expectedRatioString = "2:3";
