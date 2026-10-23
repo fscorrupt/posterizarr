@@ -1613,6 +1613,13 @@ def build_overlay_layers_for_item(
     Uses the OverlayConfigEngine to resolve templates, queues, groups,
     and conditionals with high precision.
     """
+    codec_titles = {
+        "truehd_atmos": "TrueHD Atmos", "plus_atmos": "EAC3 Atmos", "dolby_atmos": "Dolby Atmos",
+        "dtsx": "DTS:X", "ma": "DTS-HD MA", "hra": "DTS-HD HRA", "plus": "EAC3", "digital": "AC3"
+    }
+    codec_key = str(item_metadata.get("audio_codec") or "").strip().lower()
+    if codec_key in codec_titles and not item_metadata.get("audio_track_title"):
+        item_metadata = {**item_metadata, "audio_track_title": codec_titles[codec_key]}
     item_level = "backdrop" if item_metadata.get("is_backdrop") else (
         "season" if item_metadata.get("is_season") else (
             "episode" if item_metadata.get("is_episode") or item_metadata.get("media_type") == "episode" else (
@@ -1621,8 +1628,41 @@ def build_overlay_layers_for_item(
         )
     )
     rating_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating")]
+    single_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "single_rating"]
+    banner_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "resolution" and str((rule.get("template_variables") or {}).get("mode", "")).lower() == "banner" and not is_landscape]
     streaming_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming"]
     native_rating_layers = []
+    for rule in single_rules:
+        variables = rule.get("template_variables") or {}
+        target = str(variables.get("builder_level", "all")).lower()
+        if target not in ("all", item_level):
+            continue
+        score = item_metadata.get("audience_rating") or item_metadata.get("rating")
+        single_layers = build_multi_rating_layers(
+            {"imdb": score} if score is not None else {},
+            {**variables, "sources": ["imdb"], "theme": variables.get("theme", "score")},
+            canvas_type="landscape" if is_landscape else "portrait",
+            assets_dir=overlays_dir / "assets" / "rating", fonts_dir=overlays_dir / "fonts"
+        )
+        for layer in single_layers:
+            layer.update({"name": "single_rating", "type": "text", "image_path": None})
+        native_rating_layers.extend(single_layers)
+    for rule in banner_rules:
+        variables = rule.get("template_variables") or {}
+        if str(variables.get("builder_level", "all")).lower() not in ("all", item_level):
+            continue
+        if str(item_metadata.get("resolution", "")).lower() not in ("4k", "2160", "2160p", "uhd"):
+            continue
+        artwork = next((path for path in (overlays_dir / "assets" / "4K_banner.png", overlays_dir.parent / "4K_banner.png") if path.exists()), None)
+        native_rating_layers.append({
+            "name": "resolution_banner", "type": "image" if artwork else "text",
+            "image_path": str(artwork) if artwork else None, "text": "4K ULTRA HD",
+            "font_path": str(overlays_dir / "fonts" / "Inter-Bold.ttf"), "font_size": 54,
+            "font_color": "#FFFFFF", "back_color": "#111111EE",
+            "back_width": PORTRAIT_DIM[0], "back_height": 100,
+            "scale_width": PORTRAIT_DIM[0], "horizontal_align": "center", "horizontal_offset": 0,
+            "vertical_align": "top", "vertical_offset": 0,
+        })
     for rule in rating_rules:
         variables = rule.get("template_variables") or {}
         target = str(variables.get("builder_level", "all")).lower()
@@ -1640,7 +1680,7 @@ def build_overlay_layers_for_item(
         target = str(variables.get("builder_level", "show" if item_level == "show" else "movie")).lower()
         if target in ("all", item_level) or (item_level == "backdrop" and target in ("movie", "show")):
             native_rating_layers.extend(build_streaming_layers(item_metadata, variables, overlays_dir))
-    engine_rules = [rule for rule in library_rules if rule not in rating_rules and rule not in streaming_rules]
+    engine_rules = [rule for rule in library_rules if rule not in rating_rules and rule not in single_rules and rule not in banner_rules and rule not in streaming_rules]
     try:
         from overlay_resolver import OverlayConfigEngine, PROJECT_ROOT
         global _CACHED_CONFIG_ENGINE, _CACHED_CONFIG_ENGINE_ROOT
@@ -1652,6 +1692,8 @@ def build_overlay_layers_for_item(
             _CACHED_CONFIG_ENGINE_ROOT = project_root
         engine = _CACHED_CONFIG_ENGINE
         layers = engine.evaluate_item(item_metadata, engine_rules)
+        if any(layer.get("name") == "resolution_banner" for layer in native_rating_layers):
+            layers = [layer for layer in layers if str(layer.get("name") or "").lower() not in ("4k_banner", "resolution_banner", "resolution", "4k", "1080p", "720p", "576p", "480p")]
 
         if layers or native_rating_layers or not engine_rules:
             if is_landscape:

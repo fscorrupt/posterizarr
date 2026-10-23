@@ -921,7 +921,19 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "offset_x": int(raw_x) if raw_x is not None else 30,
                     "offset_y": int(raw_y) if raw_y is not None else def_y,
                     "limit": vars_dict.get("overlay_limit", 5),
+                    "show_labels": str(vars_dict.get("hide_text", True)).lower() not in ("true", "1"),
                     "template_variables": dict(vars_dict)
+                }
+
+            elif default_name == "single_rating":
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "right")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
+                badges["rating"] = {
+                    "enabled": True, "source": "audience_rating",
+                    "level": vars_dict.get("builder_level", "movie" if media_type == "movie" else "show"),
+                    "position": _to_unified_position(h_pos, v_pos),
+                    "offset_x": vars_dict.get("horizontal_offset", 30), "offset_y": vars_dict.get("vertical_offset", 25),
+                    "theme": vars_dict.get("theme", "score")
                 }
 
             # 2. Runtime
@@ -941,7 +953,9 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "font_size": int(vars_dict["font_size"]) if vars_dict.get("font_size") else (52 if media_type == "show" else 40),
                     "back_color": vars_dict.get("back_color", "#00000000"),
                     "back_width": int(vars_dict.get("back_width", 205)),
-                    "back_height": int(vars_dict.get("back_height", 80))
+                    "back_height": int(vars_dict.get("back_height", 80)),
+                    "text": vars_dict.get("text", ""),
+                    "format": vars_dict.get("format", "<<runtimeH>>h <<runtimeM>>m")
                 }
 
             # 3. Status
@@ -1176,6 +1190,16 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "template_variables": age_vars
             })
 
+        b_single = badges.get("rating", {})
+        if b_single.get("enabled") and b_single.get("source") == "audience_rating":
+            h, v = _split_unified_position(b_single.get("position", "bottom-right"))
+            overlay_files.append({"default": "single_rating", "template_variables": {
+                "builder_level": b_single.get("level", "movie" if media_type == "movie" else "show"),
+                "horizontal_align": h, "vertical_align": v,
+                "horizontal_offset": int(b_single.get("offset_x", 30)), "vertical_offset": int(b_single.get("offset_y", 25)),
+                "theme": b_single.get("theme", "score")
+            }})
+
         # 1b. Audience & Critic Score Rating (IMDb / TMDB / Rotten Tomatoes)
         b_score = badges.get("critic_rating") or (badges.get("rating", {}) if badges.get("rating", {}).get("source") in ("ratings", "rating") else None)
         if b_score and b_score.get("enabled"):
@@ -1247,9 +1271,9 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                     "horizontal_offset": int(b_lang.get("offset_x", 30)),
                     "vertical_offset": int(b_lang.get("offset_y", 35 if media_type == "movie" else 30)),
                     "back_color": "#00000000",
-                    "font_color": "#00000000",
-                    "text": "",
-                    "final_name": "<<key>>"
+                    "hide_text": not b_lang.get("show_labels", False),
+                    "font_color": "#FFFFFF",
+                    "final_name": "text(<<final_text>>)"
                 }
             })
 
@@ -1324,7 +1348,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "back_color": b_rt.get("back_color", "#00000000"),
                 "back_width": int(b_rt.get("back_width", 205)),
                 "back_height": int(b_rt.get("back_height", 80)),
-                "text": ""
+                "text": b_rt.get("text", ""),
+                "format": b_rt.get("format", "<<runtimeH>>h <<runtimeM>>m")
             }
             overlay_files.append({
                 "default": "runtimes",

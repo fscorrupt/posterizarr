@@ -19409,6 +19409,10 @@ async def preview_dynamic_overlay(
     library_name: Optional[str] = Query(None),
     rating: Optional[str] = Query("8.4"),
     runtime: Optional[str] = Query("1h 58m"),
+    runtime_prefix: Optional[str] = Query(None),
+    runtime_format: Optional[str] = Query(None),
+    language_labels: Optional[bool] = Query(None),
+    subtitle_labels: Optional[bool] = Query(None),
     status_label: Optional[str] = Query(""),
     status_color: Optional[str] = Query("#FFA500"),
     resolution: Optional[str] = Query("4K"),
@@ -19427,6 +19431,7 @@ async def preview_dynamic_overlay(
     rating_contrast_box: Optional[bool] = Query(True),
     rating_spacing: Optional[int] = Query(15),
     rating_options: Optional[str] = Query(None),
+    rating_mode: Optional[str] = Query(None),
     # Optional layout offsets
     rating_x: Optional[int] = Query(None),
     rating_y: Optional[int] = Query(None),
@@ -19526,6 +19531,10 @@ async def preview_dynamic_overlay(
 
         rating = _clean_str(rating)
         runtime = _clean_str(runtime)
+        if runtime_prefix is not None:
+            runtime_prefix = re.sub(r"[\x00-\x1f\x7f]", "", runtime_prefix)[:64]
+        if runtime_format not in (None, "<<runtimeH>>h <<runtimeM>>m", "<<runtime>> min"):
+            raise ValueError("Invalid runtime display format")
         status_label = _clean_str(status_label)
         status_color = _clean_str(status_color)
         resolution = _clean_str(resolution)
@@ -19690,12 +19699,16 @@ async def preview_dynamic_overlay(
                 library_rules = library_config.get("overlay_files") or library_config.get("overlays") or []
         layers = build_preview_layers({
             "template_type": template_type, "rating": rating, "runtime": runtime,
+            "runtime_prefix": runtime_prefix, "runtime_format": runtime_format,
+            "language_labels": language_labels, "subtitle_labels": subtitle_labels,
             "status_label": status_label, "status_color": status_color, "resolution": resolution, "languages": languages,
             "subtitle_languages": subtitle_languages, "aspect_ratio": aspect_ratio, "studio": studio,
             "network": network, "age_rating": age_rating, "age_rating_source": age_rating_source,
             "audio_codec": audio_codec, "video_format": video_format, "anime_tag": anime_tag,
             "library_name": library_name,
             "rating_options": json.loads(rating_options or "{}"),
+            "rating_mode": rating_mode, "resolution_mode": resolution_mode,
+            "audio_codec_style": audio_codec_style,
             "streaming": streaming, "streaming_options": json.loads(streaming_options or "{}"),
         }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item,
             animetafill_config=get_animetafill_config())
@@ -19884,7 +19897,7 @@ async def delete_custom_preview_image(image_id: str):
 
 class SaveLayoutRequest(BaseModel):
     library_name: str
-    layout: Dict[str, Dict[str, Any]]
+    layout: Dict[str, Optional[Dict[str, Any]]]
     filename: str = "config.yml"
     target_format: Optional[str] = None
     media_type: Optional[str] = None

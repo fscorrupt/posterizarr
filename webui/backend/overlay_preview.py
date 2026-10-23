@@ -233,7 +233,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
     if episode:
         metadata.update({"season_number": 1, "episode_number": 1})
     defaults = {
-        "rating": "ratings", "status": "status", "runtime": "runtimes",
+        "rating": "single_rating" if options.get("rating_mode") == "single" else "ratings", "status": "status", "runtime": "runtimes",
         "resolution": "resolution", "languages": "languages", "network": "network",
         "age_rating": options.get("age_rating_source") or "commonsense",
         "audio_codec": "audio_codec", "video_format": "video_format", "anime": "anime",
@@ -244,9 +244,48 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         {"default": default, "template_variables": {"builder_level": "all", **({"use_subtitles": True} if key == "subtitle_languages" else {})}}
         for key, default in defaults.items() if key in placements
     ]
+    if options.get("rating_mode") in ("single", "providers") and "rating" in placements:
+        rules = [rule for rule in rules if not (isinstance(rule, dict) and rule.get("default") in ("ratings", "rating", "single_rating"))]
+        rules.append({"default": defaults["rating"], "template_variables": {"builder_level": "all", **(options.get("rating_options") or {})}})
+    if "resolution" in placements and options.get("resolution_mode"):
+        resolution_rules = [rule for rule in rules if isinstance(rule, dict) and rule.get("default") == "resolution"]
+        if not resolution_rules:
+            resolution_rules = [{"default": "resolution", "template_variables": {"builder_level": "all"}}]
+            rules.extend(resolution_rules)
+        for rule in resolution_rules:
+            rule.setdefault("template_variables", {})["mode"] = options["resolution_mode"]
+    for key in ("subtitle_languages", "aspect", "studio", "streaming", "audio_codec"):
+        if key not in placements:
+            continue
+        matching = any(
+            isinstance(rule, dict) and rule.get("default") == defaults[key]
+            and (key != "subtitle_languages" or str((rule.get("template_variables") or {}).get("use_subtitles", False)).lower() in ("true", "1"))
+            for rule in rules
+        )
+        if not matching:
+            rules.append({"default": defaults[key], "template_variables": {"builder_level": "all", **({"use_subtitles": True} if key == "subtitle_languages" else {})}})
     rating_options = options.get("rating_options") or {}
     allowed_rating_options = {"sources", "theme", "orientation", "contrast_box", "spacing"}
     for rule in rules:
+        default_name = str(rule.get("default", "")).lower() if isinstance(rule, dict) else ""
+        if isinstance(rule, dict) and options.get("rating_mode") in ("single", "providers") and any(name in str(rule.get("file") or "") for name in ("overlays_movies.yml", "overlays_tv.yml")):
+            rule.setdefault("template_variables", {})["audience_rating"] = False
+        if default_name in ("runtimes", "runtime"):
+            variables = rule.setdefault("template_variables", {})
+            if options.get("runtime_prefix") is not None:
+                variables["text"] = options["runtime_prefix"]
+            if options.get("runtime_format"):
+                variables["format"] = options["runtime_format"]
+        if default_name == "audio_codec" and options.get("audio_codec_style"):
+            rule.setdefault("template_variables", {})["style"] = options["audio_codec_style"]
+        if default_name == "languages":
+            variables = rule.setdefault("template_variables", {})
+            subtitle = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
+            label_option = "subtitle_labels" if subtitle else "language_labels"
+            if options.get(label_option) is not None:
+                variables["hide_text"] = not options[label_option]
+                variables["final_name"] = "text(<<final_text>>)"
+                variables["font_color"] = "#FFFFFF"
         if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating"):
             rule.setdefault("template_variables", {}).update({key: value for key, value in rating_options.items() if key in allowed_rating_options})
         if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming":

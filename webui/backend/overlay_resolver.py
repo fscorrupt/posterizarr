@@ -94,6 +94,11 @@ OFFICIAL_KOMETA_ROOT_IMAGES = {
     "versions.png"
 }
 
+FLAG_CODE_ALIASES = {
+    "en": "us", "ja": "jp", "zh": "cn", "ko": "kr", "da": "dk", "sv": "se",
+    "uk": "ua", "ar": "sa", "hi": "in", "el": "gr", "cs": "cz", "he": "il"
+}
+
 OFFICIAL_OVERLAY_DEFAULTS = [
     "aspect.yml",
     "audio_codec.yml",
@@ -138,6 +143,12 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
     asset_indices = [index for index, part in enumerate(parts) if part.lower() == "assets"]
     if asset_indices:
         clean = str(PurePosixPath(*parts[asset_indices[-1] + 1:]))
+    if clean.lower().startswith(("flag/", "flags/")):
+        flag_parts = list(PurePosixPath(clean).parts)
+        flag_parts[0] = "flag"
+        flag_name = PurePosixPath(flag_parts[-1])
+        flag_parts[-1] = FLAG_CODE_ALIASES.get(flag_name.stem.lower(), flag_name.stem) + (flag_name.suffix or ".png")
+        clean = str(PurePosixPath(*flag_parts))
     clean_lower = clean.lower()
 
     # 1. Direct path with official subfolder (e.g. flag/square/ad.png, resolution/4k.png, rating/imdb.png)
@@ -1539,6 +1550,13 @@ class OverlayResolver:
             if not isinstance(overlay_files, list):
                 overlay_files = []
                 libraries[clean_lib_name]["overlay_files"] = overlay_files
+            if "rating" in layout_updates:
+                single_update = layout_updates.get("rating")
+                if not single_update or single_update.get("enabled") is False:
+                    overlay_files[:] = [rule for rule in overlay_files if not (isinstance(rule, dict) and rule.get("default") == "single_rating")]
+                for rule in overlay_files:
+                    if isinstance(rule, dict) and any(name in str(rule.get("file") or "") for name in ("overlays_movies.yml", "overlays_tv.yml")):
+                        rule.setdefault("template_variables", {})["audience_rating"] = False
 
             updated_count = 0
             matched_keys = set()
@@ -1557,6 +1575,8 @@ class OverlayResolver:
                 if not rule_default and not rule_file:
                     continue
                 rule_name = (rule_default or rule_file).lower()
+                if rule_name == "single_rating":
+                    rule_name = "rating"
                 if rule_name == "languages" and str((rule.get("template_variables") or {}).get("use_subtitles", False)).lower() in ("true", "1"):
                     rule_name = "subtitle_languages"
                 is_res_rule = (
@@ -1566,6 +1586,8 @@ class OverlayResolver:
                 )
                 matched_entries = []
                 for key, coords in layout_updates.items():
+                    if coords is None or coords.get("enabled") is False:
+                        continue
                     key_lower = key.lower()
                     # Match e.g. "rating" <-> "ratings", "runtime" <-> "runtimes", "status", "resolution", "languages", age ratings
                     is_match = (
@@ -1615,7 +1637,7 @@ class OverlayResolver:
                         if "rating" in layout_updates:
                             r_coords = layout_updates.get("rating")
                             if r_coords and isinstance(r_coords, dict) and r_coords.get("enabled") is not False:
-                                vars_dict["audience_rating"] = True
+                                vars_dict["audience_rating"] = False
                                 vars_dict["rating_horizontal_align"] = r_coords.get("horizontal_align", "center")
                                 vars_dict["rating_horizontal_offset"] = int(r_coords.get("horizontal_offset", 375))
                                 vars_dict["rating_vertical_align"] = r_coords.get("vertical_align", "bottom")
@@ -1627,8 +1649,6 @@ class OverlayResolver:
                                     vars_dict["rating_font"] = str(r_coords["font"])
                             else:
                                 vars_dict["audience_rating"] = False
-                            matched_keys.add("rating")
-                            matched_keys.add("ratings")
 
                     # Check if layout_updates has ratings (Critic scores) and apply if critic ratings rule
                     if rule_name == "ratings" or "ratings.yml" in rule_name:
@@ -1703,7 +1723,7 @@ class OverlayResolver:
                 if key_lower == "resolution" and has_res_file:
                     continue
                 # Internal UI keys should NEVER be appended as overlay rules in config.yml
-                if key_lower in ("age_rating", "rating", "runtime", "runtimes"):
+                if key_lower == "age_rating":
                     continue
                 # If key is an age rating alias but an age rating rule is already configured, skip
                 if key_lower in age_rating_aliases and any(any(cr in str(r.get("default") or r.get("file") or "").lower() for cr in age_rating_aliases) for r in overlay_files if isinstance(r, dict)):
@@ -1716,7 +1736,7 @@ class OverlayResolver:
                     }.get(target_format)
                     if target_level:
                         clean_vars.setdefault("builder_level", target_level)
-                    def_key = "languages" if key_lower == "subtitle_languages" else key
+                    def_key = "languages" if key_lower == "subtitle_languages" else ("single_rating" if key_lower == "rating" else ("runtimes" if key_lower == "runtime" else key))
                     if key_lower == "subtitle_languages":
                         clean_vars["use_subtitles"] = True
                     overlay_files.append({
@@ -2091,7 +2111,7 @@ class OverlayConfigEngine:
             p_str = f"{p_str}.png"
 
         stem = Path(p_str).stem.lower()
-        flag_aliases = {"en": "us", "ja": "jp", "zh": "cn", "ko": "kr", "da": "dk", "sv": "se"}
+        flag_aliases = FLAG_CODE_ALIASES
         target_name = Path(p_str).name.lower()
         target_name_with_ext = target_name if target_name.endswith((".png", ".jpg", ".jpeg", ".webp")) else f"{target_name}.png"
 
@@ -2183,6 +2203,12 @@ class OverlayConfigEngine:
         """Loads YAML, returns (overlays_dict, queues_dict, templates_dict, merged_vars)."""
         file_path = None
         temp_vars = dict(file_entry.get("template_variables") or file_entry.get("variables") or {})
+        default_name = str(file_entry.get("default") or "").lower()
+        if default_name in ("runtimes", "runtime"):
+            temp_vars.setdefault("text", "")
+            temp_vars.setdefault("format", "<<runtimeH>>h <<runtimeM>>m")
+        if default_name == "languages":
+            temp_vars.setdefault("hide_text", True)
 
         # Normalize position / align aliases so both keys are populated
         if "horizontal_position" in temp_vars and "horizontal_align" not in temp_vars:
@@ -2862,6 +2888,12 @@ class OverlayConfigEngine:
         if k == "has_hdr":
             has_hdr = meta.get("has_hdr") or ("hdr" in str(meta.get("video_format", "")).lower())
             return bool(v) == bool(has_hdr)
+        if k in ("studio.is", "network.is"):
+            raw_values = meta.get("studio") if k == "studio.is" else (meta.get("networks") or meta.get("network"))
+            values = raw_values if isinstance(raw_values, list) else [raw_values]
+            candidates = {str(value).strip().casefold() for value in values if value}
+            targets = {str(value).strip().casefold() for value in (v if isinstance(v, list) else [v]) if value}
+            return bool(candidates.intersection(targets))
         if k in ("studio", "network"):
             raw_vals = []
             if meta.get("network"):

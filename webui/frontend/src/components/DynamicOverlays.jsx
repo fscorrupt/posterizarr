@@ -610,11 +610,16 @@ export default function DynamicOverlays() {
   const [showAssetGuides, setShowAssetGuides] = useState(true);
   const [applyAssetOverlay, setApplyAssetOverlay] = useState(true);
   const [previewRating, setPreviewRating] = useState("8.4");
+  const [previewRatingMode, setPreviewRatingMode] = useState("providers");
   const [previewRatingDefaults, setPreviewRatingDefaults] = useState({ sources: ["imdb", "tomatoes", "tmdb"], theme: "dark", orientation: "horizontal", contrast_box: true, spacing: 15 });
   const [previewResolution, setPreviewResolution] = useState("4K");
   const [previewStatus, setPreviewStatus] = useState("");
   const [previewStatusColor, setPreviewStatusColor] = useState("#FFA500");
   const [previewRuntime, setPreviewRuntime] = useState("1h 58m");
+  const [previewRuntimePrefix, setPreviewRuntimePrefix] = useState("");
+  const [previewRuntimeFormat, setPreviewRuntimeFormat] = useState("<<runtimeH>>h <<runtimeM>>m");
+  const [previewLanguageLabels, setPreviewLanguageLabels] = useState(false);
+  const [previewSubtitleLabels, setPreviewSubtitleLabels] = useState(false);
   const [previewLanguages, setPreviewLanguages] = useState("de,en");
   const [previewSubtitles, setPreviewSubtitles] = useState("");
   const [previewAspect, setPreviewAspect] = useState("");
@@ -3462,10 +3467,7 @@ export default function DynamicOverlays() {
       const layoutPayload = {};
       const curLibForSave = visualConfig?.libraries?.[libName];
       const curBadgesForSave = curLibForSave?.badges || {};
-      const isCriticRatingEnabled = Boolean(
-        !curLibForSave || curBadgesForSave.critic_rating?.enabled ||
-        (curBadgesForSave.rating?.source === "ratings" && curBadgesForSave.rating?.enabled)
-      );
+      const isCriticRatingEnabled = previewRatingMode === "providers";
       const isRatingEnabled = Boolean(previewRating && previewRating !== "Off");
 
       if (isRatingEnabled && isCriticRatingEnabled) {
@@ -3488,6 +3490,7 @@ export default function DynamicOverlays() {
         // Single audience rating badge coordinates (applied to overlays_movies.yml / overlays_tv.yml)
         layoutPayload.rating = {
           enabled: true,
+          theme: previewRatingOptions.theme,
           horizontal_offset: offsets.rating.x,
           vertical_offset: offsets.rating.y,
           horizontal_align: offsets.rating.align,
@@ -3495,7 +3498,7 @@ export default function DynamicOverlays() {
           ...(offsets.rating.font_size ? { font_size: offsets.rating.font_size } : {}),
           ...(offsets.rating.font ? { font: offsets.rating.font } : {})
         };
-      } else if (!isRatingEnabled) {
+      } else {
         layoutPayload.rating = null;
       }
       if (previewRuntime && previewRuntime !== "Off") {
@@ -3508,7 +3511,8 @@ export default function DynamicOverlays() {
           font_size: Number(offsets.runtime.font_size) || (isLandscape ? 52 : 40),
           back_width: isLandscape ? 180 : 205,
           back_color: "#00000000",
-          text: "",
+          text: previewRuntimePrefix,
+          format: previewRuntimeFormat,
           ...(offsets.runtime.font ? { font: offsets.runtime.font } : {})
         };
       }
@@ -3542,6 +3546,10 @@ export default function DynamicOverlays() {
       }
       if (previewLanguages && previewLanguages !== "Off") {
         layoutPayload.languages = {
+          languages: previewLanguages.split(",").map(code => code.trim()).filter(Boolean),
+          hide_text: !previewLanguageLabels,
+          final_name: "text(<<final_text>>)",
+          font_color: "#FFFFFF",
           horizontal_offset: offsets.languages?.x ?? 30,
           vertical_offset: offsets.languages?.y ?? 35,
           horizontal_align: offsets.languages?.align ?? "left",
@@ -3558,7 +3566,7 @@ export default function DynamicOverlays() {
           vertical_offset: position?.y ?? 0,
           horizontal_align: position?.align || "center",
           vertical_align: position?.valign || "bottom",
-          ...(key === "subtitle_languages" ? { use_subtitles: true } : {}),
+          ...(key === "subtitle_languages" ? { use_subtitles: true, languages: previewSubtitles.split(",").map(code => code.trim()).filter(Boolean), hide_text: !previewSubtitleLabels, final_name: "text(<<final_text>>)", font_color: "#FFFFFF" } : {}),
           ...(key === "streaming" ? previewStreamingOptions : {})
         };
       }
@@ -3593,6 +3601,7 @@ export default function DynamicOverlays() {
       }
       if (previewAudioCodec && previewAudioCodec !== "Off") {
         layoutPayload.audio_codec = {
+          style: previewAudioCodecStyle,
           horizontal_offset: offsets.audio_codec?.x ?? 30,
           vertical_offset: offsets.audio_codec?.y ?? 70,
           horizontal_align: offsets.audio_codec?.align || "right",
@@ -3838,6 +3847,8 @@ export default function DynamicOverlays() {
 
     // 3. AUDIO LANGUAGES (FLAGS)
     const langLevel = (badges.audio_languages?.level || (isTv ? "episode" : "movie")).toLowerCase();
+    setPreviewLanguageLabels(Boolean(badges.audio_languages?.show_labels));
+    setPreviewSubtitleLabels(Boolean(badges.subtitle_languages?.show_labels));
     const shouldShowLanguages = Boolean(badges.audio_languages?.enabled) && (
       (targetFormat === "movie_poster" && (langLevel === "movie" || langLevel === "all")) ||
       (targetFormat === "episode_card" && (langLevel === "episode" || langLevel === "all")) ||
@@ -3900,6 +3911,8 @@ export default function DynamicOverlays() {
         font: badges.runtime?.font ?? ""
       };
       setPreviewRuntime(targetFormat === "episode_card" ? "45 min" : "1h 58m");
+      setPreviewRuntimePrefix(badges.runtime.text || "");
+      setPreviewRuntimeFormat(badges.runtime.format || "<<runtimeH>>h <<runtimeM>>m");
     } else {
       setPreviewRuntime("");
     }
@@ -3908,6 +3921,7 @@ export default function DynamicOverlays() {
     const ratingBadge = badges.critic_rating?.enabled
       ? badges.critic_rating
       : (badges.rating?.enabled && ["ratings", "audience_rating"].includes(badges.rating.source) ? badges.rating : null);
+    setPreviewRatingMode(badges.critic_rating?.enabled || badges.rating?.source === "ratings" ? "providers" : "single");
     const ratingLevel = (ratingBadge?.level || (isTv ? "show" : "movie")).toLowerCase();
     const shouldShowRating = Boolean(ratingBadge?.enabled) && (
       (targetFormat === "movie_poster" && (ratingLevel === "movie" || ratingLevel === "all")) ||
@@ -4177,6 +4191,8 @@ export default function DynamicOverlays() {
   };
 
   const fontParams = [
+    `&rating_mode=${previewRatingMode}`,
+    `&runtime_prefix=${encodeURIComponent(previewRuntimePrefix)}&runtime_format=${encodeURIComponent(previewRuntimeFormat)}&language_labels=${previewLanguageLabels}&subtitle_labels=${previewSubtitleLabels}`,
     `&streaming=${encodeURIComponent(previewStreaming)}&streaming_options=${encodeURIComponent(JSON.stringify(previewStreamingOptions))}`,
     `&rating_options=${encodeURIComponent(JSON.stringify(previewRatingOptions))}`,
     `&subtitle_languages=${encodeURIComponent(previewSubtitles)}&studio=${encodeURIComponent(previewStudio)}${previewAspect ? `&aspect_ratio=${encodeURIComponent(previewAspect)}` : ""}`,
@@ -5756,6 +5772,7 @@ export default function DynamicOverlays() {
                           value={badges.audio_languages?.position || "bottom-left"}
                           onChange={(p) => updateBadge("audio_languages", { position: p })}
                         />
+                        <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={Boolean(badges.audio_languages?.show_labels)} onChange={event => updateBadge("audio_languages", { show_labels: event.target.checked })} />Show Language Codes</label>
                         <div className="grid grid-cols-3 gap-1.5 flex-1">
                           <div className="space-y-0.5">
                             <label className="text-[9px] font-semibold text-theme-muted uppercase">Offset X</label>
@@ -5809,6 +5826,7 @@ export default function DynamicOverlays() {
                           {["movie", "show", "season", "episode", "all"].map(level => <option key={level} value={level}>{level}</option>)}
                         </select>
                         {key === "subtitle_languages" && <input aria-label="Subtitle language codes" value={(badge.languages || ["de", "en"]).join(", ")} onChange={(event) => updateBadge(key, { languages: event.target.value.split(",").map(code => code.trim()).filter(Boolean) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />}
+                        {key === "subtitle_languages" && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={Boolean(badge.show_labels)} onChange={event => updateBadge(key, { show_labels: event.target.checked })} />Show Language Codes</label>}
                         {key === "streaming" && <>
                           <label className="text-xs text-theme-muted">Country
                             <input aria-label="Streaming country code" maxLength={2} value={badge.region || "US"} onChange={event => updateBadge(key, { region: event.target.value.toUpperCase() })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
@@ -5939,6 +5957,11 @@ export default function DynamicOverlays() {
                             />
                           </div>
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="text-xs text-theme-muted">Label<input aria-label="Saved runtime label" value={badges.runtime?.text || ""} onChange={event => updateBadge("runtime", { text: event.target.value })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" /></label>
+                        <label className="text-xs text-theme-muted">Format<select aria-label="Saved runtime format" value={badges.runtime?.format || "<<runtimeH>>h <<runtimeM>>m"} onChange={event => updateBadge("runtime", { format: event.target.value })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"><option value="<<runtimeH>>h <<runtimeM>>m">Hours / Minutes</option><option value="<<runtime>> min">Total Minutes</option></select></label>
                       </div>
 
                       {/* Runtime Text Size & Font Styling */}
@@ -7772,9 +7795,7 @@ export default function DynamicOverlays() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <label className="text-xs font-semibold text-theme-text">
-                      {(!selectedSaveLibrary || visualConfig?.libraries?.[selectedSaveLibrary]?.badges?.critic_rating?.enabled
-                        || visualConfig?.libraries?.[selectedSaveLibrary]?.badges?.rating?.source === "ratings")
-                        ? "Critic & Audience Scores" : "Legacy Single-Score Badge"}
+                      {previewRatingMode === "providers" ? "Critic & Audience Scores" : "Single-Score Badge"}
                     </label>
                     {previewTemplate === "episode_card" && (
                       <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 rounded">
@@ -7811,6 +7832,10 @@ export default function DynamicOverlays() {
                   </div>
                 </div>
 
+                <select aria-label="Rating badge mode" value={previewRatingMode} onChange={event => { setPreviewRatingMode(event.target.value); setPreviewTimestamp(Date.now()); }} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
+                  <option value="single">Single Score</option>
+                  <option value="providers">Provider Scores</option>
+                </select>
                 <div className="grid grid-cols-5 gap-1.5 pt-1">
                   {["Off", "8.4", "7.5", "6.2", "4.0"].map((score) => (
                     <button
@@ -8175,6 +8200,7 @@ export default function DynamicOverlays() {
                     </button>
                   ))}
                 </div>
+                {previewLanguages && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={previewLanguageLabels} onChange={event => { setPreviewLanguageLabels(event.target.checked); setPreviewTimestamp(Date.now()); }} />Show Language Codes</label>}
                 {previewLanguages && (
                   <BadgeOffsetControls
                     itemKey="languages"
@@ -8187,14 +8213,22 @@ export default function DynamicOverlays() {
 
               {[["subtitle_languages", "Subtitle Language Flags", previewSubtitles, setPreviewSubtitles], ["aspect", "Aspect Ratio", previewAspect, setPreviewAspect], ["studio", "Studio Logo", previewStudio, setPreviewStudio], ["streaming", "Streaming Services", previewStreaming, setPreviewStreaming]].map(([key, label, value, setter]) => (
                 <div key={key} className="space-y-2 border border-theme rounded-lg p-3">
-                  <label className="text-xs font-semibold text-theme-text" htmlFor={`preview-${key}`}>{label}</label>
+                  <label className="flex items-center justify-between gap-2 text-xs font-semibold text-theme-text" htmlFor={`enable-preview-${key}`}>
+                    {label}
+                    <input id={`enable-preview-${key}`} type="checkbox" checked={Boolean(value)} onChange={event => { setter(event.target.checked ? ({ subtitle_languages: "de,en", aspect: "1.78", studio: "Universal Pictures", streaming: "netflix,disney" }[key]) : ""); setPreviewTimestamp(Date.now()); }} />
+                  </label>
                   <input id={`preview-${key}`} type={key === "aspect" ? "number" : "text"} min={key === "aspect" ? "0.1" : undefined} max={key === "aspect" ? "9.99" : undefined} step={key === "aspect" ? "0.01" : undefined} value={value} onChange={event => { setter(event.target.value); setPreviewTimestamp(Date.now()); }} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
+                  {key === "subtitle_languages" && value && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={previewSubtitleLabels} onChange={event => { setPreviewSubtitleLabels(event.target.checked); setPreviewTimestamp(Date.now()); }} />Show Language Codes</label>}
                   {value && <BadgeOffsetControls itemKey={key} offset={offsets[key]} onChange={handleOffsetChange} fonts={availableFonts} />}
                 </div>
               ))}
 
               {/* Runtime Duration */}
               <div className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-xs text-theme-muted">Label<input aria-label="Runtime label" value={previewRuntimePrefix} onChange={event => { setPreviewRuntimePrefix(event.target.value); setPreviewTimestamp(Date.now()); }} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" /></label>
+                  <label className="text-xs text-theme-muted">Format<select aria-label="Runtime format" value={previewRuntimeFormat} onChange={event => { setPreviewRuntimeFormat(event.target.value); setPreviewTimestamp(Date.now()); }} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"><option value="<<runtimeH>>h <<runtimeM>>m">Hours / Minutes</option><option value="<<runtime>> min">Total Minutes</option></select></label>
+                </div>
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-theme-text">Runtime Duration</label>
                   <span className="text-[11px] font-mono text-theme-muted">{previewRuntime || "Off"}</span>

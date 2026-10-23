@@ -97,7 +97,7 @@ class RatingsCacheManager:
                             year INTEGER,
                             imdb_id TEXT,
                             tmdb_id INTEGER,
-                            
+
                             -- Individual score values
                             imdb_rating REAL,
                             tmdb_rating REAL,
@@ -106,25 +106,25 @@ class RatingsCacheManager:
                             trakt_rating REAL,
                             metacritic_rating INTEGER,
                             letterboxd_rating REAL,
-                            
+
                             -- Metadata & Expiration
                             source TEXT DEFAULT 'plex',
                             cached_at TEXT NOT NULL,
                             expires_at TEXT NOT NULL,
-                            
+
                             UNIQUE(server_type, item_id)
                         );
                     """)
                     conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_mrc_lookup 
+                        CREATE INDEX IF NOT EXISTS idx_mrc_lookup
                         ON media_ratings_cache(server_type, item_id);
                     """)
                     conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_mrc_expires 
+                        CREATE INDEX IF NOT EXISTS idx_mrc_expires
                         ON media_ratings_cache(expires_at);
                     """)
                     conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_mrc_ids 
+                        CREATE INDEX IF NOT EXISTS idx_mrc_ids
                         ON media_ratings_cache(imdb_id, tmdb_id);
                     """)
                     conn.execute("""
@@ -179,7 +179,7 @@ class RatingsCacheManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT * FROM media_ratings_cache 
+                    SELECT * FROM media_ratings_cache
                     WHERE server_type = ? AND item_id = ?
                     LIMIT 1
                     """,
@@ -528,7 +528,7 @@ class RatingsCacheManager:
 
                 # Get paginated rows
                 query_sql = f"""
-                    SELECT * FROM media_ratings_cache 
+                    SELECT * FROM media_ratings_cache
                     {where_sql}
                     ORDER BY {col_sort} {dir_sort}
                     LIMIT ? OFFSET ?
