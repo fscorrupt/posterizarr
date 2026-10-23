@@ -2788,7 +2788,7 @@ async def _run_overlay_sync_task(
             overlays_dir = PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays"
         elif Path("/app/Overlayfiles/dynamic_overlays").exists():
             overlays_dir = Path("/app/Overlayfiles/dynamic_overlays")
-    cache = OverlayCache(base_dir / "database" / "overlay_cache.db")
+    cache = await asyncio.to_thread(OverlayCache, base_dir / "database" / "overlay_cache.db")
 
     # Rotate log if exceeds 10MB
     if log_file_path.exists():
@@ -4602,7 +4602,7 @@ async def detect_media_changes(
 
     server_info = get_server_credentials(config_path)
     real_asset_path = server_info.get("asset_path") or resolve_configured_asset_path(base_dir / "assets")
-    cache = OverlayCache(base_dir / "database" / "overlay_cache.db")
+    cache = await asyncio.to_thread(OverlayCache, base_dir / "database" / "overlay_cache.db")
 
     summary = {
         "languages": 0,

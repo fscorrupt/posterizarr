@@ -303,6 +303,7 @@ class OverlayCache:
 
     def _init_db(self):
         with self.lock:
+            conn = None
             try:
                 migrated = 0
                 conn = self._get_connection()
@@ -373,12 +374,21 @@ class OverlayCache:
 
                     conn.execute("CREATE TABLE IF NOT EXISTS overlay_layer_snapshots (digest TEXT PRIMARY KEY, layers_json TEXT NOT NULL) WITHOUT ROWID")
                     self._layer_snapshots.update(dict(conn.execute("SELECT digest, layers_json FROM overlay_layer_snapshots")))
-                    legacy = conn.execute("SELECT id, attr_snapshot FROM dynamic_overlay_cache WHERE instr(attr_snapshot, '\"_overlay_layers\"') > 0").fetchall()
-                    for row in legacy:
-                        compact = self._compact_attr_snapshot(row["attr_snapshot"], conn)
-                        if compact != row["attr_snapshot"]:
-                            conn.execute("UPDATE dynamic_overlay_cache SET attr_snapshot = ? WHERE id = ?", (compact, row["id"]))
-                            migrated += 1
+                    last_id = -1
+                    while True:
+                        legacy = conn.execute(
+                            "SELECT id, attr_snapshot FROM dynamic_overlay_cache "
+                            "WHERE id > ? AND instr(attr_snapshot, '\"_overlay_layers\"') > 0 ORDER BY id LIMIT 256",
+                            (last_id,)
+                        ).fetchall()
+                        if not legacy:
+                            break
+                        for row in legacy:
+                            compact = self._compact_attr_snapshot(row["attr_snapshot"], conn)
+                            if compact != row["attr_snapshot"]:
+                                conn.execute("UPDATE dynamic_overlay_cache SET attr_snapshot = ? WHERE id = ?", (compact, row["id"]))
+                                migrated += 1
+                        last_id = legacy[-1]["id"]
 
                 conn.close()
                 if migrated:
@@ -386,6 +396,9 @@ class OverlayCache:
                 return migrated
             except Exception as e:
                 logger.error(f"[OverlayCache] Failed to initialize database at {self.db_path}: {e}")
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_entry(
         self,

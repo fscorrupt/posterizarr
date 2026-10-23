@@ -39,6 +39,10 @@ import re
 import math
 import hashlib
 import logging
+import os
+import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List, Union, Callable
 from PIL import Image, ImageColor, ImageDraw, ImageFont, ImageFilter
@@ -57,6 +61,55 @@ class OverlayAssetMissingError(Exception):
         super().__init__(message)
         self.asset_name = asset_name
         self.message = message
+
+
+_FONT_LOAD_LOCK = threading.RLock()
+_FONT_REPAIR_FAILURES = {}
+
+
+def load_overlay_font(font_path, font_size, candidate_dirs):
+    requested = Path(font_path)
+    with _FONT_LOAD_LOCK:
+        candidates = list(dict.fromkeys([requested] + [directory / requested.name for directory in candidate_dirs]))
+        for candidate in candidates:
+            try:
+                return ImageFont.truetype(str(candidate), size=font_size)
+            except (OSError, ValueError):
+                continue
+
+        from overlay_resolver import OFFICIAL_KOMETA_FONTS, KOMETA_GITHUB_RAW
+        if requested.name not in OFFICIAL_KOMETA_FONTS:
+            raise OSError(f"Required custom font '{requested}' is missing or invalid")
+        failure_key = str(requested.resolve())
+        if time.monotonic() - _FONT_REPAIR_FAILURES.get(failure_key, float('-inf')) < 60:
+            raise OSError(f"Repair of required font '{requested}' recently failed; retry deferred")
+        temporary = None
+        try:
+            import httpx
+            payload = bytearray()
+            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+                with client.stream("GET", f"{KOMETA_GITHUB_RAW}/fonts/{requested.name}") as response:
+                    response.raise_for_status()
+                    for chunk in response.iter_bytes(65536):
+                        payload.extend(chunk)
+                        if len(payload) > 8 * 1024 * 1024:
+                            raise ValueError("Downloaded font exceeds 8 MiB")
+            content = bytes(payload)
+            validated = ImageFont.truetype(io.BytesIO(content), size=font_size)
+            requested.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=requested.parent, prefix=".overlay-font-", suffix=".tmp", delete=False) as output:
+                temporary = Path(output.name)
+                output.write(content)
+            os.replace(temporary, requested)
+            _FONT_REPAIR_FAILURES.pop(failure_key, None)
+            logger.info("[Compositor] Repaired required font: %s", requested)
+            return validated
+        except Exception as error:
+            _FONT_REPAIR_FAILURES[failure_key] = time.monotonic()
+            raise OSError(f"Required font '{requested}' could not be repaired ({type(error).__name__})") from error
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
 
 def get_candidate_asset_dirs() -> List[Path]:
@@ -771,67 +824,24 @@ class DynamicOverlayCompositor:
         font = None
         candidate_font_dirs = get_candidate_font_dirs()
 
-        # Resolve font path if specified
-        resolved_fp = None
         if font_path:
-            fp = Path(font_path)
-            if fp.exists():
-                resolved_fp = fp
-            else:
-                f_name = fp.name
-                for fd in candidate_font_dirs:
-                    cand = fd / f_name
-                    if cand.exists():
-                        resolved_fp = cand
-                        break
-                # On-demand font download if official Kometa font
-                if not resolved_fp:
-                    try:
-                        from overlay_resolver import OFFICIAL_KOMETA_FONTS, KOMETA_GITHUB_RAW
-                        if f_name in OFFICIAL_KOMETA_FONTS:
-                            import httpx
-                            font_url = f"{KOMETA_GITHUB_RAW}/fonts/{f_name}"
-                            with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
-                                r_f = h_client.get(font_url)
-                                if r_f.status_code == 200:
-                                    save_f_dir = candidate_font_dirs[0] if candidate_font_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts")
-                                    save_f_path = save_f_dir / f_name
-                                    save_f_path.parent.mkdir(parents=True, exist_ok=True)
-                                    with open(save_f_path, "wb") as f_out:
-                                        f_out.write(r_f.content)
-                                    resolved_fp = save_f_path
-                    except Exception as e_font_fetch:
-                        logger.debug(f"[Compositor] On-demand font fetch error: {e_font_fetch}")
+            try:
+                font = load_overlay_font(font_path, font_size, candidate_font_dirs)
+            except Exception as font_error:
+                logger.warning("[Compositor] Could not load required font %s: %s", font_path, font_error)
+                if abort_on_missing:
+                    raise OverlayAssetMissingError(str(font_path), str(font_error)) from font_error
 
-        # If an explicit font_path was requested but could not be found or downloaded
-        if font_path and not resolved_fp:
-            if abort_on_missing:
-                raise OverlayAssetMissingError(
-                    str(font_path),
-                    f"Required overlay font '{font_path}' could not be resolved or downloaded from Kometa defaults"
-                )
-
-        # Fallback fonts if no specific font was requested or fallback permitted
-        if not resolved_fp:
+        if not font and not font_path:
             for fallback in ["Inter-Bold.ttf", "Inter-Medium.ttf", "CircularStd-Bold.otf", "Roboto-Bold.ttf", "Roboto-Medium.ttf", "Arial.ttf", "DejaVuSans.ttf"]:
                 for fd in candidate_font_dirs:
-                    cand = fd / fallback
-                    if cand.exists():
-                        resolved_fp = cand
+                    try:
+                        font = ImageFont.truetype(str(fd / fallback), size=font_size)
                         break
-                if resolved_fp:
+                    except (OSError, ValueError):
+                        continue
+                if font:
                     break
-
-        if resolved_fp and resolved_fp.exists():
-            try:
-                font = ImageFont.truetype(str(resolved_fp), size=font_size)
-            except Exception as fe:
-                logger.warning(f"[Compositor] Failed loading font {resolved_fp}: {fe}")
-                if abort_on_missing and font_path:
-                    raise OverlayAssetMissingError(
-                        str(resolved_fp),
-                        f"Failed loading required font '{resolved_fp}': {fe}"
-                    )
 
         if not font:
             try:
