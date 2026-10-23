@@ -3583,6 +3583,25 @@ async def _run_overlay_sync_task(
                                         composited_jpeg = base_bytes
 
                                 upload_success = False
+                                if s_type == "plex" and scope == "incremental" and cached_entry and composited_jpeg is not None:
+                                    comp_phase = "comparing rendered poster with selected Plex artwork"
+                                    identical, identity_reason, verified_snapshot = await _plex_rendered_titlecard_status(
+                                        http_client, s_url, item_id, creds.get("token"), {}, None, composited_jpeg
+                                    )
+                                    if identical:
+                                        poster_snapshot = {**json.loads(build_attr_snapshot(item)), **json.loads(verified_snapshot or "{}")}
+                                        saved = cache.update_verified_fingerprints(
+                                            s_type, str(item_id), "poster", clean_asset_hash, recipe_hash, meta_hash,
+                                            snapshot_overlay_layers(json.dumps(poster_snapshot), overlay_layers), mtime, size,
+                                            cache_map=cache_map, media_file_path=item.get("media_file_path"), detected_video_source=item.get("video_source")
+                                        )
+                                        if saved:
+                                            await _inc_stats(skipped=1)
+                                            write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> Selected Plex poster already matches rendered output; cache fingerprints refreshed (no upload)")
+                                        else:
+                                            await _inc_stats(failed=1)
+                                            write_log(f"  [!] {w_tag}Poster '{title}' already matches Plex, but cache fingerprints could not be saved. No upload performed.")
+                                        composited_jpeg = None
                                 comp_phase = f"uploading to {s_type.upper()}"
                                 if composited_jpeg is not None:
                                     if s_type == "plex":

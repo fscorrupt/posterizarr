@@ -738,6 +738,17 @@ class OverlayCache:
         it_str = str(item_id)
         at_lower = asset_type.lower()
         key = (st_lower, it_str, at_lower)
+        previous_entry = cache_map.get(key) if cache_map is not None else self.get_entry(server_type, item_id, asset_type)
+        try:
+            previous = json.loads((previous_entry or {}).get("attr_snapshot") or "{}")
+            current = json.loads(attr_snapshot)
+            if isinstance(previous, dict) and isinstance(current, dict):
+                for field in ("_overlay_layers_ref", "plex_poster_key", "plex_thumb"):
+                    if field not in current and field in previous:
+                        current[field] = previous[field]
+                attr_snapshot = json.dumps(current, sort_keys=True, separators=(",", ":"))
+        except (TypeError, ValueError):
+            pass
 
         # Zero-write skip: if memory cache already has this exact snapshot, skip DB write
         if cache_map is not None and key in cache_map:
