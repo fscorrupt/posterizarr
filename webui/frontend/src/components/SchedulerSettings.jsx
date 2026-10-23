@@ -1331,7 +1331,15 @@ const SchedulerSettings = () => {
 
           {newMode === "pleximagecleanup" && (
             <section aria-label="Plex image cleanup settings" className="border-t border-theme pt-4 space-y-3">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-theme-text"><Trash2 className="w-4 h-4" />Plex Image Cleanup · Scheduled Only</h3>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-theme-text"><Trash2 className="w-4 h-4" />Plex Image Cleanup</h3>
+              <p className="text-xs text-theme-muted">Reports, quarantines, or removes old, unselected custom artwork stored by Plex.</p>
+              <aside role="note" aria-label="Plex image cleanup requirements" className="flex items-start gap-2 border-l-2 border-amber-500 pl-3 py-2 text-xs text-theme-muted">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                <div className="space-y-1">
+                  <p>Requires a mounted Plex data directory and the correct database snapshot and filesystem permissions. Keep Read Only enabled for the first run.</p>
+                  <a href="https://fscorrupt.github.io/posterizarr/plex_image_cleanup/#configuration" target="_blank" rel="noopener noreferrer" className="inline-block text-theme-primary underline">Read setup requirements in the wiki before enabling cleanup</a>
+                </div>
+              </aside>
               <label className="flex items-center justify-between gap-3 text-sm text-theme-text">
                 Read Only (Report)
                 <input type="checkbox" role="switch" aria-label="Plex cleanup read only" checked={cleanupReadOnly} onChange={event => { setCleanupReadOnly(event.target.checked); setCleanupRemovalConfirmed(false); if (event.target.checked) setCleanupAction("report"); }} />
