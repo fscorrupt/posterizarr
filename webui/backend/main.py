@@ -6194,6 +6194,12 @@ async def get_status():
             display_pid = "External"
 
         # Check sub-service running states
+        image_cleanup_active = False
+        try:
+            from plex_image_cleanup import is_cleanup_running
+            image_cleanup_active = is_cleanup_running()
+        except Exception:
+            pass
         overlay_sync_active = False
         try:
             from overlay_sync_service import is_overlay_sync_running
@@ -6243,6 +6249,16 @@ async def get_status():
                 "stop_endpoint": None,
                 "color": "blue",
             })
+        if image_cleanup_active:
+            active_tasks.append({
+                "id": "plex_image_cleanup",
+                "name": "Plex Image Cleanup",
+                "label": "IMAGE CLEANUP",
+                "type": "plex_image_cleanup",
+                "stop_endpoint": None,
+                "log_file": "PlexImageCleanup.log",
+                "color": "amber",
+            })
         if overlay_sync_active:
             active_tasks.append({
                 "id": "overlay_sync",
@@ -6280,7 +6296,7 @@ async def get_status():
                 "color": "amber",
             })
 
-        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active or import_images_active)
+        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active or import_images_active or image_cleanup_active)
 
         return {
             "running": is_running,
@@ -6297,6 +6313,7 @@ async def get_status():
             "running_file_exists": running_file_exists,
             "start_time": current_start_time if is_running else None,
             "overlay_sync_running": overlay_sync_active,
+            "image_cleanup_running": image_cleanup_active,
             "plex_sync_running": plex_sync_active,
             "animetafill_running": animetafill_active,
             "metadata_refresh_running": metadata_refresh_active,
@@ -8892,6 +8909,7 @@ KNOWN_LOG_FILES: Dict[str, Path] = {
     "PlexSync.log": UI_LOGS_DIR / "PlexSync.log",
     "KometaDefaults.log": UI_LOGS_DIR / "KometaDefaults.log",
     "DynamicOverlaysSync.log": UI_LOGS_DIR / "DynamicOverlaysSync.log",
+    "PlexImageCleanup.log": UI_LOGS_DIR / "PlexImageCleanup.log",
     "AniMetaFill.log": UI_LOGS_DIR / "AniMetaFill.log",
 }
 

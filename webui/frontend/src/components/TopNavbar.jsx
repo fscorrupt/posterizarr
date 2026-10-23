@@ -46,7 +46,7 @@ const TopNavbar = () => {
         const isAnyRunning = Boolean(data.any_running ?? (data.running || activeTasks.length > 0));
         setSystemStatus({
           running: Boolean(data.running),
-          mode: data.current_mode || "Running", 
+          mode: data.current_mode || "Running",
           runningFileExists: Boolean(data.already_running_detected || data.running_file_exists),
           activeTasks,
           anyRunning: isAnyRunning,
@@ -157,10 +157,12 @@ const TopNavbar = () => {
                },
              };
              const themeColor = colorMap[task.color] || colorMap.green;
+             const TaskBadge = task.log_file ? Link : "div";
+             const taskLinkProps = task.log_file ? { to: "/logs", state: { logFile: task.log_file }, title: `View ${task.name} live log` } : {};
 
              return (
                <div key={task.id} className="flex items-center gap-2 animate-in slide-in-from-left-5 duration-300 mr-1">
-                 <div className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-full ${themeColor.badge}`}>
+                 <TaskBadge {...taskLinkProps} className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-full ${themeColor.badge}`}>
                    <span className="relative flex h-2 w-2">
                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${themeColor.ping}`}></span>
                      <span className={`relative inline-flex rounded-full h-2 w-2 ${themeColor.dot}`}></span>
@@ -168,7 +170,7 @@ const TopNavbar = () => {
                    <span className="text-xs font-bold uppercase tracking-widest whitespace-nowrap">
                      {task.label || task.name}
                    </span>
-                 </div>
+                 </TaskBadge>
 
                  {task.stop_endpoint && (
                    <button

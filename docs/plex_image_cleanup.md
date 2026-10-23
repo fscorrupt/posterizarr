@@ -97,7 +97,9 @@ An older unselected upload may still be a useful alternative poster. Quarantine 
 
 ## Reports
 
-Each executed task appends a summary to `UILogs/PlexImageCleanup.log` and writes `UILogs/last_image_cleanup_report.json`. Reports include action, candidate/changed counts and bytes, skipped files, errors, and the quarantine path when applicable. Use the log button on a saved cleanup schedule to open its output. Busy skips are recorded by the scheduler.
+Each executed task creates `UILogs/PlexImageCleanup.log` at startup and appends timestamped progress for snapshot creation/download, selected-artwork protection, metadata scanning, and candidate processing. Long scans report progress periodically rather than once per image. The final JSON summary is appended to this log and written to `UILogs/last_image_cleanup_report.json`.
+
+The top navigation shows **IMAGE CLEANUP**, not Overlay Sync. Click that activity badge, or the log button beside the saved schedule, to open the cleanup live log. Cleanup has no Overlay Sync Stop action. Reports include action, candidate/changed counts and bytes, skipped files, errors, and the quarantine path when applicable. Busy skips are recorded by the scheduler.
 
 ## ImageMaid License
 

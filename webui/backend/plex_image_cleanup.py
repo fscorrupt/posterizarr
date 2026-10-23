@@ -81,7 +81,7 @@ def selected_artwork(connection):
     return selected
 
 
-def image_cleanup_candidates(metadata_dir, selected, minimum_age_days=7, now=None):
+def image_cleanup_candidates(metadata_dir, selected, minimum_age_days=7, now=None, progress=None):
     root = Path(metadata_dir).resolve(strict=True)
     if root.name != "Metadata" or not root.is_dir():
         raise ValueError("Cleanup must be confined to the Plex Metadata directory")
@@ -90,7 +90,14 @@ def image_cleanup_candidates(metadata_dir, selected, minimum_age_days=7, now=Non
         raise ValueError("Image cleanup requires an age grace period of at least one day")
     cutoff = (time.time() if now is None else now) - minimum_age_days * 86400
     candidates = []
+    scanned_directories = 0
+    candidate_bytes = 0
+    last_progress = time.monotonic()
     for parent, directories, filenames in os.walk(root, followlinks=False):
+        scanned_directories += 1
+        if progress and time.monotonic() - last_progress >= 5:
+            progress(f"Scanning Metadata: {scanned_directories} directories; {len(candidates)} eligible images ({candidate_bytes / 1024**3:.2f} GiB)")
+            last_progress = time.monotonic()
         directories[:] = [
             name for name in directories
             if name != "Contents" and not (Path(parent).name == "Uploads" and name == "themes")
@@ -117,13 +124,16 @@ def image_cleanup_candidates(metadata_dir, selected, minimum_age_days=7, now=Non
             except (OSError, ValueError, Image.DecompressionBombError):
                 continue
             candidates.append({"path": path, "size": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+            candidate_bytes += stat.st_size
     return candidates
 
 
-def _read_current_selection(plex_root, options, credentials, work_dir, client):
+def _read_current_selection(plex_root, options, credentials, work_dir, client, progress=None):
     snapshot = Path(work_dir) / "selected-artwork.db"
     source = options.get("database_source", "plex")
     if source == "local":
+        if progress:
+            progress("Creating a fresh read-only snapshot of the local Plex database")
         database = plex_root / "Plug-in Support" / "Databases" / "com.plexapp.plugins.library.db"
         if not database.is_file() or not database.resolve().is_relative_to(plex_root):
             raise ValueError("Plex library database was not found inside the configured data directory")
@@ -135,6 +145,8 @@ def _read_current_selection(plex_root, options, credentials, work_dir, client):
         if any(Path(str(database) + suffix).exists() for suffix in ("-wal", "-shm")):
             raise ValueError("Plex started while copying the local database; cleanup aborted")
     elif source == "plex":
+        if progress:
+            progress("Verifying Plex server identity and checking active playback sessions")
         url = str(credentials.get("url") or "").rstrip("/")
         token = credentials.get("token")
         if not url or not token:
@@ -163,6 +175,9 @@ def _read_current_selection(plex_root, options, credentials, work_dir, client):
             raise ValueError("Plex has active playback sessions; cleanup skipped")
         download = Path(work_dir) / "database-export"
         total = 0
+        last_progress = time.monotonic()
+        if progress:
+            progress("Requesting a fresh Plex database export; waiting for Plex to prepare the backup")
         with client.stream("GET", url + "/diagnostics/databases", headers=headers) as response:
             response.raise_for_status()
             with download.open("wb") as output:
@@ -171,6 +186,9 @@ def _read_current_selection(plex_root, options, credentials, work_dir, client):
                     if total > MAX_DATABASE_BYTES:
                         raise ValueError("Plex database export exceeds the 20 GiB safety limit")
                     output.write(chunk)
+                    if progress and time.monotonic() - last_progress >= 5:
+                        progress(f"Downloading Plex database export: {total / 1024**2:.1f} MiB received")
+                        last_progress = time.monotonic()
         if zipfile.is_zipfile(download):
             with zipfile.ZipFile(download) as archive:
                 databases = [entry for entry in archive.infolist() if not entry.is_dir()
@@ -185,10 +203,13 @@ def _read_current_selection(plex_root, options, credentials, work_dir, client):
     else:
         raise ValueError("Database source must be plex or local")
     with closing(sqlite3.connect(snapshot.as_uri() + "?mode=ro", uri=True)) as connection:
-        return selected_artwork(connection)
+        selected = selected_artwork(connection)
+    if progress:
+        progress(f"Database snapshot ready: {len(selected)} selected artwork identifiers protected")
+    return selected
 
 
-def apply_image_cleanup(metadata_dir, candidates, selected, action, quarantine_dir=None):
+def apply_image_cleanup(metadata_dir, candidates, selected, action, quarantine_dir=None, progress=None):
     root = Path(metadata_dir).resolve(strict=True)
     if action not in ("report", "quarantine", "remove"):
         raise ValueError("Unsupported image cleanup action")
@@ -196,7 +217,11 @@ def apply_image_cleanup(metadata_dir, candidates, selected, action, quarantine_d
     if action == "quarantine" and (quarantine is None or quarantine.is_relative_to(root)):
         raise ValueError("Quarantine must be outside Plex Metadata")
     result = {"candidates": len(candidates), "candidate_bytes": sum(entry["size"] for entry in candidates), "changed": 0, "changed_bytes": 0, "skipped": 0}
-    for entry in candidates:
+    last_progress = time.monotonic()
+    for index, entry in enumerate(candidates, start=1):
+        if progress and (index % 1000 == 0 or time.monotonic() - last_progress >= 5):
+            progress(f"{action.capitalize()} progress: checking {index}/{len(candidates)} candidates; {result['changed']} changed, {result['skipped']} skipped")
+            last_progress = time.monotonic()
         path = entry["path"]
         if path.name.lower() in selected or path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
             result["skipped"] += 1
@@ -234,10 +259,18 @@ def run_scheduled_image_cleanup(base_dir, options, *, scheduled=False):
     base_dir = Path(base_dir)
     log_file = base_dir / "UILogs" / "PlexImageCleanup.log"
     report = {"success": False, "started_at": datetime.now().isoformat()}
-    try:
+
+    def write_log(message, level="INFO"):
         log_file.parent.mkdir(parents=True, exist_ok=True)
+        with log_file.open("a", encoding="utf-8") as output:
+            output.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{level}] {message}\n")
+        logger.log(logging.ERROR if level == "ERROR" else logging.INFO, "[PlexImageCleanup] %s", message)
+
+    try:
+        write_log("STARTING SCHEDULED PLEX IMAGE CLEANUP")
         options = cleanup_schedule_options(options)
         action = options.get("cleanup_action", "report")
+        write_log(f"Action: {action} | Read Only: {options['cleanup_read_only']} | Snapshot: {options['database_source']} | Minimum image age: {options['minimum_age_days']} days")
         if action not in ("report", "quarantine", "remove"):
             raise ValueError("Cleanup action must be report, quarantine, or remove")
         if action == "remove" and options.get("confirm_image_removal") is not True:
@@ -252,15 +285,23 @@ def run_scheduled_image_cleanup(base_dir, options, *, scheduled=False):
         quarantine = base_dir / "database" / "plex-image-quarantine" / (datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
         credentials = get_server_credentials(base_dir / "config.json").get("plex", {}) if options.get("database_source", "plex") == "plex" else {}
         with tempfile.TemporaryDirectory(prefix="posterizarr-image-cleanup-") as work_dir, httpx.Client(timeout=600.0, follow_redirects=False) as client:
-            selected = _read_current_selection(plex_root, options, credentials, work_dir, client)
-            candidates = image_cleanup_candidates(metadata, selected, options.get("minimum_age_days", 7))
+            selected = _read_current_selection(plex_root, options, credentials, work_dir, client, progress=write_log)
+            write_log("Scanning Plex Metadata for old, unselected uploaded images")
+            candidates = image_cleanup_candidates(metadata, selected, options.get("minimum_age_days", 7), progress=write_log)
+            write_log(f"Scan complete: {len(candidates)} eligible images; {sum(entry['size'] for entry in candidates) / 1024**3:.2f} GiB candidate data")
             if action != "report" and candidates:
-                selected = _read_current_selection(plex_root, options, credentials, work_dir, client)
-            report.update(apply_image_cleanup(metadata, candidates, selected, action, quarantine))
+                write_log("Refreshing selected artwork before applying image changes")
+                selected = _read_current_selection(plex_root, options, credentials, work_dir, client, progress=write_log)
+            elif action == "report":
+                write_log("Report Only: no image files will be moved or removed")
+            else:
+                write_log("No eligible images found; no image changes are needed")
+            report.update(apply_image_cleanup(metadata, candidates, selected, action, quarantine, progress=write_log))
         report.update({"success": True, "action": action, "read_only": options["cleanup_read_only"], "plex_data_path": str(plex_root), "quarantine_path": str(quarantine) if action == "quarantine" and report["changed"] else None})
+        write_log(f"IMAGE CLEANUP COMPLETE: {report['candidates']} candidates | {report['changed']} changed | {report['skipped']} skipped | {report['changed_bytes'] / 1024**3:.2f} GiB changed")
     except Exception as error:
         report["error"] = str(error)
-        logger.warning("[PlexImageCleanup] %s", error)
+        write_log(f"IMAGE CLEANUP FAILED: {error}", level="ERROR")
     finally:
         report["finished_at"] = datetime.now().isoformat()
         try:

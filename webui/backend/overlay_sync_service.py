@@ -2200,7 +2200,7 @@ _sync_queue_worker_active = False
 def is_overlay_sync_running() -> bool:
     with _sync_condition:
         from plex_image_cleanup import is_cleanup_running
-        return _is_sync_running or _sync_queue_worker_active or is_cleanup_running()
+        return _is_sync_running or (_sync_queue_worker_active and not is_cleanup_running())
 
 
 def stop_overlay_sync() -> bool:
