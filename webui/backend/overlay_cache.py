@@ -24,6 +24,45 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, Union, Tuple
 
 logger = logging.getLogger("overlay_cache")
+
+
+def snapshot_overlay_layers(attr_snapshot, layers):
+    try:
+        snapshot = json.loads(attr_snapshot or "{}")
+    except (TypeError, ValueError):
+        snapshot = {}
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+    snapshot["_overlay_layers"] = [
+        {key: value for key, value in layer.items() if key != "image_element"}
+        for layer in layers
+    ]
+    return json.dumps(snapshot, sort_keys=True)
+
+
+def describe_overlay_layer_changes(attr_snapshot, layers):
+    try:
+        previous = json.loads(attr_snapshot or "{}").get("_overlay_layers")
+    except (AttributeError, TypeError, ValueError):
+        previous = None
+    if not isinstance(previous, list) or not all(isinstance(layer, dict) for layer in previous):
+        return "previous layer details unavailable"
+    current = json.loads(snapshot_overlay_layers(None, layers))["_overlay_layers"]
+    changes = []
+    if len(previous) != len(current):
+        changes.append(f"layer count: {len(previous)} -> {len(current)}")
+    for index, (before, after) in enumerate(zip(previous, current)):
+        name = str(after.get("name") or before.get("name") or index)
+        for field in sorted(before.keys() | after.keys()):
+            if before.get(field) != after.get(field) or (field in before) != (field in after):
+                old_value = json.dumps(before.get(field), ensure_ascii=True)[:120]
+                new_value = json.dumps(after.get(field), ensure_ascii=True)[:120]
+                changes.append(f"{name}.{field}: {old_value} -> {new_value}")
+    if not changes:
+        return "layer fields unchanged; fingerprint serialization differs"
+    return "; ".join(changes[:4]) + (f"; {len(changes) - 4} more changes" if len(changes) > 4 else "")
+
+
 def get_overlay_database_stats(database_dir: Path, anime_db_path: Optional[Path] = None) -> Dict[str, Any]:
     databases = []
     for name, db_path in (
@@ -336,7 +375,8 @@ class OverlayCache:
         metadata_hash: Optional[str] = None,
         server_updated_at: Optional[str] = None,
         cached_entry: Optional[Dict[str, Any]] = None,
-        item_meta: Optional[Dict[str, Any]] = None
+        item_meta: Optional[Dict[str, Any]] = None,
+        resolved_layers: Optional[List[Dict[str, Any]]] = None
     ) -> tuple:
         """
         Check if the item has already been overlaid and uploaded with the EXACT same
@@ -366,7 +406,8 @@ class OverlayCache:
         if is_cached_empty and is_current_empty:
             pass  # Both indicate that no overlay rules apply
         elif cached_recipe_hash != overlay_recipe_hash:
-            diff_reasons.append(f"Resolved overlay layers changed ({cached_recipe_hash[:8]} -> {overlay_recipe_hash[:8]})")
+            details = f"; {describe_overlay_layer_changes(entry.get('attr_snapshot'), resolved_layers)}" if resolved_layers is not None else ""
+            diff_reasons.append(f"Resolved overlay layers changed ({cached_recipe_hash[:8]} -> {overlay_recipe_hash[:8]}{details})")
 
         # Metadata signature drift check
         meta_drift = False
@@ -517,6 +558,20 @@ class OverlayCache:
             except Exception as e:
                 logger.error(f"[OverlayCache] Error updating server_updated_at: {e}")
                 return False
+    def seed_recipe_snapshot(self, server_type, item_id, asset_type, recipe_hash, layers, cached_entry, cache_map=None):
+        if not cached_entry or cached_entry.get("overlay_recipe_hash") != recipe_hash:
+            return False
+        try:
+            snapshot = json.loads(cached_entry.get("attr_snapshot") or "{}")
+        except (TypeError, ValueError):
+            snapshot = {}
+        if isinstance(snapshot, dict) and isinstance(snapshot.get("_overlay_layers"), list):
+            return True
+        return self.update_attr_snapshot(
+            server_type, item_id, asset_type,
+            snapshot_overlay_layers(cached_entry.get("attr_snapshot"), layers), cache_map=cache_map
+        )
+
     def update_verified_fingerprints(
         self, server_type, item_id, asset_type, clean_asset_hash, overlay_recipe_hash, metadata_hash,
         attr_snapshot, clean_asset_mtime, clean_asset_size, cache_map=None
@@ -687,9 +742,12 @@ class OverlayCache:
         detected_video_format: Optional[str] = None,
         detected_resolution: Optional[str] = None,
         attr_snapshot: Optional[str] = None,
-        cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None
+        cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None,
+        resolved_layers: Optional[List[Dict[str, Any]]] = None
     ) -> bool:
         """Upsert a record marking that dynamic overlays were successfully pushed with full metadata signature."""
+        if resolved_layers is not None:
+            attr_snapshot = snapshot_overlay_layers(attr_snapshot, resolved_layers)
         now_iso = datetime.now().isoformat()
         st_lower = server_type.lower()
         it_str = str(item_id)

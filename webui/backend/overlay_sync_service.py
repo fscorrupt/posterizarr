@@ -38,7 +38,7 @@ from xml.etree.ElementTree import fromstring
 from PIL import Image, ImageFont
 import httpx
 
-from overlay_cache import OverlayCache, compute_metadata_hash
+from overlay_cache import OverlayCache, compute_metadata_hash, snapshot_overlay_layers
 from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
 from ratings_service import resolve_media_ratings, build_multi_rating_layers, ratings_cache
 from dynamic_overlays_service import get_dynamic_overlays_settings
@@ -3455,8 +3455,12 @@ async def _run_overlay_sync_task(
                             metadata_hash=meta_hash,
                             server_updated_at=item.get("server_updated_at"),
                             cached_entry=cached_entry,
-                            item_meta=item
+                            item_meta=item,
+                            resolved_layers=overlay_layers
                         )
+
+                        if is_current:
+                            cache.seed_recipe_snapshot(s_type, str(item_id), "poster", recipe_hash, overlay_layers, cached_entry, cache_map=cache_map)
 
                         if scope != "incremental" or not is_current or is_target_mode or legacy_skipped_entry:
                             sync_reason = (
@@ -3512,7 +3516,8 @@ async def _run_overlay_sync_task(
                                             detected_video_format=item.get("video_format"),
                                             detected_resolution=item.get("resolution"),
                                             attr_snapshot=build_attr_snapshot(item),
-                                            cache_map=cache_map
+                                            cache_map=cache_map,
+                                            resolved_layers=overlay_layers
                                         )
                                         composited_jpeg = None
                                     else:
@@ -3571,7 +3576,8 @@ async def _run_overlay_sync_task(
                                         detected_video_format=item.get("video_format"),
                                         detected_resolution=item.get("resolution"),
                                         attr_snapshot=build_attr_snapshot(item),
-                                        cache_map=cache_map
+                                        cache_map=cache_map,
+                                        resolved_layers=overlay_layers
                                     )
                                     await _inc_stats(synced=1)
                                     if overlay_layers:
@@ -4243,7 +4249,8 @@ async def _run_overlay_sync_task(
                                                 metadata_hash=ep_meta_hash,
                                                 server_updated_at=ep_data.get("server_updated_at"),
                                                 cached_entry=ep_cached_entry,
-                                                item_meta=ep_data
+                                                item_meta=ep_data,
+                                                resolved_layers=ep_layers
                                             )
 
                                             if s_type == "plex" and ep_current:
@@ -4263,6 +4270,7 @@ async def _run_overlay_sync_task(
                                                     cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", refreshed_snapshot, cache_map=cache_map)
 
                                             if scope == "incremental" and ep_current:
+                                                cache.seed_recipe_snapshot(s_type, str(ep_rk), "titlecard", ep_recipe_hash, ep_layers, ep_cached_entry, cache_map=cache_map)
                                                 await _inc_stats(skipped=1)
                                                 write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Up-to-date")
                                                 if item.get("server_updated_at"):
@@ -4300,7 +4308,7 @@ async def _run_overlay_sync_task(
                                                         http_client, s_url, ep_rk, creds.get("token"), previous_snapshot, ep_data.get("server_thumb"), tc_comp
                                                     )
                                                     if identical:
-                                                        snapshot_value = verified_snapshot or json.dumps(previous_snapshot, sort_keys=True)
+                                                        snapshot_value = snapshot_overlay_layers(verified_snapshot or json.dumps(previous_snapshot, sort_keys=True), ep_layers)
                                                         fingerprints_saved = cache.update_verified_fingerprints(
                                                             s_type, str(ep_rk), "titlecard", tc_clean_hash, ep_recipe_hash, ep_meta_hash,
                                                             snapshot_value, tc_mtime, tc_size, cache_map=cache_map
@@ -4366,7 +4374,8 @@ async def _run_overlay_sync_task(
                                                         detected_audio_codec=ep_data.get("audio_codec"),
                                                         detected_video_format=ep_data.get("video_format"),
                                                         detected_resolution=ep_data.get("resolution"),
-                                                        cache_map=cache_map
+                                                        cache_map=cache_map,
+                                                        resolved_layers=ep_layers
                                                     )
                                                     await _inc_stats(synced=1)
                                                     write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
