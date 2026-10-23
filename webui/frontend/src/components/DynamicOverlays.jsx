@@ -747,6 +747,10 @@ export default function DynamicOverlays() {
   const [autoOverlaySync, setAutoOverlaySync] = useState(false);
   const [isSavingAutoSync, setIsSavingAutoSync] = useState(false);
   const [overlaySyncLogs, setOverlaySyncLogs] = useState([]);
+  const [isFullSyncLog, setIsFullSyncLog] = useState(false);
+  const [isLoadingFullSyncLog, setIsLoadingFullSyncLog] = useState(false);
+  const fullSyncLogModeRef = useRef(false);
+  const fullSyncLogLoadingRef = useRef(false);
   const [isSyncLogExpanded, setIsSyncLogExpanded] = useState(false);
   const [isAutoScrollLogs, setIsAutoScrollLogs] = useState(true);
   const syncLogsRef = useRef(null);
@@ -837,6 +841,25 @@ export default function DynamicOverlays() {
     }
   }, [animetafillStatus?.recent_logs, isAutoScrollAnimetafillLogs]);
 
+  const fetchFullOverlaySyncLog = async () => {
+    if (fullSyncLogLoadingRef.current) return;
+    fullSyncLogLoadingRef.current = true;
+    setIsLoadingFullSyncLog(true);
+    try {
+      const response = await fetch("/api/logs/DynamicOverlaysSync.log?tail=0");
+      if (!response.ok) throw new Error("Could not load the full sync log");
+      const data = await response.json();
+      if (!Array.isArray(data.content)) throw new Error("Invalid sync log response");
+      if (fullSyncLogModeRef.current) {
+        setOverlaySyncLogs(data.content.map((line) => String(line).replace(/\r?\n$/, "")));
+        setIsFullSyncLog(true);
+      }
+    } finally {
+      fullSyncLogLoadingRef.current = false;
+      setIsLoadingFullSyncLog(false);
+    }
+  };
+
   const fetchOverlaySyncStatus = async () => {
     try {
       const res = await fetch("/api/dynamic-overlays/sync/status");
@@ -844,11 +867,32 @@ export default function DynamicOverlays() {
         const data = await res.json();
         setIsOverlaySyncRunning(Boolean(data.is_running));
         if (data.last_result) setOverlaySyncStatus(data.last_result);
-        if (Array.isArray(data.recent_logs)) {
+        if (fullSyncLogModeRef.current) {
+          await fetchFullOverlaySyncLog();
+        } else if (Array.isArray(data.recent_logs)) {
           setOverlaySyncLogs(data.recent_logs);
         }
       }
     } catch (_) {}
+  };
+
+  const handleToggleFullSyncLog = async () => {
+    if (fullSyncLogLoadingRef.current) return;
+    if (fullSyncLogModeRef.current) {
+      fullSyncLogModeRef.current = false;
+      setIsFullSyncLog(false);
+      setOverlaySyncLogs((logs) => logs.slice(-60));
+      await fetchOverlaySyncStatus();
+      return;
+    }
+    fullSyncLogModeRef.current = true;
+    try {
+      await fetchFullOverlaySyncLog();
+    } catch (error) {
+      fullSyncLogModeRef.current = false;
+      setIsFullSyncLog(false);
+      showError(error.message || "Could not load the full sync log");
+    }
   };
 
   const handleDownloadSyncLog = () => {
@@ -9294,25 +9338,37 @@ export default function DynamicOverlays() {
             {/* Live Terminal Log Viewer */}
             {overlaySyncLogs.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-theme-muted uppercase tracking-wider">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-theme-muted uppercase tracking-wider">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="flex items-center gap-1.5 text-theme-text font-bold">
                       <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                      Sync Log (Live)
+                      {isFullSyncLog ? "Sync Log (Full)" : "Sync Log (Live)"}
                     </span>
                     <span className="font-mono text-[10px] text-theme-muted font-normal lowercase">
                       ({overlaySyncLogs.length} lines)
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={handleDownloadSyncLog}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-theme-hover border border-theme text-theme-text hover:border-theme-primary/40 text-[11px] font-semibold transition-all shadow-sm"
-                      title="Download sync log (.log)"
+                      disabled={isLoadingFullSyncLog}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-theme-hover border border-theme text-theme-text hover:border-theme-primary/40 text-[11px] font-semibold transition-all shadow-sm disabled:opacity-50"
+                      title={isFullSyncLog ? "Download complete sync log (.log)" : "Download recent sync log lines (.log)"}
                     >
                       <Download className="w-3 h-3 text-emerald-400" />
                       <span>Download</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleToggleFullSyncLog}
+                      disabled={isLoadingFullSyncLog}
+                      aria-pressed={isFullSyncLog}
+                      className="flex min-w-[112px] items-center justify-center gap-1 px-2.5 py-1 rounded-lg bg-theme-hover border border-theme text-theme-text hover:border-theme-primary/40 text-[11px] font-semibold transition-all shadow-sm disabled:opacity-50"
+                      title={isFullSyncLog ? "Show the latest 60 log lines" : "Load the complete sync log for viewing and download"}
+                    >
+                      {isLoadingFullSyncLog ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                      <span>{isLoadingFullSyncLog ? "Loading..." : isFullSyncLog ? "Show Recent" : "Load Full Log"}</span>
                     </button>
                     <button
                       type="button"
@@ -9349,7 +9405,11 @@ export default function DynamicOverlays() {
                       isSyncLogExpanded ? "max-h-[650px] min-h-[380px]" : "max-h-56 min-h-[160px]"
                     }`}
                   >
-                    {overlaySyncLogs.map((logLine, idx) => (
+                    {isFullSyncLog ? (
+                      <div className="whitespace-pre-wrap leading-relaxed selection:bg-emerald-500/30">
+                        {overlaySyncLogs.join("\n")}
+                      </div>
+                    ) : overlaySyncLogs.map((logLine, idx) => (
                       <div key={idx} className="whitespace-pre-wrap leading-relaxed selection:bg-emerald-500/30">
                         {logLine}
                       </div>

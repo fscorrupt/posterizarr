@@ -17000,97 +17000,15 @@ def _sanitize_text_file(file_path: Path):
         logger.error(f"[SupportZip] Failed to sanitize text file {file_path}: {e}", exc_info=True)
 
 def _create_support_zip_blocking(staging_dir_path: Path, zip_file_path: Path) -> bool:
-    """
-    Internal blocking function to create the support zip in a background thread.
-    This function performs all file I/O operations.
-    """
-    try:
-        # 1. Define Paths (uses globals from main.py)
-        db_staging_dir = staging_dir_path / "database"
-        db_staging_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"[SupportZip] Staging directory: {staging_dir_path}")
+    """Build a sanitized support archive without importing application startup tasks."""
+    from support_bundle import create_support_bundle
 
-        # 2. Copy Log Folders
-        # Define ignore patterns
-        ignore_patterns_default = shutil.ignore_patterns('*.pyc', '__pycache__', '.DS_Store')
-        # For LOGS_DIR and ROTATED_LOGS_DIR, also ignore .json files
-        ignore_patterns_logs = shutil.ignore_patterns('*.pyc', '__pycache__', '.DS_Store', '*.json')
-
-        if 'LOGS_DIR' in globals() and LOGS_DIR.exists():
-            shutil.copytree(
-                LOGS_DIR,
-                staging_dir_path / "Logs",
-                dirs_exist_ok=True,
-                ignore=ignore_patterns_logs  # Use ignore pattern with '*.json'
-            )
-            logger.info("[SupportZip] Copied Logs directory (excluding .json files)")
-
-        if 'ROTATED_LOGS_DIR' in globals() and ROTATED_LOGS_DIR.exists():
-            shutil.copytree(
-                ROTATED_LOGS_DIR,
-                staging_dir_path / "RotatedLogs",
-                dirs_exist_ok=True,
-                ignore=ignore_patterns_logs  # Same ignore rules as Logs
-            )
-            logger.info("[SupportZip] Copied RotatedLogs directory (excluding .json files)")
-
-        if 'UI_LOGS_DIR' in globals() and UI_LOGS_DIR.exists():
-            shutil.copytree(
-                UI_LOGS_DIR,
-                staging_dir_path / "UILogs",
-                dirs_exist_ok=True,
-                ignore=ignore_patterns_default # Use default ignore pattern
-            )
-            logger.info("[SupportZip] Copied UILogs directory")
-
-        # 3. Copy Databases
-        for db_name in [
-            "media_export.db",
-            "runtime_stats.db",
-            "server_libraries.db",
-            "imagechoices.db"
-        ]:
-            src_db = DATABASE_DIR / db_name
-            if src_db.exists():
-                shutil.copy2(src_db, db_staging_dir / db_name)
-                logger.debug(f"[SupportZip] Copied DB: {db_name}")
-
-        # 3b. Sanitize all copied logs and databases recursively
-        logger.info("[SupportZip] Sanitizing all staged support files...")
-        for root, dirs, files in os.walk(staging_dir_path):
-            for file in files:
-                file_path = Path(root) / file
-                # Skip the zip file itself if it is already in the staging directory
-                if file_path == zip_file_path:
-                    continue
-
-                suffix = file_path.suffix.lower()
-                if suffix == '.db':
-                    logger.debug(f"[SupportZip] Sanitizing database file: {file_path.name}")
-                    _sanitize_db_file(file_path)
-                elif suffix in ['.log', '.txt', '.json'] or (suffix == '.csv' and file_path.name.lower() == 'imagechoices.csv'):
-                    logger.debug(f"[SupportZip] Sanitizing text file: {file_path.name}")
-                    _sanitize_text_file(file_path)
-
-        # 4. Create ZIP file
-        logger.debug(f"[SupportZip] Creating ZIP file at: {zip_file_path}")
-        with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(staging_dir_path):
-                if Path(root) == zip_file_path.parent and zip_file_path.name in files:
-                    files.remove(zip_file_path.name)
-
-                for file in files:
-                    file_path = Path(root) / file
-                    arcname = file_path.relative_to(staging_dir_path)
-                    zipf.write(file_path, arcname)
-
-        logger.info(f"[SupportZip] Support ZIP created successfully: {zip_file_path}")
-        return True
-
-    except Exception as e:
-        logger.error(f"[SupportZip] Failed to create support zip: {e}")
-        logger.exception("Full traceback for zip creation:")
-        return False
+    return create_support_bundle(
+        staging_dir_path, zip_file_path,
+        base_dir=BASE_DIR, database_dir=DATABASE_DIR,
+        logs_dir=LOGS_DIR, rotated_logs_dir=ROTATED_LOGS_DIR, ui_logs_dir=UI_LOGS_DIR,
+        project_root=PROJECT_ROOT,
+    )
 
 def _cleanup_support_files(staging_dir: Path):
     """
@@ -17152,6 +17070,7 @@ async def get_support_zip(background_tasks: BackgroundTasks):
 
     except Exception as e:
         logger.error(f"Failed to create support ZIP: {e}", exc_info=True)
+        _cleanup_support_files(staging_dir)
         logger.info("=" * 60)
         raise HTTPException(status_code=500, detail="Internal error while creating support package")
 

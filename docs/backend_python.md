@@ -50,6 +50,7 @@ The backend handles the following core responsibilities:
 - **`overlay_generator.py`**: A backend helper script used for generating quick preview overlays for the UI without invoking the full PowerShell stack.
 - **`studio_logos.py`**: Handles studio, network, and production company logo resolution, local caching, and transparent PNG delivery for collection designs and media badges.
 - **`migrate_runtime_data.py`**: A migration script used to upgrade database schemas or runtime data formats between versions.
+- **`support_bundle.py`**: Builds the diagnostic ZIP requested by `POST /api/admin/support-zip`, independently of application startup tasks.
 
 ### Security Utilities (`main.py`)
 
@@ -59,6 +60,16 @@ The backend handles the following core responsibilities:
 - **`mask_secret(secret)`**: Redacts sensitive strings (API keys, tokens, passwords) before writing to server logs.
 
 ---
+
+## Support Bundles
+
+The Generate Support Logs action includes application/UI logs, selected change-detection JSON reports, scheduler and application configuration, Dynamic Overlays/AniMetaFill JSON settings, active overlay YAML files, and default templates. Legacy JSON locations and the older `Overlayfiles/kometa` directory are supported.
+
+Database exports include `media_export.db`, `runtime_stats.db`, `server_libraries.db`, `imagechoices.db`, `overlay_cache.db`, `animetafill.db`, and `plex_push_cache.db` when present. SQLite's backup API captures a consistent committed snapshot, including WAL-backed updates, without changing the source database. Overlay layer snapshots remain available for recipe-drift diagnosis.
+
+JSON/YAML settings and database text are sanitized before packaging. Credentials, supported notification URLs, and local addresses are masked. Sanitized databases are compacted to remove old values from unused pages. If a selected file cannot be parsed, backed up, or sanitized, the export fails rather than returning an unsanitized archive. Failed exports remove their temporary staging directory; successful downloads retain the existing background cleanup.
+
+Artwork, fonts, quarantine contents, links/junctions, SQLite sidecar files, and compressed log archives are not included. Support bundles still contain diagnostic library titles and paths; review the ZIP before sharing it publicly.
 
 ## Contribution Guidelines
 When making a Pull Request to the Python backend:

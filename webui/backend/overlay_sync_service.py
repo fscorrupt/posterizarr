@@ -227,6 +227,45 @@ VIDEO_FORMAT_PATTERNS = [
     ("CAM", re.compile(r'(?i)\b(HQ|HD)?CAM\b')),
 ]
 
+def detect_video_source(filepath):
+    if not filepath:
+        return None
+    filename = re.split(r"[\\/]", str(filepath))[-1]
+    return next((name for name, pattern in VIDEO_FORMAT_PATTERNS if pattern.search(filename)), None)
+
+def cached_episode_streams(entry, server_updated_at, filepath):
+    if not entry or not server_updated_at or str(entry.get("server_updated_at") or "") != str(server_updated_at):
+        return None
+    try:
+        streams = json.loads(entry.get("attr_snapshot") or "{}").get("_episode_streams")
+    except (AttributeError, TypeError, ValueError):
+        return None
+    required = {"audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio", "has_hdr", "has_dolby_vision", "filepath"}
+    if not isinstance(streams, dict) or streams.get("version") != 1 or not required.issubset(streams) or not streams.get("filepath"):
+        return None
+    if filepath and str(filepath) != str(streams["filepath"]):
+        return None
+    return streams
+
+def titlecard_attr_snapshot(episode, snapshot):
+    try:
+        values = json.loads(snapshot or "{}")
+    except (TypeError, ValueError):
+        values = {}
+    if not isinstance(values, dict):
+        values = {}
+    if episode.get("streams_verified"):
+        values["_episode_streams"] = {
+            key: episode.get(key) for key in (
+                "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
+                "has_hdr", "has_dolby_vision", "filepath"
+            )
+        }
+        values["_episode_streams"]["version"] = 1
+    else:
+        values.pop("_episode_streams", None)
+    return json.dumps(values, sort_keys=True)
+
 def compute_layers_recipe_hash(layers: List[Dict[str, Any]]) -> str:
     """Compute recipe hash while omitting raw in-memory PIL image elements."""
     serializable = []
@@ -2389,6 +2428,8 @@ def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, An
         "media_type": sec_type,
         "root_folder": rf,
         "filepath": part_file,
+        "media_file_path": part_file,
+        "video_source": detect_video_source(part_file),
         "edition": ed_val,
         "server_updated_at": s_up_at,
         "resolution": res_val,
@@ -2412,7 +2453,7 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
         return None
     it_name = item_obj.get("Name", "")
     it_type = "movie" if item_obj.get("Type") == "Movie" else "show"
-    it_path = item_obj.get("Path", "")
+    it_path = item_obj.get("Path") or next((source.get("Path") for source in item_obj.get("MediaSources") or [] if source.get("Path")), "")
     it_p = Path(it_path.replace("\\", "/")) if it_path else None
     if it_p:
         rf = it_p.name if (it_type == "show" or not it_p.suffix) else it_p.parent.name
@@ -2489,6 +2530,8 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
         "media_type": it_type,
         "root_folder": rf,
         "filepath": it_path,
+        "media_file_path": it_path if it_type == "movie" else None,
+        "video_source": detect_video_source(it_path) if it_type == "movie" else None,
         "edition": ed_val,
         "server_updated_at": s_up_at,
         "resolution": res_val,
@@ -3206,6 +3249,7 @@ async def _run_overlay_sync_task(
                     plex_xml_bytes = None
                     needs_snapshot_refresh = False
                     if s_type == "plex":
+                        needs_media_path = m_type == "movie" and not item.get("media_file_path")
                         # Fast incremental check: if server_updated_at matches cache, reuse cached detected_languages & attributes
                         need_plex_detail = (scope not in ("incremental", "changed"))
                         if not need_plex_detail:
@@ -3219,6 +3263,11 @@ async def _run_overlay_sync_task(
                                 # Legacy cache row without HDR/DV snapshot: fetch details once so the hash is consistent
                                 need_plex_detail = True
                             else:
+                                if needs_media_path and cached_entry.get("media_file_path"):
+                                    item["filepath"] = cached_entry["media_file_path"]
+                                    item["media_file_path"] = cached_entry["media_file_path"]
+                                    item["video_source"] = detect_video_source(item["media_file_path"])
+                                    needs_media_path = False
                                 c_langs = [l.strip().lower() for l in (cached_entry.get("detected_languages") or "").split(",") if l.strip()]
                                 if c_langs:
                                     item["audio_languages"] = c_langs
@@ -3261,7 +3310,9 @@ async def _run_overlay_sync_task(
                         # Skip detailed XML fetch if rules do NOT require audio streams, languages, HDR, or ratings
                         if needs_streaming and not item.get("tmdb_id"):
                             need_plex_detail = True
-                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh or needs_streaming):
+                        if needs_media_path:
+                            need_plex_detail = True
+                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh or needs_streaming or needs_media_path):
                             need_plex_detail = False
 
                         if need_plex_detail:
@@ -3273,6 +3324,11 @@ async def _run_overlay_sync_task(
                                 if meta_resp.status_code == 200:
                                     plex_xml_bytes = meta_resp.content
                                     m_root = fromstring(meta_resp.content)
+                                    media_part = m_root.find(".//Part")
+                                    if m_type == "movie" and media_part is not None and media_part.get("file"):
+                                        item["filepath"] = media_part.get("file")
+                                        item["media_file_path"] = item["filepath"]
+                                        item["video_source"] = detect_video_source(item["media_file_path"])
                                     item.update(_extract_stream_overlay_metadata(m_root))
                                     audio_langs = []
                                     for s in m_root.findall(".//Stream"):
@@ -3460,6 +3516,7 @@ async def _run_overlay_sync_task(
                         )
 
                         if is_current:
+                            cache.update_media_file_metadata(s_type, str(item_id), "poster", item.get("media_file_path"), item.get("video_source"), cache_map=cache_map)
                             cache.seed_recipe_snapshot(s_type, str(item_id), "poster", recipe_hash, overlay_layers, cached_entry, cache_map=cache_map)
 
                         if scope != "incremental" or not is_current or is_target_mode or legacy_skipped_entry:
@@ -3517,7 +3574,9 @@ async def _run_overlay_sync_task(
                                             detected_resolution=item.get("resolution"),
                                             attr_snapshot=build_attr_snapshot(item),
                                             cache_map=cache_map,
-                                            resolved_layers=overlay_layers
+                                            resolved_layers=overlay_layers,
+                                            media_file_path=item.get("media_file_path"),
+                                            detected_video_source=item.get("video_source")
                                         )
                                         composited_jpeg = None
                                     else:
@@ -3577,7 +3636,9 @@ async def _run_overlay_sync_task(
                                         detected_resolution=item.get("resolution"),
                                         attr_snapshot=build_attr_snapshot(item),
                                         cache_map=cache_map,
-                                        resolved_layers=overlay_layers
+                                        resolved_layers=overlay_layers,
+                                        media_file_path=item.get("media_file_path"),
+                                        detected_video_source=item.get("video_source")
                                     )
                                     await _inc_stats(synced=1)
                                     if overlay_layers:
@@ -3760,7 +3821,9 @@ async def _run_overlay_sync_task(
                                         detected_video_format=item.get("video_format"),
                                         detected_resolution=item.get("resolution"),
                                         attr_snapshot=build_attr_snapshot(item),
-                                        cache_map=cache_map
+                                        cache_map=cache_map,
+                                        media_file_path=item.get("media_file_path"),
+                                        detected_video_source=item.get("video_source")
                                     )
                                     await _inc_stats(synced=1)
                                     if b_layers:
@@ -3784,6 +3847,7 @@ async def _run_overlay_sync_task(
                         else:
                             await _inc_stats(skipped=1)
                             write_log(f"  [-] {w_tag}Skipped Backdrop: '{title}' ({lib_name}) -> Up-to-date")
+                            cache.update_media_file_metadata(s_type, str(item_id), "background", item.get("media_file_path"), item.get("video_source"), cache_map=cache_map)
                             if item.get("server_updated_at"):
                                 cache.update_server_updated_at(s_type, str(item_id), "background", item.get("server_updated_at"), cache_map=cache_map)
                             cache.update_attr_snapshot(s_type, str(item_id), "background", build_attr_snapshot(item), cache_map=cache_map)
@@ -4065,7 +4129,21 @@ async def _run_overlay_sync_task(
                                                             if st_node.get("colorPrimaries") == "bt2020":
                                                                 ep_has_hdr = True
 
-                                                    if needs_languages or needs_audio or needs_hdr_dv:
+                                                    part_elem = ep_elem.find(".//Part")
+                                                    ep_filepath = part_elem.get("file") if part_elem is not None else None
+                                                    previous_streams = cached_episode_streams(
+                                                        cache_map.get((s_type.lower(), str(ep_rk), "titlecard")) if scope == "incremental" and not is_target_mode else None,
+                                                        ep_elem.get("updatedAt"), ep_filepath
+                                                    )
+                                                    streams_verified = bool(previous_streams)
+                                                    if previous_streams:
+                                                        ep_langs = previous_streams["audio_languages"] or []
+                                                        ep_audio_c = previous_streams["audio_codec"]
+                                                        ep_has_hdr = previous_streams["has_hdr"]
+                                                        ep_has_dv = previous_streams["has_dolby_vision"]
+                                                        ep_filepath = previous_streams["filepath"]
+                                                        ep_stream_metadata = {key: previous_streams[key] for key in ("subtitle_languages", "aspect_ratio")}
+                                                    elif needs_languages or needs_audio or needs_hdr_dv or not ep_filepath:
                                                         try:
                                                             ep_det_resp = await http_client.get(
                                                                 f"{s_url}/library/metadata/{ep_rk}",
@@ -4073,7 +4151,11 @@ async def _run_overlay_sync_task(
                                                             )
                                                             if ep_det_resp.status_code == 200:
                                                                 ep_det_root = fromstring(ep_det_resp.content)
+                                                                detail_part = ep_det_root.find(".//Part")
+                                                                if detail_part is not None and detail_part.get("file"):
+                                                                    ep_filepath = detail_part.get("file")
                                                                 ep_stream_metadata = _extract_stream_overlay_metadata(ep_det_root)
+                                                                streams_verified = True
                                                                 for st_node in ep_det_root.findall(".//Stream"):
                                                                     if st_node.get("streamType") == "2":
                                                                         lc_code = st_node.get("languageCode") or st_node.get("language")
@@ -4089,11 +4171,6 @@ async def _run_overlay_sync_task(
                                                         except Exception:
                                                             pass
 
-                                                    ep_filepath = None
-                                                    part_elem = ep_elem.find(".//Part")
-                                                    if part_elem is not None and part_elem.get("file"):
-                                                        ep_filepath = part_elem.get("file")
-
                                                     episodes_to_process.append({
                                                         "id": ep_rk,
                                                         "episode_number": ep_num,
@@ -4106,13 +4183,14 @@ async def _run_overlay_sync_task(
                                                         "has_hdr": ep_has_hdr,
                                                         "has_dolby_vision": ep_has_dv,
                                                         "filepath": ep_filepath,
+                                                        "streams_verified": streams_verified,
                                                         "server_thumb": ep_elem.get("thumb"),
                                                         "server_updated_at": ep_elem.get("updatedAt"),
                                                         "clean_tc": clean_tc
                                                     })
                                         elif s_type in ["jellyfin", "emby"]:
                                             em_ep_resp = await http_client.get(
-                                                f"{s_url}/Shows/{item_id}/Episodes?SeasonId={s_rk}&Fields=MediaStreams,OfficialRating,RunTimeTicks,Status,ProviderIds,Path",
+                                                f"{s_url}/Shows/{item_id}/Episodes?SeasonId={s_rk}&Fields=MediaStreams,MediaSources,OfficialRating,RunTimeTicks,Status,ProviderIds,Path",
                                                 headers=headers
                                             )
                                             if em_ep_resp.status_code == 200:
@@ -4171,13 +4249,15 @@ async def _run_overlay_sync_task(
                                                         **_extract_stream_overlay_metadata(ep_obj),
                                                         "has_hdr": ep_has_hdr,
                                                         "has_dolby_vision": ep_has_dv,
-                                                        "filepath": ep_obj.get("Path"),
+                                                        "filepath": ep_obj.get("Path") or next((source.get("Path") for source in ep_obj.get("MediaSources") or [] if source.get("Path")), None),
                                                         "clean_tc": clean_tc
                                                     })
 
                                         for ep_data in episodes_to_process:
                                             if _cancel_requested:
                                                 return
+                                            ep_data["media_file_path"] = ep_data.get("filepath")
+                                            ep_data["video_source"] = detect_video_source(ep_data["media_file_path"])
                                             ep_rk = ep_data["id"]
                                             ep_num = ep_data["episode_number"]
                                             ep_title = ep_data["title"]
@@ -4208,6 +4288,8 @@ async def _run_overlay_sync_task(
                                                 "status": item.get("status"),
                                                 "content_rating": item.get("content_rating"),
                                                 "filepath": ep_data["filepath"] or str(clean_tc),
+                                                "media_file_path": ep_data["media_file_path"],
+                                                "video_source": ep_data["video_source"],
                                                 "clean_tc": str(clean_tc),
                                             }
 
@@ -4270,6 +4352,8 @@ async def _run_overlay_sync_task(
                                                     cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", refreshed_snapshot, cache_map=cache_map)
 
                                             if scope == "incremental" and ep_current:
+                                                cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", titlecard_attr_snapshot(ep_data, ep_cached_entry.get("attr_snapshot")), cache_map=cache_map)
+                                                cache.update_media_file_metadata(s_type, str(ep_rk), "titlecard", ep_data["media_file_path"], ep_data["video_source"], cache_map=cache_map)
                                                 cache.seed_recipe_snapshot(s_type, str(ep_rk), "titlecard", ep_recipe_hash, ep_layers, ep_cached_entry, cache_map=cache_map)
                                                 await _inc_stats(skipped=1)
                                                 write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Up-to-date")
@@ -4308,10 +4392,11 @@ async def _run_overlay_sync_task(
                                                         http_client, s_url, ep_rk, creds.get("token"), previous_snapshot, ep_data.get("server_thumb"), tc_comp
                                                     )
                                                     if identical:
-                                                        snapshot_value = snapshot_overlay_layers(verified_snapshot or json.dumps(previous_snapshot, sort_keys=True), ep_layers)
+                                                        snapshot_value = snapshot_overlay_layers(titlecard_attr_snapshot(ep_data, verified_snapshot or json.dumps(previous_snapshot, sort_keys=True)), ep_layers)
                                                         fingerprints_saved = cache.update_verified_fingerprints(
                                                             s_type, str(ep_rk), "titlecard", tc_clean_hash, ep_recipe_hash, ep_meta_hash,
-                                                            snapshot_value, tc_mtime, tc_size, cache_map=cache_map
+                                                            snapshot_value, tc_mtime, tc_size, cache_map=cache_map,
+                                                            media_file_path=ep_data["media_file_path"], detected_video_source=ep_data["video_source"]
                                                         )
                                                         if not fingerprints_saved:
                                                             await _inc_stats(failed=1)
@@ -4365,7 +4450,7 @@ async def _run_overlay_sync_task(
                                                         media_type="episode",
                                                         status="synced",
                                                         server_updated_at=ep_data.get("server_updated_at"),
-                                                        attr_snapshot=tc_snapshot,
+                                                        attr_snapshot=titlecard_attr_snapshot(ep_data, tc_snapshot),
                                                         detected_languages=",".join(sorted(ep_data.get("audio_languages", []))) if ep_data.get("audio_languages") else None,
                                                         runtime_mins=ep_data.get("runtime_mins"),
                                                         edition=None,
@@ -4375,7 +4460,9 @@ async def _run_overlay_sync_task(
                                                         detected_video_format=ep_data.get("video_format"),
                                                         detected_resolution=ep_data.get("resolution"),
                                                         cache_map=cache_map,
-                                                        resolved_layers=ep_layers
+                                                        resolved_layers=ep_layers,
+                                                        media_file_path=ep_data["media_file_path"],
+                                                        detected_video_source=ep_data["video_source"]
                                                     )
                                                     await _inc_stats(synced=1)
                                                     write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
@@ -4431,6 +4518,11 @@ async def _run_overlay_sync_task(
                 if _cancel_requested:
                     write_log("Dynamic overlay sync was stopped by user. Halting.")
                     break
+
+        try:
+            cache.prune_recipe_snapshots()
+        except Exception as cleanup_error:
+            logger.warning("[OverlaySync] Could not prune unused recipe diagnostics: %s", cleanup_error)
 
         runtime_seconds = max(0, time.monotonic() - sync_started_at)
         runtime_hours, runtime_remainder = divmod(int(runtime_seconds), 3600)

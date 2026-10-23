@@ -2086,9 +2086,9 @@ class OverlayConfigEngine:
                 cr / "Overlayfiles" / "kometa" / "configs" / "fonts",
                 cr / "fonts",
             ]:
-                if sub.exists() and sub not in self.candidate_font_dirs:
+                if sub not in self.candidate_font_dirs:
                     self.candidate_font_dirs.append(sub)
-        if Path("/usr/share/fonts/custom").exists():
+        if Path("/usr/share/fonts/custom") not in self.candidate_font_dirs:
             self.candidate_font_dirs.append(Path("/usr/share/fonts/custom"))
 
         self.candidate_asset_dirs: List[Path] = []
@@ -2212,17 +2212,15 @@ class OverlayConfigEngine:
                 if cand.exists():
                     return str(cand)
 
+            requested_path = Path(font_name)
+            return str(requested_path if requested_path.is_absolute() else self.fonts_dir / clean_name)
+
         # 2. Check standard fallbacks
         for fallback in ["Inter-Bold.ttf", "Inter-Medium.ttf", "CircularStd-Bold.otf", "Roboto-Bold.ttf", "Roboto-Medium.ttf"]:
             for fd in self.candidate_font_dirs:
                 cand = fd / fallback
                 if cand.exists():
                     return str(cand)
-
-        # 3. If clean_name is an official Kometa font, return target path so compositor can auto-fetch it on-demand
-        if clean_name and clean_name in OFFICIAL_KOMETA_FONTS:
-            base_target = self.candidate_font_dirs[0] if self.candidate_font_dirs else (self.project_root / "Overlayfiles" / "dynamic_overlays" / "fonts")
-            return str(base_target / clean_name)
 
         return None
 
@@ -2271,8 +2269,7 @@ class OverlayConfigEngine:
             return {}, {}, {}, {}
 
         try:
-            from copy import deepcopy
-            data = deepcopy(load_cached_yaml_file(file_path))
+            data = load_cached_yaml_file(file_path)
         except Exception as e:
             logger.warning(f"[OverlayConfigEngine] Error parsing overlay file {file_path}: {e}")
             return {}, {}, {}, {}
@@ -2392,7 +2389,7 @@ class OverlayConfigEngine:
                     expanded_definitions[definition_key] = self._expand_overlay_definition(
                         definition_key, deepcopy(ov_def), file_templates, file_vars
                     )
-                expanded_ov = deepcopy(expanded_definitions[definition_key])
+                expanded_ov = expanded_definitions[definition_key]
                 if not expanded_ov:
                     continue
 
@@ -2423,6 +2420,7 @@ class OverlayConfigEngine:
                 if not matches:
                     continue
 
+                expanded_ov = deepcopy(expanded_ov)
                 ov_data = expanded_ov.get("overlay", {})
                 if not isinstance(ov_data, dict):
                     continue

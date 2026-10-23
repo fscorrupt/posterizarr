@@ -40,9 +40,14 @@ def snapshot_overlay_layers(attr_snapshot, layers):
     return json.dumps(snapshot, sort_keys=True)
 
 
-def describe_overlay_layer_changes(attr_snapshot, layers):
+def describe_overlay_layer_changes(attr_snapshot, layers, shared_snapshots=None):
     try:
-        previous = json.loads(attr_snapshot or "{}").get("_overlay_layers")
+        snapshot = json.loads(attr_snapshot or "{}")
+        previous = snapshot.get("_overlay_layers")
+        if previous is None and shared_snapshots is not None:
+            packed = shared_snapshots.get(snapshot.get("_overlay_layers_ref"))
+            if packed is not None:
+                previous = json.loads(packed)
     except (AttributeError, TypeError, ValueError):
         previous = None
     if not isinstance(previous, list) or not all(isinstance(layer, dict) for layer in previous):
@@ -225,8 +230,66 @@ class OverlayCache:
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.lock = threading.RLock()
+        self._layer_snapshots = {}
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+        if self._init_db():
+            self.compact_storage()
+
+    def _compact_attr_snapshot(self, attr_snapshot, connection=None):
+        try:
+            snapshot = json.loads(attr_snapshot or "{}")
+        except (TypeError, ValueError):
+            return attr_snapshot
+        if not isinstance(snapshot, dict):
+            return attr_snapshot
+        layers = snapshot.pop("_overlay_layers", None)
+        if isinstance(layers, list):
+            packed = json.dumps(layers, sort_keys=True, separators=(",", ":"))
+            digest = hashlib.sha256(packed.encode("utf-8")).hexdigest()
+            with self.lock:
+                if digest not in self._layer_snapshots:
+                    if connection is not None:
+                        connection.execute("INSERT OR IGNORE INTO overlay_layer_snapshots VALUES (?, ?)", (digest, packed))
+                    else:
+                        with closing(self._get_connection()) as writer:
+                            with writer:
+                                writer.execute("INSERT OR IGNORE INTO overlay_layer_snapshots VALUES (?, ?)", (digest, packed))
+                    self._layer_snapshots[digest] = packed
+            snapshot["_overlay_layers_ref"] = digest
+        return json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
+
+    def get_recipe_layers(self, entry):
+        try:
+            snapshot = json.loads((entry or {}).get("attr_snapshot") or "{}")
+            if isinstance(snapshot.get("_overlay_layers"), list):
+                return snapshot["_overlay_layers"]
+            packed = self._layer_snapshots.get(snapshot.get("_overlay_layers_ref"))
+            return json.loads(packed) if packed is not None else None
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def prune_recipe_snapshots(self):
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                with connection:
+                    connection.execute(
+                        "DELETE FROM overlay_layer_snapshots WHERE digest NOT IN ("
+                        "SELECT json_extract(attr_snapshot, '$._overlay_layers_ref') FROM dynamic_overlay_cache "
+                        "WHERE json_valid(attr_snapshot) AND json_type(attr_snapshot, '$._overlay_layers_ref') = 'text')"
+                    )
+                self._layer_snapshots = dict(connection.execute("SELECT digest, layers_json FROM overlay_layer_snapshots"))
+
+    def compact_storage(self):
+        with self.lock:
+            try:
+                with closing(self._get_connection()) as connection:
+                    connection.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    connection.execute("VACUUM")
+                    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                return True
+            except sqlite3.Error as error:
+                logger.info("[OverlayCache] Storage compaction deferred: %s", error)
+                return False
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30)
@@ -241,6 +304,7 @@ class OverlayCache:
     def _init_db(self):
         with self.lock:
             try:
+                migrated = 0
                 conn = self._get_connection()
                 with conn:
                     conn.execute("""
@@ -270,6 +334,8 @@ class OverlayCache:
                             detected_video_format TEXT,
                             detected_resolution TEXT,
                             attr_snapshot TEXT,
+                            media_file_path TEXT,
+                            detected_video_source TEXT,
                             UNIQUE(server_type, item_id, asset_type)
                         );
                     """)
@@ -296,14 +362,28 @@ class OverlayCache:
                         "detected_audio_codec": "TEXT",
                         "detected_video_format": "TEXT",
                         "detected_resolution": "TEXT",
-                        "attr_snapshot": "TEXT"
+                        "attr_snapshot": "TEXT",
+                        "media_file_path": "TEXT",
+                        "detected_video_source": "TEXT"
                     }
                     for col, col_type in new_cols.items():
                         if col not in existing_cols:
                             conn.execute(f"ALTER TABLE dynamic_overlay_cache ADD COLUMN {col} {col_type};")
                             logger.info(f"[OverlayCache] Migrated dynamic_overlay_cache schema: added column {col}")
 
+                    conn.execute("CREATE TABLE IF NOT EXISTS overlay_layer_snapshots (digest TEXT PRIMARY KEY, layers_json TEXT NOT NULL) WITHOUT ROWID")
+                    self._layer_snapshots.update(dict(conn.execute("SELECT digest, layers_json FROM overlay_layer_snapshots")))
+                    legacy = conn.execute("SELECT id, attr_snapshot FROM dynamic_overlay_cache WHERE instr(attr_snapshot, '\"_overlay_layers\"') > 0").fetchall()
+                    for row in legacy:
+                        compact = self._compact_attr_snapshot(row["attr_snapshot"], conn)
+                        if compact != row["attr_snapshot"]:
+                            conn.execute("UPDATE dynamic_overlay_cache SET attr_snapshot = ? WHERE id = ?", (compact, row["id"]))
+                            migrated += 1
+
                 conn.close()
+                if migrated:
+                    logger.info("[OverlayCache] Deduplicated layer diagnostics for %s cached items", migrated)
+                return migrated
             except Exception as e:
                 logger.error(f"[OverlayCache] Failed to initialize database at {self.db_path}: {e}")
 
@@ -406,7 +486,7 @@ class OverlayCache:
         if is_cached_empty and is_current_empty:
             pass  # Both indicate that no overlay rules apply
         elif cached_recipe_hash != overlay_recipe_hash:
-            details = f"; {describe_overlay_layer_changes(entry.get('attr_snapshot'), resolved_layers)}" if resolved_layers is not None else ""
+            details = f"; {describe_overlay_layer_changes(entry.get('attr_snapshot'), resolved_layers, self._layer_snapshots)}" if resolved_layers is not None else ""
             diff_reasons.append(f"Resolved overlay layers changed ({cached_recipe_hash[:8]} -> {overlay_recipe_hash[:8]}{details})")
 
         # Metadata signature drift check
@@ -565,31 +645,58 @@ class OverlayCache:
             snapshot = json.loads(cached_entry.get("attr_snapshot") or "{}")
         except (TypeError, ValueError):
             snapshot = {}
-        if isinstance(snapshot, dict) and isinstance(snapshot.get("_overlay_layers"), list):
+        if isinstance(snapshot, dict) and (isinstance(snapshot.get("_overlay_layers"), list) or snapshot.get("_overlay_layers_ref") in self._layer_snapshots):
             return True
         return self.update_attr_snapshot(
             server_type, item_id, asset_type,
             snapshot_overlay_layers(cached_entry.get("attr_snapshot"), layers), cache_map=cache_map
         )
 
+    def update_media_file_metadata(self, server_type, item_id, asset_type, media_file_path, detected_video_source, cache_map=None):
+        if not media_file_path:
+            return True
+        key = (server_type.lower(), str(item_id), asset_type.lower())
+        values = {"media_file_path": str(media_file_path), "detected_video_source": detected_video_source}
+        if cache_map is not None and key in cache_map and all(cache_map[key].get(field) == value for field, value in values.items()):
+            return True
+        with self.lock:
+            try:
+                with closing(self._get_connection()) as connection:
+                    with connection:
+                        cursor = connection.execute(
+                            "UPDATE dynamic_overlay_cache SET media_file_path = ?, detected_video_source = ? "
+                            "WHERE server_type = ? AND item_id = ? AND asset_type = ?",
+                            (*values.values(), *key)
+                        )
+                        if cursor.rowcount == 0:
+                            return False
+                if cache_map is not None and key in cache_map:
+                    cache_map[key].update(values)
+                return True
+            except Exception as error:
+                logger.error("[OverlayCache] Could not update media file metadata: %s", error)
+                return False
+
     def update_verified_fingerprints(
         self, server_type, item_id, asset_type, clean_asset_hash, overlay_recipe_hash, metadata_hash,
-        attr_snapshot, clean_asset_mtime, clean_asset_size, cache_map=None
+        attr_snapshot, clean_asset_mtime, clean_asset_size, cache_map=None, media_file_path=None, detected_video_source=None
     ) -> bool:
         key = (server_type.lower(), str(item_id), asset_type.lower())
+        attr_snapshot = self._compact_attr_snapshot(attr_snapshot)
         values = {
             "clean_asset_hash": clean_asset_hash, "overlay_recipe_hash": overlay_recipe_hash,
             "metadata_hash": metadata_hash, "attr_snapshot": attr_snapshot,
             "clean_asset_mtime": clean_asset_mtime, "clean_asset_size": clean_asset_size,
         }
+        if media_file_path:
+            values.update({"media_file_path": str(media_file_path), "detected_video_source": detected_video_source})
         with self.lock:
             try:
                 conn = self._get_connection()
                 try:
                     with conn:
                         conn.execute(
-                            "UPDATE dynamic_overlay_cache SET clean_asset_hash = ?, overlay_recipe_hash = ?, metadata_hash = ?, "
-                            "attr_snapshot = ?, clean_asset_mtime = ?, clean_asset_size = ? "
+                            "UPDATE dynamic_overlay_cache SET " + ", ".join(f"{field} = ?" for field in values) + " "
                             "WHERE server_type = ? AND item_id = ? AND asset_type = ?",
                             (*values.values(), *key)
                         )
@@ -613,6 +720,7 @@ class OverlayCache:
         """Update attr_snapshot for a cached entry without modifying hashes."""
         if not attr_snapshot:
             return False
+        attr_snapshot = self._compact_attr_snapshot(attr_snapshot)
         st_lower = server_type.lower()
         it_str = str(item_id)
         at_lower = asset_type.lower()
@@ -743,11 +851,15 @@ class OverlayCache:
         detected_resolution: Optional[str] = None,
         attr_snapshot: Optional[str] = None,
         cache_map: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None,
-        resolved_layers: Optional[List[Dict[str, Any]]] = None
+        resolved_layers: Optional[List[Dict[str, Any]]] = None,
+        media_file_path: Optional[str] = None,
+        detected_video_source: Optional[str] = None
     ) -> bool:
         """Upsert a record marking that dynamic overlays were successfully pushed with full metadata signature."""
         if resolved_layers is not None:
             attr_snapshot = snapshot_overlay_layers(attr_snapshot, resolved_layers)
+        if attr_snapshot is not None:
+            attr_snapshot = self._compact_attr_snapshot(attr_snapshot)
         now_iso = datetime.now().isoformat()
         st_lower = server_type.lower()
         it_str = str(item_id)
@@ -777,6 +889,8 @@ class OverlayCache:
                 "detected_audio_codec": detected_audio_codec,
                 "detected_video_format": detected_video_format,
                 "detected_resolution": detected_resolution,
+                "media_file_path": str(media_file_path) if media_file_path else (cache_map.get((st_lower, it_str, at_lower)) or {}).get("media_file_path"),
+                "detected_video_source": detected_video_source if media_file_path else (cache_map.get((st_lower, it_str, at_lower)) or {}).get("detected_video_source"),
                 "attr_snapshot": attr_snapshot if attr_snapshot is not None else (cache_map.get((st_lower, it_str, at_lower)) or {}).get("attr_snapshot")
             }
         with self.lock:
@@ -790,8 +904,9 @@ class OverlayCache:
                             clean_asset_path, clean_asset_mtime, clean_asset_size, clean_asset_hash,
                             overlay_recipe_hash, last_pushed_at, item_title, library_name, status,
                             server_updated_at, detected_languages, runtime_mins, edition, show_status, metadata_hash,
-                            detected_audio_codec, detected_video_format, detected_resolution, attr_snapshot
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            detected_audio_codec, detected_video_format, detected_resolution, attr_snapshot,
+                            media_file_path, detected_video_source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id, asset_type) DO UPDATE SET
                             server_url = excluded.server_url,
                             clean_asset_path = excluded.clean_asset_path,
@@ -813,7 +928,9 @@ class OverlayCache:
                             detected_audio_codec = COALESCE(excluded.detected_audio_codec, dynamic_overlay_cache.detected_audio_codec),
                             detected_video_format = COALESCE(excluded.detected_video_format, dynamic_overlay_cache.detected_video_format),
                             detected_resolution = COALESCE(excluded.detected_resolution, dynamic_overlay_cache.detected_resolution),
-                            attr_snapshot = COALESCE(excluded.attr_snapshot, dynamic_overlay_cache.attr_snapshot)
+                            attr_snapshot = COALESCE(excluded.attr_snapshot, dynamic_overlay_cache.attr_snapshot),
+                            media_file_path = COALESCE(excluded.media_file_path, dynamic_overlay_cache.media_file_path),
+                            detected_video_source = CASE WHEN excluded.media_file_path IS NOT NULL THEN excluded.detected_video_source ELSE dynamic_overlay_cache.detected_video_source END
                         """,
                         (
                             server_type.lower(),
@@ -839,7 +956,9 @@ class OverlayCache:
                             detected_audio_codec,
                             detected_video_format,
                             detected_resolution,
-                            attr_snapshot
+                            attr_snapshot,
+                            str(media_file_path) if media_file_path else None,
+                            detected_video_source
                         )
                     )
                 conn.close()
@@ -905,6 +1024,7 @@ class OverlayCache:
                         cursor = conn.execute("DELETE FROM dynamic_overlay_cache")
                     deleted = cursor.rowcount
                 conn.close()
+                self.prune_recipe_snapshots()
                 return deleted
             except Exception as e:
                 logger.error(f"[OverlayCache] Error clearing cache: {e}")
