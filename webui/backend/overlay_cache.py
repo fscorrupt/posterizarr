@@ -366,7 +366,7 @@ class OverlayCache:
         if is_cached_empty and is_current_empty:
             pass  # Both indicate that no overlay rules apply
         elif cached_recipe_hash != overlay_recipe_hash:
-            diff_reasons.append("Overlay recipe/rules modified")
+            diff_reasons.append(f"Resolved overlay layers changed ({cached_recipe_hash[:8]} -> {overlay_recipe_hash[:8]})")
 
         # Metadata signature drift check
         meta_drift = False
@@ -517,6 +517,36 @@ class OverlayCache:
             except Exception as e:
                 logger.error(f"[OverlayCache] Error updating server_updated_at: {e}")
                 return False
+    def update_verified_fingerprints(
+        self, server_type, item_id, asset_type, clean_asset_hash, overlay_recipe_hash, metadata_hash,
+        attr_snapshot, clean_asset_mtime, clean_asset_size, cache_map=None
+    ) -> bool:
+        key = (server_type.lower(), str(item_id), asset_type.lower())
+        values = {
+            "clean_asset_hash": clean_asset_hash, "overlay_recipe_hash": overlay_recipe_hash,
+            "metadata_hash": metadata_hash, "attr_snapshot": attr_snapshot,
+            "clean_asset_mtime": clean_asset_mtime, "clean_asset_size": clean_asset_size,
+        }
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                try:
+                    with conn:
+                        conn.execute(
+                            "UPDATE dynamic_overlay_cache SET clean_asset_hash = ?, overlay_recipe_hash = ?, metadata_hash = ?, "
+                            "attr_snapshot = ?, clean_asset_mtime = ?, clean_asset_size = ? "
+                            "WHERE server_type = ? AND item_id = ? AND asset_type = ?",
+                            (*values.values(), *key)
+                        )
+                finally:
+                    conn.close()
+                if cache_map is not None and key in cache_map:
+                    cache_map[key].update(values)
+                return True
+            except Exception as error:
+                logger.error("[OverlayCache] Could not refresh verified fingerprints: %s", error)
+                return False
+
     def update_attr_snapshot(
         self,
         server_type: str,

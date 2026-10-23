@@ -1293,6 +1293,7 @@
     "next": "Nächster",
     "success": {
       "scheduleAdded": "Zeitplan hinzugefügt",
+      "scheduleUpdated": "Zeitplan aktualisiert",
       "scheduleRemoved": "Zeitplan entfernt",
       "allCleared": "Alle Zeitpläne gelöscht",
       "timezoneUpdated": "Zeitzone aktualisiert",

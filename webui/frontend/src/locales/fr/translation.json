@@ -1292,6 +1292,7 @@
     "next": "Suivant",
     "success": {
       "scheduleAdded": "Planification ajoutée",
+      "scheduleUpdated": "Planification mise à jour",
       "scheduleRemoved": "Planification supprimée",
       "allCleared": "Toutes les planifications effacées",
       "timezoneUpdated": "Fuseau horaire mis à jour",

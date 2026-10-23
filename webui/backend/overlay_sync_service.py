@@ -161,6 +161,42 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
     return json.dumps({"plex_thumb": episode.get("thumb"), "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
 
 
+async def _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb):
+    if not isinstance(snapshot, dict) or not snapshot.get("plex_poster_key"):
+        return False, "Previous titlecard upload has no verified artwork identity", None
+    if current_thumb and snapshot.get("plex_thumb") == current_thumb:
+        return True, "Up-to-date", None
+    response = await http_client.get(
+        f"{server_url}/library/metadata/{item_id}/posters",
+        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+    )
+    response.raise_for_status()
+    if any(node.get("selected") == "1" and node.get("ratingKey") == snapshot["plex_poster_key"]
+           for node in fromstring(response.content)):
+        refreshed = {**snapshot, "plex_thumb": current_thumb}
+        return True, "Plex thumbnail URL changed; selected titlecard is unchanged", json.dumps(refreshed, sort_keys=True)
+    return False, "Selected Plex titlecard differs from the verified upload", None
+
+
+async def _plex_rendered_titlecard_status(http_client, server_url, item_id, token, snapshot, current_thumb, content):
+    expected_hash = hashlib.sha1(content).hexdigest()
+    cached_key = snapshot.get("plex_poster_key") if isinstance(snapshot, dict) else None
+    if cached_key and cached_key.endswith("/" + expected_hash):
+        return await _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb)
+    response = await http_client.get(
+        f"{server_url}/library/metadata/{item_id}/posters",
+        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+    )
+    response.raise_for_status()
+    selected = next((node for node in fromstring(response.content)
+                     if node.get("selected") == "1" and str(node.get("ratingKey", "")).startswith("upload://")
+                     and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+    if selected is None:
+        return False, "Rendered titlecard differs from selected Plex artwork", None
+    refreshed = json.dumps({"plex_poster_key": selected.get("ratingKey"), "plex_thumb": current_thumb}, sort_keys=True)
+    return True, "Rendered titlecard already selected; fingerprints refreshed without upload", refreshed
+
+
 AUDIO_CODEC_PATTERNS = [
     ("truehd_atmos", re.compile(r'(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))')),
     ("dtsx", re.compile(r'(?i)\b(dts[-_. ]?x7?)\b(?![-_. ]?(26[456]))')),
@@ -4215,9 +4251,16 @@ async def _run_overlay_sync_task(
                                                     ep_snapshot = json.loads((ep_cached_entry or {}).get("attr_snapshot") or "{}")
                                                 except (TypeError, ValueError):
                                                     ep_snapshot = {}
-                                                if not ep_snapshot.get("plex_thumb") or ep_snapshot["plex_thumb"] != ep_data.get("server_thumb"):
-                                                    ep_current = False
-                                                    ep_cache_reason = "Server titlecard changed or previous upload was not verified"
+                                                try:
+                                                    ep_current, ep_cache_reason, refreshed_snapshot = await _plex_titlecard_cache_status(
+                                                        http_client, s_url, ep_rk, creds.get("token"), ep_snapshot, ep_data.get("server_thumb")
+                                                    )
+                                                except Exception as verification_error:
+                                                    await _inc_stats(failed=1)
+                                                    write_log(f"  [!] {w_tag}Could not verify Titlecard '{title} S{s_num:02d}E{ep_num:02d}': {type(verification_error).__name__}. Artwork and cache left untouched.")
+                                                    continue
+                                                if refreshed_snapshot:
+                                                    cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", refreshed_snapshot, cache_map=cache_map)
 
                                             if scope == "incremental" and ep_current:
                                                 await _inc_stats(skipped=1)
@@ -4246,6 +4289,29 @@ async def _run_overlay_sync_task(
                                                     )
                                                 else:
                                                     tc_comp = tc_base_bytes
+
+                                                if s_type == "plex" and scope == "incremental" and ep_cached_entry:
+                                                    tc_phase = "comparing rendered titlecard with selected Plex artwork"
+                                                    try:
+                                                        previous_snapshot = json.loads(ep_cached_entry.get("attr_snapshot") or "{}")
+                                                    except (TypeError, ValueError):
+                                                        previous_snapshot = {}
+                                                    identical, identity_reason, verified_snapshot = await _plex_rendered_titlecard_status(
+                                                        http_client, s_url, ep_rk, creds.get("token"), previous_snapshot, ep_data.get("server_thumb"), tc_comp
+                                                    )
+                                                    if identical:
+                                                        snapshot_value = verified_snapshot or json.dumps(previous_snapshot, sort_keys=True)
+                                                        fingerprints_saved = cache.update_verified_fingerprints(
+                                                            s_type, str(ep_rk), "titlecard", tc_clean_hash, ep_recipe_hash, ep_meta_hash,
+                                                            snapshot_value, tc_mtime, tc_size, cache_map=cache_map
+                                                        )
+                                                        if not fingerprints_saved:
+                                                            await _inc_stats(failed=1)
+                                                            write_log(f"  [!] {w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' already matches Plex, but cache fingerprints could not be saved. No upload performed.")
+                                                            continue
+                                                        await _inc_stats(skipped=1)
+                                                        write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Selected artwork already matches rendered output; cache fingerprints refreshed (no upload)")
+                                                        continue
 
                                                 tc_success = False
                                                 tc_snapshot = None

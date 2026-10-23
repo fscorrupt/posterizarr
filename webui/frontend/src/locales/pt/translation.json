@@ -1292,6 +1292,7 @@
     "next": "Próximo",
     "success": {
       "scheduleAdded": "Agendamento adicionado",
+      "scheduleUpdated": "Agendamento atualizado",
       "scheduleRemoved": "Agendamento removido",
       "allCleared": "Todos os agendamentos limpos",
       "timezoneUpdated": "Fuso horário atualizado",

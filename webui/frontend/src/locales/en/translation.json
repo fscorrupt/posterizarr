@@ -1300,6 +1300,7 @@
     "next": "Next",
     "success": {
       "scheduleAdded": "Schedule added",
+      "scheduleUpdated": "Schedule updated",
       "scheduleRemoved": "Schedule removed",
       "allCleared": "All schedules cleared",
       "timezoneUpdated": "Timezone updated",
