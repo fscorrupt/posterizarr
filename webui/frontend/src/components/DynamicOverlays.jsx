@@ -571,6 +571,9 @@ export default function DynamicOverlays() {
   const [ratingsCacheTotalPages, setRatingsCacheTotalPages] = useState(1);
   const [ratingsCacheStatsSummary, setRatingsCacheStatsSummary] = useState({ total: 0, valid: 0, expired: 0 });
   const [actionRatingCacheId, setActionRatingCacheId] = useState(null);
+  const [ratingsRefreshJob, setRatingsRefreshJob] = useState(null);
+  const [ratingsRefreshSubmitting, setRatingsRefreshSubmitting] = useState(false);
+  const [ratingsRefreshError, setRatingsRefreshError] = useState("");
 
   // High-Speed Change Detection State
   const [isDetectingChanges, setIsDetectingChanges] = useState(false);
@@ -742,6 +745,13 @@ export default function DynamicOverlays() {
   const [syncScope, setSyncScope] = useState("incremental"); // "incremental" or "all"
   const [syncServer, setSyncServer] = useState(""); // dynamically set based on enabledServers
   const [syncLibrary, setSyncLibrary] = useState(""); // dynamically set based on configuredLibraries
+  const [isItemSyncPickerOpen, setIsItemSyncPickerOpen] = useState(false);
+  const [syncItemQuery, setSyncItemQuery] = useState("");
+  const [syncItemResults, setSyncItemResults] = useState([]);
+  const [syncItemSearchLoading, setSyncItemSearchLoading] = useState(false);
+  const [syncItemSearchErrors, setSyncItemSearchErrors] = useState([]);
+  const [selectedSyncItem, setSelectedSyncItem] = useState(null);
+  const [forceSelectedItemSync, setForceSelectedItemSync] = useState(false);
   const [isOverlaySyncRunning, setIsOverlaySyncRunning] = useState(false);
   const [overlaySyncStatus, setOverlaySyncStatus] = useState(null);
   const [autoOverlaySync, setAutoOverlaySync] = useState(false);
@@ -985,14 +995,14 @@ export default function DynamicOverlays() {
     }
   };
 
-  const handleTriggerOverlaySync = async (targetScope = syncScope, targetServer = syncServer, targetLib = syncLibrary) => {
+  const handleTriggerOverlaySync = async (targetScope = syncScope, targetServer = syncServer, targetLib = syncLibrary, targetItems = null) => {
     if (configuredLibraries.length === 0) {
       showError("No libraries configured in Dynamic Overlays yet. Please configure a library before syncing.");
-      return;
+      return false;
     }
     if (enabledServers.length === 0) {
       showError("No media server is configured or enabled in Posterizarr settings.");
-      return;
+      return false;
     }
     const finalServer = targetServer || (enabledServers.length === 1 ? enabledServers[0].id : "all");
     const finalLib = targetLib || (configuredLibraries.length === 1 ? configuredLibraries[0] : "all");
@@ -1004,14 +1014,16 @@ export default function DynamicOverlays() {
         body: JSON.stringify({
           target_server: finalServer,
           scope: targetScope,
-          library: finalLib
+          library: finalLib,
+          ...(targetItems ? { target_items: targetItems } : {}),
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showSuccess(`Started Dynamic Overlay Sync (${targetScope.toUpperCase()}) for ${finalServer.toUpperCase()}!`);
+        showSuccess(targetItems ? `Started overlay scan for "${targetItems[0].title}".` : `Started Dynamic Overlay Sync (${targetScope.toUpperCase()}) for ${finalServer.toUpperCase()}!`);
         setIsApplyModalOpen(false);
         fetchOverlaySyncStatus();
+        return true;
       } else {
         showError(data.error || "Failed to start overlay sync.");
         setIsOverlaySyncRunning(false);
@@ -1020,6 +1032,46 @@ export default function DynamicOverlays() {
       showError("Error triggering overlay sync: " + err.message);
       setIsOverlaySyncRunning(false);
     }
+    return false;
+  };
+
+  useEffect(() => {
+    setSelectedSyncItem(null);
+    setSyncItemResults([]);
+    setSyncItemSearchErrors([]);
+    const query = syncItemQuery.trim();
+    if (!isItemSyncPickerOpen || query.length < 2) {
+      setSyncItemSearchLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSyncItemSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ query, target_server: syncServer || "all", library: syncLibrary || "all" });
+        const response = await fetch(`/api/dynamic-overlays/sync/items?${params}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || data.detail || "Could not search media items");
+        if (!controller.signal.aborted) {
+          setSyncItemResults(data.items || []);
+          setSyncItemSearchErrors(data.errors || []);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) setSyncItemSearchErrors([error.message]);
+      } finally {
+        if (!controller.signal.aborted) setSyncItemSearchLoading(false);
+      }
+    }, 350);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [isItemSyncPickerOpen, syncItemQuery, syncServer, syncLibrary]);
+
+  const handleSyncSelectedItem = async () => {
+    if (!selectedSyncItem || syncItemSearchLoading || isOverlaySyncRunning) return;
+    const started = await handleTriggerOverlaySync(
+      forceSelectedItemSync ? "full" : "incremental", selectedSyncItem.server_type, selectedSyncItem.library_name,
+      [{ ...selectedSyncItem, force_reapply: forceSelectedItemSync }],
+    );
+    if (started) setIsItemSyncPickerOpen(false);
   };
 
   const handleStopOverlaySync = async () => {
@@ -2728,9 +2780,68 @@ export default function DynamicOverlays() {
     }
   };
 
+  const handleRefreshRatings = async (entry = null) => {
+    if (!entry && !window.confirm("Refresh missing and expired movie/show ratings across all servers?")) return;
+    setRatingsRefreshSubmitting(true);
+    setRatingsRefreshError("");
+    try {
+      const response = await fetch("/api/dynamic-overlays/ratings-cache/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entry_id: entry?.id ?? null }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || data.detail || "Could not start ratings refresh");
+      setRatingsRefreshJob(data.job);
+    } catch (error) {
+      setRatingsRefreshError(error.message);
+      showError(error.message);
+    } finally {
+      setRatingsRefreshSubmitting(false);
+    }
+  };
+
+  const handleCancelRatingsRefresh = async () => {
+    setRatingsRefreshSubmitting(true);
+    try {
+      const response = await fetch("/api/dynamic-overlays/ratings-cache/refresh/cancel", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Could not cancel ratings refresh");
+      setRatingsRefreshJob(data.job);
+      fetchRatingsCacheItems();
+    } catch (error) {
+      setRatingsRefreshError(error.message);
+    } finally {
+      setRatingsRefreshSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isRatingsCacheModalOpen) return;
+    let active = true;
+    let wasRunning = Boolean(ratingsRefreshJob?.running);
+    const poll = async () => {
+      try {
+        const response = await fetch("/api/dynamic-overlays/ratings-cache/refresh/status");
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error("Could not read ratings refresh status");
+        if (!active) return;
+        setRatingsRefreshJob(data.job);
+        setRatingsRefreshError("");
+        if (wasRunning && !data.job.running) fetchRatingsCacheItems();
+        wasRunning = Boolean(data.job.running);
+      } catch (error) {
+        if (active) setRatingsRefreshError(error.message);
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isRatingsCacheModalOpen, ratingsRefreshJob?.started_at, ratingsCachePage, ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit]);
+
   const handleDeleteRatingsCacheEntry = async (entry) => {
     const title = entry.title || entry.item_id || "item";
-    if (!window.confirm(`Remove cached ratings for "${title}"?\n\nPosterizarr will query fresh scores from metadata & APIs on the next sync.`)) {
+    if (!window.confirm(`Remove cached ratings for "${title}"?\n\nUse Refresh Missing & Expired to fetch them again.`)) {
       return;
     }
     try {
@@ -2758,7 +2869,7 @@ export default function DynamicOverlays() {
       const res = await fetch(`/api/dynamic-overlays/ratings-cache/expire/${entry.id}`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        showSuccess(`Marked "${title}" as expired. Fresh ratings will be pulled on next sync.`);
+        showSuccess(`Marked "${title}" as expired. Eligible for automatic or manual ratings refresh.`);
         fetchRatingsCacheItems(ratingsCachePage, ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit);
         fetchRatingsCacheStats();
       } else {
@@ -9017,7 +9128,7 @@ export default function DynamicOverlays() {
                   Choose what to update and send overlaid artwork directly to your media server. Original assets stay clean and untouched.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => handleDetectChanges()}
@@ -9039,6 +9150,12 @@ export default function DynamicOverlays() {
                 >
                   <Sliders className="w-3.5 h-3.5 text-theme-primary" />
                   Sync Wizard
+                </button>
+                <button type="button" onClick={() => { setSyncItemQuery(""); setForceSelectedItemSync(false); setIsItemSyncPickerOpen(true); }}
+                  disabled={isOverlaySyncRunning || configuredLibraries.length === 0 || enabledServers.length === 0}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg border border-theme bg-theme-card hover:bg-theme-hover text-theme-text text-xs font-medium disabled:opacity-50">
+                  <Search className="w-4 h-4 shrink-0" />
+                  Select Movie / Show
                 </button>
                 <button
                   onClick={() => handleTriggerOverlaySync()}
@@ -12759,9 +12876,78 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL 2: RATINGS CACHE & AUTO-REFRESH BROWSER */}
       {/* ========================================================================= */}
+      {featureSettings?.enabled && isItemSyncPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <div role="dialog" aria-modal="true" aria-label="Sync Selected Movie or Show"
+            className="w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-theme-card border border-theme rounded-lg shadow-2xl">
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-theme">
+              <h2 className="text-base font-bold text-theme-text flex items-center gap-2"><Search className="w-5 h-5 shrink-0" />Sync Selected Movie or Show</h2>
+              <button type="button" onClick={() => setIsItemSyncPickerOpen(false)} title="Close item picker" aria-label="Close item picker"
+                className="p-2 shrink-0 rounded-lg text-theme-muted hover:bg-theme-hover"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4 border-b border-theme space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-xs text-theme-muted space-y-1"><span>Media Server</span>
+                  <select value={syncServer || "all"} onChange={(event) => setSyncServer(event.target.value)}
+                    className="w-full min-w-0 bg-theme-bg border border-theme rounded-lg px-3 py-2 text-theme-text">
+                    <option value="all">All Configured Servers</option>
+                    {enabledServers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs text-theme-muted space-y-1"><span>Library</span>
+                  <select value={syncLibrary || "all"} onChange={(event) => setSyncLibrary(event.target.value)}
+                    className="w-full min-w-0 bg-theme-bg border border-theme rounded-lg px-3 py-2 text-theme-text">
+                    <option value="all">All Configured Libraries</option>
+                    {configuredLibraries.map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className="block text-xs text-theme-muted space-y-1"><span>Movie or Show Title</span>
+                <input autoFocus type="search" value={syncItemQuery} maxLength={150} onChange={(event) => setSyncItemQuery(event.target.value)}
+                  placeholder="Search titles..." className="w-full min-w-0 px-3 py-2 rounded-lg border border-theme bg-theme-bg text-theme-text" />
+              </label>
+            </div>
+            <div className="p-4 space-y-2">
+              {syncItemSearchErrors.map((error, index) => <p key={index} role="alert" className="text-xs text-red-400 break-words">{error}</p>)}
+              {syncItemSearchLoading ? (
+                <div role="status" className="flex items-center gap-2 py-6 text-xs text-theme-muted"><Loader2 className="w-4 h-4 animate-spin" />Searching...</div>
+              ) : syncItemResults.length ? (
+                <fieldset className="min-w-0"><legend className="text-xs text-theme-muted mb-2">Results ({syncItemResults.length}{syncItemResults.length === 30 ? "+" : ""})</legend>
+                  <div className="max-h-72 overflow-y-auto divide-y divide-theme">
+                    {syncItemResults.map((item) => (
+                      <label key={`${item.server_type}:${item.id}`} className="flex items-start gap-3 py-3 cursor-pointer hover:bg-theme-hover">
+                        <input type="radio" name="overlay-sync-item" className="mt-1 shrink-0"
+                          checked={selectedSyncItem?.id === item.id && selectedSyncItem?.server_type === item.server_type}
+                          onChange={() => setSelectedSyncItem(item)}
+                          aria-label={`${item.title}${item.year ? ` (${item.year})` : ""}, ${item.library_name}, ${item.server_type}, ID ${item.id}`} />
+                        {item.media_type === "show" ? <Tv className="w-4 h-4 mt-0.5 text-theme-muted shrink-0" /> : <Film className="w-4 h-4 mt-0.5 text-theme-muted shrink-0" />}
+                        <div className="min-w-0 text-xs break-words">
+                          <div className="font-semibold text-theme-text">{item.title}{item.year ? ` (${item.year})` : ""}</div>
+                          <div className="text-theme-muted mt-1">{item.library_name} / {item.server_type.toUpperCase()} / {item.media_type === "show" ? "Show" : "Movie"} / ID {item.id}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ) : <p className="text-xs text-theme-muted py-6">{syncItemQuery.trim().length >= 2 ? "No matching movies or shows." : "Movies & Shows"}</p>}
+            </div>
+            <div className="p-4 border-t border-theme flex flex-wrap justify-between items-center gap-3">
+              <label className="flex items-center gap-2 text-xs text-theme-text">
+                <input type="checkbox" checked={forceSelectedItemSync} onChange={(event) => setForceSelectedItemSync(event.target.checked)} />
+                Force Reapply
+              </label>
+              <button type="button" onClick={handleSyncSelectedItem} disabled={!selectedSyncItem || syncItemSearchLoading || isOverlaySyncRunning}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-theme-primary text-white text-xs font-semibold disabled:opacity-50">
+                {isOverlaySyncRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                {isOverlaySyncRunning ? "Starting..." : forceSelectedItemSync ? "Reapply Selected Item" : "Scan Selected Item"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {featureSettings?.enabled && isRatingsCacheModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div role="dialog" aria-modal="true" aria-label="Ratings Cache & Refresh" className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] shadow-2xl overflow-y-auto animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-5 border-b border-theme flex items-start sm:items-center justify-between gap-4 bg-theme-card">
               <div className="flex items-center gap-3">
@@ -12770,7 +12956,7 @@ export default function DynamicOverlays() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-base sm:text-lg font-bold text-theme-text">Ratings Cache & Auto-Refresh Browser</h2>
+                    <h2 className="text-base sm:text-lg font-bold text-theme-text">Ratings Cache & Refresh</h2>
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-theme-primary/10 text-theme-primary border border-theme-primary/30">
                       {ratingsCacheStatsSummary.total || ratingsCacheTotal} Total
                     </span>
@@ -12783,9 +12969,6 @@ export default function DynamicOverlays() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-theme-muted mt-0.5">
-                    Multi-source ratings cache for IMDb, TMDb, Rotten Tomatoes, Trakt, and Letterboxd with automatic TTL refresh.
-                  </p>
                 </div>
               </div>
               <button
@@ -12799,6 +12982,58 @@ export default function DynamicOverlays() {
             </div>
 
             {/* Filter Toolbar */}
+            <div className="p-4 border-b border-theme space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-xs text-theme-text">
+                  <input type="checkbox" checked={featureSettings?.ratings_auto_refresh_enabled !== false}
+                    disabled={isUpdatingFeatureSettings}
+                    onChange={(event) => handleUpdateDynamicSettings({ ratings_auto_refresh_enabled: event.target.checked })} />
+                  Automatic Refresh (Hourly)
+                </label>
+                <div className="flex items-center gap-2">
+                  {ratingsRefreshJob?.running && (
+                    <button type="button" onClick={handleCancelRatingsRefresh} disabled={ratingsRefreshSubmitting}
+                      title="Cancel ratings refresh" aria-label="Cancel ratings refresh"
+                      className="p-2 border border-theme rounded-lg text-theme-muted hover:text-red-400 disabled:opacity-50">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => handleRefreshRatings()} disabled={ratingsRefreshSubmitting || ratingsRefreshJob?.running}
+                    title="Refresh missing and expired movie/show ratings across all servers without changing artwork"
+                    className="flex items-center gap-2 px-3 py-2 border border-theme rounded-lg text-xs text-theme-text hover:bg-theme-hover disabled:opacity-50">
+                    <RefreshCw className={`w-4 h-4 shrink-0 ${ratingsRefreshJob?.running ? "animate-spin" : ""}`} />
+                    <span>Refresh Missing &amp; Expired</span>
+                  </button>
+                </div>
+              </div>
+              {ratingsRefreshError && <p role="alert" className="text-xs text-red-400">{ratingsRefreshError}</p>}
+              {ratingsRefreshJob?.status && ratingsRefreshJob.status !== "idle" && (
+                <div role="status" className="text-xs text-theme-muted space-y-1 break-words">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    <strong className="text-theme-text capitalize">{ratingsRefreshJob.status}</strong>
+                    <span>{ratingsRefreshJob.completed || 0}/{ratingsRefreshJob.total || 0}</span>
+                    <span className="text-green-400">{ratingsRefreshJob.success || 0} Succeeded</span>
+                    <span className="text-amber-400">{ratingsRefreshJob.partial || 0} Partial</span>
+                    <span className="text-red-400">{ratingsRefreshJob.failed || 0} Failed</span>
+                    <span>{ratingsRefreshJob.trigger === "automatic" ? "Automatic" : "Manual"}</span>
+                    <time>{new Date(ratingsRefreshJob.finished_at || ratingsRefreshJob.started_at).toLocaleString()}</time>
+                  </div>
+                  {ratingsRefreshJob.running && <progress aria-label="Ratings refresh progress" className="w-full h-2" max={Math.max(1, ratingsRefreshJob.total || 0)} value={ratingsRefreshJob.completed || 0} />}
+                  {ratingsRefreshJob.current_title && <div>{ratingsRefreshJob.current_title}</div>}
+                  {ratingsRefreshJob.message && <div>{ratingsRefreshJob.message}</div>}
+                  {Boolean(ratingsRefreshJob.errors?.length) && (
+                    <details><summary className="cursor-pointer text-red-400">Recent Refresh Issues ({ratingsRefreshJob.errors.length})</summary>
+                      <ul className="mt-2 space-y-1 max-h-28 overflow-auto">
+                        {ratingsRefreshJob.errors.map((error, index) => <li key={index}>
+                          <strong>{error.title}</strong>: {error.message}
+                          {Object.entries(error.providers || {}).map(([provider, outcome]) => <span key={provider}>; {provider}: {outcome.message || outcome.status}</span>)}
+                        </li>)}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="p-4 bg-theme-bg/60 border-b border-theme flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
               <div className="flex-1 flex items-center gap-2 relative">
                 <Search className="w-4 h-4 text-theme-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -12934,7 +13169,7 @@ export default function DynamicOverlays() {
             </div>
 
             {/* Table Content */}
-            <div className="flex-1 overflow-auto bg-theme-bg/20">
+            <div className="overflow-x-auto bg-theme-bg/20">
               {ratingsCacheLoading ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-3 text-theme-muted">
                   <Loader2 className="w-8 h-8 animate-spin text-theme-primary" />
@@ -13127,23 +13362,38 @@ export default function DynamicOverlays() {
                             <div className="text-[10px] text-theme-muted mt-0.5">
                               Expires: {entry.expires_at ? new Date(entry.expires_at).toLocaleDateString() : "—"}
                             </div>
+                            {entry.last_refresh_status && (
+                              <details className="mt-1 text-[11px] text-theme-muted">
+                                <summary className={`cursor-pointer capitalize ${entry.last_refresh_status === "failed" ? "text-red-400" : entry.last_refresh_status === "partial" ? "text-amber-400" : "text-green-400"}`}>
+                                  Last Refresh: {entry.last_refresh_status}
+                                </summary>
+                                <div>{entry.last_refresh_at ? new Date(entry.last_refresh_at).toLocaleString() : ""}</div>
+                                <pre className="whitespace-pre-wrap break-words max-w-xs text-[10px]">{entry.last_refresh_details}</pre>
+                              </details>
+                            )}
                           </td>
 
                           <td className="py-3 px-4 align-middle text-right">
                             <div className="flex items-center justify-end gap-1">
+                              <button type="button" onClick={() => handleRefreshRatings(entry)}
+                                disabled={isActing || ratingsRefreshSubmitting || ratingsRefreshJob?.running}
+                                title="Refresh ratings now" aria-label={`Refresh ratings for ${entry.title || entry.item_id}`}
+                                className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text disabled:opacity-50">
+                                <RefreshCw className="w-4 h-4" />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleExpireRatingsCacheEntry(entry)}
-                                disabled={isActing}
+                                disabled={isActing || ratingsRefreshJob?.running}
                                 className="p-1.5 rounded-lg hover:bg-amber-500/10 text-theme-muted hover:text-amber-400 transition-all border border-transparent hover:border-amber-500/30 disabled:opacity-50"
-                                title="Expire rating now (Forces fresh API query on next sync)"
+                                title="Mark expired for the next ratings refresh"
                               >
                                 {isActing ? <Loader2 className="w-4 h-4 animate-spin text-amber-400" /> : <RotateCcw className="w-4 h-4" />}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteRatingsCacheEntry(entry)}
-                                disabled={isActing}
+                                disabled={isActing || ratingsRefreshJob?.running}
                                 className="p-1.5 rounded-lg hover:bg-red-500/10 text-theme-muted hover:text-red-400 transition-all border border-transparent hover:border-red-500/30 disabled:opacity-50"
                                 title="Delete rating from cache completely"
                               >

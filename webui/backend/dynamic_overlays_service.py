@@ -248,6 +248,7 @@ def get_dynamic_overlays_settings() -> Dict[str, Any]:
         "mdblist_api_key": "",           # Optional MDBList API Key
         "omdb_api_key": "",              # Optional OMDb API Key
         "rating_cache_ttl_days": 7,      # Cache TTL
+        "ratings_auto_refresh_enabled": True,
         "debug_logging": False,          # Switchable debug pixel log for overlay positioning
         "concurrency": 4,                # Number of parallel items processed concurrently
         "change_detection_enabled": True,# Fast bulk change detection for languages, cuts, runtime, status

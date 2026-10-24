@@ -2313,9 +2313,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not start dynamic overlays change detector: {e}")
 
+    from ratings_refresh import ratings_refresh_service
+    ratings_refresh_service.start_periodic(CONFIG_PATH)
+
     yield
 
     # Shutdown
+    await ratings_refresh_service.stop()
 
     # Stop logs watcher
     if logs_watcher:
@@ -20135,6 +20139,25 @@ async def remove_dynamic_overlay_library(req: RemoveLibraryRequest):
 # DYNAMIC OVERLAYS SYNC ENDPOINTS
 # ==============================================================================
 
+@app.get("/api/dynamic-overlays/sync/items")
+async def get_dynamic_overlay_sync_items(
+    query: str = Query(..., min_length=2, max_length=150),
+    target_server: str = Query("all", pattern="^(all|plex|jellyfin|emby)$"),
+    library: str = Query("all", max_length=300),
+):
+    if not kometa_resolver:
+        raise HTTPException(status_code=503, detail="Dynamic overlays service is uninitialized")
+    from overlay_sync_service import get_server_credentials, search_overlay_sync_items
+    from overlay_resolver import load_cached_yaml_file
+    credentials = await asyncio.to_thread(get_server_credentials, CONFIG_PATH)
+    config = await asyncio.to_thread(load_cached_yaml_file, Path(kometa_resolver.configs_dir) / "config.yml")
+    rules = {name.lower(): data.get("overlay_files") or data.get("overlays") or []
+             for name, data in (config.get("libraries") or {}).items() if isinstance(data, dict)}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        result = await search_overlay_sync_items(client, credentials, rules, query, target_server, library)
+    return {"success": True, **result}
+
+
 class DynamicOverlaysSyncRequest(BaseModel):
     target_server: str = "all"  # "all", "plex", "jellyfin", "emby"
     scope: str = "incremental"   # "incremental" (changes only) or "all" (all assets)
@@ -20516,6 +20539,7 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     mdblist_api_key: Optional[str] = None
     omdb_api_key: Optional[str] = None
     rating_cache_ttl_days: Optional[int] = None
+    ratings_auto_refresh_enabled: Optional[bool] = None
     change_detection_enabled: Optional[bool] = None
     change_detection_interval_minutes: Optional[int] = None
     auto_resync_on_change: Optional[bool] = None
@@ -20650,6 +20674,41 @@ async def get_dynamic_overlays_ratings_cache_entries(
         logger.error(f"Error querying ratings cache entries: {e}", exc_info=True)
         return {"success": False, "error": str(e), "entries": [], "total": 0}
 
+class RatingsRefreshRequest(BaseModel):
+    entry_id: Optional[int] = Field(default=None, ge=1)
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/refresh/status")
+async def get_ratings_refresh_status():
+    from ratings_refresh import ratings_refresh_service
+    return {"success": True, "job": await asyncio.to_thread(ratings_refresh_service.status)}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/refresh")
+async def start_ratings_refresh(req: RatingsRefreshRequest):
+    from ratings_refresh import ratings_refresh_service
+    from overlay_sync_service import get_server_credentials
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+    if req.entry_id is not None and not await asyncio.to_thread(ratings_refresh_service.candidates, req.entry_id):
+        raise HTTPException(status_code=404, detail="Rating entry not found")
+    credentials = await asyncio.to_thread(get_server_credentials, CONFIG_PATH)
+    settings = await asyncio.to_thread(get_dynamic_overlays_settings)
+    return await ratings_refresh_service.start(credentials, settings, entry_id=req.entry_id)
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/refresh/cancel")
+async def cancel_ratings_refresh():
+    from ratings_refresh import ratings_refresh_service
+    task = ratings_refresh_service.task
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    return {"success": True, "job": await asyncio.to_thread(ratings_refresh_service.status)}
+
+
 @app.delete("/api/dynamic-overlays/ratings-cache/entry/{entry_id}")
 async def delete_dynamic_overlays_ratings_cache_entry(entry_id: int):
     """Delete a single cached rating record."""
@@ -20670,7 +20729,7 @@ async def expire_dynamic_overlays_ratings_cache_entry(entry_id: int):
         from ratings_service import ratings_cache
         expired = ratings_cache.expire_entry(entry_id)
         if expired:
-            return {"success": True, "message": "Rating marked as expired. It will refresh on next sync."}
+            return {"success": True, "message": "Rating marked as expired. Eligible for automatic or manual ratings refresh."}
         return {"success": False, "error": "Entry not found."}
     except Exception as e:
         logger.error(f"Error expiring rating entry {entry_id}: {e}", exc_info=True)

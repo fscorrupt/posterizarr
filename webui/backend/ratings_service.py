@@ -139,7 +139,10 @@ class RatingsCacheManager:
                     for col_sql in [
                         "ALTER TABLE media_ratings_cache ADD COLUMN show_status TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN network TEXT;",
-                        "ALTER TABLE media_ratings_cache ADD COLUMN content_rating TEXT;"
+                        "ALTER TABLE media_ratings_cache ADD COLUMN content_rating TEXT;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_at TEXT;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_status TEXT;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_details TEXT;"
                     ]:
                         try:
                             conn.execute(col_sql)
@@ -171,7 +174,7 @@ class RatingsCacheManager:
                         (media_type, str(tmdb_id), json.dumps(results, sort_keys=True), (datetime.now() + timedelta(days=1)).isoformat())
                     )
 
-    def get_cached_ratings(self, server_type: str, item_id: str) -> Optional[Dict[str, Any]]:
+    def get_cached_ratings(self, server_type: str, item_id: str, allow_stale: bool = False) -> Optional[Dict[str, Any]]:
         """Retrieve unexpired cached ratings for a specific item."""
         with self.lock:
             try:
@@ -195,7 +198,7 @@ class RatingsCacheManager:
                 if expires_at_str:
                     try:
                         exp_dt = datetime.fromisoformat(expires_at_str)
-                        if datetime.utcnow() > exp_dt:
+                        if not allow_stale and datetime.utcnow() > exp_dt:
                             # Expired
                             return None
                     except Exception:
@@ -308,8 +311,10 @@ class RatingsCacheManager:
                         )
                     )
                 conn.close()
+                return True
             except Exception as e:
                 logger.error(f"[RatingsCache] Error saving ratings for {title}: {e}")
+                return False
 
     def clear_all(self):
         """Purge all cached ratings."""
@@ -450,6 +455,16 @@ class RatingsCacheManager:
                 conn.close()
             except Exception as e:
                 logger.error(f"[RatingsCache] Error saving show status for {title}: {e}")
+
+    def record_refresh(self, server_type: str, item_id: str, status: str, details: Dict[str, Any]) -> None:
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                with connection:
+                    connection.execute(
+                        "UPDATE media_ratings_cache SET last_refresh_at = ?, last_refresh_status = ?, last_refresh_details = ? "
+                        "WHERE server_type = ? AND item_id = ?",
+                        (datetime.utcnow().isoformat(), status, json.dumps(details, sort_keys=True), server_type.lower(), str(item_id))
+                    )
 
     def get_entries(
         self,
@@ -674,21 +689,22 @@ def parse_plex_xml_ratings(xml_content: bytes) -> Dict[str, Any]:
                 ratings["tmdb"] = round(val_float, 1)
 
         # 2. Check main rating / audienceRating attributes as fallbacks
-        video = root.find(".//Video") or root.find(".//Directory")
+        video = root.find(".//Video")
+        if video is None:
+            video = root.find(".//Directory")
         if video is not None:
-            # Fallback audience rating
-            if "rt_audience" not in ratings and video.get("audienceRating"):
+            for attribute, image_attribute in (("audienceRating", "audienceRatingImage"), ("rating", "ratingImage")):
+                image = str(video.get(image_attribute) or "").lower()
                 try:
-                    ar = float(video.get("audienceRating"))
-                    ratings["rt_audience"] = int(round(ar * 10)) if ar <= 10.0 else int(round(ar))
-                except Exception:
-                    pass
-            # Fallback primary rating
-            if "imdb" not in ratings and "tmdb" not in ratings and video.get("rating"):
-                try:
-                    r = float(video.get("rating"))
-                    ratings["primary"] = round(r, 1)
-                except Exception:
+                    value = float(video.get(attribute))
+                    if "imdb" in image:
+                        ratings.setdefault("imdb", round(value, 1))
+                    elif "themoviedb" in image or "tmdb" in image:
+                        ratings.setdefault("tmdb", round(value, 1))
+                    elif "rottentomatoes" in image:
+                        key = "rt_audience" if attribute == "audienceRating" else "rt_critic"
+                        ratings.setdefault(key, int(round(value * 10)) if value <= 10 else int(round(value)))
+                except (TypeError, ValueError):
                     pass
 
     except Exception as e:
@@ -697,11 +713,29 @@ def parse_plex_xml_ratings(xml_content: bytes) -> Dict[str, Any]:
     return ratings
 
 
+async def _fetch_rating_json(client, provider, url, outcomes, **kwargs):
+    try:
+        response = await client.get(url, **kwargs)
+        if response.status_code != 200:
+            outcomes[provider] = {"status": "failed", "message": f"HTTP {response.status_code}"}
+            return None
+        data = response.json()
+        if not isinstance(data, dict) or data.get("error") or data.get("Response") == "False":
+            outcomes[provider] = {"status": "failed", "message": "Provider rejected the request or could not find this item"}
+            return None
+        outcomes[provider] = {"status": "no_scores", "message": "No usable scores returned"}
+        return data
+    except Exception as error:
+        outcomes[provider] = {"status": "failed", "message": f"Request failed ({type(error).__name__})"}
+        return None
+
+
 async def fetch_tmdb_rating(
     tmdb_id: int,
     api_key: str,
     client: httpx.AsyncClient,
-    media_type: str = "movie"
+    media_type: str = "movie",
+    outcomes: Optional[Dict[str, Any]] = None
 ) -> Optional[float]:
     """Fetch vote_average directly from TMDb API with support for v3 API keys and v4 JWT tokens."""
     if not tmdb_id or not api_key:
@@ -717,15 +751,16 @@ async def fetch_tmdb_rating(
     else:
         params["api_key"] = api_key_clean
 
-    try:
-        resp = await client.get(url, headers=headers, params=params, timeout=6.0)
-        if resp.status_code == 200:
-            data = resp.json()
-            avg = data.get("vote_average")
-            if avg is not None:
-                return round(float(avg), 1)
-    except Exception as e:
-        logger.debug(f"[Ratings] TMDb fetch error for {tmdb_id}: {e}")
+    outcomes = outcomes if outcomes is not None else {}
+    data = await _fetch_rating_json(client, "tmdb", url, outcomes, headers=headers, params=params, timeout=6.0)
+    if data:
+        try:
+            avg = float(data.get("vote_average"))
+            if 0 < avg <= 10:
+                outcomes["tmdb"] = {"status": "success", "scores": ["tmdb"]}
+                return round(avg, 1)
+        except (TypeError, ValueError):
+            pass
     return None
 
 
@@ -735,7 +770,8 @@ async def fetch_mdblist_ratings(
     tmdb_id: Optional[int],
     api_key: str,
     client: httpx.AsyncClient,
-    media_type: str = "movie"
+    media_type: str = "movie",
+    outcomes: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Fetch comprehensive ratings from MDBList API (IMDb, RT, TMDb, Trakt, Letterboxd, Metacritic).
@@ -753,10 +789,10 @@ async def fetch_mdblist_ratings(
 
     url = "https://mdblist.com/api/"
     ratings = {}
+    outcomes = outcomes if outcomes is not None else {}
     try:
-        resp = await client.get(url, params=params, timeout=8.0)
-        if resp.status_code == 200:
-            data = resp.json()
+        data = await _fetch_rating_json(client, "mdblist", url, outcomes, params=params, timeout=8.0)
+        if data:
             # MDBList provides a list of ratings
             # ratings: [{ 'source': 'imdb', 'value': 8.4, 'score': 84 }, ...]
             for r_item in data.get("ratings", []):
@@ -778,8 +814,11 @@ async def fetch_mdblist_ratings(
                     ratings["metacritic"] = int(score)
                 elif src == "letterboxd" and val is not None:
                     ratings["letterboxd"] = round(float(val), 1)
-    except Exception as e:
-        logger.debug(f"[Ratings] MDBList fetch error: {e}")
+    except (TypeError, ValueError, AttributeError):
+        outcomes["mdblist"] = {"status": "failed", "message": "Invalid rating data"}
+
+    if ratings:
+        outcomes["mdblist"] = {"status": "success", "scores": sorted(ratings)}
 
     return ratings
 
@@ -787,7 +826,8 @@ async def fetch_mdblist_ratings(
 async def fetch_omdb_ratings(
     imdb_id: str,
     api_key: str,
-    client: httpx.AsyncClient
+    client: httpx.AsyncClient,
+    outcomes: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Fetch IMDb, Rotten Tomatoes, and Metascore ratings from OMDb API.
@@ -796,12 +836,13 @@ async def fetch_omdb_ratings(
     if not api_key or not imdb_id:
         return {}
 
-    url = f"https://www.omdbapi.com/?apikey={api_key.strip()}&i={imdb_id.strip()}"
+    url = "https://www.omdbapi.com/"
     ratings = {}
+    outcomes = outcomes if outcomes is not None else {}
     try:
-        resp = await client.get(url, timeout=6.0)
-        if resp.status_code == 200:
-            data = resp.json()
+        data = await _fetch_rating_json(client, "omdb", url, outcomes,
+                                        params={"apikey": api_key.strip(), "i": imdb_id.strip()}, timeout=6.0)
+        if data:
             if data.get("Response") == "True":
                 # IMDb
                 try:
@@ -823,8 +864,11 @@ async def fetch_omdb_ratings(
                             ratings["rt_critic"] = int(val_str)
                         except Exception:
                             pass
-    except Exception as e:
-        logger.debug(f"[Ratings] OMDb fetch error: {e}")
+    except (TypeError, ValueError, AttributeError):
+        outcomes["omdb"] = {"status": "failed", "message": "Invalid rating data"}
+
+    if ratings:
+        outcomes["omdb"] = {"status": "success", "scores": sorted(ratings)}
 
     return ratings
 
@@ -877,6 +921,7 @@ async def resolve_media_ratings(
 
     resolved: Dict[str, Any] = {}
     primary_source = "plex"
+    outcomes: Dict[str, Any] = {}
 
     # 2. Extract native ratings from Plex XML if available
     if plex_xml_bytes:
@@ -884,6 +929,7 @@ async def resolve_media_ratings(
         for k, v in plex_ratings.items():
             if v is not None:
                 resolved[k] = v
+        outcomes["plex"] = {"status": "success" if resolved else "no_scores", "scores": sorted(resolved)}
 
     # 3. If TMDb rating is requested and missing, use TMDb API
     local_client = client or httpx.AsyncClient(timeout=10.0)
@@ -891,18 +937,16 @@ async def resolve_media_ratings(
 
     try:
         if "tmdb" in enabled_sources and resolved.get("tmdb") is None and tmdb_id and tmdb_api_key:
-            tmdb_score = await fetch_tmdb_rating(tmdb_id, tmdb_api_key, local_client, media_type)
+            tmdb_score = await fetch_tmdb_rating(tmdb_id, tmdb_api_key, local_client, media_type, outcomes=outcomes)
             if tmdb_score is not None:
                 resolved["tmdb"] = tmdb_score
                 primary_source = "tmdb"
 
         # 4. If MDBList API key is provided and needed ratings are still missing (or Trakt/Letterboxd requested)
-        needs_external = any(
-            (s in ["trakt", "letterboxd", "metacritic"] or resolved.get(s) is None)
-            for s in enabled_sources
-        )
+        source_aliases = {"tomatoes": "rt_critic", "tomatoesaudience": "rt_audience"}
+        needs_external = any(resolved.get(source_aliases.get(source, source)) is None for source in enabled_sources)
         if mdblist_api_key and needs_external and (imdb_id or tmdb_id):
-            mdb_res = await fetch_mdblist_ratings(imdb_id, tmdb_id, mdblist_api_key, local_client, media_type)
+            mdb_res = await fetch_mdblist_ratings(imdb_id, tmdb_id, mdblist_api_key, local_client, media_type, outcomes=outcomes)
             for k, v in mdb_res.items():
                 if v is not None and resolved.get(k) is None:
                     resolved[k] = v
@@ -911,7 +955,7 @@ async def resolve_media_ratings(
 
         # 5. If OMDb API key is provided and IMDb or RT are still missing
         if omdb_api_key and (resolved.get("imdb") is None or resolved.get("rt_critic") is None) and imdb_id:
-            omdb_res = await fetch_omdb_ratings(imdb_id, omdb_api_key, local_client)
+            omdb_res = await fetch_omdb_ratings(imdb_id, omdb_api_key, local_client, outcomes=outcomes)
             for k, v in omdb_res.items():
                 if v is not None and resolved.get(k) is None:
                     resolved[k] = v
@@ -948,21 +992,42 @@ async def resolve_media_ratings(
         if should_close_client:
             await local_client.aclose()
 
-    # 6. Save into SQLite cache
-    ratings_cache.save_ratings(
-        server_type=server_type,
-        item_id=str(item_id),
-        media_type=media_type,
-        title=title,
-        year=year,
-        imdb_id=imdb_id,
-        tmdb_id=tmdb_id,
-        ratings=resolved,
-        source=primary_source
-    )
+    has_provider_failures = any(outcome["status"] in ("failed", "no_scores") for outcome in outcomes.values())
+    refresh_status = ("partial" if has_provider_failures else "success") if resolved else "failed"
+    if resolved:
+        saved = ratings_cache.save_ratings(
+            server_type=server_type,
+            item_id=str(item_id),
+            media_type=media_type,
+            title=title,
+            year=year,
+            imdb_id=imdb_id,
+            tmdb_id=tmdb_id,
+            ratings=resolved,
+            source=primary_source
+        )
+        if not saved:
+            raise RuntimeError("Could not save fresh ratings to cache")
+    ratings_cache.record_refresh(server_type, str(item_id), refresh_status, {
+        "scores": sorted(resolved),
+        "providers": outcomes,
+        "message": "Fresh scores received" if resolved else "No fresh scores returned; cached scores and expiry preserved",
+    })
+    logger.info("[Ratings] %s %s refresh %s; providers=%s", server_type, item_id, refresh_status, json.dumps(outcomes, sort_keys=True))
+
+    if not resolved:
+        stale = ratings_cache.get_cached_ratings(server_type, str(item_id), allow_stale=True) or {}
+        resolved = {key: stale[column] for key, column in (
+            ("imdb", "imdb_rating"), ("tmdb", "tmdb_rating"), ("rt_critic", "rt_critic_rating"),
+            ("rt_audience", "rt_audience_rating"), ("trakt", "trakt_rating"),
+            ("metacritic", "metacritic_rating"), ("letterboxd", "letterboxd_rating"),
+        ) if stale.get(column) is not None}
+        resolved["_stale"] = bool(resolved)
 
     resolved["_source"] = primary_source
     resolved["_cached"] = False
+    resolved["_refresh_status"] = refresh_status
+    resolved["_providers"] = outcomes
     return resolved
 
 

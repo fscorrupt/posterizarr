@@ -2552,6 +2552,80 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
     }
 
 
+async def search_overlay_sync_items(
+    http_client, credentials, library_rules_map, query, target_server="all", library="all", limit=30,
+):
+    query = str(query or "").strip()
+    if len(query) < 2:
+        return {"items": [], "errors": []}
+    limit = max(1, min(int(limit), 50))
+    items = []
+    errors = []
+    seen = set()
+    for server_type in ("plex", "jellyfin", "emby"):
+        config = credentials.get(server_type) or {}
+        if target_server not in ("all", server_type) or not config.get("enabled") or not config.get("url"):
+            continue
+        server_url = config["url"]
+        excluded = {str(name).casefold() for name in config.get("excluded_libs", [])}
+        headers = {"X-Plex-Token": config.get("token") or "", "Accept": "application/xml"} if server_type == "plex" else {
+            "X-Emby-Token": config.get("api_key") or "", "Accept": "application/json",
+        }
+        try:
+            response = await http_client.get(server_url + ("/library/sections" if server_type == "plex" else "/Library/VirtualFolders"), headers=headers)
+            if response.status_code != 200:
+                errors.append(f"{server_type.upper()}: library search HTTP {response.status_code}")
+                continue
+            folders = list(fromstring(response.content)) if server_type == "plex" else response.json()
+            for folder in folders:
+                if len(items) >= limit:
+                    break
+                name = folder.get("title", "") if server_type == "plex" else folder.get("Name", "")
+                media_type = folder.get("type", "") if server_type == "plex" else ("movie" if folder.get("CollectionType") == "movies" else "show")
+                if server_type == "plex" and media_type not in ("movie", "show"):
+                    continue
+                if name.casefold() in excluded or (library != "all" and name.casefold() != library.casefold()):
+                    continue
+                if not resolve_library_rules(name, media_type, library_rules_map)[1]:
+                    continue
+                folder_id = folder.get("key", "") if server_type == "plex" else folder.get("ItemId") or folder.get("Id", "")
+                if not folder_id:
+                    continue
+                if server_type == "plex":
+                    response = await http_client.get(
+                        f"{server_url}/library/sections/{urllib.parse.quote(str(folder_id), safe='')}/all",
+                        params={"title": query, "type": "1" if media_type == "movie" else "2", "X-Plex-Container-Start": 0, "X-Plex-Container-Size": limit - len(items)},
+                        headers=headers,
+                    )
+                else:
+                    response = await http_client.get(
+                        f"{server_url}/Items", headers=headers,
+                        params={"ParentId": folder_id, "Recursive": "true", "IncludeItemTypes": "Movie,Series", "SearchTerm": query,
+                                "Limit": limit - len(items), "Fields": "ProductionYear"},
+                    )
+                if response.status_code != 200:
+                    errors.append(f"{server_type.upper()} / {name}: search HTTP {response.status_code}")
+                    continue
+                nodes = list(fromstring(response.content)) if server_type == "plex" else response.json().get("Items", [])
+                for node in nodes:
+                    item_id = str(node.get("ratingKey") or "") if server_type == "plex" else str(node.get("Id") or "")
+                    kind = node.get("type") if server_type == "plex" else {"Movie": "movie", "Series": "show"}.get(node.get("Type"))
+                    identity = (server_type, item_id)
+                    if not item_id or kind not in ("movie", "show") or identity in seen:
+                        continue
+                    if not resolve_library_rules(name, kind, library_rules_map)[1]:
+                        continue
+                    seen.add(identity)
+                    items.append({"id": item_id, "server_type": server_type, "library_name": name, "media_type": kind,
+                                  "title": node.get("title") if server_type == "plex" else node.get("Name"),
+                                  "year": node.get("year") if server_type == "plex" else node.get("ProductionYear")})
+                    if len(items) >= limit:
+                        break
+        except Exception as error:
+            errors.append(f"{server_type.upper()}: search failed ({type(error).__name__})")
+    return {"items": items, "errors": errors}
+
+
 def _overlay_target_provider_ids(item):
     identifiers = {}
     for provider in ("tmdb", "tvdb", "imdb"):
@@ -2749,6 +2823,7 @@ async def _run_overlay_sync_task(
 
     # Fast targeted item handling
     is_target_mode = bool(target_items)
+    force_target_sync = is_target_mode and any(item.get("force_reapply", True) for item in target_items)
     direct_id_targets = [item for item in (target_items or []) if item.get("id") or item.get("ratingKey")]
     target_libs = set()
     target_roots = set()
@@ -2806,7 +2881,7 @@ async def _run_overlay_sync_task(
         write_log("STARTING DYNAMIC OVERLAYS SYNC TASK")
         write_log(f"Target Server: {target_server.upper()} | Scope: {('TARGETED' if is_target_mode else scope).upper()} | Target Library: {library}")
         if is_target_mode:
-            write_log(f"Instant Target Mode Active: Processing {len(target_items)} newly generated item(s).")
+            write_log(f"Instant Target Mode Active: Processing {len(target_items)} target item(s).")
             if target_libs:
                 write_log(f"Target Library Filter: {', '.join(target_libs)}")
         write_log("Clean originals in AssetPath remain untouched. Overlays composited in RAM.")
@@ -3519,7 +3594,7 @@ async def _run_overlay_sync_task(
                             cache.update_media_file_metadata(s_type, str(item_id), "poster", item.get("media_file_path"), item.get("video_source"), cache_map=cache_map)
                             cache.seed_recipe_snapshot(s_type, str(item_id), "poster", recipe_hash, overlay_layers, cached_entry, cache_map=cache_map)
 
-                        if scope != "incremental" or not is_current or is_target_mode or legacy_skipped_entry:
+                        if scope != "incremental" or not is_current or force_target_sync or legacy_skipped_entry:
                             sync_reason = (
                                 f"Forced sync (scope={scope})" if scope != "incremental"
                                 else ("Targeted sync" if is_target_mode and is_current else cache_reason)
@@ -3738,7 +3813,7 @@ async def _run_overlay_sync_task(
                             item_meta=b_item_meta
                         )
 
-                        if scope != "incremental" or not b_is_current or is_target_mode:
+                        if scope != "incremental" or not b_is_current or force_target_sync:
                             b_sync_reason = (
                                 f"Forced sync (scope={scope})" if scope != "incremental"
                                 else ("Targeted sync" if is_target_mode and b_is_current else b_cache_reason)
