@@ -898,8 +898,8 @@ function AssetsManager() {
 
       {/* Preview Modal */}
       {previewFile && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
-          <div className="relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden flex flex-col w-full h-full" onClick={(e) => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
+          <div className="app-dialog-panel relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden flex flex-col w-full h-full" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setPreviewFile(null)} className="absolute top-4 right-4 z-10 p-2 bg-black/50 hover:bg-black/70 text-white rounded-lg transition-colors"><X className="w-6 h-6" /></button>
 
             <div className="flex flex-col md:flex-row h-full">
@@ -931,8 +931,8 @@ function AssetsManager() {
 
       {/* Delete Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
-          <div className="bg-theme-card border border-theme rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
              <h3 className="text-lg font-semibold text-theme-text mb-2">{t("overlayAssets.deleteTitle")}</h3>
              <div className="flex gap-3 justify-end mt-4"><button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 bg-theme-hover text-theme-text rounded">{t("overlayAssets.cancel")}</button><button onClick={() => handleDelete(deleteConfirm.name)} className="px-4 py-2 bg-red-500 text-white rounded">{t("overlayAssets.delete")}</button></div>
           </div>
@@ -941,8 +941,8 @@ function AssetsManager() {
 
       {/* Overwrite Modal */}
       {overwriteConfirm && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setOverwriteConfirm(null)}>
-          <div className="bg-theme-card border border-theme rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setOverwriteConfirm(null)}>
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-theme-text mb-2">{t("overlayAssets.fileExistsTitle")}</h3>
             <div className="flex gap-3 justify-end mt-4"><button onClick={() => setOverwriteConfirm(null)} className="px-4 py-2 bg-theme-hover text-theme-text rounded">{t("overlayAssets.cancel")}</button><button onClick={() => handleSaveOverlay(true)} className="px-4 py-2 bg-theme-primary text-white rounded">{t("overlayAssets.overwrite")}</button></div>
           </div>

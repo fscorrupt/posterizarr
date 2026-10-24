@@ -1045,9 +1045,9 @@ function LogViewer() {
         </div>
 
         {/* FILTER/SEARCH ROW */}
-        <div className="mt-4 pt-4 border-t border-theme-border flex flex-col md:flex-row gap-4">
+        <div className="mt-4 pt-4 border-t border-theme-border flex flex-col xl:flex-row gap-4">
           {/* Search Bar */}
-          <div className="flex-grow">
+          <div className="min-w-0 flex-grow">
             <label className="block text-sm font-medium text-theme-text mb-2">
               {t("logViewer.searchLogs")}
             </label>
@@ -1071,7 +1071,7 @@ function LogViewer() {
             </div>
           </div>
           {/* Level Filters */}
-          <div className="flex-shrink-0">
+          <div className="min-w-0 xl:shrink-0">
             <label className="block text-sm font-medium text-theme-text mb-2">
               {t("logViewer.filterLevel")}
             </label>
@@ -1086,8 +1086,8 @@ function LogViewer() {
       {/* Log Display Section */}
       <div className="relative z-0 bg-theme-card rounded-xl border border-theme shadow-sm overflow-hidden">
         {/* Log Container Header */}
-        <div className="bg-theme-bg px-6 py-3 border-b border-theme flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="bg-theme-bg px-4 sm:px-6 py-3 border-b border-theme flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-3">
             <div className="p-1.5 rounded bg-theme-primary/10">
               <FileText className="w-4 h-4 text-theme-primary" />
             </div>

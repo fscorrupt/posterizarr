@@ -490,7 +490,7 @@ const runModes = [
               </div>
             )}
 
-            <div className={`grid grid-cols-3 gap-3 shrink-0 transition-all duration-300 ${primaryServer ? 'mb-2' : 'mb-6'}`}>
+            <div className={`grid grid-cols-1 min-[440px]:grid-cols-3 gap-3 shrink-0 transition-all duration-300 ${primaryServer ? 'mb-2' : 'mb-6'}`}>
               <button
                 onClick={() => setPrimaryServer('plex')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'plex' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
@@ -709,7 +709,7 @@ const runModes = [
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.notifications")}</h3>
             <p className="text-theme-muted mb-6">{t("onboarding.receiveAlertsWhenPosterizarrCompletes")}</p>
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 min-[440px]:grid-cols-3 gap-3 sm:gap-4 mb-6">
               <button
                 onClick={() => setNotificationType('none')}
                 className={`py-3 px-4 rounded-lg border flex flex-col items-center justify-center transition-all font-medium ${notificationType === 'none' ? 'bg-theme-primary/10 border-theme-primary text-theme-primary shadow-inner shadow-theme-primary/10' : 'bg-theme-bg-dark border-theme-border text-theme-muted hover:border-theme-primary/50'}`}
@@ -932,14 +932,14 @@ const runModes = [
 
   return (
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-sans"
+      className="app-dialog-backdrop fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-sans"
       style={{
         '--theme-primary': '#e5a00d',
         '--theme-primary-hover': '#cc8f0c',
         '--theme-accent': '#ffc107'
       }}
     >
-      <div className="bg-theme-bg-dark w-full max-w-5xl rounded-2xl shadow-2xl border border-theme-border/50 overflow-hidden flex flex-col md:flex-row h-full max-h-[700px] animate-scale-in">
+      <div role="dialog" aria-modal="true" aria-label="Posterizarr setup" className="app-dialog-panel bg-theme-bg-dark w-full min-w-0 max-w-5xl rounded-lg shadow-2xl border border-theme-border/50 overflow-hidden flex flex-col md:flex-row h-[calc(100dvh-2rem)] max-h-[700px] animate-scale-in">
 
         {/* Left Sidebar - Stepper */}
         <div className="w-full md:w-64 bg-theme-bg-dark border-r border-theme-border/30 p-6 flex flex-col shrink-0 hidden md:flex">
@@ -974,24 +974,27 @@ const runModes = [
         </div>
 
         {/* Main Content Area */}
-          <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-theme-darker to-theme-dark h-full">
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden bg-gradient-to-br from-theme-darker to-theme-dark h-full">
               {/* Language Switcher */}
-              <div className="absolute top-4 right-6 z-50">
+              <div className="hidden md:block absolute top-4 right-6 z-50">
                 <LanguageSwitcher compact={true} />
               </div>
 
             {/* Mobile Stepper (visible only on small screens) */}
-            <div className="md:hidden flex p-4 border-b border-theme-border/30 items-center justify-between bg-theme-bg-dark shrink-0">
-              <span className="text-sm font-semibold text-theme-primary">Step {currentStep + 1} of {STEPS.length}</span>
-              <span className="text-sm text-theme-muted">{STEPS[currentStep].title}</span>
+            <div className="md:hidden flex gap-3 p-4 border-b border-theme-border/30 items-center justify-between bg-theme-bg-dark shrink-0">
+              <div className="min-w-0">
+                <span className="block text-xs font-semibold text-theme-primary">Step {currentStep + 1} of {STEPS.length}</span>
+                <span className="block text-sm text-theme-muted break-words">{STEPS[currentStep].title}</span>
+              </div>
+              <LanguageSwitcher compact={true} />
             </div>
 
-            <div className="flex-1 p-6 md:p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
+            <div className="flex-1 min-h-0 p-4 sm:p-6 md:p-8 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
               {renderStepContent()}
             </div>
 
             {/* Footer Actions */}
-            <div className="px-6 py-4 bg-theme-bg-dark border-t border-theme-border/30 flex justify-between items-center shrink-0">
+            <div className="app-dialog-actions px-4 sm:px-6 py-3 sm:py-4 bg-theme-bg-dark border-t border-theme-border/30 flex flex-wrap gap-2 justify-between items-center shrink-0">
               <button
                 onClick={handlePrev}
                 disabled={currentStep === 0 || saving}

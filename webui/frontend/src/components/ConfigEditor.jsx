@@ -853,8 +853,8 @@ function ConfigEditor() {
 
       {/* Previews */}
       {previewOverlay && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewOverlay(null)}>
-          <div className="bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewOverlay(null)}>
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-theme flex justify-between items-center"><h3 className="font-bold text-theme-text">Preview: {previewOverlay}</h3><button onClick={() => setPreviewOverlay(null)}><X className="w-5 h-5 text-theme-muted hover:text-theme-text" /></button></div>
             <div className="p-8 bg-gray-900 flex justify-center relative">
                <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
@@ -865,8 +865,8 @@ function ConfigEditor() {
       )}
 
       {previewFont && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewFont(null)}>
-          <div className="bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewFont(null)}>
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-theme flex justify-between items-center"><h3 className="font-bold text-theme-text">Font Preview: {previewFont}</h3><button onClick={() => setPreviewFont(null)}><X className="w-5 h-5 text-theme-muted hover:text-theme-text" /></button></div>
             <div className="p-6 bg-white text-black space-y-4 max-h-[60vh] overflow-y-auto">
                 {["The Quick Brown Fox", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", "0123456789"].map((text, i) => (
@@ -1092,7 +1092,7 @@ const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors
                                 onChange={(newOrder) => handleUpdateData(item.id, { PreferredLanguageOrder: newOrder })}
                                 helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
                             />
-                            <div className="flex gap-4 mt-3 pl-1">
+                            <div className="flex flex-wrap gap-x-4 gap-y-3 mt-3 pl-1">
                                 {["Poster", "Season", "Background", "Logo"].map((type) => {
                                     const isChecked = item.data?.[`ApplyTo${type}`] ?? true;
                                     return (
@@ -1123,11 +1123,11 @@ const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors
                                         />
                                         Separate Background Language Order (Optional)
                                     </label>
-                                    
+
                                     {(item.data?.EnableBackgroundLanguageOrderOverride) && (
                                         <div className="pl-6">
-                                            <LanguageOrderSelector 
-                                                value={item.data?.PreferredBackgroundLanguageOrder || []} 
+                                            <LanguageOrderSelector
+                                                value={item.data?.PreferredBackgroundLanguageOrder || []}
                                                 onChange={(newOrder) => handleUpdateData(item.id, { PreferredBackgroundLanguageOrder: newOrder })}
                                                 helpText="Select custom language order for backgrounds in this library (e.g. textless 'xx' first). If left empty, backgrounds follow the main library order above."
                                             />
@@ -1148,11 +1148,11 @@ const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors
                                     />
                                     Enable Provider Order Override
                                 </label>
-                                
+
                                 {(item.data?.EnableProviderOrderOverride) && (
                                     <div className="pl-6">
-                                        <ProviderOrderSelector 
-                                            value={item.data?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]} 
+                                        <ProviderOrderSelector
+                                            value={item.data?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]}
                                             onChange={(newOrder) => handleUpdateData(item.id, { ProviderOrder: newOrder })}
                                             helpText="Select the specific provider priority for this library."
                                         />
@@ -1202,8 +1202,8 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     const renderInput = () => {
         // Validation Fields (Tokens/Keys) - Use PasswordInput for secrecy + Validate Button
         const renderValidate = (type, placeholder) => (
-            <div className="flex gap-2">
-                <div className="relative flex-1">
+            <div className="flex min-w-0 flex-col sm:flex-row gap-2">
+                <div className="relative min-w-0 flex-1">
                     <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder={placeholder} />
                 </div>
                 <ValidateButton type={type} config={config} label="Validate" onSuccess={showSuccess} onError={showError} disabled={disabled} />
@@ -1211,8 +1211,8 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         );
 
         if (settingKey === "PlexToken") return (
-            <div className="flex gap-2">
-                <div className="relative flex-1">
+            <div className="flex min-w-0 flex-col xl:flex-row gap-2">
+                <div className="relative min-w-0 flex-1">
                     <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder={disabled ? "Enable Plex first" : "Enter Plex Token"} />
                 </div>
                 <PlexOAuthButton onTokenReceived={(token) => updateValue(fieldKey, token)} disabled={disabled} className="shrink-0" />
@@ -1502,7 +1502,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     return (
         <div id={uniqueId} className={`border border-theme rounded-xl p-4 bg-theme-card/50 shadow-sm ${isWide ? 'xl:col-span-2' : ''}`}>
             <div className="space-y-2">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0"> {/* FIX: Removed overflow-hidden, added min-w-0 */}
                         <label className="text-sm font-semibold text-theme-text truncate" title={getDisplayName(settingKey)}>{getDisplayName(settingKey)}</label>
                         {tooltips[settingKey] && (
@@ -1511,8 +1511,8 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                             </Tooltip>
                         )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                        <span className="text-[10px] font-mono text-theme-muted bg-theme-bg px-1.5 py-0.5 rounded border border-theme/50 select-all">{settingKey}</span>
+                    <div className="flex min-w-0 max-w-full items-center gap-2">
+                        <span className="min-w-0 text-[10px] font-mono text-theme-muted bg-theme-bg px-1.5 py-0.5 rounded border border-theme/50 select-all break-all">{settingKey}</span>
                         {/* JUMP BUTTON */}
                         {searchQuery && (
                             <button

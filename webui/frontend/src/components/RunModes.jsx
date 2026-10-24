@@ -189,8 +189,8 @@ const TMDBPosterSearchModal = React.memo(
       (tmdbSearch.results.fanart?.length || 0);
 
     return (
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-theme-card border border-theme-primary rounded-xl max-w-6xl w-full max-h-[90vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
+      <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-6xl w-full max-h-[90vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
           {/* Header */}
           <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
             <div className="flex items-center">
@@ -1629,8 +1629,8 @@ const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status,
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <Cloud className="w-6 h-6 mr-3 text-white" />
@@ -1721,8 +1721,8 @@ const EmbySyncModal = React.memo(({ show, onClose, onStart, loading, status, t }
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <Cloud className="w-6 h-6 mr-3 text-white" />
@@ -1813,8 +1813,8 @@ const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <Save className="w-6 h-6 mr-3 text-white" />
@@ -2006,8 +2006,8 @@ const LogoUpdaterModal = React.memo(({
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-lg w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-lg w-full shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <ImageIcon className="w-6 h-6 mr-3 text-white" />
@@ -3482,8 +3482,8 @@ const LogoUpdaterModal = React.memo(({
 
       {/* Folder Selector Modal */}
       {showFolderSelector && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-theme-card border border-theme-primary rounded-xl max-w-4xl w-full max-h-[80vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-4xl w-full max-h-[80vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
             {/* Header */}
             <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
               <div className="flex items-center">
@@ -3606,8 +3606,8 @@ const LogoUpdaterModal = React.memo(({
 
       {/* Library Selector Modal */}
       {showLibrarySelector && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-theme-card border border-theme-primary rounded-xl max-w-3xl w-full max-h-[70vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-3xl w-full max-h-[70vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
             {/* Header */}
             <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
               <div className="flex items-center">

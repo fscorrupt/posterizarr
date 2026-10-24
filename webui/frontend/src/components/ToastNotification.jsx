@@ -75,20 +75,21 @@ const ToastNotification = ({
     <div
       className={`${style.bg} border ${
         style.border
-      } rounded-lg p-4 flex items-start gap-3 shadow-lg backdrop-blur-sm min-w-[320px] max-w-[420px] transition-all duration-300 ${
+      } rounded-lg p-4 flex items-start gap-3 shadow-lg backdrop-blur-sm w-full min-w-0 max-w-[420px] transition-all duration-300 ${
         isExiting ? "animate-slideOutRight opacity-0" : "animate-slideInRight"
       }`}
     >
       {style.icon}
       <div className="flex-1 min-w-0">
         <p className={`${style.titleColor} font-medium`}>{style.title}</p>
-        <p className={`${style.textColor} text-sm mt-1 break-words`}>
+        <p className={`${style.textColor} text-sm mt-1 break-words [overflow-wrap:anywhere]`}>
           {message}
         </p>
       </div>
       <button
         onClick={handleClose}
-        className={`${style.closeColor} transition-colors flex-shrink-0`}
+        aria-label="Dismiss notification"
+        className={`${style.closeColor} min-w-11 min-h-11 flex items-center justify-center transition-colors flex-shrink-0`}
       >
         <X className="w-5 h-5" />
       </button>
@@ -102,7 +103,7 @@ const ToastNotification = ({
  */
 export const ToastContainer = ({ toasts, removeToast }) => {
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none">
+    <div className="fixed top-20 left-3 right-3 sm:top-4 sm:left-auto sm:right-4 sm:w-[420px] z-[9999] flex flex-col gap-3 max-h-[calc(100dvh-6rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain pointer-events-none">
       <div className="flex flex-col gap-3 pointer-events-auto">
         {toasts.map((toast) => (
           <ToastNotification

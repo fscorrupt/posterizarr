@@ -1144,24 +1144,72 @@ select option:checked {
    RESPONSIVE TYPOGRAPHY FOR MOBILE
    ======================================== */
 
-/* H1 Titel auf Mobile kleiner machen */
-@media (max-width: 768px) {
-  h1 {
-    font-size: 1.5rem !important; /* 24px statt der normalen text-3xl (30px) */
-    line-height: 2rem !important;
-  }
-}
-
-/* Optional: Auch h2 und h3 anpassen */
-@media (max-width: 768px) {
-  h2 {
-    font-size: 1.25rem !important; /* 20px */
-    line-height: 1.75rem !important;
+@media (max-width: 767px) {
+  .app-dialog-backdrop {
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
 
-  h3 {
-    font-size: 1.125rem !important; /* 18px */
-    line-height: 1.5rem !important;
+  .app-dialog-panel {
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .app-dialog-panel > :is(header, footer, .border-b, .border-t) {
+    flex-shrink: 0;
+  }
+
+  .app-dialog-panel > .border-b > button {
+    min-width: 44px;
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+
+  .app-dialog-panel > .border-t button,
+  .app-dialog-actions button {
+    min-height: 44px;
+  }
+
+  .app-dialog-panel :is(h1, h2, h3, p, pre) {
+    overflow-wrap: anywhere;
+  }
+
+  .app-content h1 {
+    font-size: 1.5rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .app-content :is(input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .app-content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
+    font-size: 16px;
+  }
+
+  .workspace-header {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .workspace-header-actions {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .workspace-header-actions button,
+  .workspace-toolbar button {
+    min-height: 44px;
+  }
+
+  .workspace-header-actions button {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 

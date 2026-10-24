@@ -623,7 +623,7 @@ export default function Blueprints() {
     return {
       ImageProcessing: nested.OverlayPart?.ImageProcessing,
       outputQuality: nested.OverlayPart?.outputQuality,
-      
+
       UseClearlogo: nested.PrerequisitePart?.UseClearlogo,
       UseClearart: nested.PrerequisitePart?.UseClearart,
       UseOriginalTitle: nested.PrerequisitePart?.UseOriginalTitle,
@@ -791,7 +791,7 @@ export default function Blueprints() {
       ...prev,
           ImageProcessing: configData.OverlayPart?.ImageProcessing !== undefined ? configData.OverlayPart.ImageProcessing === "true" : prev.ImageProcessing,
           outputQuality: parseInt(configData.OverlayPart?.outputQuality?.replace("%", "") || prev.outputQuality),
-          Poster: { SampleText: "Movie Title", 
+          Poster: { SampleText: "Movie Title",
              ...prev.Poster,
              AddBorder: configData.PosterOverlayPart?.AddBorder !== undefined ? configData.PosterOverlayPart.AddBorder === "true" : prev.Poster.AddBorder,
              AddOverlay: configData.PosterOverlayPart?.AddOverlay !== undefined ? configData.PosterOverlayPart.AddOverlay === "true" : prev.Poster.AddOverlay,
@@ -813,7 +813,7 @@ export default function Blueprints() {
              MaxHeight: parseInt(configData.PosterOverlayPart?.MaxHeight || prev.Poster.MaxHeight),
              TextGravity: configData.PosterOverlayPart?.TextGravity || prev.Poster.TextGravity
           },
-          Season: { SampleText: "Season 1", 
+          Season: { SampleText: "Season 1",
              ...prev.Season,
              AddBorder: configData.SeasonPosterOverlayPart?.AddBorder !== undefined ? configData.SeasonPosterOverlayPart.AddBorder === "true" : prev.Season.AddBorder,
              AddOverlay: configData.SeasonPosterOverlayPart?.AddOverlay !== undefined ? configData.SeasonPosterOverlayPart.AddOverlay === "true" : prev.Season.AddOverlay,
@@ -838,7 +838,7 @@ export default function Blueprints() {
              SeasonOverrideText: configData.SeasonPosterOverlayPart?.SeasonOverrideText || prev.Season.SeasonOverrideText,
              SpecialSeasonOverrideText: configData.SeasonPosterOverlayPart?.SpecialSeasonOverrideText || prev.Season.SpecialSeasonOverrideText
           },
-          SeasonTitle: { SampleText: "Show Title", 
+          SeasonTitle: { SampleText: "Show Title",
              ...prev.SeasonTitle,
              ShowTitle: configData.ShowTitleOnSeasonPosterPart?.AddShowTitletoSeason !== undefined ? configData.ShowTitleOnSeasonPosterPart.AddShowTitletoSeason === "true" : prev.SeasonTitle.ShowTitle,
              fontAllCaps: configData.ShowTitleOnSeasonPosterPart?.fontAllCaps !== undefined ? configData.ShowTitleOnSeasonPosterPart.fontAllCaps === "true" : prev.SeasonTitle.fontAllCaps,
@@ -854,7 +854,7 @@ export default function Blueprints() {
              lineSpacing: parseInt(configData.ShowTitleOnSeasonPosterPart?.lineSpacing || prev.SeasonTitle.lineSpacing),
              TextGravity: configData.ShowTitleOnSeasonPosterPart?.TextGravity || prev.SeasonTitle.TextGravity
           },
-          Background: { SampleText: "Movie Title", 
+          Background: { SampleText: "Movie Title",
              ...prev.Background,
              AddBorder: configData.BackgroundOverlayPart?.AddBorder !== undefined ? configData.BackgroundOverlayPart.AddBorder === "true" : prev.Background.AddBorder,
              AddText: configData.BackgroundOverlayPart?.AddText !== undefined ? configData.BackgroundOverlayPart.AddText === "true" : prev.Background.AddText,
@@ -887,7 +887,7 @@ export default function Blueprints() {
              UseBackgroundAsTitleCard: configData.TitleCardOverlayPart?.UseBackgroundAsTitleCard !== undefined ? configData.TitleCardOverlayPart.UseBackgroundAsTitleCard === "true" : prev.TitleCard.UseBackgroundAsTitleCard,
              BackgroundFallback: configData.TitleCardOverlayPart?.BackgroundFallback !== undefined ? configData.TitleCardOverlayPart.BackgroundFallback === "true" : prev.TitleCard.BackgroundFallback,
           },
-          TitleCardEPTitle: { SampleText: "Episode Title", 
+          TitleCardEPTitle: { SampleText: "Episode Title",
              ...prev.TitleCardEPTitle,
              AddEPTitleText: configData.TitleCardTitleTextPart?.AddEPTitleText !== undefined ? configData.TitleCardTitleTextPart.AddEPTitleText === "true" : prev.TitleCardEPTitle.AddEPTitleText,
              fontAllCaps: configData.TitleCardTitleTextPart?.fontAllCaps !== undefined ? configData.TitleCardTitleTextPart.fontAllCaps === "true" : prev.TitleCardEPTitle.fontAllCaps,
@@ -921,7 +921,7 @@ export default function Blueprints() {
              SeasonTCText: configData.TitleCardEPTextPart?.SeasonTCText || prev.TitleCardEPText.SeasonTCText,
              EpisodeTCText: configData.TitleCardEPTextPart?.EpisodeTCText || prev.TitleCardEPText.EpisodeTCText
           },
-          Collection: { SampleText: "Collection Name", 
+          Collection: { SampleText: "Collection Name",
              ...prev.Collection,
              AddBorder: configData.CollectionPosterOverlayPart?.AddBorder === "true",
              AddOverlay: configData.CollectionPosterOverlayPart?.AddOverlay === "true",
@@ -1015,7 +1015,7 @@ export default function Blueprints() {
     try {
       let updatedConfig = { ...config };
       let updates = blueprint.updates.nested;
-      
+
       if (usingFlatStructure) {
         updates = blueprint.updates.flat || flattenConfig(blueprint.updates.nested);
         updatedConfig = { ...updatedConfig, ...updates };
@@ -1067,14 +1067,14 @@ export default function Blueprints() {
     }
 
     if (!currentConfig) return;
-    
+
     let fauxConfig = { ...currentConfig };
     if (isFlat) {
       fauxConfig = unflattenConfig(fauxConfig);
     }
-    
+
     const updates = blueprint.updates.nested || unflattenConfig(blueprint.updates.flat);
-    
+
     for (const [section, fields] of Object.entries(updates)) {
       fauxConfig[section] = {
         ...(fauxConfig[section] || {}),
@@ -1271,7 +1271,7 @@ export default function Blueprints() {
     };
     const updatedBlueprints = [...customBlueprints, newBlueprint];
     setCustomBlueprints(updatedBlueprints);
-    
+
     fetch("/api/custom-blueprints", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1282,7 +1282,7 @@ export default function Blueprints() {
       console.error("Failed to save blueprint to db", e);
       showError("Failed to save preset to database.");
     });
-    
+
     setSavePresetModalState(null);
     setActiveTab("presets");
   };
@@ -1290,7 +1290,7 @@ export default function Blueprints() {
   const deleteCustomPreset = (id) => {
     const updatedBlueprints = customBlueprints.filter(b => b.id !== id);
     setCustomBlueprints(updatedBlueprints);
-    
+
     fetch("/api/custom-blueprints", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1507,20 +1507,20 @@ export default function Blueprints() {
 
   const getScalingStyle = (settings, text = "") => {
     const canvasH = (previewType === 'Background' || previewType === 'TitleCard') ? 2160 : 3000;
-    
+
     // Estimate optimal pixel size to fit horizontally
     const charScale = Math.max(1, text.length) * 0.55;
     const computedMaxPixels = (settings?.MaxWidth || 1900) / charScale;
-    
+
     // Convert absolute canvas pixels to Container Query Heights (cqh) of the master poster wrapper
     const minCqh = ((settings?.minPointSize || 10) / canvasH) * 100;
     const maxCqh = ((settings?.maxPointSize || 200) / canvasH) * 100;
-    
+
     // Ideal size is constrained by either the bounding box height or the available width
     const boundingBoxHeightCqh = ((settings?.MaxHeight || 400) / canvasH) * 100;
     const optimalWidthCqh = (computedMaxPixels / canvasH) * 100;
     const idealCqh = Math.min(boundingBoxHeightCqh, optimalWidthCqh);
-    
+
     return {
       fontSize: `clamp(${minCqh}cqh, ${idealCqh}cqh, ${maxCqh}cqh)`,
       textTransform: settings?.fontAllCaps ? 'uppercase' : 'none',
@@ -1613,9 +1613,9 @@ export default function Blueprints() {
                   )}
                   <Accordion title={t("blueprints.settingsChanged", "Settings Changed")} icon={Info}>
                     <ul className="space-y-1 text-xs">
-                      {(blueprint.updates.flat 
-                        ? Object.entries(blueprint.updates.flat) 
-                        : Object.entries(blueprint.updates.nested || blueprint.updates).flatMap(([section, fields]) => 
+                      {(blueprint.updates.flat
+                        ? Object.entries(blueprint.updates.flat)
+                        : Object.entries(blueprint.updates.nested || blueprint.updates).flatMap(([section, fields]) =>
                             typeof fields === 'object' && fields !== null ? Object.entries(fields).map(([k, v]) => [`${section}.${k}`, v]) : [[section, fields]]
                           )
                       ).map(([key, val], idx) => (
@@ -1855,10 +1855,10 @@ export default function Blueprints() {
                          (previewType === 'Background' && builderState.Background.AddOverlay) ||
                          (previewType === 'TitleCard' && builderState.TitleCard.AddOverlay)) && builderState[previewType]?.overlayfile && (
                           <div className={`absolute inset-0 pointer-events-none z-[15] overflow-hidden transition-all ${selectedLayer?.endsWith('.Overlay') ? 'border-2 border-dashed border-red-500/50 bg-red-500/5 ring-2 ring-theme-primary ring-inset' : ''}`}>
-                            <img 
-                              src={`${API_URL}/overlayfiles/preview/${builderState[previewType].overlayfile}`} 
-                              alt="Overlay" 
-                              className="w-full h-full object-fill drop-shadow-2xl" 
+                            <img
+                              src={`${API_URL}/overlayfiles/preview/${builderState[previewType].overlayfile}`}
+                              alt="Overlay"
+                              className="w-full h-full object-fill drop-shadow-2xl"
                               onError={(e) => { e.target.style.display = 'none'; }}
                             />
                           </div>
@@ -1870,10 +1870,10 @@ export default function Blueprints() {
                          (previewType === 'Background' && builderState.Background.UseResolutionOverlays) ||
                          (previewType === 'TitleCard' && builderState.TitleCard.UseResolutionOverlays)) && (
                           <div className={`absolute inset-0 pointer-events-none z-[25] overflow-hidden transition-all ${selectedLayer?.endsWith('.Resolution') ? 'border-2 border-dashed border-red-500/50 bg-red-500/5 ring-2 ring-theme-primary ring-inset' : ''}`}>
-                            <img 
-                              src={`${API_URL}/overlayfiles/preview/${previewType === 'Background' ? builderState.ResolutionOverlays.Background4k : previewType === 'TitleCard' ? builderState.ResolutionOverlays.TC4k : builderState.ResolutionOverlays.poster4k}`} 
-                              alt="Resolution Overlay" 
-                              className="w-full h-full object-fill drop-shadow-2xl" 
+                            <img
+                              src={`${API_URL}/overlayfiles/preview/${previewType === 'Background' ? builderState.ResolutionOverlays.Background4k : previewType === 'TitleCard' ? builderState.ResolutionOverlays.TC4k : builderState.ResolutionOverlays.poster4k}`}
+                              alt="Resolution Overlay"
+                              className="w-full h-full object-fill drop-shadow-2xl"
                               onError={(e) => { e.target.style.display = 'none'; }}
                             />
                           </div>
@@ -2072,8 +2072,8 @@ export default function Blueprints() {
 
       {/* Save Preset Modal */}
       {savePresetModalState && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-theme-card border border-theme rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-theme bg-theme-bg/50 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
                 {savePresetModalState.isImport ? <Upload className="w-6 h-6 text-theme-primary" /> : <Save className="w-6 h-6 text-theme-primary" />}
@@ -2099,7 +2099,7 @@ export default function Blueprints() {
                   <h3 className="font-semibold text-theme-text">Included Settings</h3>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-theme-muted">Show Only Modified</span>
-                    <button 
+                    <button
                       onClick={() => setShowOnlyModified(!showOnlyModified)}
                       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${showOnlyModified ? 'bg-theme-primary' : 'bg-theme-bg border border-theme'}`}
                     >
@@ -2110,15 +2110,15 @@ export default function Blueprints() {
                 <ul className="space-y-2 text-xs">
                   {savePresetModalState.updates && Object.entries(savePresetModalState.updates).map(([section, fields]) => {
                     const defaultUpdates = generateBlueprintUpdates(DEFAULT_BUILDER_STATE);
-                    
+
                     const fieldsToRender = Object.entries(fields).filter(([key, val]) => {
                         const isChanged = String(val) !== String(defaultUpdates[section]?.[key]);
                         if (showOnlyModified) return isChanged;
                         return true;
                     });
-                    
+
                     if (fieldsToRender.length === 0) return null;
-                    
+
                     return (
                     <li key={section} className="flex flex-col border-b border-theme/10 pb-2 last:border-0 last:pb-0">
                       <span className="text-theme-primary font-semibold mb-1">{section}</span>
@@ -2164,8 +2164,8 @@ export default function Blueprints() {
 
       {/* Import Confirmation Modal */}
       {importBlueprintState && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-theme-card border border-theme rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-theme bg-theme-bg/50">
               <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
                 <AlertCircle className="w-6 h-6 text-theme-primary" />

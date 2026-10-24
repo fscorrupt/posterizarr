@@ -7474,11 +7474,11 @@ export default function DynamicOverlays() {
                 <Plus className="w-4 h-4" />
                 Add Library
               </button>
-              <div className="flex items-center gap-1.5 bg-theme-bg border border-theme rounded-lg px-2.5 py-1.5">
-                <Code className="w-4 h-4 text-theme-muted" />
-                <span className="text-xs font-semibold text-theme-muted">Edit YAML:</span>
+              <div className="flex min-w-0 max-w-full items-center gap-1.5 bg-theme-bg border border-theme rounded-lg px-2.5 py-1.5">
+                <Code className="w-4 h-4 shrink-0 text-theme-muted" />
+                <span className="text-xs font-semibold text-theme-muted shrink-0">Edit YAML:</span>
                 <select
-                  className="bg-transparent text-xs font-mono text-theme-text outline-none cursor-pointer pr-1"
+                  className="min-w-0 flex-1 bg-transparent text-xs font-mono text-theme-text outline-none cursor-pointer pr-1"
                   value={selectedYamlFile}
                   onChange={(e) => handleOpenRawYaml(e.target.value)}
                 >
@@ -7494,7 +7494,7 @@ export default function DynamicOverlays() {
                 </select>
                 <button
                   onClick={() => handleOpenRawYaml(selectedYamlFile)}
-                  className="px-2.5 py-1 rounded-md bg-theme-card hover:bg-theme-hover text-xs font-semibold text-theme-text border border-theme transition-colors shadow-sm"
+                  className="shrink-0 px-2.5 py-1 rounded-md bg-theme-card hover:bg-theme-hover text-xs font-semibold text-theme-text border border-theme transition-colors shadow-sm"
                 >
                   Open
                 </button>
@@ -11244,8 +11244,8 @@ export default function DynamicOverlays() {
       {/* MODAL 1: RAW YAML EDITOR */}
       {/* ========================================================================= */}
       {isRawYamlOpen && (
-        <div className={`fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center ${isYamlFullscreen ? "p-0" : "p-3 sm:p-6"} animate-in fade-in duration-200`}>
-          <div className={`bg-theme-card border border-theme flex flex-col shadow-2xl overflow-hidden transition-all duration-200 ${
+        <div className={`app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center ${isYamlFullscreen ? "p-0" : "p-3 sm:p-6"} animate-in fade-in duration-200`}>
+          <div className={`app-dialog-panel bg-theme-card border border-theme flex flex-col shadow-2xl overflow-hidden transition-all duration-200 ${
             isYamlFullscreen
               ? "w-full h-full rounded-none"
               : "w-full max-w-5xl h-[85vh] min-h-[550px] rounded-2xl"
@@ -11354,8 +11354,8 @@ export default function DynamicOverlays() {
       {/* MODAL 2: ADD OVERLAY TO LIBRARY */}
       {/* ========================================================================= */}
       {addOverlayModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden space-y-5 p-6">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden space-y-5 p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
               <div className="flex items-center gap-2">
                 <Plus className="w-5 h-5 text-emerald-400" />
@@ -11485,8 +11485,8 @@ export default function DynamicOverlays() {
       {/* MODAL 3: EDIT TEMPLATE VARIABLES (DUAL VISUAL + JSON) */}
       {/* ========================================================================= */}
       {editVariablesModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden space-y-4 p-6">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden space-y-4 p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
               <div className="flex items-center gap-2">
                 <Sliders className="w-5 h-5 text-theme-primary" />
@@ -11824,8 +11824,8 @@ export default function DynamicOverlays() {
       {/* MODAL 4: ADD NEW LIBRARY */}
       {/* ========================================================================= */}
       {isAddLibraryOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-xl w-full max-w-md shadow-2xl overflow-hidden space-y-4 p-6">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl w-full max-w-md shadow-2xl overflow-hidden space-y-4 p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -11880,8 +11880,8 @@ export default function DynamicOverlays() {
       {/* REMOVE LIBRARY SECTION MODAL (MATCHING UI THEME & MULTI-REMOVE) */}
       {/* ========================================================================= */}
       {removeLibraryModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-2xl w-full max-w-md shadow-2xl overflow-hidden space-y-5 p-6 animate-in zoom-in-95 duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl w-full max-w-md shadow-2xl overflow-hidden space-y-5 p-6 animate-in zoom-in-95 duration-200">
             <div className="flex items-start gap-3.5">
               <div className="p-3 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 shrink-0">
                 <AlertTriangle className="w-6 h-6" />
@@ -11957,8 +11957,8 @@ export default function DynamicOverlays() {
 
       {/* MODAL: IMPORT EXISTING YAML ONCE */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-xl w-full max-w-2xl shadow-xl overflow-hidden space-y-4 p-5 sm:p-6">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl w-full max-w-2xl shadow-xl overflow-hidden space-y-4 p-5 sm:p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -12058,8 +12058,8 @@ export default function DynamicOverlays() {
 
       {/* MODAL: ADD MEDIA LIBRARY */}
       {isAddLibModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-xl w-full max-w-md shadow-2xl overflow-hidden space-y-4 p-6">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl w-full max-w-md shadow-2xl overflow-hidden space-y-4 p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -12170,8 +12170,8 @@ export default function DynamicOverlays() {
       {/* MODAL 5: DYNAMIC OVERLAYS SYNC WIZARD */}
       {/* ========================================================================= */}
       {featureSettings?.enabled && isApplyModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme w-full max-w-xl rounded-xl p-6 shadow-2xl flex flex-col space-y-5 animate-in zoom-in-95 duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme w-full max-w-xl rounded-xl p-6 shadow-2xl flex flex-col space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-theme/60">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -12371,8 +12371,8 @@ export default function DynamicOverlays() {
       {/* MODAL 6: ADD / OVERRIDE ANIME CLASSIFICATION */}
       {/* ========================================================================= */}
       {featureSettings?.enabled && isAddAnimeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-xl w-full max-w-md shadow-2xl overflow-hidden space-y-4 p-6">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl w-full max-w-md shadow-2xl overflow-hidden space-y-4 p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -12478,8 +12478,8 @@ export default function DynamicOverlays() {
       {/* MODAL: CLEAR / RESET OVERLAY CACHE CONFIRMATION */}
       {/* ========================================================================= */}
       {featureSettings?.enabled && isClearCacheModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3.5">
               <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 shrink-0 mt-0.5">
                 <Trash2 className="w-5 h-5" />
@@ -12529,8 +12529,8 @@ export default function DynamicOverlays() {
       {/* MODAL 1: OVERLAY CACHE BROWSER */}
       {/* ========================================================================= */}
       {featureSettings?.enabled && isOverlayCacheModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-5 border-b border-theme flex items-start sm:items-center justify-between gap-4 bg-theme-card">
               <div className="flex items-center gap-3">
@@ -12893,9 +12893,9 @@ export default function DynamicOverlays() {
         type="warning"
       />
       {featureSettings?.enabled && isItemSyncPickerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
           <div role="dialog" aria-modal="true" aria-label="Sync Selected Movie or Show"
-            className="w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-theme-card border border-theme rounded-lg shadow-2xl">
+            className="app-dialog-panel w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-theme-card border border-theme rounded-lg shadow-2xl">
             <div className="flex items-center justify-between gap-3 p-4 border-b border-theme">
               <h2 className="text-base font-bold text-theme-text flex items-center gap-2"><Search className="w-5 h-5 shrink-0" />Sync Selected Movie or Show</h2>
               <button type="button" onClick={() => setIsItemSyncPickerOpen(false)} title="Close item picker" aria-label="Close item picker"
@@ -12962,8 +12962,8 @@ export default function DynamicOverlays() {
         </div>
       )}
       {featureSettings?.enabled && isRatingsCacheModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div role="dialog" aria-modal="true" aria-label="Ratings Cache & Refresh" className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] shadow-2xl overflow-y-auto animate-in zoom-in-95 duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div role="dialog" aria-modal="true" aria-label="Ratings Cache & Refresh" className="app-dialog-panel bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] shadow-2xl overflow-y-auto animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-5 border-b border-theme flex items-start sm:items-center justify-between gap-4 bg-theme-card">
               <div className="flex items-center gap-3">
@@ -13495,8 +13495,8 @@ export default function DynamicOverlays() {
       {/* MODAL 3: FAST MEDIA CHANGE AUTODETECTION RESULTS */}
       {/* ========================================================================= */}
       {featureSettings?.enabled && isChangeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-5 border-b border-theme flex items-start sm:items-center justify-between gap-4 bg-theme-card">
               <div className="flex items-center gap-3">
@@ -13724,8 +13724,8 @@ export default function DynamicOverlays() {
       {/* MODAL: ONBOARDING SETUP WIZARD */}
       {/* ========================================================================= */}
       {isWizardOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme w-full max-w-2xl rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme w-full max-w-2xl rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-theme/60">
               <div className="flex items-center gap-3">
@@ -14258,8 +14258,8 @@ export default function DynamicOverlays() {
       {/* MODAL: DOWNLOAD KOMETA IMAGES - DISK SPACE & RAW FETCH NOTICE */}
       {/* ========================================================================= */}
       {showImportImagesWarningModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="p-5 border-b border-theme/60 flex items-start justify-between gap-4 bg-theme-card">
               <div className="flex items-center gap-3">
@@ -14371,8 +14371,8 @@ export default function DynamicOverlays() {
       {/* MODAL: KOMETA IMAGES DOWNLOAD & EXTRACTION PROGRESS */}
       {/* ========================================================================= */}
       {showImportImagesProgressModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-5 border-b border-theme/60 flex items-start justify-between gap-4 bg-theme-card">
               <div className="flex items-center gap-3">

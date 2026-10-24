@@ -829,8 +829,8 @@ function Dashboard() {
       <DangerZone status={status} loading={loading} onStatusUpdate={fetchStatus} onSuccess={showSuccess} onError={showError} />
       <ConfirmDialog isOpen={deleteConfirm} onClose={() => setDeleteConfirm(false)} onConfirm={deleteRunningFile} title={t("dashboard.deleteConfirmTitle")} message={t("dashboard.deleteConfirmMessage")} confirmText={t("common.delete")} type="warning" />
       {showCardsModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card rounded-2xl border border-theme shadow-2xl max-w-md w-full overflow-hidden">
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card rounded-2xl border border-theme shadow-2xl max-w-md w-full overflow-hidden">
             <div className="p-5 border-b border-theme flex justify-between items-center bg-theme-hover/30">
                <h3 className="font-bold text-theme-text flex items-center gap-2"><Eye className="w-5 h-5 text-theme-primary" /> {t("dashboard.customize")}</h3>
                <button onClick={() => setShowCardsModal(false)}><X className="w-5 h-5 text-theme-muted hover:text-theme-text" /></button>

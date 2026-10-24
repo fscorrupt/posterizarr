@@ -268,9 +268,13 @@ const AssetRow = React.memo(
 
             {/* Poster Thumbnail for Skipped View */}
             {isSkippedView && asset.server_type && asset.item_id && (
-              <div 
-                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
-                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Preview ${asset.Title}`}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }}
+                className={`shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-20 h-12 sm:w-32 sm:h-20' : 'w-12 h-[72px] sm:w-20 sm:h-28'
                 }`}
                 onClick={() => {
                   if (onPreviewImage) {
@@ -294,12 +298,16 @@ const AssetRow = React.memo(
                 />
               </div>
             )}
-            
+
             {/* Poster Thumbnail for Active Actions / General */}
             {isActiveView && asset.poster_url && (
-              <div 
-                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
-                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Preview ${asset.Title}`}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }}
+                className={`shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-20 h-12 sm:w-32 sm:h-20' : 'w-12 h-[72px] sm:w-20 sm:h-28'
                 }`}
                 onClick={() => {
                   if (onPreviewImage) {
@@ -518,7 +526,7 @@ const AssetRow = React.memo(
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-wrap items-start gap-2">
             {isSkippedView ? (
               <>
                 <button
@@ -1065,7 +1073,7 @@ const AssetOverview = () => {
           const response = await fetch(`/api/assets/unskip`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
               id: asset.id,
               item_id: asset.item_id,
               server_type: asset.server_type
@@ -1076,7 +1084,7 @@ const AssetOverview = () => {
             const errData = await response.json().catch(() => ({}));
             throw new Error(errData.detail || "Failed to unskip asset");
           }
-          
+
           showSuccess(t("assetOverview.unskipSuccess", { title: asset.Title }));
           await fetchData();
         } catch (error) {
@@ -2277,7 +2285,7 @@ const AssetOverview = () => {
         )}
 
         {/* Grid Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between mb-4">
           <h2 className="text-xl font-bold text-theme-text">
             {selectedCategory === "All Categories"
               ? t("assetOverview.allAssets")
@@ -2287,7 +2295,7 @@ const AssetOverview = () => {
             </span>
           </h2>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
             {/* Select All Button */}
             {displayedAssets.length > 0 && (
               <button
@@ -2503,11 +2511,11 @@ const AssetOverview = () => {
       */}
       {confirmModalState.isOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
+          className="app-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
           onClick={() => !isBulkProcessing && setConfirmModalState({ isOpen: false })}
         >
           <div
-            className="relative w-full max-w-lg p-6 bg-theme-card border border-theme rounded-lg shadow-xl"
+            className="app-dialog-panel relative w-full max-w-lg p-6 bg-theme-card border border-theme rounded-lg shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-4">

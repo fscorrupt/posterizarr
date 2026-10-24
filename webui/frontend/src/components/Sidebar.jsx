@@ -46,6 +46,22 @@ const Sidebar = () => {
   const [draggedItem, setDraggedItem] = useState(null);
   const [hoveredItem, setHoveredItem] = useState(null);
 
+  React.useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event) => { if (event.key === "Escape") setIsMobileMenuOpen(false); };
+    const media = window.matchMedia("(min-width: 768px)");
+    const closeOnDesktop = (event) => { if (event.matches) setIsMobileMenuOpen(false); };
+    document.addEventListener("keydown", closeOnEscape);
+    media.addEventListener("change", closeOnDesktop);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+      media.removeEventListener("change", closeOnDesktop);
+    };
+  }, [isMobileMenuOpen]);
+
   const [viewMode, setViewMode] = useState(() => {
     return localStorage.getItem("gallery-view-mode") || "grid";
   });
@@ -371,24 +387,24 @@ const Sidebar = () => {
       <div className="app-topbar md:hidden fixed top-0 left-0 right-0 border-b border-theme z-50 h-16">
         <div className="flex items-center justify-between h-full px-4">
           <div className="flex items-center">
-            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-text">
+            <button onClick={() => { setIsMobileMenuOpen(!isMobileMenuOpen); setIsThemeDropdownOpen(false); }} aria-label={isMobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={isMobileMenuOpen} aria-controls="mobile-navigation" className="min-w-11 min-h-11 p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-text">
               {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
             <span className="ml-3 text-lg font-bold text-theme-primary tracking-tight">Posterizarr</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <button onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)} className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><Palette className="w-5 h-5" /></button>
+              <button onClick={() => { setIsThemeDropdownOpen(!isThemeDropdownOpen); setIsMobileMenuOpen(false); }} aria-label="Change theme" aria-expanded={isThemeDropdownOpen} className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><Palette className="w-5 h-5" /></button>
               {isThemeDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsThemeDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-theme-card border border-theme shadow-xl z-50 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-2 w-48 max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain rounded-xl bg-theme-card border border-theme shadow-xl z-50">
                     <div className="p-2 space-y-1">{themeArray.map((t) => (<button key={t.id} onClick={() => { setTheme(t.id); setIsThemeDropdownOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${theme === t.id ? "bg-theme-primary text-white" : "text-gray-300 hover:bg-theme-hover"}`}><span>{t.name}</span><div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.color }} /></button>))}</div>
                   </div>
                 </>
               )}
             </div>
-            <button className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><User className="w-5 h-5" /></button>
+            <Link to="/config/system" onClick={() => { setIsMobileMenuOpen(false); setIsThemeDropdownOpen(false); }} aria-label="Account settings" className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><User className="w-5 h-5" /></Link>
           </div>
         </div>
       </div>
@@ -396,8 +412,8 @@ const Sidebar = () => {
       {isMobileMenuOpen && (
         <>
           <div className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 top-16" onClick={() => setIsMobileMenuOpen(false)} />
-          <div className="md:hidden fixed left-0 top-16 bottom-0 w-72 bg-theme-card border-r border-theme z-40 flex flex-col shadow-2xl">
-            <nav className="flex-1 overflow-y-auto py-6">
+          <div id="mobile-navigation" className="md:hidden fixed left-0 top-16 bottom-0 w-72 max-w-[calc(100vw-1rem)] bg-theme-card border-r border-theme z-40 flex flex-col shadow-2xl">
+            <nav aria-label="Mobile navigation" className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <div className="space-y-1 px-4">
                 {navItems.map((item, index) => {
                   const Icon = item.icon;

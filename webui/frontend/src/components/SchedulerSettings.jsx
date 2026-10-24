@@ -851,7 +851,7 @@ const SchedulerSettings = () => {
       </div>
 
       <div className="workspace-section space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col min-[440px]:flex-row min-[440px]:items-center min-[440px]:justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-theme-primary/10"><Settings className="w-6 h-6 text-theme-primary" /></div>
             <h2 className="text-xl font-semibold text-theme-primary">{t("schedulerSettings.configuration")}</h2>
@@ -859,7 +859,7 @@ const SchedulerSettings = () => {
           <button
             onClick={toggleScheduler}
             disabled={isUpdating}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all shadow-sm hover:scale-105 ${config?.enabled ? "bg-green-600 hover:bg-green-700 text-white" : "bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text"} ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
+            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-lg font-medium transition-all shadow-sm ${config?.enabled ? "bg-green-600 hover:bg-green-700 text-white" : "bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text"} ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             {isUpdating ? <Loader2 className="w-5 h-5 text-theme-primary animate-spin" /> : <Power className="w-5 h-5" />}
             {isUpdating ? t("schedulerSettings.updating") : config?.enabled ? t("schedulerSettings.enabled") : t("schedulerSettings.disabled")}

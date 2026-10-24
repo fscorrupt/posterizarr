@@ -1560,8 +1560,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     : currentProviderPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-theme-card rounded-none sm:rounded-xl border-0 sm:border border-theme max-w-6xl w-full h-full sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
+      <div className="app-dialog-panel bg-theme-card rounded-none sm:rounded-xl border-0 sm:border border-theme max-w-6xl w-full h-full sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col">
         {/* Posterizarr Running Warning */}
         {isPosterizarrRunning && (
           <div className="bg-orange-900/30 border-b-4 border-orange-500 p-4">

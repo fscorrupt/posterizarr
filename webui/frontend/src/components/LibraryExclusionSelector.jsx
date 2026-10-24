@@ -450,7 +450,7 @@ const LibraryExclusionSelector = ({
                     validExclusions.map((libName) => (
                       <span
                         key={libName}
-                        className="px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-sm border border-red-500/30 flex items-center gap-1.5"
+                        className="max-w-full min-w-0 px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-sm border border-red-500/30 flex items-center gap-1.5 [overflow-wrap:anywhere]"
                       >
                         <X className="w-3 h-3" />
                         {libName}
@@ -476,7 +476,7 @@ const LibraryExclusionSelector = ({
                     validIncluded.map((lib) => (
                       <span
                         key={lib.name}
-                        className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm border border-green-500/30 flex items-center gap-1.5"
+                        className="max-w-full min-w-0 px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm border border-green-500/30 flex items-center gap-1.5 [overflow-wrap:anywhere]"
                       >
                         <Check className="w-3 h-3" />
                         {lib.name}
@@ -501,8 +501,8 @@ const LibraryExclusionSelector = ({
 
       {/* The Modal */}
       {isModalOpen && !inlineMode && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setIsModalOpen(false)}>
-          <div className="bg-theme-card border border-theme rounded-xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setIsModalOpen(false)}>
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-theme flex justify-between items-center shrink-0">
               <h3 className="font-bold text-lg text-theme-text">
                 {t("libraryExclusion.manageLibraries") || "Manage Libraries"} - {mediaServerType.toUpperCase()}

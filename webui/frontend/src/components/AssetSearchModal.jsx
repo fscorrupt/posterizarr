@@ -86,25 +86,25 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
   );
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-theme-bg w-full max-w-6xl max-h-[90vh] rounded-2xl border border-theme shadow-2xl flex flex-col">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+      <div role="dialog" aria-modal="true" aria-label="Search artwork" className="app-dialog-panel bg-theme-bg w-full min-w-0 max-w-6xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh] overflow-y-auto overscroll-contain rounded-lg border border-theme shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-theme flex items-center justify-between">
-          <h2 className="text-xl font-bold flex items-center gap-2">
+        <div className="p-4 border-b border-theme flex items-start justify-between gap-3 shrink-0">
+          <h2 className="min-w-0 break-words text-base sm:text-xl font-bold">
             <Search className="w-5 h-5 text-theme-primary" />
             Search {assetType === "texture" ? "Backgrounds" : assetType === "poster" ? "Posters" : "Logos"} for "{query}"
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-theme-hover rounded-lg transition-colors">
+          <button onClick={onClose} aria-label="Close artwork search" className="p-2 min-w-11 min-h-11 shrink-0 hover:bg-theme-hover rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Search Bar */}
         <div className="p-4 border-b border-theme flex flex-col gap-2">
-          <div className="flex gap-2">
+          <div className="flex min-w-0 flex-col min-[400px]:flex-row gap-2">
             <input 
                 type="text" 
-                className="flex-1 bg-theme-card border border-theme rounded-lg px-4 py-2" 
+                className="flex-1 min-w-0 bg-theme-card border border-theme rounded-lg px-3 py-2" 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -124,7 +124,7 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
 
         {/* Providers and Filters */}
         <div className="px-4 py-2 border-b border-theme flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex gap-2">
+            <div className="flex min-w-0 flex-wrap gap-2">
                 {["fanart", "tmdb", "tvdb"].map(provider => (
                     <button
                         key={provider}
@@ -140,7 +140,7 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
                 ))}
             </div>
             
-            <div className="flex bg-theme-bg p-1 rounded-lg border border-theme">
+            <div className="flex min-w-0 flex-wrap gap-1 bg-theme-bg p-1 rounded-lg border border-theme">
                 {[
                     { id: "all", label: "All Types" },
                     ...[...new Set((results[activeProvider] || []).map(item => item.sub_type).filter(Boolean))].map(st => ({ id: st, label: st.charAt(0).toUpperCase() + st.slice(1) }))

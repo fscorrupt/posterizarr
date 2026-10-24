@@ -540,8 +540,8 @@ function BackupAssets() {
 
       {/* Restore Confirmation Modal */}
       {restoreModalOpen && assetToRestore && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="app-dialog-panel bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
                 <UploadCloud className="w-8 h-8 text-yellow-500" />
@@ -585,8 +585,8 @@ function BackupAssets() {
 
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && assetToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="app-dialog-panel bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Trash2 className="w-8 h-8 text-red-500" />
@@ -1330,11 +1330,11 @@ function BackupAssets() {
       {/* 4. IMAGE PREVIEW MODAL */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="app-dialog-backdrop fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setSelectedImage(null)}
         >
           <div
-            className="relative max-w-7xl w-full max-h-[90vh] bg-theme-card rounded-lg flex flex-col md:flex-row overflow-hidden shadow-2xl"
+            className="app-dialog-panel relative max-w-7xl w-full max-h-[90vh] bg-theme-card rounded-lg flex flex-col md:flex-row overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Image Area */}

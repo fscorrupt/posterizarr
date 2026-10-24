@@ -387,27 +387,31 @@ function ImagePreviewModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-3 md:p-6 lg:p-8"
+      className="app-dialog-backdrop fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-3 md:p-6 lg:p-8"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-6xl xl:max-w-7xl 2xl:max-w-[1550px] max-h-[92vh] bg-theme-card rounded-xl overflow-hidden shadow-2xl border border-theme/60 flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Image preview"
+        className="app-dialog-panel relative w-full min-w-0 max-w-6xl xl:max-w-7xl 2xl:max-w-[1550px] max-h-[calc(100dvh-1.5rem)] lg:max-h-[92dvh] bg-theme-card rounded-lg overflow-y-auto lg:overflow-hidden overscroll-contain shadow-2xl border border-theme/60 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-20 p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg transition-colors border border-white/10"
+          aria-label="Close image preview"
+          className="absolute top-3 right-3 z-20 p-2 min-w-11 min-h-11 bg-black/60 hover:bg-black/80 text-white rounded-lg transition-colors border border-white/10"
         >
           <X className="w-6 h-6" />
         </button>
 
-        <div className="w-full flex flex-col md:flex-row max-h-[92vh]">
+        <div className="w-full min-w-0 flex flex-col lg:flex-row lg:max-h-[92dvh]">
           {/* Image */}
-          <div className="flex-1 flex items-center justify-center bg-black/95 p-4 md:p-8 min-h-[350px] relative overflow-hidden">
+          <div className="flex-1 min-w-0 flex items-center justify-center bg-black/95 p-3 sm:p-4 lg:p-8 min-h-[180px] lg:min-h-[350px] relative overflow-hidden">
             <img
               src={`${selectedImage.url}?t=${cacheBuster}`}
               alt={selectedImage.name}
-              className="max-w-full max-h-[84vh] object-contain drop-shadow-2xl rounded"
+              className="max-w-full max-h-[45dvh] lg:max-h-[84dvh] object-contain drop-shadow-2xl rounded"
               onError={(e) => {
                 e.target.style.display = "none";
                 e.target.nextSibling.style.display = "flex";
@@ -430,7 +434,7 @@ function ImagePreviewModal({
           </div>
 
           {/* Info Panel */}
-          <div className="w-full md:w-[460px] lg:w-[500px] xl:w-[560px] shrink-0 p-6 md:p-7 bg-theme-card border-t md:border-t-0 md:border-l border-theme/50 overflow-y-auto max-h-[92vh] custom-scrollbar">
+          <div className="w-full min-w-0 lg:w-[500px] xl:w-[560px] shrink-0 p-4 sm:p-6 lg:p-7 bg-theme-card border-t lg:border-t-0 lg:border-l border-theme/50 lg:overflow-y-auto lg:max-h-[92dvh] custom-scrollbar break-words [overflow-wrap:anywhere]">
             <h3 className="text-xl font-bold text-theme-text mb-4">
               Asset Details
             </h3>
