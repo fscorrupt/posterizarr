@@ -92,7 +92,8 @@ class RatingsRefreshService:
                 node = root.find("Directory")
             if node is None:
                 raise ValueError("No movie or show metadata returned")
-            item.update(title=node.get("title") or item.get("title"), year=int(node.get("year")) if node.get("year") else item.get("year"))
+            item.update(title=node.get("title") or item.get("title"), year=int(node.get("year")) if node.get("year") else item.get("year"),
+                        media_type=node.get("type") if node.get("type") in ("movie", "show") else ("show" if node.tag == "Directory" else "movie"))
             for guid in node.findall("Guid"):
                 value = guid.get("id", "")
                 if value.startswith("imdb://"):
@@ -107,7 +108,8 @@ class RatingsRefreshService:
             data = response.json()
             ids = data.get("ProviderIds") or {}
             item.update(title=data.get("Name") or item.get("title"), year=data.get("ProductionYear") or item.get("year"),
-                        imdb_id=ids.get("Imdb") or item.get("imdb_id"), tmdb_id=ids.get("Tmdb") or item.get("tmdb_id"))
+                        imdb_id=ids.get("Imdb") or item.get("imdb_id"), tmdb_id=ids.get("Tmdb") or item.get("tmdb_id"),
+                        media_type={"Movie": "movie", "Series": "show"}.get(data.get("Type"), item["media_type"]))
             community_rating, critic_rating = data.get("CommunityRating"), data.get("CriticRating")
         return await resolve_media_ratings(
             server, item["item_id"], item.get("title") or item["item_id"], item.get("year"), item["media_type"],
@@ -129,11 +131,14 @@ class RatingsRefreshService:
                         result = await self._refresh_item(item, credentials, settings, client)
                         outcome = result["_refresh_status"]
                         details = {"providers": result.get("_providers", {})}
-                        message = "No fresh scores returned" if outcome == "failed" else "Provider request failed" if outcome == "partial" else None
+                        message = "No fresh scores returned" if outcome == "failed" else "Some providers failed or returned no scores" if outcome == "partial" else None
+                        if outcome == "failed" and not (item.get("imdb_id") or item.get("tmdb_id")):
+                            message = "No native ratings or IMDb/TMDb IDs available from the media server"
                     except Exception as error:
                         outcome = "failed"
                         message = str(error) if isinstance(error, ValueError) and str(error).startswith(("Plex metadata HTTP", "Media server metadata HTTP", "Media server is disabled", "No movie or show")) else f"Metadata request failed ({type(error).__name__})"
                         details = {"message": message}
+                    state["current_title"] = item.get("title") or item["item_id"]
                     if outcome == "failed":
                         with closing(self.cache._get_connection()) as connection:
                             exists = connection.execute("SELECT 1 FROM media_ratings_cache WHERE server_type = ? AND item_id = ?", (item["server_type"], item["item_id"])).fetchone()
@@ -141,6 +146,12 @@ class RatingsRefreshService:
                             self.cache.save_ratings(item["server_type"], item["item_id"], item["media_type"], item.get("title"), item.get("year"),
                                                     item.get("imdb_id"), item.get("tmdb_id"), {}, ttl_days=-1)
                         self.cache.record_refresh(item["server_type"], item["item_id"], outcome, details)
+                    with closing(self.cache._get_connection()) as connection:
+                        with connection:
+                            connection.execute(
+                                "UPDATE media_ratings_cache SET title = ?, media_type = ? WHERE server_type = ? AND item_id = ?",
+                                (item.get("title"), item["media_type"], item["server_type"], item["item_id"]),
+                            )
                     state[outcome] += 1
                     state["completed"] += 1
                     if message:

@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
+import ConfirmDialog from "./ConfirmDialog";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -573,6 +574,7 @@ export default function DynamicOverlays() {
   const [actionRatingCacheId, setActionRatingCacheId] = useState(null);
   const [ratingsRefreshJob, setRatingsRefreshJob] = useState(null);
   const [ratingsRefreshSubmitting, setRatingsRefreshSubmitting] = useState(false);
+  const [isRatingsRefreshConfirmOpen, setIsRatingsRefreshConfirmOpen] = useState(false);
   const [ratingsRefreshError, setRatingsRefreshError] = useState("");
 
   // High-Speed Change Detection State
@@ -2780,8 +2782,12 @@ export default function DynamicOverlays() {
     }
   };
 
-  const handleRefreshRatings = async (entry = null) => {
-    if (!entry && !window.confirm("Refresh missing and expired movie/show ratings across all servers?")) return;
+  const handleRefreshRatings = async (entry = null, confirmed = false) => {
+    if (ratingsRefreshSubmitting || ratingsRefreshJob?.running) return;
+    if (!entry && !confirmed) {
+      setIsRatingsRefreshConfirmOpen(true);
+      return;
+    }
     setRatingsRefreshSubmitting(true);
     setRatingsRefreshError("");
     try {
@@ -12876,6 +12882,16 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* MODAL 2: RATINGS CACHE & AUTO-REFRESH BROWSER */}
       {/* ========================================================================= */}
+      <ConfirmDialog
+        isOpen={Boolean(featureSettings?.enabled && isRatingsRefreshConfirmOpen)}
+        onClose={() => setIsRatingsRefreshConfirmOpen(false)}
+        onConfirm={() => handleRefreshRatings(null, true)}
+        title="Refresh Ratings?"
+        message="Refresh missing and expired movie/show ratings across all configured servers?"
+        confirmText="Refresh Ratings"
+        cancelText="Cancel"
+        type="warning"
+      />
       {featureSettings?.enabled && isItemSyncPickerOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
           <div role="dialog" aria-modal="true" aria-label="Sync Selected Movie or Show"

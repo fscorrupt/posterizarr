@@ -276,6 +276,7 @@ class RatingsCacheManager:
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
                             title = excluded.title,
+                            media_type = excluded.media_type,
                             year = excluded.year,
                             imdb_id = COALESCE(excluded.imdb_id, media_ratings_cache.imdb_id),
                             tmdb_id = COALESCE(excluded.tmdb_id, media_ratings_cache.tmdb_id),
@@ -428,6 +429,7 @@ class RatingsCacheManager:
                             show_status, network, content_rating, source, cached_at, expires_at
                         ) VALUES (?, ?, 'show', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
+                            media_type = 'show',
                             title = COALESCE(excluded.title, media_ratings_cache.title),
                             year = COALESCE(excluded.year, media_ratings_cache.year),
                             tmdb_id = COALESCE(excluded.tmdb_id, media_ratings_cache.tmdb_id),
@@ -721,7 +723,16 @@ async def _fetch_rating_json(client, provider, url, outcomes, **kwargs):
             return None
         data = response.json()
         if not isinstance(data, dict) or data.get("error") or data.get("Response") == "False":
-            outcomes[provider] = {"status": "failed", "message": "Provider rejected the request or could not find this item"}
+            error_text = str(data.get("error") or data.get("Error") or "").lower() if isinstance(data, dict) else ""
+            if "not found" in error_text or "not exist" in error_text:
+                message = "Item not found by provider"
+            elif "limit" in error_text or "quota" in error_text:
+                message = "Provider rate or daily limit reached"
+            elif "key" in error_text or "unauthor" in error_text or "authenticat" in error_text:
+                message = "Invalid or unauthorized API key"
+            else:
+                message = "Provider rejected the request"
+            outcomes[provider] = {"status": "failed", "message": message}
             return None
         outcomes[provider] = {"status": "no_scores", "message": "No usable scores returned"}
         return data
