@@ -6,7 +6,7 @@ const API_URL = "/api";
 
 const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSelectLogo, assetType = "logo" }) => {
   const { t } = useTranslation();
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState({ tmdb: [], tvdb: [], fanart: [] });
@@ -51,7 +51,7 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
           fanart: data.results.fanart || [],
         };
         setResults(fetchedResults);
-        
+
         let targetProvider = favProvider ? favProvider.toLowerCase() : null;
         if (targetProvider && fetchedResults[targetProvider]?.length > 0) {
             setActiveProvider(targetProvider);
@@ -102,15 +102,15 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
         {/* Search Bar */}
         <div className="p-4 border-b border-theme flex flex-col gap-2">
           <div className="flex min-w-0 flex-col min-[400px]:flex-row gap-2">
-            <input 
-                type="text" 
-                className="flex-1 min-w-0 bg-theme-card border border-theme rounded-lg px-3 py-2" 
+            <input
+                type="text"
+                className="flex-1 min-w-0 bg-theme-card border border-theme rounded-lg px-3 py-2"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="Search title or ID (e.g. tmdb:123)..."
             />
-            <button 
+            <button
                 className="px-4 py-2 bg-theme-primary text-white rounded-lg hover:bg-theme-primary-hover"
                 onClick={() => handleSearch()}
             >
@@ -139,7 +139,7 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
                     </button>
                 ))}
             </div>
-            
+
             <div className="flex min-w-0 flex-wrap gap-1 bg-theme-bg p-1 rounded-lg border border-theme">
                 {[
                     { id: "all", label: "All Types" },
@@ -158,7 +158,7 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
                     </button>
                 ))}
             </div>
-            
+
             <div className="flex gap-2">
                 <input
                     type="file"
@@ -207,7 +207,7 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
                     />
                   </div>
                   <div className="absolute inset-0 bg-theme-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  
+
                   {/* Sub Type badge */}
                   {item.sub_type && (
                       <span className={`absolute top-2 left-2 px-2 py-0.5 text-[10px] rounded uppercase font-bold text-white shadow ${
@@ -216,7 +216,7 @@ const AssetSearchModal = ({ isOpen, onClose, query, mediaType, favProvider, onSe
                           {item.sub_type}
                       </span>
                   )}
-                  
+
                   {/* Language badge */}
                   {item.language && (
                       <span className="absolute top-2 right-2 px-2 py-0.5 bg-black/70 text-xs rounded uppercase font-bold text-white shadow">

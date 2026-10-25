@@ -13050,15 +13050,16 @@ export default function DynamicOverlays() {
                 </div>
               )}
             </div>
-            <div className="p-4 bg-theme-bg/60 border-b border-theme flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
-              <div className="flex-1 flex items-center gap-2 relative">
+            <div className="p-4 bg-theme-bg/60 border-b border-theme flex flex-wrap items-center gap-3 text-xs">
+              <div className="basis-full w-full min-w-0 flex items-center gap-2 relative">
                 <Search className="w-4 h-4 text-theme-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={ratingsCacheSearch}
+                  aria-label="Search ratings cache"
                   onChange={(e) => setRatingsCacheSearch(e.target.value)}
                   placeholder="Search by title, year, IMDb ID (tt...), or TMDb ID..."
-                  className="w-full bg-theme-bg border border-theme rounded-lg pl-9 pr-8 py-2 text-xs text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-all font-medium"
+                  className="w-full min-w-0 bg-theme-bg border border-theme rounded-lg pl-9 pr-10 py-3 text-sm text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-all font-medium"
                 />
                 {ratingsCacheSearch && (
                   <button

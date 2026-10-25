@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   X,
@@ -43,6 +43,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [activeTab, setActiveTab] = useState("upload");
   const [processWithOverlays, setProcessWithOverlays] = useState(true);
   const [addToQueue, setAddToQueue] = useState(false);
+  const [autoQueueChanges, setAutoQueueChanges] = useState(false);
+  const [queueSettingsLoaded, setQueueSettingsLoaded] = useState(false);
+  const [savingQueueSettings, setSavingQueueSettings] = useState(false);
+  const queueSubmissionRef = useRef(false);
+  const uploadChoiceRef = useRef(null);
+  const autoQueuedFileRef = useRef(null);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [blueprintId, setBlueprintId] = useState("none");
   const [customBlueprints, setCustomBlueprints] = useState([]);
@@ -52,6 +58,41 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [isDimensionValid, setIsDimensionValid] = useState(false); // Track if dimensions are valid
   const [activeProviderTab, setActiveProviderTab] = useState("tmdb"); // Provider tabs: tmdb, tvdb, fanart
   const [languageFilter, setLanguageFilter] = useState("all");
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/webui-settings").then(async response => {
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error("Could not load queue settings");
+      if (active) {
+        const enabled = data.settings?.auto_queue_changes === true;
+        setAutoQueueChanges(enabled);
+        setAddToQueue(enabled);
+      }
+    }).catch(() => {
+      if (active) showError("Could not load Auto-Queue setting; automatic queueing is off.");
+    }).finally(() => { if (active) setQueueSettingsLoaded(true); });
+    return () => { active = false; };
+  }, []);
+
+  const handleToggleAutoQueue = async (enabled) => {
+    setSavingQueueSettings(true);
+    try {
+      const response = await fetch("/api/webui-settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { auto_queue_changes: enabled } }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.detail || "Could not save Auto-Queue setting");
+      setAutoQueueChanges(enabled);
+      setAddToQueue(enabled);
+      window.dispatchEvent(new CustomEvent("assetAutoQueueChanged", { detail: { enabled } }));
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setSavingQueueSettings(false);
+    }
+  };
 
   // Logo selection mode
   const [logoSelectionMode, setLogoSelectionMode] = useState(false);
@@ -1154,14 +1195,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       return;
     }
 
+    uploadChoiceRef.current = file;
+    setIsDimensionValid(false);
+    setImageDimensions(null);
     setUploadedFile(file);
 
     const reader = new FileReader();
     reader.onloadend = () => {
+      if (uploadChoiceRef.current !== file) return;
       setUploadedImage(reader.result);
 
       const img = new Image();
       img.onload = () => {
+        if (uploadChoiceRef.current !== file) return;
         const width = img.width;
         const height = img.height;
         setImageDimensions({ width, height });
@@ -1185,8 +1231,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         if (
           metadata.asset_type === "poster" ||
-          metadata.asset_type === "season" ||
-          metadata.asset_type === "collection"
+          metadata.asset_type === "season"
         ) {
           expectedRatio = POSTER_RATIO;
           expectedRatioString = "2:3";
@@ -1221,6 +1266,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   };
 
   const handleUploadClick = () => {
+    if (!queueSettingsLoaded || savingQueueSettings || uploading || queueSubmissionRef.current) return;
     if (!uploadedFile || !isDimensionValid) {
       showError(t("assetReplacer.selectValidImage"));
       return;
@@ -1235,6 +1281,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   };
 
   const handleConfirmUpload = async () => {
+    if (queueSubmissionRef.current || !uploadedFile || !isDimensionValid) return;
+    queueSubmissionRef.current = true;
     setShowUploadConfirm(false);
     setUploading(true);
     showError(null);
@@ -1327,6 +1375,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       const data = await response.json();
 
       if (data.success) {
+        if (data.queued) {
+          showSuccess("Asset added to queue.");
+          onClose();
+          return;
+        }
         if (data.manual_run_triggered) {
           showSuccess(t("assetReplacer.replacedAndQueued"));
           if (!addToQueue) {
@@ -1350,11 +1403,13 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     } catch (err) {
       showError(t("assetReplacer.errorUploadingFile", { error: err.message }));
     } finally {
+      queueSubmissionRef.current = false;
       setUploading(false);
     }
   };
 
   const handlePreviewClick = (preview) => {
+    if (!queueSettingsLoaded || savingQueueSettings || uploading || queueSubmissionRef.current) return;
     if (logoSelectionMode) {
       handleLogoSelect(preview);
       return;
@@ -1365,13 +1420,18 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       return;
     }
 
-    setPendingPreview(preview);
-    setShowPreviewConfirm(true);
+    if (autoQueueChanges && addToQueue) {
+      handleSelectPreview(preview);
+    } else {
+      setPendingPreview(preview);
+      setShowPreviewConfirm(true);
+    }
   };
 
-  const handleSelectPreview = async () => {
+  const handleSelectPreview = async (selected = null) => {
+    if (queueSubmissionRef.current) return;
     setShowPreviewConfirm(false);
-    const preview = pendingPreview;
+    const preview = selected || pendingPreview;
 
     if (!preview) return;
 
@@ -1468,6 +1528,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       }
     }
 
+    queueSubmissionRef.current = true;
     try {
       let url = `${API_URL}/assets/replace-from-url?asset_path=${encodeURIComponent(
         asset.path || ""
@@ -1522,6 +1583,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       const data = await response.json();
 
       if (data.success) {
+        if (data.queued) {
+          showSuccess("Asset added to queue.");
+          onClose();
+          return;
+        }
         if (data.manual_run_triggered) {
           showSuccess(t("assetReplacer.replacedAndQueued"));
           if (!addToQueue) {
@@ -1545,9 +1611,17 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     } catch (err) {
       showError(t("assetReplacer.errorReplacingAsset", { error: err.message }));
     } finally {
+      queueSubmissionRef.current = false;
       setUploading(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoQueueChanges || !addToQueue || !queueSettingsLoaded || savingQueueSettings || logoSelectionMode || uploading || !uploadedFile || !isDimensionValid) return;
+    if (autoQueuedFileRef.current === uploadedFile) return;
+    autoQueuedFileRef.current = uploadedFile;
+    handleConfirmUpload();
+  }, [autoQueueChanges, addToQueue, queueSettingsLoaded, savingQueueSettings, logoSelectionMode, uploading, uploadedFile, isDimensionValid]);
 
   const totalPreviews = Object.values(previews).flat().length;
 
@@ -1606,6 +1680,16 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
             </button>
           </div>
         </div>
+
+        {!logoSelectionMode && (
+          <label className="flex items-center justify-between gap-3 px-4 py-3 border-b border-theme text-sm text-theme-text">
+            <span>Auto-Queue Changes</span>
+            <input type="checkbox" role="switch" checked={autoQueueChanges}
+              disabled={!queueSettingsLoaded || savingQueueSettings || uploading}
+              onChange={(event) => handleToggleAutoQueue(event.target.checked)}
+              title="Automatically queue validated uploads and selected artwork across replacement dialogs" />
+          </label>
+        )}
 
         {/* Tabs */}
         <div className="border-b border-theme px-4 sm:px-6">
@@ -1696,6 +1780,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                       </div>
                       <button
                         onClick={() => setAddToQueue(!addToQueue)}
+                        disabled={autoQueueChanges || !queueSettingsLoaded || savingQueueSettings}
+                        title={autoQueueChanges ? "Controlled by Auto-Queue Changes" : "Queue this asset instead of replacing immediately"}
                         className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-theme-primary focus:ring-offset-2 focus:ring-offset-theme-bg ${addToQueue ? "bg-theme-primary" : "bg-gray-600"
                           }`}
                       >

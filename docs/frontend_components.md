@@ -75,6 +75,7 @@ The frontend follows a component-based architecture located entirely within `web
 
 ### Utility, Feedback & Modal Components
 
+- **Auto-Queue Changes:** the opt-in switch in asset replacement dialogs persists as `auto_queue_changes` in WebUI settings (default `false`). When enabled, choosing provider artwork or selecting a ratio-validated upload submits it to the existing asset queue without a second replacement confirmation. The per-item queue switch stays on while this preference is active. Browsing, invalid uploads, and text-field edits alone do not submit anything. Existing parameter validation still applies, failed attempts remain available for manual retry, and duplicate in-flight submissions are blocked. Queued success is reported as queued, not as an already completed replacement; parent completion callbacks are not invoked before processing, so Action Center entries are not removed just because work was queued. Logo selection retains its separate workflow.
 - **`ConfirmDialog.jsx` & `ToastNotification.jsx`**: Reusable components for user feedback and destructive action confirmation.
 - **`DangerZone.jsx`**: A section component for high-risk actions (factory reset, wipe database).
 - **`RestoreModeModal.jsx`**: Targeted restore modal allowing users to restore artwork filtered by library, item title/folder, and asset type.

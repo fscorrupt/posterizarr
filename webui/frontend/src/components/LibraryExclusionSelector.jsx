@@ -385,7 +385,7 @@ const LibraryExclusionSelector = ({
           })}
         </div>
       )}
-      
+
       {/* Empty State - No Libraries Found */}
       {!loadingLibraries && librariesFetched && availableLibraries.length === 0 && !error && (
         <div className="px-4 py-8 bg-theme-bg/30 border border-theme/20 rounded-md text-center flex-1">

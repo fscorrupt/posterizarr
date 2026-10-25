@@ -134,7 +134,7 @@ async def _post_artwork_with_retry(
             )
             await asyncio.sleep(delay)
 
-async def _confirm_plex_titlecard(http_client, server_url, item_id, token, content):
+async def _confirm_plex_titlecard(http_client, server_url, item_id, token, content, artwork_type="titlecard"):
     headers = {"X-Plex-Token": token, "Accept": "application/xml"}
     posters_url = f"{server_url}/library/metadata/{item_id}/posters"
     response = await http_client.get(posters_url, headers=headers)
@@ -144,7 +144,7 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
                      if str(node.get("ratingKey", "")).startswith("upload://")
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if uploaded is None:
-        raise RuntimeError("Plex accepted the titlecard upload but did not expose the uploaded image")
+        raise RuntimeError(f"Plex accepted the {artwork_type} upload but did not expose the uploaded image")
     if uploaded.get("selected") != "1":
         response = await http_client.put(posters_url, headers=headers, params={"url": uploaded.get("key") or uploaded.get("ratingKey")})
         response.raise_for_status()
@@ -152,12 +152,14 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
     response.raise_for_status()
     if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
                for node in fromstring(response.content)):
-        raise RuntimeError("Plex did not select the uploaded titlecard; cache was not marked synced")
+        raise RuntimeError(f"Plex did not select the uploaded {artwork_type}; cache was not marked synced")
     response = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
     response.raise_for_status()
     episode = fromstring(response.content).find(".//Video")
+    if episode is None and artwork_type == "poster":
+        episode = fromstring(response.content).find(".//Directory")
     if episode is None or not episode.get("thumb"):
-        raise RuntimeError("Plex did not return a thumbnail for the confirmed titlecard")
+        raise RuntimeError(f"Plex did not return a thumbnail for the confirmed {artwork_type}")
     return json.dumps({"plex_thumb": episode.get("thumb"), "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
 
 
@@ -2432,6 +2434,7 @@ def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, An
         "video_source": detect_video_source(part_file),
         "edition": ed_val,
         "server_updated_at": s_up_at,
+        "server_thumb": it.get("thumb"),
         "resolution": res_val,
         "rating": aud_rating,
         "audience_rating": aud_rating,
@@ -3594,6 +3597,23 @@ async def _run_overlay_sync_task(
                             cache.update_media_file_metadata(s_type, str(item_id), "poster", item.get("media_file_path"), item.get("video_source"), cache_map=cache_map)
                             cache.seed_recipe_snapshot(s_type, str(item_id), "poster", recipe_hash, overlay_layers, cached_entry, cache_map=cache_map)
 
+                        if s_type == "plex" and is_current and cached_entry and cached_entry.get("status") == "synced":
+                            try:
+                                poster_identity = json.loads(cached_entry.get("attr_snapshot") or "{}")
+                                is_current, identity_reason, refreshed_identity = await _plex_titlecard_cache_status(
+                                    http_client, s_url, item_id, creds.get("token"), poster_identity,
+                                    None if is_target_mode else item.get("server_thumb"),
+                                )
+                                if not is_current:
+                                    cache_reason = identity_reason.replace("titlecard", "poster")
+                                elif refreshed_identity:
+                                    refreshed_poster = {**json.loads(refreshed_identity), "plex_thumb": item.get("server_thumb")}
+                                    cache.update_attr_snapshot(s_type, str(item_id), "poster", json.dumps(refreshed_poster), cache_map=cache_map)
+                            except Exception as identity_error:
+                                await _inc_stats(failed=1)
+                                write_log(f"  [!] {w_tag}Could not verify selected Plex poster for '{title}': {format_sync_error(identity_error, phase='verifying poster selection')}. Artwork left untouched.")
+                                return
+
                         if scope != "incremental" or not is_current or force_target_sync or legacy_skipped_entry:
                             sync_reason = (
                                 f"Forced sync (scope={scope})" if scope != "incremental"
@@ -3705,6 +3725,13 @@ async def _run_overlay_sync_task(
                                         upload_success = (resp.status_code in [200, 201, 204])
 
                                 if upload_success:
+                                    poster_snapshot = build_attr_snapshot(item)
+                                    if s_type == "plex":
+                                        comp_phase = "confirming selected Plex poster"
+                                        verified_poster = await _confirm_plex_titlecard(
+                                            http_client, s_url, item_id, creds.get("token"), composited_jpeg, artwork_type="poster"
+                                        )
+                                        poster_snapshot = json.dumps({**json.loads(poster_snapshot), **json.loads(verified_poster)}, sort_keys=True)
                                     cache.record_push(
                                         server_type=s_type,
                                         server_url=s_url,
@@ -3728,7 +3755,7 @@ async def _run_overlay_sync_task(
                                         detected_audio_codec=item.get("audio_codec"),
                                         detected_video_format=item.get("video_format"),
                                         detected_resolution=item.get("resolution"),
-                                        attr_snapshot=build_attr_snapshot(item),
+                                        attr_snapshot=poster_snapshot,
                                         cache_map=cache_map,
                                         resolved_layers=overlay_layers,
                                         media_file_path=item.get("media_file_path"),

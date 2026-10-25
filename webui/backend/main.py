@@ -350,6 +350,7 @@ def load_webui_settings():
         "log_level": "INFO",
         "theme": "dark",
         "auto_refresh_interval": 180,
+        "auto_queue_changes": False,
         "auto_overlay_sync": False,
         "auto_kometa_overlay_sync": False,
     }
