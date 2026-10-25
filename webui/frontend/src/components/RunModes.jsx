@@ -530,6 +530,55 @@ function RunModes() {
 
   // State for Add to Queue
   const [addToQueue, setAddToQueue] = useState(false);
+  const [autoQueueChanges, setAutoQueueChanges] = useState(false);
+  const [queueSettingsLoaded, setQueueSettingsLoaded] = useState(false);
+  const [savingQueueSettings, setSavingQueueSettings] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let preferenceChanged = false;
+    const applyPreference = (enabled) => {
+      if (!active) return;
+      setAutoQueueChanges(enabled);
+      setAddToQueue(enabled);
+    };
+    const onPreferenceChanged = (event) => {
+      preferenceChanged = true;
+      applyPreference(event.detail?.enabled === true);
+    };
+    window.addEventListener("assetAutoQueueChanged", onPreferenceChanged);
+    fetch("/api/webui-settings").then(async response => {
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error("Could not load queue settings");
+      if (!preferenceChanged) applyPreference(data.settings?.auto_queue_changes === true);
+    }).catch(() => {
+      if (active) showError("Could not load Auto-Queue setting; automatic queueing is off.");
+    }).finally(() => { if (active) setQueueSettingsLoaded(true); });
+    return () => {
+      active = false;
+      window.removeEventListener("assetAutoQueueChanged", onPreferenceChanged);
+    };
+  }, []);
+
+  const handleToggleAutoQueue = async (enabled) => {
+    if (savingQueueSettings || !queueSettingsLoaded || loading) return;
+    setSavingQueueSettings(true);
+    try {
+      const response = await fetch("/api/webui-settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { auto_queue_changes: enabled } }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.detail || "Could not save Auto-Queue setting");
+      setAutoQueueChanges(enabled);
+      setAddToQueue(enabled);
+      window.dispatchEvent(new CustomEvent("assetAutoQueueChanged", { detail: { enabled } }));
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setSavingQueueSettings(false);
+    }
+  };
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -948,6 +997,7 @@ function RunModes() {
   };
 
   const runManualMode = async () => {
+    if (!queueSettingsLoaded || savingQueueSettings || loading) return;
     if (status.running) {
       showError(
         `${t("runModes.scriptRunning")} - ${t("runModes.status.mode")}: ${status.current_mode.charAt(0).toUpperCase() +
@@ -1072,7 +1122,7 @@ function RunModes() {
           });
           setUploadedFile(null);
           setUploadPreview(null);
-          setAddToQueue(false); // Reset queue toggle
+          setAddToQueue(autoQueueChanges);
           fetchStatus();
         } else {
           showError(`Error: ${data.message}`);
@@ -1120,7 +1170,7 @@ function RunModes() {
             blueprintId: "none",
           });
           setUploadedFile(null);
-          setAddToQueue(false); // Reset queue toggle
+          setAddToQueue(autoQueueChanges);
           setUploadPreview(null);
           fetchStatus();
         } else {
@@ -3339,7 +3389,7 @@ const LogoUpdaterModal = React.memo(({
           )}
 
           {/* --- Add to Queue Toggle --- */}
-          <div className="flex items-start sm:items-center justify-between gap-3 mb-6 pt-3 border-t border-theme">
+          <div className="flex items-start sm:items-center justify-between gap-3 mb-3 pt-3 border-t border-theme">
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-medium text-theme-text break-words">
                 {t("assetReplacer.addToQueue")}
@@ -3351,7 +3401,13 @@ const LogoUpdaterModal = React.memo(({
               </p>
             </div>
             <button
+              type="button"
+              role="switch"
+              aria-label="Add to Queue"
+              aria-checked={addToQueue}
               onClick={() => setAddToQueue(!addToQueue)}
+              disabled={autoQueueChanges || !queueSettingsLoaded || savingQueueSettings || loading}
+              title={autoQueueChanges ? "Controlled by Auto-Queue Changes" : "Queue this manual submission"}
               className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-theme-primary focus:ring-offset-2 focus:ring-offset-theme-bg ${addToQueue ? "bg-theme-primary" : "bg-gray-600"
                 }`}
             >
@@ -3361,11 +3417,21 @@ const LogoUpdaterModal = React.memo(({
               />
             </button>
           </div>
+          {addToQueue && (
+            <label className="flex items-center gap-2 mb-6 text-sm text-theme-text">
+              <input type="checkbox" checked={autoQueueChanges}
+                disabled={!queueSettingsLoaded || savingQueueSettings || loading}
+                onChange={(event) => handleToggleAutoQueue(event.target.checked)}
+                title="Remember queueing for manual submissions and asset replacement dialogs"
+                className="w-4 h-4 shrink-0 rounded border-theme text-theme-primary" />
+              <span>Auto-Queue Changes</span>
+            </label>
+          )}
 
           {/* --- Run Button & Info Box --- */}
           <button
             onClick={runManualMode}
-            disabled={loading || status.running}
+            disabled={loading || status.running || !queueSettingsLoaded || savingQueueSettings}
             className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg font-medium transition-all shadow-lg"
           >
             {loading ? (
@@ -3376,7 +3442,7 @@ const LogoUpdaterModal = React.memo(({
             ) : (
               <>
                 <Play className="w-5 h-5" />
-                {t("runModes.manual.runButton")}
+                {addToQueue ? "Queue Manual Asset" : t("runModes.manual.runButton")}
               </>
             )}
           </button>

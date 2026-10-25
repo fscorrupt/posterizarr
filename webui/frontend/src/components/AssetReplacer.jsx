@@ -1681,16 +1681,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
           </div>
         </div>
 
-        {!logoSelectionMode && (
-          <label className="flex items-center justify-between gap-3 px-4 py-3 border-b border-theme text-sm text-theme-text">
-            <span>Auto-Queue Changes</span>
-            <input type="checkbox" role="switch" checked={autoQueueChanges}
-              disabled={!queueSettingsLoaded || savingQueueSettings || uploading}
-              onChange={(event) => handleToggleAutoQueue(event.target.checked)}
-              title="Automatically queue validated uploads and selected artwork across replacement dialogs" />
-          </label>
-        )}
-
         {/* Tabs */}
         <div className="border-b border-theme px-4 sm:px-6">
           <div className="flex gap-2 sm:gap-4 -mb-px overflow-x-auto">
@@ -1779,6 +1769,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         </p>
                       </div>
                       <button
+                        type="button"
+                        role="switch"
+                        aria-label="Add to Queue"
+                        aria-checked={addToQueue}
                         onClick={() => setAddToQueue(!addToQueue)}
                         disabled={autoQueueChanges || !queueSettingsLoaded || savingQueueSettings}
                         title={autoQueueChanges ? "Controlled by Auto-Queue Changes" : "Queue this asset instead of replacing immediately"}
@@ -1791,6 +1785,16 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         />
                       </button>
                     </div>
+                    {addToQueue && !logoSelectionMode && (
+                      <label className="flex items-center gap-2 mt-2 mb-3 text-xs sm:text-sm text-theme-text">
+                        <input type="checkbox" checked={autoQueueChanges}
+                          disabled={!queueSettingsLoaded || savingQueueSettings || uploading}
+                          onChange={(event) => handleToggleAutoQueue(event.target.checked)}
+                          title="Automatically queue validated uploads and selected artwork across replacement dialogs"
+                          className="w-4 h-4 shrink-0 rounded border-theme text-theme-primary" />
+                        <span>Auto-Queue Changes</span>
+                      </label>
+                    )}
 
                     {/* Parameter Inputs */}
                     {processWithOverlays && (
