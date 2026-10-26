@@ -281,6 +281,23 @@ def compute_layers_recipe_hash(layers: List[Dict[str, Any]]) -> str:
     return hashlib.md5(json.dumps(serializable, sort_keys=True).encode()).hexdigest()
 
 
+def _rating_scores(ratings: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    return {key: value for key, value in (ratings or {}).items() if not key.startswith("_") and value is not None}
+
+
+def _audience_rating_from_scores(ratings: Optional[Dict[str, Any]]) -> Optional[float]:
+    """Plex-style 0-10 audience score from resolved ratings when the server attribute is absent."""
+    scores = _rating_scores(ratings)
+    for key, divisor in (("imdb", 1.0), ("tmdb", 1.0), ("rt_audience", 10.0)):
+        try:
+            value = float(scores[key]) / divisor
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 0 < value <= 10:
+            return round(value, 1)
+    return None
+
+
 def build_attr_snapshot(item: Dict[str, Any]) -> str:
     """
     Serialize hash-relevant attributes that are not stored in dedicated cache columns
@@ -3536,7 +3553,10 @@ async def _run_overlay_sync_task(
                             return
                     # Resolve multi-source ratings only if ratings overlays are configured for this library
                     multi_ratings = {}
-                    if needs_ratings:
+                    server_rating_missing = not (item.get("audience_rating") or item.get("rating"))
+                    is_new_item = cache_map.get((s_type.lower(), str(item_id), "poster")) is None
+                    uses_rating_files = needs_ratings or any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules)
+                    if needs_ratings or (uses_rating_files and (server_rating_missing or is_new_item)):
                         multi_ratings = await resolve_media_ratings(
                             server_type=s_type,
                             item_id=str(item_id),
@@ -3551,10 +3571,20 @@ async def _run_overlay_sync_task(
                             omdb_api_key=omdb_key,
                             enabled_sources=rating_sources,
                             client=http_client,
-                            force_refresh=(scope == "full"),
+                            force_refresh=(scope == "full" and needs_ratings),
                             server_community_rating=item.get("rating"),
                             server_critic_rating=item.get("critic_rating")
                         )
+                        if not _rating_scores(multi_ratings) and ratings_cache.get_cached_ratings(s_type, str(item_id), allow_stale=True) is None:
+                            # Empty placeholder keeps the item visible in the Ratings Cache and lets auto-refresh retry it.
+                            ratings_cache.save_ratings(s_type, str(item_id), m_type, title, item.get("year"), item.get("imdb_id"),
+                                                       item.get("tmdb_id"), {}, source=s_type, ttl_days=1)
+                        if server_rating_missing:
+                            fallback_rating = _audience_rating_from_scores(multi_ratings)
+                            if fallback_rating is not None:
+                                item["audience_rating"] = item["rating"] = fallback_rating
+                        if not needs_ratings:
+                            multi_ratings = {}
                     item["multi_ratings"] = multi_ratings
                     ratings_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
 

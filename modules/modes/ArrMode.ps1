@@ -240,6 +240,30 @@
                         Write-Entry -Message "Year mismatch ignored: Could not find '$movieTitle' with year $movieYear. Defaulting to first result." -Path $global:configLogging -Color Yellow -log Warning
                     }
                 }
+                # The same movie can exist in several libraries (e.g. Movies + 4K Movies); pick the copy whose file path best matches the Radarr path.
+                if (@($movies).Count -gt 1 -and -not [string]::IsNullOrWhiteSpace($ArrPath)) {
+                    $arrSegments = @(($ArrPath.TrimEnd('\', '/') -split '[\\/]+') | Where-Object { $_ })
+                    $scoredMovies = foreach ($candidate in @($movies)) {
+                        $bestScore = 0
+                        foreach ($partFile in @($candidate.Media.Part.file)) {
+                            if ([string]::IsNullOrWhiteSpace($partFile)) { continue }
+                            $partSegments = @((($partFile -replace '[\\/][^\\/]*$', '') -split '[\\/]+') | Where-Object { $_ })
+                            $score = 0
+                            while ($score -lt $arrSegments.Count -and $score -lt $partSegments.Count -and
+                                $arrSegments[$arrSegments.Count - 1 - $score] -ieq $partSegments[$partSegments.Count - 1 - $score]) {
+                                $score++
+                            }
+                            if ($score -gt $bestScore) { $bestScore = $score }
+                        }
+                        [PSCustomObject]@{ Movie = $candidate; Score = $bestScore }
+                    }
+                    $topScore = ($scoredMovies | Measure-Object -Property Score -Maximum).Maximum
+                    $topMovies = @($scoredMovies | Where-Object { $_.Score -eq $topScore -and $_.Score -gt 0 })
+                    if ($topMovies.Count -eq 1) {
+                        $movies = $topMovies[0].Movie
+                        Write-Entry -Message "Multiple matches: selected '$($movies.title)' in library '$($movies.librarySectionTitle)' by Radarr path." -Path $global:configLogging -Color Cyan -log Info
+                    }
+                }
                 $matchedMovie = $movies.Where({ $_.librarySectionTitle -notin $LibstoExclude }, 'First')
 
                 if ($matchedMovie) {
