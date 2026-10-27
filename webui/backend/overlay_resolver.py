@@ -2301,6 +2301,42 @@ class OverlayConfigEngine:
 
         return file_overlays, file_queues, file_templates, merged_vars
 
+    def _candidate_overlays_for_title(self, definitions, expanded_definitions, templates, variables, definitions_key, metadata):
+        from copy import deepcopy
+
+        title = str(metadata.get("show_title") or metadata.get("title") or "").strip().lower()
+        cache_key = (definitions_key, title)
+        if not hasattr(self, "_title_rule_candidates_cache"):
+            self._title_rule_candidates_cache = {}
+        if cache_key in self._title_rule_candidates_cache:
+            return self._title_rule_candidates_cache[cache_key]
+        candidates = []
+        for overlay_key, definition in definitions.items():
+            if not isinstance(definition, dict):
+                continue
+            definition_key = str(overlay_key)
+            if definition_key not in expanded_definitions:
+                expanded_definitions[definition_key] = self._expand_overlay_definition(
+                    definition_key, deepcopy(definition), templates, variables
+                )
+            expanded = expanded_definitions[definition_key]
+            if not expanded:
+                continue
+            search = expanded.get("plex_search") if "plex_search" in expanded else definition.get("plex_search")
+            conditions = {}
+            if isinstance(search, dict):
+                conditions = search.get("all", {}) if "all" in search else ({} if "any" in search else search)
+            plex_all = str(expanded.get("plex_all") or definition.get("plex_all") or "").lower()
+            if plex_all not in ("true", "1") and isinstance(conditions, dict):
+                if any(key in conditions and not self._check_condition(key, conditions[key], metadata)
+                       for key in ("title.is", "title", "show_title.is", "show_title")):
+                    continue
+            candidates.append((overlay_key, definition))
+        if len(self._title_rule_candidates_cache) >= 256:
+            self._title_rule_candidates_cache.pop(next(iter(self._title_rule_candidates_cache)))
+        self._title_rule_candidates_cache[cache_key] = candidates
+        return candidates
+
     def evaluate_item(self, item_metadata: Dict[str, Any], library_rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Evaluates an individual item against all library rules.
@@ -2355,7 +2391,9 @@ class OverlayConfigEngine:
                     all_queues[queue_prefix + q_name] = slots
 
             # Process each overlay in file
-            for ov_key, ov_def in file_overlays.items():
+            for ov_key, ov_def in self._candidate_overlays_for_title(
+                file_overlays, expanded_definitions, file_templates, file_vars, definitions_key, item_metadata
+            ):
                 if not isinstance(ov_def, dict):
                     continue
 
