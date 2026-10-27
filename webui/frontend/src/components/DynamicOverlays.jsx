@@ -148,6 +148,52 @@ const DEFAULT_OVERLAY_PRESETS = [
   { id: "content_rating_de", label: "German FSK Rating", desc: "FSK 0, 6, 12, 16, 18 badges", level: "movie", category: "Content Ratings" },
 ];
 
+const ASSET_OVERRIDE_DEFAULTS = [
+  { value: "resolution", label: "Resolution" },
+  { value: "audio_codec", label: "Audio Codec" },
+  { value: "languages", label: "Language Flags" },
+  { value: "network", label: "Network" },
+  { value: "studio", label: "Studio" },
+  { value: "streaming", label: "Streaming" },
+  { value: "ratings", label: "Ratings" },
+  { value: "single_rating", label: "Single Rating" },
+  { value: "commonsense", label: "Common Sense" },
+  { value: "content_rating_de", label: "German Content Rating" },
+  { value: "content_rating_uk", label: "UK Content Rating" },
+  { value: "content_rating_au", label: "Australian Content Rating" },
+  { value: "content_rating_nz", label: "New Zealand Content Rating" },
+  { value: "content_rating_us_movie", label: "US Movie Content Rating" },
+  { value: "content_rating_us_show", label: "US TV Content Rating" },
+  { value: "direct_play", label: "Direct Play" },
+  { value: "mediastinger", label: "Media Stinger" },
+  { value: "versions", label: "Versions" },
+  { value: "ribbon", label: "Ribbon" },
+  { value: "edition", label: "Edition" },
+];
+
+const ASSET_OVERRIDE_CATEGORIES = {
+  resolution: "resolution",
+  audio_codec: "audio_codec",
+  languages: "languages",
+  network: "network",
+  studio: "studio",
+  streaming: "streaming",
+  ratings: "ratings",
+  single_rating: "ratings",
+  commonsense: "age_rating",
+  content_rating_de: "age_rating",
+  content_rating_uk: "age_rating",
+  content_rating_au: "age_rating",
+  content_rating_nz: "age_rating",
+  content_rating_us_movie: "age_rating",
+  content_rating_us_show: "age_rating",
+  direct_play: "root",
+  mediastinger: "root",
+  versions: "root",
+  ribbon: "ribbon",
+  edition: "edition",
+};
+
 const PositionPicker = ({ value, onChange, label = "Position" }) => {
   const positions = [
     ["top-left", "top-center", "top-right"],
@@ -541,6 +587,29 @@ export default function DynamicOverlays() {
   const [statusData, setStatusData] = useState(null);
   const [scanData, setScanData] = useState(null);
   const [cacheData, setCacheData] = useState(null);
+  const [assetOverrideDefault, setAssetOverrideDefault] = useState("resolution");
+  const [assetOverrideVariant, setAssetOverrideVariant] = useState("");
+  const [assetOverridePath, setAssetOverridePath] = useState("");
+  const [assetOverrideChoices, setAssetOverrideChoices] = useState([]);
+  const [assetOverrideChoicesLoading, setAssetOverrideChoicesLoading] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const category = ASSET_OVERRIDE_CATEGORIES[assetOverrideDefault] || "all";
+    setAssetOverrideChoicesLoading(true);
+    fetch(`/api/dynamic-overlays/assets?category=${encodeURIComponent(category)}`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("Could not load overlay assets")))
+      .then(data => {
+        if (!controller.signal.aborted) setAssetOverrideChoices(Array.isArray(data.assets) ? data.assets : []);
+      })
+      .catch(error => {
+        if (error.name !== "AbortError" && !controller.signal.aborted) setAssetOverrideChoices([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAssetOverrideChoicesLoading(false);
+      });
+    return () => controller.abort();
+  }, [assetOverrideDefault]);
 
   // Overlay Cache Browser State
   const [isOverlayCacheModalOpen, setIsOverlayCacheModalOpen] = useState(false);
@@ -3628,6 +3697,7 @@ export default function DynamicOverlays() {
       const layoutPayload = {};
       const curLibForSave = visualConfig?.libraries?.[libName];
       const curBadgesForSave = curLibForSave?.badges || {};
+      layoutPayload.asset_overrides = curLibForSave?.asset_overrides || {};
       const isCriticRatingEnabled = previewRatingMode === "providers";
       const isRatingEnabled = Boolean(previewRating && previewRating !== "Off");
 
@@ -4687,43 +4757,81 @@ export default function DynamicOverlays() {
 
         {/* NAVIGATION TABS (ACTIVE WHEN ENABLED) */}
         {featureSettings?.enabled && (
-          <div className="flex flex-wrap items-center gap-2 mt-5 border-t border-theme pt-4">
-            {[
-              { id: "rules", label: "Libraries & Rules", icon: Layers, badge: Object.keys(libraries || {}).length },
-              { id: "importer", label: "Config & YAML Files", icon: FileCode, badge: yamlFiles.length },
-              { id: "config", label: "Visual Badges", icon: Sliders },
-              { id: "preview", label: "Live Preview", icon: Eye },
-              { id: "sync", label: "Sync & Cache", icon: RefreshCw },
-              { id: "anime", label: "AniMetaFill", icon: Sparkles }
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive =
-                activeTab === tab.id ||
-                (tab.id === "config" && activeTab === "visual") ||
-                (tab.id === "sync" && activeTab === "cache");
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    isActive
-                      ? "bg-theme-primary text-white shadow-sm"
-                      : "bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-muted hover:text-theme-text shadow-sm"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                  {tab.badge !== undefined && tab.badge > 0 && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                      isActive ? "bg-white/20 text-white" : "bg-theme-bg text-theme-muted border border-theme"
-                    }`}>
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <nav aria-label="Dynamic overlay sections" className="mt-5 border-t border-theme pt-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+              {[
+                {
+                  step: "01",
+                  title: "Configure",
+                  description: "Choose libraries and manage their configuration.",
+                  tabs: [
+                    { id: "rules", label: "Libraries & Rules", icon: Layers, badge: Object.keys(libraries || {}).length },
+                    { id: "importer", label: "Config & YAML Files", icon: FileCode, badge: yamlFiles.length }
+                  ]
+                },
+                {
+                  step: "02",
+                  title: "Design",
+                  description: "Choose badges, adjust their look, and preview the result.",
+                  tabs: [
+                    { id: "config", label: "Visual Badges", icon: Sliders },
+                    { id: "preview", label: "Live Preview", icon: Eye }
+                  ]
+                },
+                {
+                  step: "03",
+                  title: "Apply & Maintain",
+                  description: "Run syncs, review cache, and manage anime metadata.",
+                  tabs: [
+                    { id: "sync", label: "Sync & Cache", icon: RefreshCw },
+                    { id: "anime", label: "AniMetaFill", icon: Sparkles }
+                  ]
+                }
+              ].map((group) => (
+                <section key={group.step} className="min-w-0 border-l-2 border-theme pl-3">
+                  <div className="mb-2">
+                    <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-theme-text">
+                      <span className="font-mono text-theme-primary">{group.step}</span>
+                      {group.title}
+                    </h2>
+                    <p className="mt-1 text-xs leading-relaxed text-theme-muted">{group.description}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {group.tabs.map((tab) => {
+                      const Icon = tab.icon;
+                      const isActive =
+                        activeTab === tab.id ||
+                        (tab.id === "config" && activeTab === "visual") ||
+                        (tab.id === "sync" && activeTab === "cache");
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => handleTabChange(tab.id)}
+                          aria-current={isActive ? "page" : undefined}
+                          className={`flex w-full min-w-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
+                            isActive
+                              ? "bg-theme-primary text-white"
+                              : "text-theme-muted hover:bg-theme-hover hover:text-theme-text"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+                          {tab.badge !== undefined && tab.badge > 0 && (
+                            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                              isActive ? "bg-white/20 text-white" : "bg-theme-hover text-theme-muted"
+                            }`}>
+                              {tab.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </nav>
         )}
       </div>
 
@@ -4975,6 +5083,98 @@ export default function DynamicOverlays() {
             const toggleBadgeEnabled = (badgeKey) => {
               const curEnabled = Boolean(badges[badgeKey]?.enabled);
               updateBadge(badgeKey, { enabled: !curEnabled });
+            };
+
+            const updateAssetOverrides = (nextOverrides) => {
+              setVisualConfig(previous => {
+                const nextLibraries = { ...previous.libraries };
+                nextLibraries[selectedVisualLib] = {
+                  ...nextLibraries[selectedVisualLib],
+                  asset_overrides: nextOverrides
+                };
+                return { ...previous, libraries: nextLibraries };
+              });
+              setPreviewTimestamp(Date.now());
+            };
+
+            const renderAssetOverridesCard = () => {
+              const assetOverrides = curLib.asset_overrides || {};
+              const assetDefaultOptions = [
+                ...ASSET_OVERRIDE_DEFAULTS,
+                ...Object.keys(assetOverrides)
+                  .filter(name => !ASSET_OVERRIDE_DEFAULTS.some(option => option.value === name))
+                  .map(value => ({ value, label: value }))
+              ];
+              const overrideRows = Object.entries(assetOverrides).flatMap(([defaultName, variants]) =>
+                Object.entries(variants || {}).map(([variant, assetPath]) => ({ defaultName, variant, assetPath }))
+              );
+
+              return (
+                <details className="group rounded-xl bg-theme-card border border-theme">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3.5 sm:p-4">
+                    <span className="min-w-0">
+                      <span className="block text-xs font-bold text-theme-text">Optional: Custom Badge Images</span>
+                      <span className="mt-0.5 block text-[10px] text-theme-muted">Replace a built-in image for a specific value.</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-theme-muted">
+                      {overrideRows.length > 0 ? `${overrideRows.length} active` : "None"}
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </span>
+                  </summary>
+                  <div className="space-y-3 border-t border-theme p-3.5 sm:p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="text-[10px] text-theme-muted">Default
+                      <input aria-label="Asset override default" list={`asset-override-defaults-${selectedVisualLib}`} value={assetOverrideDefault} onChange={event => {
+                        setAssetOverrideDefault(event.target.value);
+                        setAssetOverrideVariant("");
+                        setAssetOverridePath("");
+                      }} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
+                      <datalist id={`asset-override-defaults-${selectedVisualLib}`}>
+                        {assetDefaultOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </datalist>
+                    </label>
+                    <label className="text-[10px] text-theme-muted">Variant key
+                      <input aria-label="Asset override variant key" value={assetOverrideVariant} onChange={event => setAssetOverrideVariant(event.target.value)} placeholder="e.g. 1080p or truehd_atmos" className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text font-mono" />
+                    </label>
+                    <label className="text-[10px] text-theme-muted">Image asset
+                      <select aria-label="Asset override image" value={assetOverridePath} onChange={event => setAssetOverridePath(event.target.value)} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
+                        <option value="">Select local image...</option>
+                        {assetOverrideChoices.map(assetPath => <option key={assetPath} value={assetPath}>{assetPath}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-theme-muted">
+                      {assetOverrideChoicesLoading ? "Loading images..." : assetOverrideChoices.length ? `${assetOverrideChoices.length} local images` : "No local images; upload or import assets first."}
+                    </span>
+                    <button type="button" disabled={!assetOverrideVariant.trim() || !assetOverridePath} onClick={() => {
+                      const next = Object.fromEntries(Object.entries(assetOverrides).map(([name, values]) => [name, { ...values }]));
+                      next[assetOverrideDefault] = { ...(next[assetOverrideDefault] || {}), [assetOverrideVariant.trim().toLowerCase()]: assetOverridePath };
+                      updateAssetOverrides(next);
+                    }} className="px-2.5 py-1.5 rounded-lg bg-theme-primary text-white text-xs font-semibold disabled:opacity-40">
+                      Set Override
+                    </button>
+                  </div>
+                  {overrideRows.length > 0 && (
+                    <div className="divide-y divide-theme/50 border-t border-theme/50">
+                      {overrideRows.map(({ defaultName, variant, assetPath }) => (
+                        <div key={`${defaultName}:${variant}`} className="flex items-center justify-between gap-2 py-1.5 text-[10px]">
+                          <span className="min-w-0 truncate text-theme-text font-mono">{defaultName} / {variant}: {assetPath}</span>
+                          <button type="button" title={`Remove ${defaultName} ${variant} asset override`} aria-label={`Remove ${defaultName} ${variant} asset override`} onClick={() => {
+                            const next = Object.fromEntries(Object.entries(assetOverrides).map(([name, values]) => [name, { ...values }]));
+                            delete next[defaultName]?.[variant];
+                            if (next[defaultName] && Object.keys(next[defaultName]).length === 0) delete next[defaultName];
+                            updateAssetOverrides(next);
+                          }} className="p-1 rounded text-theme-muted hover:text-red-400 shrink-0">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  </div>
+                </details>
+              );
             };
 
             const POPULAR_LANGUAGES = [
@@ -6752,6 +6952,7 @@ export default function DynamicOverlays() {
                           )}
                         </div>
                       </div>
+                      <div className="mt-3.5">{renderAssetOverridesCard()}</div>
                     </>
                   );
                 })()}
@@ -9025,8 +9226,6 @@ export default function DynamicOverlays() {
                           previewLoading ? "opacity-30" : "opacity-100"
                         }`}
                       />
-                      {/* Alignment Guidelines in Rendered Mode */}
-                      {renderGuidelinesOverlay(isLandscapeFormat(previewTemplate))}
                       {showAssetGuides && <AssetPreviewGuides config={serverConfig} template={previewTemplate} />}
                     </div>
 
@@ -13890,15 +14089,15 @@ export default function DynamicOverlays() {
                 {/* Sub-Mode A: Presets */}
                 {wizardConfigMode === "presets" && (
                   <div className="space-y-4 animate-in fade-in duration-150">
-                    <div className="p-4 rounded-xl bg-theme-hover/20 border border-theme space-y-1">
+                    <div className="space-y-1">
                       <h4 className="text-sm font-bold text-theme-text">Start with popular badge layouts</h4>
                       <p className="text-xs text-theme-muted leading-relaxed">
                         If you are starting fresh, you can apply our recommended badges for your libraries below. You can customize, move, or disable any badge at any time.
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                      <div className="p-3.5 rounded-xl bg-theme-card border border-theme space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                      <div className="border-l-2 border-theme pl-3 space-y-2">
                         <div className="flex items-center gap-2 font-bold text-theme-text">
                           <Film className="w-4 h-4 text-theme-primary" />
                           <span>Movie Libraries</span>
@@ -13923,7 +14122,7 @@ export default function DynamicOverlays() {
                         </ul>
                       </div>
 
-                      <div className="p-3.5 rounded-xl bg-theme-card border border-theme space-y-2">
+                      <div className="border-l-2 border-theme pl-3 space-y-2">
                         <div className="flex items-center gap-2 font-bold text-theme-text">
                           <Tv className="w-4 h-4 text-theme-primary" />
                           <span>TV Show Libraries</span>
@@ -13948,7 +14147,7 @@ export default function DynamicOverlays() {
                         </ul>
                       </div>
 
-                      <div className="p-3.5 rounded-xl bg-theme-card border border-theme space-y-2">
+                      <div className="border-l-2 border-theme pl-3 space-y-2">
                         <div className="flex items-center gap-2 font-bold text-theme-text">
                           <ImageIcon className="w-4 h-4 text-theme-primary" />
                           <span>Background Art (16:9)</span>
@@ -13974,7 +14173,7 @@ export default function DynamicOverlays() {
                       </div>
                     </div>
 
-                    <div className="p-4 rounded-xl bg-theme-hover/30 border border-theme flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="border-t border-theme pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <div>
                         <span className="font-semibold text-xs text-theme-text block">Apply Recommended Presets</span>
                         <span className="text-[11px] text-theme-muted">Sets up popular badges for your media libraries in one click.</span>

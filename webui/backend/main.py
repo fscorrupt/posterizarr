@@ -19119,6 +19119,21 @@ async def scan_dynamic_overlays():
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/dynamic-overlays/assets")
+async def list_dynamic_overlay_assets(category: str = Query("all")):
+    """List local image assets using relative paths for the per-variant asset picker."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        assets = await asyncio.to_thread(kometa_resolver.list_available_image_assets, category)
+        return {"success": True, "assets": assets}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        logger.error("Error listing dynamic overlay assets: %s", error, exc_info=True)
+        return {"success": False, "error": "Could not list overlay image assets."}
+
+
 @app.post("/api/dynamic-overlays/import-defaults")
 @app.post("/api/dynamic-overlays/import")
 async def import_dynamic_overlays_defaults(req: Optional[DynamicOverlayImportDefaultsRequest] = None):

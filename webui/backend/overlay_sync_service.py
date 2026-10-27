@@ -44,6 +44,8 @@ from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, P
 from ratings_service import resolve_media_ratings, build_multi_rating_layers, ratings_cache
 from dynamic_overlays_service import get_dynamic_overlays_settings
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 EDITION_PATTERNS = [
     (r"(?i)\b(?:director'?s|directors)\s*cut\b", "Director's Cut"),
     (r"(?i)\bextended\s*(?:cut|edition)?\b", "Extended Cut"),
@@ -976,9 +978,14 @@ def build_streaming_layers(item_metadata, variables, overlays_dir):
         if len(layers) >= limit:
             break
         index = len(layers)
+        selected_asset = variables.get(f"file_{key}")
+        image_path = overlays_dir / "assets" / "streaming" / style / f"{image_name}.png"
+        if selected_asset:
+            asset_path = Path(str(selected_asset))
+            image_path = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
         layers.append({
             "name": f"streaming_{key}", "type": "image",
-            "image_path": str(overlays_dir / "assets" / "streaming" / style / f"{image_name}.png"),
+            "image_path": str(image_path),
             "horizontal_align": horizontal, "vertical_align": vertical,
             "horizontal_offset": int(variables.get("horizontal_offset", 30)) + (index * spacing if variables.get("orientation") == "horizontal" else 0),
             "vertical_offset": int(variables.get("vertical_offset", 250)) + (index * spacing if variables.get("orientation") != "horizontal" else 0),
@@ -1654,6 +1661,11 @@ def build_multi_rating_layers(
             cand = assets_dir / f"{src.capitalize()}.png"
             logo_file = cand if cand.exists() else None
 
+        selected_asset = dyn_settings.get(f"file_{src}")
+        if selected_asset:
+            asset_path = Path(str(selected_asset))
+            logo_file = asset_path if asset_path.is_absolute() else assets_dir.parent / asset_path
+
         logo_width = 0
         logo_height = 0
         if logo_file and logo_file.exists():
@@ -1694,7 +1706,7 @@ def build_multi_rating_layers(
             "name": f"multi_rating_{src}",
             "type": "badge",
             "text": score_text,
-            "image_path": str(logo_file) if (logo_file and logo_file.exists()) else None,
+            "image_path": str(logo_file) if logo_file and (logo_file.exists() or selected_asset) else None,
             "font_path": font_to_use,
             "font_size": font_size,
             "font_color": "#FFFFFF",
@@ -1813,21 +1825,42 @@ def build_overlay_layers_for_item(
         ) if any(term in resolution for term in terms)), None)
         if tier is None:
             continue
-        if variables.get("mode") == "banner" and not is_landscape and tier == "4k":
-            artwork = next((path for path in (overlays_dir / "assets" / "4K_banner.png", overlays_dir.parent / "4K_banner.png") if path.exists()), None)
+        if variables.get("mode") == "banner" and not is_landscape:
+            banner_assets = {
+                "4k": ("4K_banner.png", "4K ULTRA HD"),
+                "1080p": ("1080p_banner.png", "1080P FULL HD"),
+                "720p": ("720p_banner.png", "720P HD"),
+                "576p": ("576p_banner.png", "576P SD"),
+                "480p": ("480p_banner.png", "480P SD"),
+            }
+            banner_filename, banner_text = banner_assets[tier]
+            selected_asset = variables.get(f"file_{tier}")
+            if selected_asset:
+                asset_path = Path(str(selected_asset))
+                artwork = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
+            else:
+                artwork = next((path for path in (overlays_dir / "assets" / banner_filename, overlays_dir.parent / banner_filename) if path.exists()), None)
             banner = {"name": "resolution_banner", "horizontal_align": "center", "horizontal_offset": 0, "vertical_align": "top", "vertical_offset": 0}
             if artwork:
                 banner.update({"type": "image", "image_path": str(artwork), "scale_width": PORTRAIT_DIM[0]})
             else:
-                banner.update({"type": "text", "text": "4K ULTRA HD", "font_path": str(overlays_dir / "fonts" / "Inter-Bold.ttf"),
-                               "font_size": 54, "font_color": "#FFFFFF", "back_color": "#111111EE", "back_width": PORTRAIT_DIM[0], "back_height": 100})
+                banner.update({"type": "text", "text": banner_text, "font_size": 54, "font_color": "#FFFFFF",
+                               "back_color": "#111111EE", "back_width": PORTRAIT_DIM[0], "back_height": 100})
+                font_path = overlays_dir / "fonts" / "Inter-Bold.ttf"
+                if font_path.exists():
+                    banner["font_path"] = str(font_path)
             native_rating_layers.append(banner)
         else:
             variant = "dvhdr" if item_metadata.get("has_dolby_vision") and item_metadata.get("has_hdr") else ("dv" if item_metadata.get("has_dolby_vision") else ("hdr" if item_metadata.get("has_hdr") else ""))
             badge_dir = overlays_dir / "assets" / "resolution"
-            artwork = badge_dir / f"{tier}{variant}.png"
-            if not artwork.exists():
-                artwork = badge_dir / f"{tier}.png"
+            selected_asset = variables.get(f"file_{tier}")
+            if selected_asset:
+                asset_path = Path(str(selected_asset))
+                artwork = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
+            else:
+                artwork = badge_dir / f"{tier}{variant}.png"
+                if not artwork.exists():
+                    artwork = badge_dir / f"{tier}.png"
             native_rating_layers.append({
                 "name": "resolution", "type": "image", "image_path": str(artwork), "scale_height": int(variables.get("scale_height", 55)),
                 "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position") or "left",
@@ -1992,16 +2025,21 @@ def build_overlay_layers_for_item(
                     badge_cands.append(f"{tier}hdr.png")
                 badge_cands.extend([f"{tier}.png", f"{tier.upper()}.png"])
 
-                badge_file = None
-                for cand in badge_cands:
-                    p1 = assets_dir / "resolution" / cand
-                    p2 = assets_dir / cand
-                    if p1.exists():
-                        badge_file = p1
-                        break
-                    elif p2.exists():
-                        badge_file = p2
-                        break
+                selected_asset = variables.get(f"file_{tier}")
+                if selected_asset:
+                    asset_path = Path(str(selected_asset))
+                    badge_file = asset_path if asset_path.is_absolute() else assets_dir / asset_path
+                else:
+                    badge_file = None
+                    for cand in badge_cands:
+                        p1 = assets_dir / "resolution" / cand
+                        p2 = assets_dir / cand
+                        if p1.exists():
+                            badge_file = p1
+                            break
+                        elif p2.exists():
+                            badge_file = p2
+                            break
 
                 if badge_file:
                     layers.append({

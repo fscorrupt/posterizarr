@@ -17,13 +17,73 @@ import re
 import json
 import shutil
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Dict, Any, List, Optional, Union, Tuple
 import yaml
 
 logger = logging.getLogger("dynamic_overlays_service")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+ASSET_OVERRIDE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def _normalize_asset_overrides(value: Any) -> Dict[str, Dict[str, str]]:
+    normalized = {}
+    if not isinstance(value, dict):
+        return normalized
+    for default_name, variants in value.items():
+        family = str(default_name).strip().lower()
+        if not re.fullmatch(r"[a-z0-9_-]+", family) or not isinstance(variants, dict):
+            continue
+        clean_variants = {}
+        for variant, asset_path in variants.items():
+            key = str(variant).strip().lower()
+            path_text = str(asset_path or "").strip().replace("\\", "/")
+            path = PurePosixPath(path_text)
+            if (
+                not re.fullmatch(r"[a-z0-9_-]+", key)
+                or not path_text
+                or path.is_absolute()
+                or ":" in path_text
+                or ".." in path.parts
+                or path.suffix.lower() not in ASSET_OVERRIDE_EXTENSIONS
+            ):
+                continue
+            clean_variants[key] = path.as_posix()
+        if clean_variants:
+            normalized[family] = clean_variants
+    return normalized
+
+
+def apply_asset_overrides_to_rules(overlay_files, asset_overrides, previous_overrides=None):
+    current = _normalize_asset_overrides(asset_overrides)
+    previous = _normalize_asset_overrides(previous_overrides)
+    families = set(current) | set(previous)
+    for family in families:
+        targets = []
+        for rule in overlay_files:
+            if not isinstance(rule, dict):
+                continue
+            default_name = str(rule.get("default") or "").strip().lower()
+            file_name = str(rule.get("file") or "").lower()
+            if default_name == family or (family == "resolution" and any(name in file_name for name in ("overlays_movies.yml", "overlays_tv.yml"))):
+                targets.append(rule)
+        if not targets and current.get(family):
+            target_rule = {"default": family, "template_variables": {}}
+            overlay_files.append(target_rule)
+            targets.append(target_rule)
+        for rule in targets:
+            variables = rule.setdefault("template_variables", {})
+            if not isinstance(variables, dict):
+                variables = {}
+                rule["template_variables"] = variables
+            for variant, old_path in previous.get(family, {}).items():
+                if variant not in current.get(family, {}) and variables.get(f"file_{variant}") == old_path:
+                    variables.pop(f"file_{variant}", None)
+            for variant, asset_path in current.get(family, {}).items():
+                variables[f"file_{variant}"] = asset_path
+    return current
 
 def get_config_dir() -> Path:
     """
@@ -748,6 +808,9 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             continue
 
         overlay_files = lib_data.get("overlay_files") or lib_data.get("overlays") or []
+        asset_overrides = _normalize_asset_overrides(
+            saved_libs.get(lib_name, {}).get("asset_overrides") if isinstance(saved_libs.get(lib_name), dict) else {}
+        )
 
         db_type = get_media_server_library_type(lib_name)
 
@@ -904,6 +967,17 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             default_name = str(entry.get("default", "")).lower()
             file_name = str(entry.get("file", "")).lower()
             vars_dict = entry.get("template_variables") or {}
+            asset_family = default_name or (
+                "resolution" if any(name in file_name for name in ("overlays_movies.yml", "overlays_tv.yml")) else ""
+            )
+            file_variables = {
+                key[5:].lower(): value
+                for key, value in vars_dict.items()
+                if isinstance(key, str) and key.lower().startswith("file_")
+            } if isinstance(vars_dict, dict) else {}
+            if asset_family and file_variables:
+                parsed_overrides = _normalize_asset_overrides({asset_family: file_variables})
+                asset_overrides.setdefault(asset_family, {}).update(parsed_overrides.get(asset_family, {}))
 
             # 1. Languages
             if default_name == "languages":
@@ -1145,7 +1219,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             "name": lib_name,
             "media_type": media_type,
             "enabled": True,
-            "badges": badges
+            "badges": badges,
+            "asset_overrides": asset_overrides
         }
 
     return {"libraries": visual_libs}
@@ -1443,6 +1518,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             if anim_vars:
                 entry["template_variables"] = anim_vars
             overlay_files.append(entry)
+
+        apply_asset_overrides_to_rules(overlay_files, lib_info.get("asset_overrides"))
 
         libraries_dict[lib_name] = {
             "media_type": media_type,

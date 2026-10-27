@@ -120,6 +120,9 @@ def get_candidate_asset_dirs() -> List[Path]:
         for sub in [
             r / "Overlayfiles" / "dynamic_overlays" / "assets",
             r / "Overlayfiles" / "kometa" / "assets",
+            r / "Overlayfiles" / "dynamic_overlays" / "defaults" / "images",
+            r / "Overlayfiles" / "kometa" / "defaults" / "images",
+            r / "defaults" / "images",
             r / "Overlayfiles" / "dynamic_overlays" / "configs",
             r / "Overlayfiles" / "kometa" / "configs",
             r / "Overlayfiles" / "assets",

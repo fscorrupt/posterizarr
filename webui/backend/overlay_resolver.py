@@ -535,6 +535,41 @@ class OverlayResolver:
             "total_available": total_defaults
         }
 
+    def list_available_image_assets(self, category: Optional[str] = None) -> List[str]:
+        """List local overlay images as safe relative paths for per-variant asset selection."""
+        aliases = {
+            "languages": {"flag", "flags"},
+            "age_rating": {"cr", "content_rating"},
+            "ratings": {"rating"},
+        }
+        category_key = str(category or "all").strip().lower()
+        if not re.fullmatch(r"[a-z0-9_-]+", category_key):
+            raise ValueError("Invalid asset category")
+        accepted = aliases.get(category_key, {category_key})
+        roots = (self.assets_dir, self.defaults_dir / "images")
+        assets = set()
+
+        for root in roots:
+            if not root.is_dir() or root.is_symlink():
+                continue
+            try:
+                root_resolved = root.resolve()
+                for candidate in root.rglob("*"):
+                    if candidate.is_symlink() or not candidate.is_file() or candidate.suffix.lower() not in ALLOWED_IMAGE_EXTS:
+                        continue
+                    try:
+                        relative = candidate.resolve().relative_to(root_resolved).as_posix()
+                    except (OSError, ValueError):
+                        continue
+                    first_part = relative.split("/", 1)[0].lower() if "/" in relative else ""
+                    if category_key != "all" and first_part and first_part not in accepted:
+                        continue
+                    assets.add(relative)
+            except OSError:
+                continue
+
+        return sorted(assets, key=str.casefold)
+
     def get_configured_yaml_files(self) -> List[Dict[str, Any]]:
         """List all YAML configuration files currently in Overlayfiles/kometa/configs/."""
         files = []
@@ -1558,6 +1593,15 @@ class OverlayResolver:
             if not isinstance(overlay_files, list):
                 overlay_files = []
                 libraries[clean_lib_name]["overlay_files"] = overlay_files
+            asset_override_updates = layout_updates.get("asset_overrides")
+            previous_asset_overrides = {}
+            if isinstance(asset_override_updates, dict):
+                try:
+                    from dynamic_overlays_service import apply_asset_overrides_to_rules, load_visual_config
+                    previous_asset_overrides = load_visual_config().get("libraries", {}).get(clean_lib_name, {}).get("asset_overrides", {})
+                    apply_asset_overrides_to_rules(overlay_files, asset_override_updates, previous_asset_overrides)
+                except Exception as asset_error:
+                    logger.warning("[OverlayResolver] Could not apply selected asset overrides: %s", asset_error)
             if "rating" in layout_updates:
                 single_update = layout_updates.get("rating")
                 if not single_update or single_update.get("enabled") is False:
@@ -1739,7 +1783,7 @@ class OverlayResolver:
             # 2. For active dragged items that did not match an existing rule, append them safely
             has_res_file = any("overlays_movies.yml" in str(r.get("file") or "").lower() or "overlays_tv.yml" in str(r.get("file") or "").lower() for r in overlay_files if isinstance(r, dict))
             for key, coords in layout_updates.items():
-                if key in matched_keys or not coords:
+                if key.lower() == "asset_overrides" or key in matched_keys or not coords:
                     continue
                 key_lower = key.lower()
                 # If resolution is already handled by custom overlay files, never append default: resolution
@@ -1818,6 +1862,13 @@ class OverlayResolver:
                 overlay_files.clear()
                 overlay_files.extend(cleaned_ratings)
 
+            if isinstance(asset_override_updates, dict):
+                try:
+                    from dynamic_overlays_service import apply_asset_overrides_to_rules
+                    apply_asset_overrides_to_rules(overlay_files, asset_override_updates, previous_asset_overrides)
+                except Exception as asset_error:
+                    logger.warning("[OverlayResolver] Could not apply selected asset overrides to generated rules: %s", asset_error)
+
             if safe_path.exists():
                 backup_path = safe_path.with_suffix(f"{safe_path.suffix}.bak")
                 shutil.copy2(safe_path, backup_path)
@@ -1855,6 +1906,10 @@ class OverlayResolver:
 
             try:
                 vis_libs = vis_data.setdefault("libraries", {})
+                if isinstance(asset_override_updates, dict):
+                    from dynamic_overlays_service import _normalize_asset_overrides
+                    vis_library = vis_libs.setdefault(clean_lib_name, {"media_type": eff_media_type or "movie", "badges": {}})
+                    vis_library["asset_overrides"] = _normalize_asset_overrides(asset_override_updates)
                 if clean_lib_name in vis_libs:
                     if eff_media_type in ("movie", "show"):
                         vis_libs[clean_lib_name]["media_type"] = eff_media_type
@@ -2104,12 +2159,19 @@ class OverlayConfigEngine:
             for sub in [
                 cr / "Overlayfiles" / "dynamic_overlays" / "assets",
                 cr / "Overlayfiles" / "kometa" / "assets",
+                cr / "Overlayfiles" / "dynamic_overlays" / "defaults" / "images",
+                cr / "Overlayfiles" / "kometa" / "defaults" / "images",
+                cr / "defaults" / "images",
                 cr / "Overlayfiles" / "dynamic_overlays" / "configs",
                 cr / "Overlayfiles" / "kometa" / "configs",
                 cr / "assets"
             ]:
                 if sub.exists() and sub not in self.candidate_asset_dirs:
                     self.candidate_asset_dirs.append(sub)
+        if self.defaults_dir.exists() and (self.defaults_dir / "images").exists():
+            defaults_images_dir = self.defaults_dir / "images"
+            if defaults_images_dir not in self.candidate_asset_dirs:
+                self.candidate_asset_dirs.append(defaults_images_dir)
 
         self.candidate_default_dirs: List[Path] = []
         for cr in self.candidate_roots:
