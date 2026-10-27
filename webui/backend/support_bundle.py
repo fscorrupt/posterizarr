@@ -93,12 +93,20 @@ def sanitize_database(path):
             for table in tables:
                 schema = connection.execute(f"PRAGMA table_info({quoted(table)})").fetchall()
                 columns = [row[1] for row in schema]
+                key_value_columns = {column.lower(): index for index, column in enumerate(columns)}
+                has_key_value = "key" in key_value_columns and "value" in key_value_columns
                 identifiers = [row[1] for row in sorted(schema, key=lambda row: row[5]) if row[5]] or ["rowid"]
                 selected = identifiers + columns
                 rows = connection.execute(f"SELECT {', '.join(map(quoted, selected))} FROM {quoted(table)}").fetchall()
                 for row in rows:
                     original = row[len(identifiers):]
                     sanitized = [_sanitize_cell(value, column) for column, value in zip(columns, original)]
+                    if has_key_value:
+                        key_index = key_value_columns["key"]
+                        value_index = key_value_columns["value"]
+                        field_name = original[key_index]
+                        sanitized[key_index] = sanitize_string(field_name) if isinstance(field_name, str) else field_name
+                        sanitized[value_index] = _sanitize_cell(original[value_index], field_name)
                     if list(original) != sanitized:
                         assignments = ", ".join(f"{quoted(column)} = ?" for column in columns)
                         condition = " AND ".join(f"{quoted(column)} IS ?" for column in identifiers)
