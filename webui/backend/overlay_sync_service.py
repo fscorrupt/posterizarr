@@ -1530,13 +1530,21 @@ def build_multi_rating_layers(
     theme = str(dyn_settings.get("theme") or dyn_settings.get("rating_theme") or "dark").lower()
     back_radius = int(dyn_settings.get("back_radius", 8))
     back_padding = int(dyn_settings.get("back_padding", 6))
-    spacing = int(dyn_settings.get("spacing", 15))
+    spacing = max(0, int(dyn_settings.get("spacing", 15)))
+    badge_step_h = dyn_settings.get("badge_step_h")
+    badge_step_v = dyn_settings.get("badge_step_v")
 
     is_land = canvas_type == "landscape"
     font_size = int(dyn_settings.get("font_size", 28 if is_land else 44))
     scale_h = int(dyn_settings.get("scale_height", 36 if is_land else 52))
-    badge_step_h = int(dyn_settings.get("badge_step_h", (120 + spacing) if is_land else (160 + spacing)))
-    badge_step_v = int(dyn_settings.get("badge_step_v", (scale_h + spacing)))
+    has_badge_background = theme in ("brand", "score") or contrast_box
+    effective_back_padding = back_padding if has_badge_background else 0
+    measure_font = None
+    if font_to_use:
+        try:
+            measure_font = ImageFont.truetype(font_to_use, font_size)
+        except (OSError, ValueError):
+            pass
 
     # Determine corners
     if "left" in position:
@@ -1587,6 +1595,8 @@ def build_multi_rating_layers(
         return []
 
     layers = []
+    horizontal_distance = 0
+    vertical_distance = 0
     for idx, (src, raw_val) in enumerate(ordered_items):
         # Format score and pick logo
         logo_file = None
@@ -1644,14 +1654,41 @@ def build_multi_rating_layers(
             cand = assets_dir / f"{src.capitalize()}.png"
             logo_file = cand if cand.exists() else None
 
+        logo_width = 0
+        logo_height = 0
+        if logo_file and logo_file.exists():
+            try:
+                with Image.open(logo_file) as logo:
+                    source_width, source_height = logo.size
+                logo_height = scale_h
+                logo_width = int(round(source_width * scale_h / source_height))
+            except (OSError, ValueError, ZeroDivisionError):
+                pass
+        if measure_font:
+            text_bbox = measure_font.getbbox(score_text)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+        else:
+            text_width = (len(score_text) * font_size * 3 + 3) // 4
+            text_height = font_size
+        content_width = text_width + logo_width + (8 if logo_width else 0)
+        content_height = max(text_height, logo_height)
+
         # Calculate position for this badge
         if alignment == "vertical":
             cur_h_offset = base_h_offset
-            cur_v_offset = base_v_offset + (idx * badge_step_v)
+            cur_v_offset = base_v_offset + (
+                idx * int(badge_step_v) if badge_step_v is not None else vertical_distance
+            )
+            if badge_step_v is None:
+                vertical_distance += content_height + (2 * effective_back_padding) + spacing + 1
         else:
-            # Horizontal row: step horizontally
-            cur_h_offset = base_h_offset + (idx * badge_step_h)
+            cur_h_offset = base_h_offset + (
+                idx * int(badge_step_h) if badge_step_h is not None else horizontal_distance
+            )
             cur_v_offset = base_v_offset
+            if badge_step_h is None:
+                horizontal_distance += content_width + (2 * effective_back_padding) + spacing + 1
 
         layer_def = {
             "name": f"multi_rating_{src}",
