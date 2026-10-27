@@ -95,8 +95,8 @@ OFFICIAL_KOMETA_ROOT_IMAGES = {
 }
 
 FLAG_CODE_ALIASES = {
-    "en": "us", "ja": "jp", "zh": "cn", "ko": "kr", "da": "dk", "sv": "se",
-    "uk": "ua", "ar": "sa", "hi": "in", "el": "gr", "cs": "cz", "he": "il"
+    "en": "us", "ja": "jp", "zh": "cn", "ko": "kr", "da": "dk",
+    "hi": "in", "el": "gr", "cs": "cz", "he": "il"
 }
 
 OFFICIAL_OVERLAY_DEFAULTS = [
@@ -143,12 +143,20 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
     asset_indices = [index for index, part in enumerate(parts) if part.lower() == "assets"]
     if asset_indices:
         clean = str(PurePosixPath(*parts[asset_indices[-1] + 1:]))
-    if clean.lower().startswith(("flag/", "flags/")):
+    if clean.lower().startswith("flags/"):
         flag_parts = list(PurePosixPath(clean).parts)
         flag_parts[0] = "flag"
         flag_name = PurePosixPath(flag_parts[-1])
         flag_parts[-1] = FLAG_CODE_ALIASES.get(flag_name.stem.lower(), flag_name.stem) + (flag_name.suffix or ".png")
         clean = str(PurePosixPath(*flag_parts))
+    elif len(PurePosixPath(clean).parts) == 1:
+        flag_name = PurePosixPath(clean)
+        country_code = FLAG_CODE_ALIASES.get(flag_name.stem.lower())
+        if country_code:
+            clean = country_code + (flag_name.suffix or ".png")
+    codec_path = PurePosixPath(clean)
+    if re.sub(r"[\s_-]+", "-", codec_path.stem.lower()) == "dolby-truehd-atmos":
+        clean = str(codec_path.with_name("truehd_atmos.png"))
     clean_lower = clean.lower()
 
     # 1. Direct path with official subfolder (e.g. flag/square/ad.png, resolution/4k.png, rating/imdb.png)
