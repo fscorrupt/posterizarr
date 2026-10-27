@@ -17012,7 +17012,7 @@ def _create_support_zip_blocking(staging_dir_path: Path, zip_file_path: Path) ->
         staging_dir_path, zip_file_path,
         base_dir=BASE_DIR, database_dir=DATABASE_DIR,
         logs_dir=LOGS_DIR, rotated_logs_dir=ROTATED_LOGS_DIR, ui_logs_dir=UI_LOGS_DIR,
-        project_root=PROJECT_ROOT,
+        project_root=APP_DIR,
     )
 
 def _cleanup_support_files(staging_dir: Path):

@@ -134,6 +134,20 @@ async def _post_artwork_with_retry(
             )
             await asyncio.sleep(delay)
 
+async def _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash):
+    headers = {"X-Plex-Token": token, "Accept": "application/xml"}
+    response = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
+    response.raise_for_status()
+    metadata = fromstring(response.content)
+    item = next((node for node in metadata if node.tag in ("Video", "Directory")), None)
+    thumb = item.get("thumb") if item is not None else None
+    if not thumb or not thumb.startswith(f"/library/metadata/{item_id}/thumb"):
+        return False, None
+    response = await http_client.get(f"{server_url}{thumb}", headers={"X-Plex-Token": token})
+    response.raise_for_status()
+    return hashlib.sha1(response.content).hexdigest() == expected_hash, thumb
+
+
 async def _confirm_plex_titlecard(http_client, server_url, item_id, token, content, artwork_type="titlecard"):
     headers = {"X-Plex-Token": token, "Accept": "application/xml"}
     posters_url = f"{server_url}/library/metadata/{item_id}/posters"
@@ -145,14 +159,18 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if uploaded is None:
         raise RuntimeError(f"Plex accepted the {artwork_type} upload but did not expose the uploaded image")
-    if uploaded.get("selected") != "1":
-        response = await http_client.put(posters_url, headers=headers, params={"url": uploaded.get("key") or uploaded.get("ratingKey")})
-        response.raise_for_status()
+    response = await http_client.put(posters_url, headers=headers, params={"url": uploaded.get("key") or uploaded.get("ratingKey")})
+    response.raise_for_status()
     response = await http_client.get(posters_url, headers=headers)
     response.raise_for_status()
     if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
                for node in fromstring(response.content)):
         raise RuntimeError(f"Plex did not select the uploaded {artwork_type}; cache was not marked synced")
+    if artwork_type == "poster":
+        matches, thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+        if not matches:
+            raise RuntimeError("Plex thumbnail does not match the uploaded poster; cache was not marked synced")
+        return json.dumps({"plex_thumb": thumb, "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
     response = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
     response.raise_for_status()
     episode = fromstring(response.content).find(".//Video")
@@ -163,9 +181,15 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
     return json.dumps({"plex_thumb": episode.get("thumb"), "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
 
 
-async def _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb):
+async def _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb, verify_thumbnail=False):
     if not isinstance(snapshot, dict) or not snapshot.get("plex_poster_key"):
         return False, "Previous titlecard upload has no verified artwork identity", None
+    if verify_thumbnail:
+        expected_hash = snapshot["plex_poster_key"].rsplit("/", 1)[-1]
+        matches, thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+        if not matches:
+            return False, "Selected Plex poster thumbnail differs from the verified upload", None
+        return True, "Plex poster thumbnail matches the verified upload", json.dumps({**snapshot, "plex_thumb": thumb}, sort_keys=True)
     if current_thumb and snapshot.get("plex_thumb") == current_thumb:
         return True, "Up-to-date", None
     response = await http_client.get(
@@ -180,11 +204,11 @@ async def _plex_titlecard_cache_status(http_client, server_url, item_id, token, 
     return False, "Selected Plex titlecard differs from the verified upload", None
 
 
-async def _plex_rendered_titlecard_status(http_client, server_url, item_id, token, snapshot, current_thumb, content):
+async def _plex_rendered_titlecard_status(http_client, server_url, item_id, token, snapshot, current_thumb, content, verify_thumbnail=False):
     expected_hash = hashlib.sha1(content).hexdigest()
     cached_key = snapshot.get("plex_poster_key") if isinstance(snapshot, dict) else None
     if cached_key and cached_key.endswith("/" + expected_hash):
-        return await _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb)
+        return await _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb, verify_thumbnail=verify_thumbnail)
     response = await http_client.get(
         f"{server_url}/library/metadata/{item_id}/posters",
         headers={"X-Plex-Token": token, "Accept": "application/xml"}
@@ -195,6 +219,10 @@ async def _plex_rendered_titlecard_status(http_client, server_url, item_id, toke
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if selected is None:
         return False, "Rendered titlecard differs from selected Plex artwork", None
+    if verify_thumbnail:
+        matches, current_thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+        if not matches:
+            return False, "Rendered poster differs from the actual Plex thumbnail", None
     refreshed = json.dumps({"plex_poster_key": selected.get("ratingKey"), "plex_thumb": current_thumb}, sort_keys=True)
     return True, "Rendered titlecard already selected; fingerprints refreshed without upload", refreshed
 
@@ -3633,11 +3661,12 @@ async def _run_overlay_sync_task(
                                 is_current, identity_reason, refreshed_identity = await _plex_titlecard_cache_status(
                                     http_client, s_url, item_id, creds.get("token"), poster_identity,
                                     None if is_target_mode else item.get("server_thumb"),
+                                    verify_thumbnail=True,
                                 )
                                 if not is_current:
                                     cache_reason = identity_reason.replace("titlecard", "poster")
                                 elif refreshed_identity:
-                                    refreshed_poster = {**json.loads(refreshed_identity), "plex_thumb": item.get("server_thumb")}
+                                    refreshed_poster = json.loads(refreshed_identity)
                                     cache.update_attr_snapshot(s_type, str(item_id), "poster", json.dumps(refreshed_poster), cache_map=cache_map)
                             except Exception as identity_error:
                                 await _inc_stats(failed=1)
@@ -3711,7 +3740,7 @@ async def _run_overlay_sync_task(
                                 if s_type == "plex" and scope == "incremental" and cached_entry and composited_jpeg is not None:
                                     comp_phase = "comparing rendered poster with selected Plex artwork"
                                     identical, identity_reason, verified_snapshot = await _plex_rendered_titlecard_status(
-                                        http_client, s_url, item_id, creds.get("token"), {}, None, composited_jpeg
+                                        http_client, s_url, item_id, creds.get("token"), {}, None, composited_jpeg, verify_thumbnail=True
                                     )
                                     if identical:
                                         poster_snapshot = {**json.loads(build_attr_snapshot(item)), **json.loads(verified_snapshot or "{}")}
