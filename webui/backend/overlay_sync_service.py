@@ -159,7 +159,7 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if uploaded is None:
         raise RuntimeError(f"Plex accepted the {artwork_type} upload but did not expose the uploaded image")
-    response = await http_client.put(posters_url, headers=headers, params={"url": uploaded.get("key") or uploaded.get("ratingKey")})
+    response = await http_client.put(posters_url, headers=headers, params={"url": uploaded.get("ratingKey")})
     response.raise_for_status()
     response = await http_client.get(posters_url, headers=headers)
     response.raise_for_status()
@@ -3550,7 +3550,6 @@ async def _run_overlay_sync_task(
                         # Ensure show status is persistently saved to SQLite cache for scheduled updates
                         if item.get("status") and s_type and item_id:
                             try:
-                                from ratings_service import ratings_cache
                                 ratings_cache.save_show_status(
                                     server_type=s_type,
                                     item_id=str(item_id),
