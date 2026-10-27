@@ -2662,16 +2662,26 @@ async def get_config(request: Request):
 
     # This block prevents unauthorized CLI access even if Middleware fails
     try:
-        # Check if Auth is enabled in the file directly
+        # Check if Auth is enabled in the file directly (flat or nested structure)
         auth_enabled = False
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 c = json.load(f)
-                webui = c.get("WebUI", {})
-                auth_enabled = str(webui.get("basicAuthEnabled", False)).lower() in ["true", "1", "yes"]
+                val_root = c.get("basicAuthEnabled")
+                val_nested = c.get("WebUI", {}).get("basicAuthEnabled") if isinstance(c.get("WebUI"), dict) else None
+                enabled_val = val_root if val_root is not None else val_nested
+                auth_enabled = str(enabled_val).lower() in ["true", "1", "yes"]
 
-        # 1. Check for API Key presence
-        api_key = request.query_params.get("api_key") or request.headers.get("X-API-Key")
+        # 1. Check for API Key presence (query param, X-API-Key, or Bearer token)
+        api_key = (
+            request.query_params.get("api_key") 
+            or request.headers.get("X-API-Key")
+            or request.headers.get("x-api-key")
+        )
+        if not api_key:
+            auth_hdr = request.headers.get("authorization") or request.headers.get("Authorization") or ""
+            if auth_hdr.lower().startswith("bearer "):
+                api_key = auth_hdr[7:].strip()
 
         # 2. Validate API Key if present
         is_key_valid = False
@@ -2690,11 +2700,21 @@ async def get_config(request: Request):
             referer = request.headers.get("referer", "")
             origin = request.headers.get("origin", "")
             host = request.headers.get("host", "")
+            fwd_host = request.headers.get("x-forwarded-host", "")
 
-            is_valid_ui = False
-            if host:
-                if referer and host in referer: is_valid_ui = True
-                if origin and host in origin: is_valid_ui = True
+            sec_site = request.headers.get("sec-fetch-site", "").lower()
+            is_valid_ui = sec_site in ("same-origin", "same-site")
+
+            if not is_valid_ui and (host or fwd_host):
+                hosts = [h.strip() for h in (host, fwd_host) if h and h.strip()]
+                for h in hosts:
+                    h_clean = h.split(":")[0].lower()
+                    if referer and (h.lower() in referer.lower() or h_clean in referer.lower()):
+                        is_valid_ui = True
+                        break
+                    if origin and (h.lower() in origin.lower() or h_clean in origin.lower()):
+                        is_valid_ui = True
+                        break
 
             if not is_valid_ui:
                 # If they provided a key but it was wrong, give a specific error

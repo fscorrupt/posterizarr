@@ -25,8 +25,9 @@ function LoginScreen({ onLoginSuccess }) {
       });
 
       if (response.ok) {
-        // Store credentials in sessionStorage for subsequent requests
+        // Store credentials in sessionStorage and localStorage for subsequent requests
         sessionStorage.setItem("auth_credentials", credentials);
+        localStorage.setItem("auth_credentials", credentials);
         onLoginSuccess(credentials);
       } else if (response.status === 401) {
         setError(t("auth.invalidCredentials"));

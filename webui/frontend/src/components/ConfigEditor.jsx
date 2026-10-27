@@ -403,6 +403,7 @@ function ConfigEditor() {
         setHasUnsavedChanges(false);
         if (authChanging) {
           sessionStorage.removeItem("auth_credentials");
+          localStorage.removeItem("auth_credentials");
           window.location.replace(window.location.href);
           return;
         }

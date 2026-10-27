@@ -5,25 +5,32 @@
  */
 
 export function setupFetchInterceptor() {
-  const originalFetch = window.fetch;
+  if (window.__fetchInterceptorInstalled) return;
 
-  window.fetch = function (url, options = {}) {
-    const credentials = sessionStorage.getItem("auth_credentials");
+  const originalFetch = window.fetch;
+  window.originalFetch = originalFetch;
+  window.__fetchInterceptorInstalled = true;
+
+  window.fetch = function (input, init = {}) {
+    const credentials = sessionStorage.getItem("auth_credentials") || localStorage.getItem("auth_credentials");
 
     // If credentials exist, add Authorization header
     if (credentials) {
-      const headers = new Headers(options.headers || {});
-
-      // Only add if not already present
-      if (!headers.has("Authorization")) {
-        headers.set("Authorization", `Basic ${credentials}`);
+      if (input instanceof Request) {
+        if (!input.headers.has("Authorization")) {
+          input.headers.set("Authorization", `Basic ${credentials}`);
+        }
+      } else {
+        const headers = new Headers(init?.headers || {});
+        if (!headers.has("Authorization")) {
+          headers.set("Authorization", `Basic ${credentials}`);
+        }
+        init = { ...init, headers };
       }
-
-      options.headers = headers;
     }
 
     // Call original fetch with modified options
-    return originalFetch(url, options);
+    return originalFetch(input, init);
   };
 
   console.log(
@@ -35,6 +42,8 @@ export function removeFetchInterceptor() {
   // Restore original fetch if needed
   if (window.originalFetch) {
     window.fetch = window.originalFetch;
+    delete window.__fetchInterceptorInstalled;
+    delete window.originalFetch;
     console.log("Fetch interceptor removed");
   }
 }

@@ -193,6 +193,47 @@ const ASSET_OVERRIDE_CATEGORIES = {
   versions: "root",
 };
 
+const PositionPicker = ({ value, onChange, label = "Position" }) => {
+  const positions = [
+    ["top-left", "top-center", "top-right"],
+    ["center-left", "center", "center-right"],
+    ["bottom-left", "bottom-center", "bottom-right"]
+  ];
+  const shortLabels = {
+    "top-left": "TL", "top-center": "TC", "top-right": "TR",
+    "center-left": "CL", "center": "C", "center-right": "CR",
+    "bottom-left": "BL", "bottom-center": "BC", "bottom-right": "BR"
+  };
+  return (
+    <div className="space-y-1 shrink-0">
+      <div className="flex items-center justify-between gap-1">
+        <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">{label}</label>
+        <span className="text-[9px] font-mono text-theme-primary capitalize font-medium">{value?.replace("-", " ") || "top-left"}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-0.5 w-20 p-1 bg-theme-hover/60 border border-theme rounded-lg">
+        {positions.flat().map((pos) => {
+          const isSel = value === pos;
+          return (
+            <button
+              key={pos}
+              type="button"
+              onClick={() => onChange(pos)}
+              className={`h-5 rounded text-[9px] font-bold transition-all ${
+                isSel
+                  ? "bg-theme-primary text-white shadow-sm ring-1 ring-white/30"
+                  : "bg-theme-card/60 hover:bg-theme-card text-theme-muted hover:text-theme-text border border-theme/40"
+              }`}
+              title={pos}
+            >
+              {shortLabels[pos]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const align = offset.align || "right";
