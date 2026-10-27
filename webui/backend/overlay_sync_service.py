@@ -39,6 +39,7 @@ from PIL import Image, ImageFont
 import httpx
 
 from overlay_cache import OverlayCache, compute_metadata_hash, snapshot_overlay_layers
+from overlay_cache import compute_layers_recipe_hash as _compute_layers_recipe_hash
 from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
 from ratings_service import resolve_media_ratings, build_multi_rating_layers, ratings_cache
 from dynamic_overlays_service import get_dynamic_overlays_settings
@@ -297,16 +298,8 @@ def titlecard_attr_snapshot(episode, snapshot):
     return json.dumps(values, sort_keys=True)
 
 def compute_layers_recipe_hash(layers: List[Dict[str, Any]]) -> str:
-    """Compute recipe hash while omitting raw in-memory PIL image elements."""
-    serializable = []
-    for l in layers:
-        item = {}
-        for k, v in l.items():
-            if k == "image_element":
-                continue
-            item[k] = v
-        serializable.append(item)
-    return hashlib.md5(json.dumps(serializable, sort_keys=True).encode()).hexdigest()
+    """Compute the content-based font recipe shared with legacy cache migration."""
+    return _compute_layers_recipe_hash(layers)
 
 
 def _rating_scores(ratings: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -3895,7 +3888,8 @@ async def _run_overlay_sync_task(
                             ),
                             server_updated_at=item.get("server_updated_at"),
                             cached_entry=b_cached_entry,
-                            item_meta=b_item_meta
+                            item_meta=b_item_meta,
+                            resolved_layers=b_layers
                         )
 
                         if scope != "incremental" or not b_is_current or force_target_sync:
@@ -4156,7 +4150,8 @@ async def _run_overlay_sync_task(
                                         metadata_hash=s_meta_hash,
                                         server_updated_at=item.get("server_updated_at"),
                                         cached_entry=s_cached_entry,
-                                        item_meta=s_item_meta
+                                        item_meta=s_item_meta,
+                                        resolved_layers=s_layers
                                     )
 
                                     if scope != "incremental" or not s_current:

@@ -19,11 +19,56 @@ import sqlite3
 import threading
 import logging
 from contextlib import closing
+from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union, Tuple
 
 logger = logging.getLogger("overlay_cache")
+_font_digest_lock = threading.RLock()
+
+
+def _font_stat_signature(path):
+    stat = Path(path).stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+@lru_cache(maxsize=256)
+def _font_content_digest(path, signature):
+    digest = hashlib.sha256()
+    with open(path, "rb") as font_file:
+        for chunk in iter(lambda: font_file.read(65536), b""):
+            digest.update(chunk)
+    if _font_stat_signature(path) != signature:
+        raise OSError("Font changed while computing its content hash")
+    return digest.hexdigest()
+
+
+def _recipe_layers(layers):
+    return [{key: value for key, value in layer.items() if key != "image_element"} for layer in layers]
+
+
+def _font_recipe_payload(layers):
+    payload = _recipe_layers(layers)
+    complete = True
+    for layer in payload:
+        path = layer.get("font_path")
+        if not path:
+            continue
+        try:
+            signature = _font_stat_signature(path)
+            with _font_digest_lock:
+                digest = _font_content_digest(str(path), signature)
+            layer["font_path"] = {"sha256": digest}
+        except OSError:
+            complete = False
+            layer["font_path"] = {"unavailable": str(path)}
+    return payload, complete
+
+
+def compute_layers_recipe_hash(layers):
+    payload, _ = _font_recipe_payload(layers)
+    return hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 def snapshot_overlay_layers(attr_snapshot, layers):
@@ -495,10 +540,23 @@ class OverlayCache:
         empty_hashes = ("none", "", "d751713988987e9331980363e24189ce")
         is_cached_empty = cached_recipe_hash in empty_hashes
         is_current_empty = overlay_recipe_hash in empty_hashes
+        migrate_font_recipe = False
+        if cached_recipe_hash != overlay_recipe_hash and resolved_layers is not None:
+            legacy_hash = hashlib.md5(json.dumps(_recipe_layers(resolved_layers), sort_keys=True).encode()).hexdigest()
+            previous_layers = resolved_layers if cached_recipe_hash == legacy_hash else self.get_recipe_layers(entry)
+            if previous_layers is not None:
+                previous_hash = hashlib.md5(json.dumps(_recipe_layers(previous_layers), sort_keys=True).encode()).hexdigest()
+            else:
+                previous_hash = None
+            if cached_recipe_hash == previous_hash:
+                payload, complete = _font_recipe_payload(resolved_layers)
+                previous_payload, previous_complete = _font_recipe_payload(previous_layers)
+                content_hash = hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+                migrate_font_recipe = complete and previous_complete and payload == previous_payload and content_hash == overlay_recipe_hash
 
         if is_cached_empty and is_current_empty:
             pass  # Both indicate that no overlay rules apply
-        elif cached_recipe_hash != overlay_recipe_hash:
+        elif cached_recipe_hash != overlay_recipe_hash and not migrate_font_recipe:
             details = f"; {describe_overlay_layer_changes(entry.get('attr_snapshot'), resolved_layers, self._layer_snapshots)}" if resolved_layers is not None else ""
             diff_reasons.append(f"Resolved overlay layers changed ({cached_recipe_hash[:8]} -> {overlay_recipe_hash[:8]}{details})")
 
@@ -579,7 +637,23 @@ class OverlayCache:
         if diff_reasons:
             return False, ", ".join(diff_reasons)
 
+        if migrate_font_recipe:
+            self._migrate_font_recipe(server_type, item_id, asset_type, entry, overlay_recipe_hash, resolved_layers)
         return True, "Up-to-date"
+
+    def _migrate_font_recipe(self, server_type, item_id, asset_type, entry, recipe_hash, layers):
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                with connection:
+                    snapshot = self._compact_attr_snapshot(snapshot_overlay_layers(entry.get("attr_snapshot"), layers), connection=connection)
+                    cursor = connection.execute(
+                        "UPDATE dynamic_overlay_cache SET overlay_recipe_hash = ?, attr_snapshot = ? "
+                        "WHERE server_type = ? AND item_id = ? AND asset_type = ? AND overlay_recipe_hash = ?",
+                        (recipe_hash, snapshot, server_type.lower(), str(item_id), asset_type.lower(), entry["overlay_recipe_hash"]),
+                    )
+                    if cursor.rowcount != 1:
+                        raise RuntimeError("Overlay cache changed during font recipe migration; retry the item")
+            entry.update({"overlay_recipe_hash": recipe_hash, "attr_snapshot": snapshot})
 
     def is_cached_and_current(
         self,
