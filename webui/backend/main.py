@@ -5987,6 +5987,10 @@ def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental", 
             except Exception:
                 pass
 
+        if not target_items:
+            logger.info("[OverlaySync] No pending asset targets after %s. Automatic library-wide sync skipped.", source)
+            return
+
         try:
             from overlay_sync_service import submit_overlay_sync_task
         except ImportError:

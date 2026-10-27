@@ -159,7 +159,7 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if uploaded is None:
         raise RuntimeError(f"Plex accepted the {artwork_type} upload but did not expose the uploaded image")
-    response = await http_client.put(posters_url, headers=headers, params={"url": uploaded.get("ratingKey")})
+    response = await http_client.put(f"{server_url}/library/metadata/{item_id}/poster", headers=headers, params={"url": uploaded.get("ratingKey")})
     response.raise_for_status()
     response = await http_client.get(posters_url, headers=headers)
     response.raise_for_status()
