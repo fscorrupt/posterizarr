@@ -103,13 +103,13 @@ const LogoBrowser = () => {
 
   const [servers, setServers] = useState([]);
   const [activeServer, setActiveServer] = useState(null);
-  
+
   const [libraries, setLibraries] = useState([]);
   const [activeLibrary, setActiveLibrary] = useState(null);
-  
+
   const [items, setItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(false);
-  
+
   // Filtering & Pagination State
   const [searchTerm, setSearchTerm] = useState("");
   const [showMissingOnly, setShowMissingOnly] = useState(false);
@@ -163,19 +163,19 @@ const LogoBrowser = () => {
     try {
       const res = await fetch(`${API_URL}/config`);
       const data = await res.json();
-      
+
       const availableServers = [];
       const config = data.config || {};
       setAppConfig({ ...config, using_flat_structure: data.using_flat_structure });
-      
+
       const usePlex = data.using_flat_structure ? config.UsePlex : config.PlexPart?.UsePlex;
       const useJellyfin = data.using_flat_structure ? config.UseJellyfin : config.JellyfinPart?.UseJellyfin;
       const useEmby = data.using_flat_structure ? config.UseEmby : config.EmbyPart?.UseEmby;
-      
+
       const plexUrl = data.using_flat_structure ? config.PlexUrl : config.PlexPart?.PlexUrl;
       const jellyfinUrl = data.using_flat_structure ? config.JellyfinUrl : config.JellyfinPart?.JellyfinUrl;
       const embyUrl = data.using_flat_structure ? config.EmbyUrl : config.EmbyPart?.EmbyUrl;
-      
+
       const plexToken = data.using_flat_structure ? config.PlexToken : config.ApiPart?.PlexToken;
       const jellyfinToken = data.using_flat_structure ? config.JellyfinAPIKey : config.ApiPart?.JellyfinAPIKey;
       const embyToken = data.using_flat_structure ? config.EmbyAPIKey : config.ApiPart?.EmbyAPIKey;
@@ -183,7 +183,7 @@ const LogoBrowser = () => {
       if (String(usePlex) === "true") availableServers.push({ id: "plex", name: "Plex", url: plexUrl, token: plexToken });
       if (String(useJellyfin) === "true") availableServers.push({ id: "jellyfin", name: "Jellyfin", url: jellyfinUrl, token: jellyfinToken });
       if (String(useEmby) === "true") availableServers.push({ id: "emby", name: "Emby", url: embyUrl, token: embyToken });
-      
+
       setServers(availableServers);
       if (availableServers.length > 0) {
         setActiveServer(availableServers[0]);
@@ -205,21 +205,21 @@ const LogoBrowser = () => {
       setLibraries([]);
       setActiveLibrary(null);
       setItems([]);
-      
+
       let exclusions = [];
       if (appConfig) {
         if (server.id === "plex") exclusions = appConfig.using_flat_structure ? (appConfig.PlexLibstoExclude || []) : (appConfig.PlexPart?.LibstoExclude || []);
         if (server.id === "jellyfin") exclusions = appConfig.using_flat_structure ? (appConfig.JellyfinLibstoExclude || []) : (appConfig.JellyfinPart?.LibstoExclude || []);
         if (server.id === "emby") exclusions = appConfig.using_flat_structure ? (appConfig.EmbyLibstoExclude || []) : (appConfig.EmbyPart?.LibstoExclude || []);
       }
-      
+
       const res = await fetch(`${API_URL}/libraries/${server.id}/cached`);
       const data = await res.json();
       if (data.success && data.libraries) {
         // Prefer config exclusions if available, otherwise fallback to database
         const finalExclusions = exclusions.length > 0 ? exclusions : (data.excluded || []);
         const filteredLibs = data.libraries.filter(lib => !finalExclusions.includes(lib.name));
-        
+
         if (filteredLibs.length > 0) {
           setLibraries(filteredLibs);
           setActiveLibrary(filteredLibs[0]);
@@ -251,7 +251,7 @@ const LogoBrowser = () => {
         setSearchTerm("");
         setCurrentPage(1);
     }
-    
+
     // Attempting to resolve the live library ID if it's not present (needed by backend)
     let libId = activeLibrary.key || activeLibrary.id;
     if (!libId) {
@@ -260,7 +260,7 @@ const LogoBrowser = () => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(
-                activeServer.id === "plex" 
+                activeServer.id === "plex"
                 ? { url: activeServer.url, token: activeServer.token }
                 : { url: activeServer.url, api_key: activeServer.token }
             )
@@ -272,7 +272,7 @@ const LogoBrowser = () => {
         }
       } catch(e) { }
     }
-    
+
     try {
       const res = await fetch(`${API_URL}/media-server/items`, {
         method: "POST",
@@ -302,7 +302,7 @@ const LogoBrowser = () => {
   const handleUploadLogo = async (logoUrl) => {
     setShowLogoSearch(false);
     showInfo(`Uploading logo for ${selectedItemForLogo.title}...`, 3000);
-    
+
     try {
       const res = await fetch(`${API_URL}/media-server/upload-logo`, {
         method: "POST",
@@ -345,13 +345,13 @@ const LogoBrowser = () => {
     }
     return item.title.toLowerCase().includes(searchTerm.toLowerCase());
   });
-  
+
   const sortedItems = [...filteredItems].sort((a, b) => {
     const titleA = a.title.toLowerCase();
     const titleB = b.title.toLowerCase();
     if (sortOrder === "name_asc") return titleA.localeCompare(titleB);
     if (sortOrder === "name_desc") return titleB.localeCompare(titleA);
-    
+
     // Sort by Year as a pseudo-date fallback
     const yearA = parseInt(a.year) || 0;
     const yearB = parseInt(b.year) || 0;
@@ -367,10 +367,10 @@ const LogoBrowser = () => {
   return (
     <div className="workspace-page workspace-media-grid">
       <WorkspaceHeader icon={ImageIcon} title="Media Server Logos" />
-      
+
       {/* LEFT SIDEBAR (Mimicking Gallery Folders list) */}
       <div className={`w-full bg-theme-bg border-b md:border-b-0 md:border-r border-theme flex-col flex-shrink-0 md:h-full max-h-[45vh] md:max-h-none overflow-y-auto z-20 ${isSidebarOpen ? 'flex' : 'hidden md:flex'}`}>
-        
+
         {/* Server Selector Top Block */}
         <div className="p-4 border-b border-theme bg-theme-card">
           <h2 className="text-lg font-bold flex items-center gap-2 text-theme-text mb-3">
@@ -430,10 +430,10 @@ const LogoBrowser = () => {
       <div className="min-w-0 flex flex-col overflow-hidden bg-theme-bg">
         {/* Top Controls Header */}
         <div className="p-4 border-b border-theme bg-theme-card shadow-sm z-10 flex flex-col gap-3">
-          
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="md:hidden p-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg text-theme-text transition-colors shadow-sm"
                 title="Toggle Sidebar"
@@ -450,7 +450,7 @@ const LogoBrowser = () => {
                 )}
               </h2>
             </div>
-            
+
             {/* Actions / Sorting / Sizing */}
             {activeLibrary && (
               <div className="flex flex-wrap items-center gap-2">
@@ -577,8 +577,8 @@ const LogoBrowser = () => {
                         }
                     }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border flex items-center justify-center gap-2 whitespace-nowrap transition-colors ${
-                        showMissingOnly 
-                        ? 'bg-theme-primary border-theme-primary text-white' 
+                        showMissingOnly
+                        ? 'bg-theme-primary border-theme-primary text-white'
                         : 'bg-theme-bg border-theme text-theme-text hover:bg-theme-hover'
                     }`}
                 >
@@ -623,11 +623,11 @@ const LogoBrowser = () => {
                   >
                     <div className="aspect-[16/9] bg-theme-bg/50 relative flex items-center justify-center p-2">
                         {item.hasLogo && item.logoUrl && (
-                            <img 
-                                src={updatedLogos[item.ratingKey] ? `${item.logoUrl}&t=${updatedLogos[item.ratingKey]}` : item.logoUrl} 
-                                alt={item.title} 
-                                className="w-full h-full object-contain filter drop-shadow-md" 
-                                loading="lazy" 
+                            <img
+                                src={updatedLogos[item.ratingKey] ? `${item.logoUrl}&t=${updatedLogos[item.ratingKey]}` : item.logoUrl}
+                                alt={item.title}
+                                className="w-full h-full object-contain filter drop-shadow-md"
+                                loading="lazy"
                                 onError={(e) => {
                                     e.target.style.display = 'none';
                                     if (e.target.nextSibling) {
@@ -636,12 +636,12 @@ const LogoBrowser = () => {
                                 }}
                             />
                         )}
-                        
+
                         <div className="text-center text-theme-muted opacity-30" style={{ display: (!item.hasLogo || !item.logoUrl) ? 'block' : 'none' }}>
                             <ImageIcon className="w-8 h-8 mx-auto mb-1" />
                             <span className="text-[10px] uppercase font-bold tracking-wider">No Logo</span>
                         </div>
-                        
+
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
                             <button
@@ -656,7 +656,7 @@ const LogoBrowser = () => {
                             </button>
                         </div>
                     </div>
-                    
+
                     <div className="p-2.5 bg-theme-card border-t border-theme">
                       <p className="font-semibold text-xs truncate text-theme-text" title={item.title}>
                         {item.title}

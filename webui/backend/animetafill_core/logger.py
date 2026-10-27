@@ -45,18 +45,18 @@ class Logger:
         try:
             if log_dir and not os.path.exists(log_dir):
                 os.makedirs(log_dir, exist_ok=True)
-            
+
             handler = logging.handlers.RotatingFileHandler(
-                self.log_file, 
+                self.log_file,
                 maxBytes=10*1024*1024, # 10MB safety limit
                 backupCount=5,
                 encoding='utf-8'
             )
-            
+
             for h in self._file_logger.handlers[:]:
                 self._file_logger.removeHandler(h)
                 h.close()
-                
+
             formatter = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
             handler.setFormatter(formatter)
             self._file_logger.addHandler(handler)

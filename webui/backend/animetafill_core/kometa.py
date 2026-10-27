@@ -4,8 +4,7 @@ import sys
 import re
 import shutil
 import glob
-from typing import Dict, List
-from animetafill_core.logger import logger
+from typing import Dict, Listfrom animetafill_core.logger import logger
 
 class KometaYamlGenerator:
     """
@@ -152,7 +151,7 @@ class KometaYamlGenerator:
             for abs_num, ep_title in episodes_data:
                 # Priority 1: Absolute Number Match
                 s_e = sonarr_map.get(abs_num)
-                
+
                 # Priority 2: Title Fallback Match (Crucial for Specials and Season Shifts)
                 if not s_e and ep_title:
                     norm_title = self._normalize_title(ep_title)

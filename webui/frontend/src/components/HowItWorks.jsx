@@ -522,7 +522,7 @@ function HowItWorks() {
         {/* Dynamic CTA Content */}
         <div className="pt-2 text-center space-y-4">
           <p className="text-sm text-theme-muted">
-            {integrationMethod === "webhook" 
+            {integrationMethod === "webhook"
               ? t("howItWorks.integration.webhookDesc")
               : t("howItWorks.integration.scriptDesc")}
           </p>

@@ -70,7 +70,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         setAddToQueue(enabled);
       }
     }).catch(() => {
-      if (active) showError("Could not load Auto-Queue setting; automatic queueing is off.");
+      if (active) showError(t("assetReplacer.autoQueueLoadError"));
     }).finally(() => { if (active) setQueueSettingsLoaded(true); });
     return () => { active = false; };
   }, []);
@@ -1219,7 +1219,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         if (height === 0) {
           setIsDimensionValid(false);
           showError(
-            t("assetReplacer.imageHeightZero", "Image height cannot be zero.")
+            t("assetReplacer.imageHeightZero")
           );
           return;
         }
@@ -1376,7 +1376,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
       if (data.success) {
         if (data.queued) {
-          showSuccess("Asset added to queue.");
+          showSuccess(t("assetReplacer.addedToQueue"));
           onClose();
           return;
         }
@@ -1584,7 +1584,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
       if (data.success) {
         if (data.queued) {
-          showSuccess("Asset added to queue.");
+          showSuccess(t("assetReplacer.addedToQueue"));
           onClose();
           return;
         }
@@ -1695,7 +1695,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
               <span className="hidden sm:inline">
                 {t("assetReplacer.uploadCustom")}
               </span>
-              <span className="sm:hidden">Upload</span>
+              <span className="sm:hidden">{t("assetReplacer.uploadTab")}</span>
             </button>
             <button
               onClick={() => setActiveTab("previews")}
@@ -1708,7 +1708,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
               <span className="hidden sm:inline">
                 {t("assetReplacer.servicePreviews")}
               </span>
-              <span className="sm:hidden">Previews</span>
+              <span className="sm:hidden">{t("assetReplacer.previewsTab")}</span>
               {totalPreviews > 0 && (
                 <span className="ml-1.5 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-theme-primary/20 text-theme-primary rounded-full text-xs">
                   {totalPreviews}
@@ -1732,12 +1732,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                     <div className="flex items-start sm:items-center justify-between gap-3 mb-2">
                       <div className="flex-1 min-w-0">
                         <h4 className="text-xs sm:text-sm font-medium text-theme-text break-words">
-                          Process with overlays after replace
+                          {t("assetReplacer.processWithOverlays")}
                         </h4>
                         <p className="text-xs text-theme-muted mt-0.5 leading-relaxed">
                           {processWithOverlays
-                            ? "Applies borders, overlays & text to the replaced asset based on overlay settings. Asset will be saved to assets/ folder."
-                            : "Direct replacement without overlay processing. Asset will be saved to manualassets/ folder for manual use."}
+                            ? t("assetReplacer.processWithOverlaysOn")
+                            : t("assetReplacer.processWithOverlaysOff")}
                         </p>
                       </div>
                       <button
@@ -1760,22 +1760,22 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                     <div className="flex items-start sm:items-center justify-between gap-3 mb-2 pt-3 border-t border-theme/30">
                       <div className="flex-1 min-w-0">
                         <h4 className="text-xs sm:text-sm font-medium text-theme-text break-words">
-                          Add to Queue
+                          {t("assetReplacer.addToQueue")}
                         </h4>
                         <p className="text-xs text-theme-muted mt-0.5 leading-relaxed">
                           {addToQueue
-                            ? "Asset replacement will be queued and executed later."
-                            : "Asset will be replaced immediately."}
+                            ? t("assetReplacer.queueDescriptionOn")
+                            : t("assetReplacer.queueDescriptionOff")}
                         </p>
                       </div>
                       <button
                         type="button"
                         role="switch"
-                        aria-label="Add to Queue"
+                        aria-label={t("assetReplacer.addToQueue")}
                         aria-checked={addToQueue}
                         onClick={() => setAddToQueue(!addToQueue)}
                         disabled={autoQueueChanges || !queueSettingsLoaded || savingQueueSettings}
-                        title={autoQueueChanges ? "Controlled by Auto-Queue Changes" : "Queue this asset instead of replacing immediately"}
+                        title={autoQueueChanges ? t("assetReplacer.autoQueueControlled") : t("assetReplacer.queueThisAsset")}
                         className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-theme-primary focus:ring-offset-2 focus:ring-offset-theme-bg ${addToQueue ? "bg-theme-primary" : "bg-gray-600"
                           }`}
                       >
@@ -1790,9 +1790,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         <input type="checkbox" checked={autoQueueChanges}
                           disabled={!queueSettingsLoaded || savingQueueSettings || uploading}
                           onChange={(event) => handleToggleAutoQueue(event.target.checked)}
-                          title="Automatically queue validated uploads and selected artwork across replacement dialogs"
+                          title={t("assetReplacer.autoQueueDescription")}
                           className="w-4 h-4 shrink-0 rounded border-theme text-theme-primary" />
-                        <span>Auto-Queue Changes</span>
+                        <span>{t("assetReplacer.autoQueueChanges")}</span>
                       </label>
                     )}
 
@@ -1805,8 +1805,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           <div>
                             <label className="block text-xs font-medium text-theme-text mb-1">
                               {metadata.asset_type === "season"
-                                ? t("assetReplacer.seasonTitleLabel", "Season Text (optional, leave blank for textless)")
-                                : t("assetReplacer.titleText", "Title Text")}
+                                ? t("assetReplacer.seasonTitleLabel")
+                                : t("assetReplacer.titleText")}
                             </label>
                             <div className="flex gap-2">
                               <input
@@ -1820,8 +1820,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                 }
                                 placeholder={
                                   metadata.asset_type === "season"
-                                    ? t("assetReplacer.seasonTitlePlaceholder", "e.g., Season 1 (leave blank for textless)")
-                                    : "Enter text or Browse for Logo..."
+                                    ? t("assetReplacer.seasonTitlePlaceholder")
+                                    : t("assetReplacer.titleOrBrowsePlaceholder")
                                 }
                                 className="flex-1 px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
@@ -1829,7 +1829,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                 type="button"
                                 onClick={handleFetchLogos}
                                 disabled={loading}
-                                title="Browse for Logos/ClearArt"
+                                title={t("assetReplacer.browseLogosTooltip")}
                                 className="px-3 py-1.5 bg-theme-card hover:bg-theme-hover border border-theme rounded text-theme-text transition-colors flex items-center gap-2 whitespace-nowrap"
                               >
                                 {loading && logoSelectionMode ? (
@@ -1841,8 +1841,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                               </button>
                             </div>
                             {manualForm?.titletext?.startsWith("http") && (
-                              <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
-                                <Check className="w-3 h-3" /> Logo URL detected.
+                                <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
+                                <Check className="w-3 h-3" /> {t("assetReplacer.logoUrlDetected")}
                               </p>
                             )}
                           </div>
@@ -1852,7 +1852,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {metadata.asset_type !== "collection" && (
                           <div>
                             <label className="block text-xs font-medium text-theme-text mb-1">
-                              Folder Name *
+                              {t("assetReplacer.folderNameRequired")}
                             </label>
                             <input
                               type="text"
@@ -1863,7 +1863,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                   foldername: e.target.value,
                                 })
                               }
-                              placeholder="e.g., Movie Name (2019) {tmdb-123}"
+                              placeholder={t("assetReplacer.folderNamePlaceholder")}
                               className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                             />
                           </div>
@@ -1872,7 +1872,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {/* Blueprint Selection */}
                         <div className="pt-3 border-t border-theme/30 mt-3">
                           <label className="block text-xs font-medium text-theme-text mb-1">
-                            Blueprint Selection
+                            {t("assetReplacer.blueprintSelection")}
                           </label>
                           <select
                             value={blueprintId}
@@ -1880,7 +1880,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary transition-colors"
                             disabled={uploading}
                           >
-                            <option value="none">{t("assetReplacer.defaultGlobalConfig", "Default (Global Config)")}</option>
+                            <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
                             {[...BLUEPRINTS, ...customBlueprints].map((bp) => (
                               <option key={bp.id} value={bp.id}>
                                 {bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}
@@ -1888,14 +1888,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             ))}
                           </select>
                           <p className="text-[10px] sm:text-xs text-theme-muted mt-1">
-                            Optionally override global settings with a specific blueprint.
+                            {t("assetReplacer.blueprintOverrideHint")}
                           </p>
                         </div>
 
                         {/* Library Name */}
                         <div>
                           <label className="block text-xs font-medium text-theme-text mb-1">
-                            Library Name *
+                            {t("assetReplacer.libraryNameRequired")}
                           </label>
                           <input
                             type="text"
@@ -1906,7 +1906,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                 libraryname: e.target.value,
                               })
                             }
-                            placeholder="e.g., 4K"
+                            placeholder={t("assetReplacer.libraryNamePlaceholder")}
                             className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                           />
                         </div>
@@ -1915,7 +1915,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {metadata.asset_type === "season" && (
                           <div>
                             <label className="block text-xs font-medium text-theme-text mb-1">
-                              Season Poster Name *
+                                {t("assetReplacer.seasonPosterNameRequired")}
                             </label>
                             <input
                               type="text"
@@ -1926,7 +1926,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                   seasonPosterName: e.target.value,
                                 })
                               }
-                              placeholder="Season 01 or Season 00 (Specials)"
+                              placeholder={t("assetReplacer.seasonPosterNamePlaceholder")}
                               className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                             />
                           </div>
@@ -1937,7 +1937,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           <>
                             <div>
                               <label className="block text-xs font-medium text-theme-text mb-1">
-                                Episode Title *
+                                {t("assetReplacer.episodeTitleRequired")}
                               </label>
                               <input
                                 type="text"
@@ -1948,14 +1948,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     episodeTitleName: e.target.value,
                                   })
                                 }
-                                placeholder="e.g., Pilot"
+                                placeholder={t("assetReplacer.episodeTitlePlaceholder")}
                                 className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                             </div>
 
                             <div>
                               <label className="block text-xs font-medium text-theme-text mb-1">
-                                Season Number *
+                                {t("assetReplacer.seasonNumberRequired")}
                               </label>
                               <input
                                 type="text"
@@ -1966,14 +1966,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     seasonPosterName: e.target.value,
                                   })
                                 }
-                                placeholder="e.g., 01"
+                                placeholder={t("assetReplacer.seasonNumberPlaceholder")}
                                 className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                             </div>
 
                             <div>
                               <label className="block text-xs font-medium text-theme-text mb-1">
-                                Episode Number *
+                                {t("assetReplacer.episodeNumberRequired")}
                               </label>
                               <input
                                 type="text"
@@ -1984,7 +1984,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     episodeNumber: e.target.value,
                                   })
                                 }
-                                placeholder="e.g., 01"
+                                placeholder={t("assetReplacer.episodeNumberPlaceholder")}
                                 className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                             </div>
@@ -2003,7 +2003,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                       {t("assetReplacer.manualSearchByTitle")}
                     </h4>
                     <p className="text-xs text-theme-muted mt-0.5 leading-relaxed">
-                      Search for assets instead of using detected metadata
+                      {t("assetReplacer.manualSearchDescription")}
                     </p>
                   </div>
                   <button
@@ -2023,19 +2023,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   <div className="mt-4 pt-4 border-t border-theme space-y-3">
                     <div>
                       <label className="block text-xs font-medium text-theme-text mb-1">
-                        Title *
+                        {t("assetReplacer.searchTitleRequired")}
                       </label>
                       <input
                         type="text"
                         value={searchTitle}
                         onChange={(e) => setSearchTitle(e.target.value)}
-                        placeholder="Enter movie/show title..."
+                        placeholder={t("assetReplacer.searchTitlePlaceholder")}
                         className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-theme-text mb-1">
-                        Year (optional)
+                        {t("assetReplacer.searchYearOptional")}
                       </label>
                       <input
                         type="number"
@@ -2136,7 +2136,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                     {uploadedImage && (
                       <div className="mt-4">
                         <label className="block text-sm font-medium text-theme-text mb-2">
-                          Asset Type
+                          {t("assetReplacer.assetType")}
                         </label>
                         <select
                           value={uploadHasText ? "text" : "textless"}
@@ -2144,8 +2144,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
                           disabled={uploading}
                         >
-                          <option value="textless">Textless Asset (Clean)</option>
-                          <option value="text">Has Language / Text</option>
+                          <option value="textless">{t("assetReplacer.textlessAsset")}</option>
+                          <option value="text">{t("assetReplacer.assetHasText")}</option>
                         </select>
                       </div>
                     )}
@@ -2156,7 +2156,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   {uploadedImage && (
                     <div className="w-full sm:w-48 flex-shrink-0">
                       <p className="text-xs font-medium text-theme-text mb-2">
-                        Preview:
+                        {t("assetReplacer.previewLabel")}
                       </p>
                       <div
                         className={`relative bg-theme rounded-lg overflow-hidden border border-theme mx-auto ${useHorizontalLayout
@@ -2313,7 +2313,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                 : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
                             }`}
                           >
-                            {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
+                            {lang === "all" ? t("common.all") : lang.toUpperCase()}
                           </button>
                         ))}
                       </div>

@@ -63,6 +63,13 @@ Overlayfiles/
 
 Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 
+### Background Change Detection & Dry Run
+- **Background Checking** controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.
+- **Automatic Overlay Resync** controls whether detected changes start the overlay render pipeline.
+- **Dry Run** is enabled by default. Syncs still evaluate rules and render changed artwork, but never upload it to a media server or mark it synced in the cache. This applies to automatic and manual syncs.
+- Turn off **Background Checking** as well to stop periodic change scans entirely.
+- The **Master Switch** is the hard stop: when disabled, background detection and sync processing do not run. Switching it off also stops the detector and cancels active sync work before any subsequent upload.
+
 ### 0. Guided Onboarding Setup Wizard
 - **Zero Confusion Onboarding:** A friendly 4-step visual wizard guides new users through the engine's core concepts, eliminating manual reading.
 - **1-Click Turnkey Configuration:** Instantly applies battle-tested overlay presets for Movies (4K badges, ratings, runtime, age ratings), TV Shows (status banners, network logos, episode runtimes), and 16:9 Backdrops.

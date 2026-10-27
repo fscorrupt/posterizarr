@@ -28,8 +28,9 @@
 </div>
 
 <p align="center">
-    <a href="https://ko-fi.com/R6R81S6SC" target="_blank"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Buy Me A Coffee" height="25"></a><br />
-    <a href="https://discord.gg/fYyJQSGt54" target="_blank"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" height="25"></a>
+  Posterizarr is free to use. If it is useful to you, <a href="https://ko-fi.com/R6R81S6SC">optional support helps keep development going</a>.
+  ·
+  <a href="https://discord.gg/fYyJQSGt54">Join our Discord</a>
 </p>
 
 ## About The Project

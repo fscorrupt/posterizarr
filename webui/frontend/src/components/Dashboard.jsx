@@ -185,14 +185,14 @@ function Dashboard() {
         }
         if (data.system_info) {
           setSystemInfo({
-            platform: data.system_info.platform || "Unknown",
-            os_version: data.system_info.os_version || "Unknown",
-            cpu_model: data.system_info.cpu_model || "Unknown",
+            platform: data.system_info.platform || t("dashboard.controlDeck.unknown"),
+            os_version: data.system_info.os_version || t("dashboard.controlDeck.unknown"),
+            cpu_model: data.system_info.cpu_model || t("dashboard.controlDeck.unknown"),
             cpu_cores: data.system_info.cpu_cores || 0,
             memory_percent: data.system_info.memory_percent || 0,
-            total_memory: data.system_info.total_memory || "Unknown",
-            used_memory: data.system_info.used_memory || "Unknown",
-            free_memory: data.system_info.free_memory || "Unknown",
+            total_memory: data.system_info.total_memory || t("dashboard.controlDeck.unknown"),
+            used_memory: data.system_info.used_memory || t("dashboard.controlDeck.unknown"),
+            free_memory: data.system_info.free_memory || t("dashboard.controlDeck.unknown"),
             is_docker: data.system_info.is_docker || false,
           });
         }
@@ -506,10 +506,10 @@ function Dashboard() {
                 return (
                     <div className="min-w-0 space-y-3" role="region" aria-label={t("dashboard.controlDeck.scheduler")}>
                       <div className="text-[11px] text-theme-muted">{t("dashboard.controlDeck.nextRun")}</div>
-                      {upcoming.length === 0 && <p className="text-sm text-theme-muted">{t("dashboard.controlDeck.noUpcomingRuns", "No upcoming runs")}</p>}
+                      {upcoming.length === 0 && <p className="text-sm text-theme-muted">{t("dashboard.controlDeck.noUpcomingRuns")}</p>}
                       <div className="space-y-3">
                           {upcoming.slice(0, 3).map(({ schedule, index, nextRun }, position) => {
-                            const label = schedule.description || t(`schedulerSettings.modes.${schedule.mode || 'normal'}`, schedule.mode || 'Standard Run');
+                            const label = schedule.description || t(`schedulerSettings.modes.${schedule.mode || 'normal'}`);
                             return (
                               <Link key={index} to="/scheduler" className={`grid grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-3 border-l-2 pl-3 hover:text-blue-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 ${position === 0 ? 'border-blue-400' : 'border-theme'}`} title={`${formatDay(nextRun)} ${formatRun(nextRun)} - ${label}`}>
                                 <span className="flex flex-col gap-0.5">
@@ -522,7 +522,7 @@ function Dashboard() {
                           })}
                       </div>
                       <Link to="/scheduler" className="flex items-center justify-between gap-2 pt-1 text-[11px] text-theme-muted hover:text-blue-400">
-                        <span>{upcoming.length} {t("dashboard.controlDeck.upcoming", "Upcoming").toLowerCase()}</span>
+                        <span>{upcoming.length} {t("dashboard.controlDeck.upcoming").toLowerCase()}</span>
                         <ArrowRight className="w-3.5 h-3.5" aria-label={t("dashboard.controlDeck.scheduler")} />
                       </Link>
                     </div>
@@ -547,7 +547,7 @@ function Dashboard() {
                            <span className="px-1.5 py-[1px] rounded-[3px] text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">{t("dashboard.controlDeck.docker")}</span>
                         )}
                     </div>
-                    {systemInfo.os_version && systemInfo.os_version !== "Unknown" && (
+                    {systemInfo.os_version && systemInfo.os_version !== t("dashboard.controlDeck.unknown") && (
                        <div className="text-[10px] text-theme-muted truncate max-w-[180px]" title={systemInfo.os_version}>
                           {systemInfo.os_version}
                        </div>
@@ -620,7 +620,7 @@ function Dashboard() {
                      <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-theme-primary">v{version.local || version.remote}</span>
                         {version.is_update_available && (
-                           <span className="flex h-2 w-2 rounded-full bg-green-400 animate-pulse" title="Update Available"></span>
+                           <span className="flex h-2 w-2 rounded-full bg-green-400 animate-pulse" title={t("dashboard.updateAvailable")}></span>
                         )}
                      </div>
                   </div>

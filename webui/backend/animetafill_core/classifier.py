@@ -7,12 +7,12 @@ from animetafill_core.logger import logger
 
 class EpisodeClassifierService:
     """
-    Coordinates the classification of anime episodes by querying data providers 
+    Coordinates the classification of anime episodes by querying data providers
     (SIMKL, AnimeFillerList) using a fallback priority system.
     """
     def __init__(
-        self, 
-        db: AnimeDatabase, 
+        self,
+        db: AnimeDatabase,
         afl_provider: AnimeFillerListProvider,
         simkl_provider: SimklProvider
     ):
@@ -23,7 +23,7 @@ class EpisodeClassifierService:
     def _clean_seasonal_noise(self, title: str) -> str:
         """
         Strips common seasonal suffixes (S2, Season 2, Part 2, etc.) to normalize
-        titles. This prevents redundant API calls for shows that are indexed 
+        titles. This prevents redundant API calls for shows that are indexed
         under a single main title on filler databases.
         """
         # Patterns for S2, Season 2, 2nd Season, Part 2, etc.
@@ -43,15 +43,15 @@ class EpisodeClassifierService:
     def force_update_mapping(self, title_candidates: List[str], tvdb_id: Optional[int] = None, expected_count: int = 0):
         """
         Synchronizes episode classification data for a show across all tiers.
-        
+
         The strategy follows a 3-tier approach:
         1. TVDB ID Matching (SIMKL)
         2. Broad Title-based searching (SIMKL -> AFL)
         3. 100% Canon Fallback (Safe assumption if providers return no data)
         """
         main_title = title_candidates[0]
-        
-        # Deduplicate titles while preserving order. Pre-cleaning titles here 
+
+        # Deduplicate titles while preserving order. Pre-cleaning titles here
         # ensures we don't waste API calls on titles like "Show" and "Show S2".
         unique_candidates = []
         seen_normalized = set()
@@ -61,10 +61,10 @@ class EpisodeClassifierService:
             if norm and norm not in seen_normalized:
                 unique_candidates.append(t_clean)
                 seen_normalized.add(norm)
-        
+
         # Limit candidates to the top 10 most likely variations.
         title_candidates = unique_candidates[:10]
-        
+
         episodes = []
         source_url = None
         show_found_on_any = False
@@ -76,24 +76,24 @@ class EpisodeClassifierService:
             try:
                 # Note: Pass the main title for logging, but the actual lookup uses the ID
                 eps, found, url = self.simkl_provider.fetch_episodes(main_title, tvdb_id=tvdb_id)
-                if found: 
+                if found:
                     show_found_on_any = True
                     source_url = url
-                    # If ID match is found, we are sure of the show. 
+                    # If ID match is found, we are sure of the show.
                     # If it has episodes, we are done.
                     if eps:
                         episodes = eps
                         # Break and move to DB update
                     else:
-                        # We found the show but no filler data. 
-                        # We can still check AFL for filler list, but we don't need 
+                        # We found the show but no filler data.
+                        # We can still check AFL for filler list, but we don't need
                         # to keep searching SIMKL with alternate titles.
                         logger.info(f"Show found on SIMKL via ID, but no filler list found. Checking AFL fallback...")
-                
+
                 if episodes:
                     # Found episodes via TVDB ID match. No need for more API calls.
                     # We can skip the Title Search phase entirely.
-                    title_candidates = [] 
+                    title_candidates = []
             except Exception as e:
                 logger.error(f"SIMKL ID lookup error: {e}")
                 had_provider_error = True
@@ -107,7 +107,7 @@ class EpisodeClassifierService:
                 try:
                     # Pass tvdb_id=None here because we already tried the ID lookup above
                     eps, found, url = self.simkl_provider.fetch_episodes(title, tvdb_id=None)
-                    if found: 
+                    if found:
                         show_found_on_any = True
                         source_url = url
                     if eps:
@@ -116,7 +116,7 @@ class EpisodeClassifierService:
                 except Exception as e:
                     logger.error(f"SIMKL error for {title}: {e}")
                     had_provider_error = True
-            
+
             # Anti-ban sleep
             time.sleep(2.0)
 
@@ -124,7 +124,7 @@ class EpisodeClassifierService:
             logger.process(f"Searching AFL for '{title}'...")
             try:
                 eps, found, url = self.afl_provider.fetch_episodes(title, tvdb_id=tvdb_id)
-                if found: 
+                if found:
                     show_found_on_any = True
                     source_url = url
                 if eps:
@@ -133,7 +133,7 @@ class EpisodeClassifierService:
             except Exception as e:
                 logger.error(f"AFL error for {title}: {e}")
                 had_provider_error = True
-            
+
             # Mandatory anti-ban delay if all providers failed for this title
             time.sleep(2.5)
 

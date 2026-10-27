@@ -122,8 +122,15 @@ async def _post_artwork_with_retry(
     headers: Dict[str, str],
     content: bytes,
     item_label: str,
-    write_log: Callable[[str], None]
-) -> httpx.Response:
+    write_log: Callable[[str], None],
+    dry_run: bool = False
+) -> Optional[httpx.Response]:
+    if _cancel_requested:
+        write_log(f"  [!] {item_label}: Sync cancelled before media-server upload.")
+        return None
+    if dry_run:
+        write_log(f"  [DRY RUN] {item_label}: artwork rendered; upload to media server skipped.")
+        return None
     for attempt in range(1, 4):
         try:
             return await http_client.post(url, headers=headers, content=content)
@@ -2857,6 +2864,13 @@ async def run_overlay_sync_task(
     target_items: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     global _is_sync_running
+    try:
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        if not get_dynamic_overlays_settings().get("enabled", False):
+            return {"success": False, "error": "Dynamic Overlays is disabled in settings.", "is_enabled": False}
+    except Exception as check_err:
+        logger.error("Could not verify Dynamic Overlays master switch; refusing to start sync: %s", check_err)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
     with _sync_condition:
         from plex_image_cleanup import is_cleanup_running
         if _is_sync_running or is_cleanup_running():
@@ -2890,6 +2904,16 @@ async def _run_overlay_sync_task(
     Supports instant target mode when newly generated assets are passed via target_items.
     """
     global _last_sync_result, _cancel_requested
+    try:
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        sync_settings = get_dynamic_overlays_settings()
+        if not sync_settings.get("enabled", False):
+            return {"success": False, "error": "Dynamic Overlays is disabled in settings.", "is_enabled": False}
+    except Exception as check_err:
+        logger.error("Could not verify Dynamic Overlays master switch; refusing to run sync: %s", check_err)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
+
+    dry_run = bool(sync_settings.get("change_detection_dry_run", True))
     _cancel_requested = False
     sync_started_at = time.monotonic()
 
@@ -2926,16 +2950,8 @@ async def _run_overlay_sync_task(
                 pass
         logger.info(f"[OverlaySync] {msg}")
 
-    # Check Master Feature Toggle (Disabled by default)
-    try:
-        from dynamic_overlays_service import is_dynamic_overlays_enabled
-        if not is_dynamic_overlays_enabled():
-            write_log("Notice: Dynamic Overlays is currently disabled. Enable it in the WebUI to run sync.")
-            res = {"success": False, "error": "Dynamic Overlays is disabled in settings.", "is_enabled": False}
-            _last_sync_result = res
-            return res
-    except Exception as check_err:
-        logger.debug(f"Could not verify dynamic overlays enabled state: {check_err}")
+    if dry_run:
+        write_log("DRY RUN is active: overlays will be evaluated and rendered, but no artwork will be uploaded or marked synced.")
 
     # Fast targeted item handling
     is_target_mode = bool(target_items)
@@ -3833,9 +3849,10 @@ async def _run_overlay_sync_task(
                                         }
                                         resp = await _post_artwork_with_retry(
                                             http_client, upload_url, headers=headers, content=composited_jpeg,
-                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log
+                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
                                         )
-                                        upload_success = (resp.status_code in [200, 201])
+                                        upload_success = resp is not None and resp.status_code in [200, 201]
                                     elif s_type in ["jellyfin", "emby"]:
                                         upload_url = f"{s_url}/Items/{item_id}/Images/Primary"
                                         headers = {
@@ -3846,10 +3863,13 @@ async def _run_overlay_sync_task(
                                         b64_img = base64.b64encode(composited_jpeg)
                                         resp = await _post_artwork_with_retry(
                                             http_client, upload_url, headers=headers, content=b64_img,
-                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log
+                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
                                         )
-                                        upload_success = (resp.status_code in [200, 201, 204])
+                                        upload_success = resp is not None and resp.status_code in [200, 201, 204]
 
+                                if _cancel_requested:
+                                    return
                                 if upload_success:
                                     poster_snapshot = build_attr_snapshot(item)
                                     if s_type == "plex":
@@ -3892,6 +3912,8 @@ async def _run_overlay_sync_task(
                                         write_log(f"  [+] {w_tag}Overlaid & Synced: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
                                     else:
                                         write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
+                                elif dry_run and composited_jpeg is not None:
+                                    await _inc_stats(skipped=1)
                                 elif composited_jpeg is not None:
                                     await _inc_stats(failed=1)
                                     http_detail = format_http_failure(resp)
@@ -4027,9 +4049,10 @@ async def _run_overlay_sync_task(
                                         }
                                         b_resp = await _post_artwork_with_retry(
                                             http_client, b_url, headers=b_headers, content=b_comp,
-                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log
+                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
                                         )
-                                        b_upload_success = (b_resp.status_code in [200, 201])
+                                        b_upload_success = b_resp is not None and b_resp.status_code in [200, 201]
                                     elif s_type in ["jellyfin", "emby"]:
                                         b_url = f"{s_url}/Items/{item_id}/Images/Backdrop"
                                         b_headers = {
@@ -4040,10 +4063,13 @@ async def _run_overlay_sync_task(
                                         b64_b_comp = base64.b64encode(b_comp)
                                         b_resp = await _post_artwork_with_retry(
                                             http_client, b_url, headers=b_headers, content=b64_b_comp,
-                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log
+                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
                                         )
-                                        b_upload_success = (b_resp.status_code in [200, 201, 204])
+                                        b_upload_success = b_resp is not None and b_resp.status_code in [200, 201, 204]
 
+                                if _cancel_requested:
+                                    return
                                 if b_upload_success:
                                     cache.record_push(
                                         server_type=s_type,
@@ -4078,6 +4104,8 @@ async def _run_overlay_sync_task(
                                         write_log(f"  [+] {w_tag}Overlaid & Synced Backdrop: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
                                     else:
                                         write_log(f"  [+] {w_tag}Overlays Removed & Clean Backdrop Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
+                                elif dry_run and b_comp is not None:
+                                    await _inc_stats(skipped=1)
                                 elif b_comp is not None:
                                     await _inc_stats(failed=1)
                                     http_detail = format_http_failure(b_resp)
@@ -4260,9 +4288,10 @@ async def _run_overlay_sync_task(
                                                     headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
                                                     content=s_comp,
                                                     item_label=f"{w_tag}Season '{title} S{s_num:02d}' ({lib_name})",
-                                                    write_log=write_log
+                                                    write_log=write_log,
+                                                    dry_run=dry_run
                                                 )
-                                                s_success = (s_resp.status_code in [200, 201])
+                                                s_success = s_resp is not None and s_resp.status_code in [200, 201]
                                             elif s_type in ["jellyfin", "emby"]:
                                                 b64_s = base64.b64encode(s_comp)
                                                 s_resp = await _post_artwork_with_retry(
@@ -4271,10 +4300,13 @@ async def _run_overlay_sync_task(
                                                     headers=headers,
                                                     content=b64_s,
                                                     item_label=f"{w_tag}Season '{title} S{s_num:02d}' ({lib_name})",
-                                                    write_log=write_log
+                                                    write_log=write_log,
+                                                    dry_run=dry_run
                                                 )
-                                                s_success = (s_resp.status_code in [200, 201, 204])
+                                                s_success = s_resp is not None and s_resp.status_code in [200, 201, 204]
 
+                                            if _cancel_requested:
+                                                return
                                             if s_success:
                                                 cache.record_push(
                                                     server_type=s_type,
@@ -4303,6 +4335,8 @@ async def _run_overlay_sync_task(
                                                 )
                                                 await _inc_stats(synced=1)
                                                 write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {s_sync_reason}]")
+                                            elif dry_run:
+                                                await _inc_stats(skipped=1)
                                             else:
                                                 await _inc_stats(failed=1)
                                                 http_detail = format_http_failure(s_resp)
@@ -4666,9 +4700,10 @@ async def _run_overlay_sync_task(
                                                         headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
                                                         content=tc_comp,
                                                         item_label=f"{w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name})",
-                                                        write_log=write_log
+                                                        write_log=write_log,
+                                                        dry_run=dry_run
                                                     )
-                                                    tc_success = (tc_resp.status_code in [200, 201])
+                                                    tc_success = tc_resp is not None and tc_resp.status_code in [200, 201]
                                                     if tc_success:
                                                         tc_phase = "confirming Plex titlecard selection"
                                                         tc_snapshot = await _confirm_plex_titlecard(http_client, s_url, ep_rk, creds.get("token"), tc_comp)
@@ -4680,10 +4715,13 @@ async def _run_overlay_sync_task(
                                                         headers=headers,
                                                         content=b64_tc,
                                                         item_label=f"{w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name})",
-                                                        write_log=write_log
+                                                        write_log=write_log,
+                                                        dry_run=dry_run
                                                     )
-                                                    tc_success = (tc_resp.status_code in [200, 201, 204])
+                                                    tc_success = tc_resp is not None and tc_resp.status_code in [200, 201, 204]
 
+                                                if _cancel_requested:
+                                                    return
                                                 if tc_success:
                                                     cache.record_push(
                                                         server_type=s_type,
@@ -4716,6 +4754,8 @@ async def _run_overlay_sync_task(
                                                     )
                                                     await _inc_stats(synced=1)
                                                     write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
+                                                elif dry_run:
+                                                    await _inc_stats(skipped=1)
                                                 else:
                                                     await _inc_stats(failed=1)
                                                     http_detail = format_http_failure(tc_resp)
@@ -5378,6 +5418,15 @@ def get_last_detection_report(base_dir: Optional[Path] = None) -> Dict[str, Any]
 _change_detector_running = False
 _change_detector_thread = None
 
+def should_auto_resync_changed_items(settings: Dict[str, Any], changed_count: int) -> bool:
+    return bool(
+        settings.get("enabled", False)
+        and settings.get("change_detection_enabled", True)
+        and changed_count > 0
+        and settings.get("auto_resync_on_change", True)
+    )
+
+
 def _background_change_detector_loop(
     base_dir: Optional[Path] = None,
     config_path: Optional[Path] = None,
@@ -5477,13 +5526,22 @@ def _background_change_detector_loop(
                 finally:
                     loop.close()
 
+                latest_settings = get_dynamic_overlays_settings()
+                if not latest_settings.get("enabled", False) or not latest_settings.get("change_detection_enabled", True):
+                    logger.info("[OverlayChangeDetector] Master switch or background checking was disabled during scan; discarding the result.")
+                    for _ in range(30):
+                        if not _change_detector_running:
+                            break
+                        time.sleep(1)
+                    continue
+
                 save_dynamic_overlays_settings({
                     "last_change_detection_at": datetime.now().isoformat(),
                     "last_change_detection_summary": report.get("summary")
                 })
 
                 changed_count = report.get("changed_count", 0)
-                if changed_count > 0 and settings.get("auto_resync_on_change", True):
+                if should_auto_resync_changed_items(latest_settings, changed_count):
                     logger.info(f"[OverlayChangeDetector] Detected {changed_count} updated media item(s). Auto-triggering resync...")
                     resync_loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(resync_loop)

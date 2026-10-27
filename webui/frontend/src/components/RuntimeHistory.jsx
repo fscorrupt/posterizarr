@@ -696,23 +696,25 @@ export default function RuntimeHistory() {
               </div>
               <div>
                 <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-                  {t('runtime_history.title', 'Runtime Analytics & Telemetry')}
+                  {t('runtime_history.ui.title')}
                 </h1>
                 <div className="flex items-center gap-2.5 text-xs text-theme-text-muted mt-0.5">
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-medium">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 -ml-3"></span>
-                    Live Engine
+                    {t('runtime_history.ui.liveEngine')}
                   </span>
                   <span>•</span>
                   <span>
-                    {kpis.totalRuns} execution{kpis.totalRuns === 1 ? '' : 's'} recorded
+                    {kpis.totalRuns === 1
+                      ? t('runtime_history.ui.executionRecordedOne')
+                      : t('runtime_history.ui.executionRecordedMany', { count: kpis.totalRuns })}
                   </span>
                   {useDemoData && (
                     <>
                       <span>•</span>
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-medium text-[11px]">
-                        <Sparkles size={11} /> Sample Preview Active
+                        <Sparkles size={11} /> {t('runtime_history.ui.samplePreviewActive')}
                       </span>
                     </>
                   )}
@@ -754,30 +756,30 @@ export default function RuntimeHistory() {
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-all ${
                   viewTab === "overview" ? 'bg-white/15 text-white shadow' : 'text-theme-text-muted hover:text-white'
                 }`}
-                title="Unified Dashboard"
+                title={t('runtime_history.ui.unifiedDashboard')}
               >
                 <SlidersHorizontal size={13} />
-                <span className="hidden sm:inline">Dashboard</span>
+                <span className="hidden sm:inline">{t('runtime_history.ui.dashboard')}</span>
               </button>
               <button
                 onClick={() => setViewTab("charts")}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-all ${
                   viewTab === "charts" ? 'bg-white/15 text-white shadow' : 'text-theme-text-muted hover:text-white'
                 }`}
-                title="Charts Only"
+                title={t('runtime_history.ui.chartsOnly')}
               >
                 <BarChart2 size={13} />
-                <span className="hidden sm:inline">Analytics</span>
+                <span className="hidden sm:inline">{t('runtime_history.ui.analytics')}</span>
               </button>
               <button
                 onClick={() => setViewTab("table")}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-all ${
                   viewTab === "table" ? 'bg-white/15 text-white shadow' : 'text-theme-text-muted hover:text-white'
                 }`}
-                title="Execution Log Table"
+                title={t('runtime_history.ui.executionLogTable')}
               >
                 <ListIcon size={13} />
-                <span className="hidden sm:inline">Logs</span>
+                <span className="hidden sm:inline">{t('runtime_history.ui.logs')}</span>
               </button>
             </div>
 
@@ -785,18 +787,18 @@ export default function RuntimeHistory() {
             <button
               onClick={() => {
                 setIsLivePolling(!isLivePolling);
-                if (!isLivePolling) showSuccess("Live auto-refresh enabled (30s)");
-                else showInfo("Live auto-refresh paused");
+                if (!isLivePolling) showSuccess(t('runtime_history.ui.liveRefreshEnabled'));
+                else showInfo(t('runtime_history.ui.liveRefreshPaused'));
               }}
               className={`p-2 rounded-xl border transition-all text-xs flex items-center gap-1.5 ${
                 isLivePolling
                   ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
                   : 'bg-black/30 border-white/[0.08] text-theme-text-muted hover:text-white hover:border-white/20'
               }`}
-              title={isLivePolling ? "Auto-refreshing every 30s" : "Enable Live Auto-refresh"}
+              title={isLivePolling ? t('runtime_history.ui.liveRefreshing') : t('runtime_history.ui.enableLiveRefresh')}
             >
               <RefreshCw size={15} className={isLivePolling ? "animate-spin text-emerald-400" : ""} style={{ animationDuration: '3s' }} />
-              <span className="hidden xl:inline text-[11px] font-medium">Live</span>
+              <span className="hidden xl:inline text-[11px] font-medium">{t('runtime_history.ui.live')}</span>
             </button>
 
             {/* Manual Refresh */}
@@ -804,7 +806,7 @@ export default function RuntimeHistory() {
               onClick={() => fetchAllData(false)}
               disabled={refreshing}
               className="p-2 rounded-xl bg-black/30 border border-white/[0.08] text-theme-text-muted hover:text-white hover:border-white/20 transition-all disabled:opacity-50"
-              title="Refresh Data"
+              title={t('runtime_history.ui.refreshData')}
             >
               <RefreshCw size={15} className={refreshing ? "animate-spin text-amber-400" : ""} />
             </button>
@@ -815,7 +817,7 @@ export default function RuntimeHistory() {
                 className="px-3 py-2 rounded-xl bg-black/30 border border-white/[0.08] text-theme-text-muted hover:text-white hover:border-white/20 transition-all text-xs font-medium flex items-center gap-1.5"
               >
                 <Download size={14} />
-                <span className="hidden sm:inline">Export</span>
+                <span className="hidden sm:inline">{t('runtime_history.ui.export')}</span>
                 <ChevronDown size={12} className="opacity-60" />
               </button>
               <div className="absolute right-0 mt-1 w-36 bg-[#1a1c23] border border-white/10 rounded-xl shadow-2xl p-1 hidden group-hover:block z-50 animate-fadeIn">
@@ -823,13 +825,13 @@ export default function RuntimeHistory() {
                   onClick={exportToCsv}
                   className="w-full text-left px-3 py-1.5 text-xs text-theme-text hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
                 >
-                  <File size={13} className="text-amber-400" /> CSV Table
+                  <File size={13} className="text-amber-400" /> {t('runtime_history.ui.csvTable')}
                 </button>
                 <button
                   onClick={exportToJson}
                   className="w-full text-left px-3 py-1.5 text-xs text-theme-text hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
                 >
-                  <Terminal size={13} className="text-sky-400" /> JSON Dump
+                  <Terminal size={13} className="text-sky-400" /> {t('runtime_history.ui.jsonDump')}
                 </button>
               </div>
             </div>
@@ -838,7 +840,7 @@ export default function RuntimeHistory() {
             <button
               onClick={() => setShowPruneModal(true)}
               className="p-2 rounded-xl bg-black/30 border border-white/[0.08] text-theme-text-muted hover:text-red-400 hover:border-red-500/30 transition-all"
-              title="Clean Up Old History Entries"
+              title={t('runtime_history.ui.cleanHistory')}
             >
               <Trash2 size={15} />
             </button>
@@ -848,18 +850,18 @@ export default function RuntimeHistory() {
               onClick={() => {
                 const nextState = !useDemoData;
                 setUseDemoData(nextState);
-                if (nextState) showInfo("Sample preview enabled: Showing realistic mock telemetry");
-                else showSuccess("Switched to live database telemetry");
+                if (nextState) showInfo(t('runtime_history.ui.samplePreviewEnabled'));
+                else showSuccess(t('runtime_history.ui.liveDatabaseEnabled'));
               }}
               className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-medium transition-all flex items-center gap-1.5 ${
                 useDemoData
                   ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
                   : 'bg-black/20 border-white/[0.06] text-theme-text-muted/70 hover:text-theme-text'
               }`}
-              title="Toggle realistic sample runs"
+              title={t('runtime_history.ui.toggleSampleRuns')}
             >
               <Sparkles size={12} />
-              <span>{useDemoData ? "Sample On" : "Demo"}</span>
+              <span>{useDemoData ? t('runtime_history.ui.sampleOn') : t('runtime_history.ui.demo')}</span>
             </button>
           </div>
         </div>
@@ -870,14 +872,14 @@ export default function RuntimeHistory() {
             <div className="flex items-center gap-2">
               <Sparkles size={14} className="text-amber-400 shrink-0" />
               <span>
-                <strong>Sample Telemetry Preview:</strong> Displaying simulated execution runs so you can explore all interactive charts, tooltips, and analytics before your scheduler completes its first syncs.
+                <strong>{t('runtime_history.ui.samplePreviewTitle')}</strong> {t('runtime_history.ui.samplePreviewDescription')}
               </span>
             </div>
             <button
               onClick={() => setUseDemoData(false)}
               className="underline hover:text-white font-medium shrink-0 ml-4"
             >
-              Use Real DB ({history.length} runs)
+              {t('runtime_history.ui.useRealDatabase', { count: history.length })}
             </button>
           </div>
         )}
@@ -901,13 +903,13 @@ export default function RuntimeHistory() {
               ? "border-amber-500/50 shadow-amber-500/10 ring-1 ring-amber-500/30"
               : "border-white/[0.07] hover:border-amber-500/40"
           }`}
-          title="Click to reset filters and view all runs"
+          title={t('runtime_history.ui.resetFilters')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Total Runs</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.totalRuns')}</span>
               <span className="text-[9px] text-amber-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                Click to view all
+                {t('runtime_history.ui.clickToViewAll')}
               </span>
             </div>
             <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 group-hover:scale-110 transition-transform">
@@ -917,10 +919,10 @@ export default function RuntimeHistory() {
           <div className="my-1">
             <div className="text-2xl lg:text-3xl font-bold tracking-tight text-white">{kpis.totalRuns.toLocaleString()}</div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center gap-1.5">
-              <span className="text-emerald-400 font-medium">{kpis.successRuns} ok</span>
+              <span className="text-emerald-400 font-medium">{kpis.successRuns} {t('runtime_history.ui.ok')}</span>
               <span>•</span>
               <span className={kpis.failedRuns > 0 ? "text-rose-400 font-medium" : "text-theme-text-muted"}>
-                {kpis.failedRuns} err
+                {kpis.failedRuns} {t('runtime_history.ui.errorsAbbr')}
               </span>
             </div>
           </div>
@@ -944,13 +946,13 @@ export default function RuntimeHistory() {
               ? "border-emerald-500 ring-2 ring-emerald-500/60 bg-emerald-500/10 shadow-emerald-500/15"
               : "border-white/[0.07] hover:border-emerald-500/40"
           }`}
-          title="Click to toggle filtering by successful runs"
+          title={t('runtime_history.ui.toggleSuccessFilter')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Success Rate</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.successRate')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${statusFilter === "success" ? "text-emerald-300 opacity-100" : "text-emerald-400 opacity-0 group-hover:opacity-100"}`}>
-                {statusFilter === "success" ? "✓ Filter Active" : "Click to filter"}
+                {statusFilter === "success" ? `✓ ${t('runtime_history.ui.filterActive')}` : t('runtime_history.ui.clickToFilter')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${statusFilter === "success" ? "bg-emerald-500 text-black" : "bg-emerald-500/10 text-emerald-400"}`}>
@@ -963,7 +965,7 @@ export default function RuntimeHistory() {
             </div>
             <div className="text-[11px] mt-0.5 font-medium flex items-center gap-1">
               <span className={kpis.successRate >= 95 ? "text-emerald-400" : (kpis.successRate >= 80 ? "text-amber-400" : "text-rose-400")}>
-                {statusFilter === "success" ? "Showing Successful Runs" : (kpis.successRate >= 95 ? "Optimal Health" : (kpis.successRate >= 80 ? "Attention Needed" : "Degraded"))}
+                {statusFilter === "success" ? t('runtime_history.ui.showingSuccessfulRuns') : (kpis.successRate >= 95 ? t('runtime_history.ui.optimalHealth') : (kpis.successRate >= 80 ? t('runtime_history.ui.attentionNeeded') : t('runtime_history.ui.degraded')))}
               </span>
             </div>
           </div>
@@ -993,13 +995,13 @@ export default function RuntimeHistory() {
               ? "border-blue-500 ring-2 ring-blue-500/60 bg-blue-500/10 shadow-blue-500/15"
               : "border-white/[0.07] hover:border-blue-500/40"
           }`}
-          title="Click to filter runs that created assets and sort by asset count"
+          title={t('runtime_history.ui.filterRunsByAssets')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Assets Created</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.assetsCreated')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${assetFilter === "with_assets" ? "text-blue-300 opacity-100" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}>
-                {assetFilter === "with_assets" ? "✓ Filter Active" : "Click to filter"}
+                {assetFilter === "with_assets" ? `✓ ${t('runtime_history.ui.filterActive')}` : t('runtime_history.ui.clickToFilter')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${assetFilter === "with_assets" ? "bg-blue-500 text-black" : "bg-blue-500/10 text-blue-400"}`}>
@@ -1032,13 +1034,13 @@ export default function RuntimeHistory() {
               ? "border-purple-500 ring-2 ring-purple-500/60 bg-purple-500/10 shadow-purple-500/15"
               : "border-white/[0.07] hover:border-purple-500/40"
           }`}
-          title="Click to sort runs by longest execution duration"
+          title={t('runtime_history.ui.sortByDuration')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Avg Duration</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.avgDuration')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${sortBy === "duration_desc" ? "text-purple-300 opacity-100" : "text-purple-400 opacity-0 group-hover:opacity-100"}`}>
-                {sortBy === "duration_desc" ? "✓ Sorted Longest" : "Click to sort"}
+                {sortBy === "duration_desc" ? `✓ ${t('runtime_history.ui.sortedLongest')}` : t('runtime_history.ui.clickToSort')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${sortBy === "duration_desc" ? "bg-purple-500 text-black" : "bg-purple-500/10 text-purple-400"}`}>
@@ -1048,7 +1050,7 @@ export default function RuntimeHistory() {
           <div className="my-1">
             <div className="text-2xl lg:text-3xl font-bold tracking-tight text-white font-mono">{kpis.avgDurationFormatted}</div>
             <div className="text-[11px] text-theme-text-muted mt-0.5">
-              Min {formatDuration(kpis.minDurationSec)} • Max {formatDuration(kpis.maxDurationSec)}
+              {t('runtime_history.ui.minMaxDuration', { min: formatDuration(kpis.minDurationSec), max: formatDuration(kpis.maxDurationSec) })}
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
@@ -1063,13 +1065,13 @@ export default function RuntimeHistory() {
         <div
           onClick={() => navigate("/asset-overview")}
           className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-cyan-500/40 transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99]"
-          title="Click to navigate to Asset Storage Overview"
+          title={t('runtime_history.ui.assetStorageOverview')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Storage Footprint</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.storageFootprint')}</span>
               <span className="text-[9px] text-cyan-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                Open Overview →
+                {t('runtime_history.ui.openOverview')} →
               </span>
             </div>
             <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:scale-110 transition-transform">
@@ -1081,7 +1083,7 @@ export default function RuntimeHistory() {
               {assetStats?.stats?.total_size ? formatBytes(assetStats.stats.total_size) : kpis.totalSpaceSaved}
             </div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center justify-between">
-              <span>Saved ~{kpis.totalSpaceSaved}</span>
+              <span>{t('runtime_history.ui.savedApprox', { value: kpis.totalSpaceSaved })}</span>
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
@@ -1101,13 +1103,13 @@ export default function RuntimeHistory() {
               ? "border-rose-500 ring-2 ring-rose-500/60 bg-rose-500/10 shadow-rose-500/15"
               : "border-white/[0.07] hover:border-rose-500/40"
           }`}
-          title="Click to toggle filtering by runs with errors"
+          title={t('runtime_history.ui.toggleErrorFilter')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">Errors & Alerts</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.errorsAlerts')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${statusFilter === "errors" ? "text-rose-300 opacity-100" : "text-rose-400 opacity-0 group-hover:opacity-100"}`}>
-                {statusFilter === "errors" ? "✓ Filter Active" : "Click to filter"}
+                {statusFilter === "errors" ? `✓ ${t('runtime_history.ui.filterActive')}` : t('runtime_history.ui.clickToFilter')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${statusFilter === "errors" ? "bg-rose-500 text-black" : (kpis.totalErrors > 0 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/10 text-emerald-400')}`}>
@@ -1120,7 +1122,7 @@ export default function RuntimeHistory() {
             </div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${kpis.totalErrors > 0 ? 'bg-rose-500' : 'bg-emerald-400'}`}></span>
-              <span>{statusFilter === "errors" ? "Showing Errors Only" : (kpis.totalErrors === 0 ? "Clean executions" : "Exceptions caught")}</span>
+              <span>{statusFilter === "errors" ? t('runtime_history.ui.showingErrorsOnly') : (kpis.totalErrors === 0 ? t('runtime_history.ui.cleanExecutions') : t('runtime_history.ui.exceptionsCaught'))}</span>
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
@@ -1141,15 +1143,13 @@ export default function RuntimeHistory() {
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200">
               <div className="flex items-center gap-2.5">
                 <AlertCircle size={18} className="text-amber-400 shrink-0" />
-                <span>
-                  Your database contains <strong>{rawDataset.length}</strong> recorded runs, but none occurred within the current <strong>{timeRange}</strong> window.
-                </span>
+                <span>{t('runtime_history.ui.noRunsInRange', { count: rawDataset.length, range: timeRange })}</span>
               </div>
               <button
                 onClick={() => setTimeRange("all")}
                 className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all shrink-0 flex items-center gap-1.5 shadow-md"
               >
-                <Calendar size={13} /> Switch to All Time
+                <Calendar size={13} /> {t('runtime_history.ui.switchAllTime')}
               </button>
             </div>
           )}
@@ -1163,13 +1163,13 @@ export default function RuntimeHistory() {
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">
                     <Clock size={17} className="text-amber-400" />
-                    <span>Run Duration & Performance Trend</span>
+                    <span>{t('runtime_history.ui.runDurationTrend')}</span>
                   </h3>
-                  <p className="text-xs text-theme-text-muted mt-0.5">Execution times over time with average benchmark line.</p>
+                  <p className="text-xs text-theme-text-muted mt-0.5">{t('runtime_history.ui.executionTrendDescription')}</p>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono text-[11px]">
-                    Avg: {kpis.avgDurationFormatted}
+                    {t('runtime_history.ui.averageValue', { value: kpis.avgDurationFormatted })}
                   </span>
                 </div>
               </div>
@@ -1185,13 +1185,13 @@ export default function RuntimeHistory() {
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-2 py-4">
                     <Clock size={28} className="opacity-30" />
-                    <span>No run telemetry available for this period ({timeRange})</span>
+                    <span>{t('runtime_history.ui.noRunTelemetryForRange', { range: timeRange })}</span>
                     {rawDataset.length > 0 && (
                       <button
                         onClick={() => setTimeRange("all")}
                         className="mt-1 px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-medium not-italic transition-all flex items-center gap-1.5"
                       >
-                        <Calendar size={12} /> Show All Time ({rawDataset.length} runs in DB)
+                        <Calendar size={12} /> {t('runtime_history.ui.showAllTimeRuns', { count: rawDataset.length })}
                       </button>
                     )}
                   </div>
@@ -1205,15 +1205,15 @@ export default function RuntimeHistory() {
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">
                     <TrendingUp size={17} className="text-emerald-400" />
-                    <span>Asset Creation Velocity</span>
+                    <span>{t('runtime_history.ui.assetCreationVelocity')}</span>
                   </h3>
                   <p className="text-xs text-theme-text-muted mt-0.5">
-                    {chartTrends[0]?.isBucket ? "Total media images composited and generated per day." : "Total media images composited and generated per run."}
+                    {t(chartTrends[0]?.isBucket ? 'runtime_history.ui.assetsPerDay' : 'runtime_history.ui.assetsPerRun')}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-mono text-[11px]">
-                    {kpis.totalAssets.toLocaleString()} Total
+                    {t('runtime_history.ui.totalAssets', { count: kpis.totalAssets.toLocaleString() })}
                   </span>
                 </div>
               </div>
@@ -1228,13 +1228,13 @@ export default function RuntimeHistory() {
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-2 py-4">
                     <Image size={28} className="opacity-30" />
-                    <span>No asset creation data recorded for this period ({timeRange})</span>
+                    <span>{t('runtime_history.ui.noAssetDataForRange', { range: timeRange })}</span>
                     {rawDataset.length > 0 && (
                       <button
                         onClick={() => setTimeRange("all")}
                         className="mt-1 px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-medium not-italic transition-all flex items-center gap-1.5"
                       >
-                        <Calendar size={12} /> Show All Time ({rawDataset.length} runs in DB)
+                        <Calendar size={12} /> {t('runtime_history.ui.showAllTimeRuns', { count: rawDataset.length })}
                       </button>
                     )}
                   </div>
@@ -1256,10 +1256,10 @@ export default function RuntimeHistory() {
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2 group-hover:text-blue-400 transition-colors">
                     <PieChart size={17} className="text-blue-400" />
-                    <span>Asset Composition</span>
+                    <span>{t('runtime_history.ui.assetComposition')}</span>
                     <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </h3>
-                  <p className="text-xs text-theme-text-muted mt-0.5">Breakdown of generated items by format.</p>
+                  <p className="text-xs text-theme-text-muted mt-0.5">{t('runtime_history.ui.assetCompositionDescription')}</p>
                 </div>
               </div>
 
@@ -1275,7 +1275,7 @@ export default function RuntimeHistory() {
 
               <div className="pt-3 border-t border-white/[0.06] text-center">
                 <span className="text-[11px] text-theme-text-muted group-hover:text-white transition-colors">
-                  Click to open Gallery & Assets view →
+                  {t('runtime_history.ui.openGalleryAssets')} →
                 </span>
               </div>
             </div>
@@ -1286,9 +1286,9 @@ export default function RuntimeHistory() {
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">
                     <Globe size={17} className="text-sky-400" />
-                    <span>Metadata Providers</span>
+                    <span>{t('runtime_history.ui.metadataProviders')}</span>
                   </h3>
-                  <p className="text-xs text-theme-text-muted mt-0.5">Source distribution for fetched graphics.</p>
+                  <p className="text-xs text-theme-text-muted mt-0.5">{t('runtime_history.ui.metadataProvidersDescription')}</p>
                 </div>
               </div>
 
@@ -1300,7 +1300,7 @@ export default function RuntimeHistory() {
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: THEME.tmdb }}></span>TMDB</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: THEME.tvdb }}></span>TVDB</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: THEME.fanart }}></span>Fanart</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: THEME.other }}></span>Other</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: THEME.other }}></span>{t('runtime_history.ui.otherProvider')}</span>
               </div>
             </div>
 
@@ -1313,10 +1313,10 @@ export default function RuntimeHistory() {
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2 group-hover:text-cyan-400 transition-colors">
                     <HardDrive size={17} className="text-cyan-400" />
-                    <span>Library Storage</span>
+                    <span>{t('runtime_history.ui.libraryStorage')}</span>
                     <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </h3>
-                  <p className="text-xs text-theme-text-muted mt-0.5">Asset disk allocation across media libraries.</p>
+                  <p className="text-xs text-theme-text-muted mt-0.5">{t('runtime_history.ui.libraryStorageDescription')}</p>
                 </div>
               </div>
 
@@ -1343,14 +1343,14 @@ export default function RuntimeHistory() {
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-1">
                     <HardDrive size={24} className="opacity-30" />
-                    <span>No library storage statistics available</span>
+                    <span>{t('runtime_history.ui.noLibraryStorage')}</span>
                   </div>
                 )}
               </div>
 
               <div className="pt-3 border-t border-white/[0.06] text-center">
                 <span className="text-[11px] text-theme-text-muted group-hover:text-white transition-colors">
-                  Inspect Asset Overview & Health →
+                  {t('runtime_history.ui.inspectAssetOverview')} →
                 </span>
               </div>
             </div>
@@ -1360,13 +1360,13 @@ export default function RuntimeHistory() {
           {/* THIRD ROW: OVERLAY ENGINE & MEDIA EXPORTS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            <section className="lg:col-span-2 border-y border-theme py-5" aria-label="Dynamic overlay databases">
+            <section className="lg:col-span-2 border-y border-theme py-5" aria-label={t('runtime_history.ui.overlayDatabases')}>
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <h3 className="text-base font-semibold text-theme-text flex items-center gap-2">
-                  <Database size={17} className="text-emerald-400" /> Dynamic Overlay Databases
+                  <Database size={17} className="text-emerald-400" /> {t('runtime_history.ui.overlayDatabases')}
                 </h3>
                 <a href="#overlay-database-records" className="ml-auto inline-flex items-center gap-2 text-xs text-theme-primary hover:text-theme-text">
-                  <Eye size={14} /> Browse records
+                  <Eye size={14} /> {t('runtime_history.ui.browseRecords')}
                 </a>
                 {overlayDatabaseStats && !overlayDatabaseError && (
                   <span className="text-xs text-theme-muted font-mono">
@@ -1388,18 +1388,18 @@ export default function RuntimeHistory() {
                       {database.error ? (
                         <p className="text-xs text-amber-400 break-words">{database.error}</p>
                       ) : !database.exists ? (
-                        <p className="text-xs text-theme-muted">Not created yet</p>
+                        <p className="text-xs text-theme-muted">{t('runtime_history.ui.notCreatedYet')}</p>
                       ) : (
                         <dl className="space-y-3">
                           {database.tables.map(table => (
                             <div key={table.name}>
                               <div className="flex justify-between items-baseline gap-3 text-xs">
-                                <dt className="text-theme-text break-all">{({dynamic_overlay_cache: 'Artwork fingerprints', media_ratings_cache: 'Ratings and show metadata', episodes: 'Classified episodes', updates: 'Tracked shows'})[table.name] || table.name}</dt>
+                                <dt className="text-theme-text break-all">{({dynamic_overlay_cache: t('runtime_history.ui.artworkFingerprints'), media_ratings_cache: t('runtime_history.ui.ratingsShowMetadata'), episodes: t('runtime_history.ui.classifiedEpisodes'), updates: t('runtime_history.ui.trackedShows')})[table.name] || table.name}</dt>
                                 <dd className="font-mono font-semibold tabular-nums text-theme-text">{table.records.toLocaleString()}</dd>
                               </div>
                               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-theme-muted mt-1">
-                                {table.valid !== undefined && <span>{table.valid.toLocaleString()} valid / {table.expired.toLocaleString()} expired</span>}
-                                {table.shows !== undefined && <span>{table.shows.toLocaleString()} shows</span>}
+                                {table.valid !== undefined && <span>{t('runtime_history.ui.validExpiredCounts', { valid: table.valid.toLocaleString(), expired: table.expired.toLocaleString() })}</span>}
+                                {table.shows !== undefined && <span>{t('runtime_history.ui.showsCount', { count: table.shows.toLocaleString() })}</span>}
                                 {['status', 'server_type', 'asset_type', 'category'].map(group => table[group] && (
                                   <span key={group} className="break-words">
                                     {Object.entries(table[group]).map(([label, count]) => `${label || 'unknown'}: ${count.toLocaleString()}`).join(' / ')}
@@ -1409,16 +1409,16 @@ export default function RuntimeHistory() {
                             </div>
                           ))}
                           <div className="flex justify-between border-t border-theme pt-2 text-xs">
-                            <dt className="text-theme-muted">Total records</dt>
+                            <dt className="text-theme-muted">{t('runtime_history.ui.totalRecords')}</dt>
                             <dd className="font-mono font-semibold text-theme-text">{database.total_records.toLocaleString()}</dd>
                           </div>
-                          {database.wal_bytes > 0 && <div className="text-[11px] text-theme-muted">WAL: {formatBytes(database.wal_bytes)}</div>}
+                          {database.wal_bytes > 0 && <div className="text-[11px] text-theme-muted">{t('runtime_history.ui.walSize', { value: formatBytes(database.wal_bytes) })}</div>}
                         </dl>
                       )}
                     </div>
                   ))}
                 </div>
-              ) : <p role="status" className="text-sm text-theme-muted">Loading database statistics...</p>}
+              ) : <p role="status" className="text-sm text-theme-muted">{t('runtime_history.ui.loadingDatabaseStats')}</p>}
             </section>
 
             <OverlayDatabaseBrowser databases={overlayDatabaseStats} />
@@ -1432,10 +1432,10 @@ export default function RuntimeHistory() {
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2 group-hover:text-amber-400 transition-colors">
                     <FileType size={17} className="text-amber-400" />
-                    <span>Overlay Engine Assets</span>
+                    <span>{t('runtime_history.ui.overlayEngineAssets')}</span>
                     <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </h3>
-                  <p className="text-xs text-theme-text-muted mt-0.5">Installed badge overlays, ribbons & typography fonts.</p>
+                  <p className="text-xs text-theme-text-muted mt-0.5">{t('runtime_history.ui.overlayAssetsDescription')}</p>
                 </div>
               </div>
 
@@ -1455,13 +1455,13 @@ export default function RuntimeHistory() {
                   </div>
                 ))}
                 {overlayStats.length === 0 && (
-                  <div className="col-span-2 text-center text-xs text-theme-text-muted py-4">No overlay assets found</div>
+                  <div className="col-span-2 text-center text-xs text-theme-text-muted py-4">{t('runtime_history.ui.noOverlayAssets')}</div>
                 )}
               </div>
 
               <div className="pt-2 text-center">
                 <span className="text-[11px] text-theme-text-muted group-hover:text-white transition-colors">
-                  Manage overlay graphic files in Asset Manager →
+                  {t('runtime_history.ui.manageOverlayAssets')} →
                 </span>
               </div>
             </div>
@@ -1472,9 +1472,9 @@ export default function RuntimeHistory() {
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">
                     <Database size={17} className="text-emerald-400" />
-                    <span>Media Server Export Telemetry</span>
+                    <span>{t('runtime_history.ui.mediaServerExportTelemetry')}</span>
                   </h3>
-                  <p className="text-xs text-theme-text-muted mt-0.5">Metadata synchronizations with Plex, Jellyfin, or Emby.</p>
+                  <p className="text-xs text-theme-text-muted mt-0.5">{t('runtime_history.ui.mediaServerExportDescription')}</p>
                 </div>
               </div>
 
@@ -1482,26 +1482,26 @@ export default function RuntimeHistory() {
                 <div className="grid grid-cols-3 gap-3 my-2">
                   <div className="bg-black/30 p-3 rounded-xl border border-white/[0.06] text-center">
                     <div className="text-lg font-bold font-mono text-amber-400">{exportStats.total_runs || 0}</div>
-                    <div className="text-[10px] text-theme-text-muted uppercase tracking-wider mt-0.5">Total Exports</div>
+                    <div className="text-[10px] text-theme-text-muted uppercase tracking-wider mt-0.5">{t('runtime_history.ui.totalExports')}</div>
                   </div>
                   <div className="bg-black/30 p-3 rounded-xl border border-white/[0.06] text-center">
                     <div className="text-lg font-bold font-mono text-blue-400">{(exportStats.total_library_records || 0).toLocaleString()}</div>
-                    <div className="text-[10px] text-theme-text-muted uppercase tracking-wider mt-0.5">Library Records</div>
+                    <div className="text-[10px] text-theme-text-muted uppercase tracking-wider mt-0.5">{t('runtime_history.ui.libraryRecords')}</div>
                   </div>
                   <div className="bg-black/30 p-3 rounded-xl border border-white/[0.06] text-center">
                     <div className="text-lg font-bold font-mono text-emerald-400">{(exportStats.total_episode_records || 0).toLocaleString()}</div>
-                    <div className="text-[10px] text-theme-text-muted uppercase tracking-wider mt-0.5">Episodes</div>
+                    <div className="text-[10px] text-theme-text-muted uppercase tracking-wider mt-0.5">{t('runtime_history.ui.episodes')}</div>
                   </div>
                 </div>
               ) : (
                 <div className="text-center text-xs text-theme-text-muted py-6">
-                  No media server export statistics found
+                  {t('runtime_history.ui.noExportStats')}
                 </div>
               )}
 
               <div className="pt-2 text-center">
                 <span className="text-[11px] text-theme-text-muted">
-                  Latest Export: {exportStats?.latest_run ? new Date(exportStats.latest_run).toLocaleString() : 'Never'}
+                  {t('runtime_history.ui.latestExport')}: {exportStats?.latest_run ? new Date(exportStats.latest_run).toLocaleString() : t('runtime_history.ui.never')}
                 </span>
               </div>
             </div>
@@ -1520,7 +1520,7 @@ export default function RuntimeHistory() {
             <div className="flex items-center gap-2">
               <h3 className="text-base font-semibold text-white flex items-center gap-2">
                 <ListIcon size={17} className="text-amber-400" />
-                <span>Execution Records</span>
+                <span>{t('runtime_history.ui.executionRecords')}</span>
               </h3>
               <span className="px-2 py-0.5 text-xs rounded-full bg-white/10 text-white font-mono font-medium">
                 {tableEntries.length}
@@ -1534,7 +1534,7 @@ export default function RuntimeHistory() {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-theme-text-muted pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Search run ID, mode, log..."
+                  placeholder={t('runtime_history.ui.searchRunsPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -1558,14 +1558,14 @@ export default function RuntimeHistory() {
                 }}
                 className="bg-black/40 border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
               >
-                <option value="all">All Modes</option>
-                <option value="scheduled">Scheduled</option>
-                <option value="normal">Normal</option>
-                <option value="manual">Manual</option>
-                <option value="testing">Testing</option>
-                <option value="tautulli">Tautulli</option>
-                <option value="arr">Arr</option>
-                <option value="dynamic_overlays">Dynamic Overlays</option>
+                <option value="all">{t('runtime_history.ui.allModes')}</option>
+                <option value="scheduled">{t('runtime_history.ui.scheduled')}</option>
+                <option value="normal">{t('runtime_history.ui.normal')}</option>
+                <option value="manual">{t('runtime_history.ui.manual')}</option>
+                <option value="testing">{t('runtime_history.ui.testing')}</option>
+                <option value="tautulli">{t('runtime_history.ui.tautulli')}</option>
+                <option value="arr">{t('runtime_history.ui.arr')}</option>
+                <option value="dynamic_overlays">{t('runtime_history.ui.dynamicOverlays')}</option>
               </select>
 
               {/* Status Filter */}
@@ -1577,9 +1577,9 @@ export default function RuntimeHistory() {
                 }}
                 className="bg-black/40 border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
               >
-                <option value="all">All Statuses</option>
-                <option value="success">Success Only</option>
-                <option value="errors">With Errors</option>
+                <option value="all">{t('runtime_history.ui.allStatuses')}</option>
+                <option value="success">{t('runtime_history.ui.successOnly')}</option>
+                <option value="errors">{t('runtime_history.ui.withErrors')}</option>
               </select>
 
               {/* Assets Filter */}
@@ -1591,9 +1591,9 @@ export default function RuntimeHistory() {
                 }}
                 className="bg-black/40 border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
               >
-                <option value="all">All Asset Counts</option>
-                <option value="with_assets">Created Assets (&gt;0)</option>
-                <option value="no_assets">Zero Assets (=0)</option>
+                <option value="all">{t('runtime_history.ui.allAssetCounts')}</option>
+                <option value="with_assets">{t('runtime_history.ui.createdAssetsFilter')}</option>
+                <option value="no_assets">{t('runtime_history.ui.zeroAssetsFilter')}</option>
               </select>
 
               {/* Sort By */}
@@ -1605,12 +1605,12 @@ export default function RuntimeHistory() {
                 }}
                 className="bg-black/40 border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
               >
-                <option value="date_desc">Newest First</option>
-                <option value="date_asc">Oldest First</option>
-                <option value="duration_desc">Longest Duration</option>
-                <option value="duration_asc">Shortest Duration</option>
-                <option value="assets_desc">Most Assets</option>
-                <option value="errors_desc">Most Errors</option>
+                <option value="date_desc">{t('runtime_history.ui.newestFirst')}</option>
+                <option value="date_asc">{t('runtime_history.ui.oldestFirst')}</option>
+                <option value="duration_desc">{t('runtime_history.ui.longestDuration')}</option>
+                <option value="duration_asc">{t('runtime_history.ui.shortestDuration')}</option>
+                <option value="assets_desc">{t('runtime_history.ui.mostAssets')}</option>
+                <option value="errors_desc">{t('runtime_history.ui.mostErrors')}</option>
               </select>
 
               {/* Page size */}
@@ -1622,10 +1622,10 @@ export default function RuntimeHistory() {
                 }}
                 className="bg-black/40 border border-white/[0.08] rounded-xl px-2.5 py-1.5 text-xs text-theme-text-muted focus:outline-none"
               >
-                <option value={10}>10 / page</option>
-                <option value={15}>15 / page</option>
-                <option value={25}>25 / page</option>
-                <option value={50}>50 / page</option>
+                <option value={10}>{t('runtime_history.ui.perPage', { count: 10 })}</option>
+                <option value={15}>{t('runtime_history.ui.perPage', { count: 15 })}</option>
+                <option value={25}>{t('runtime_history.ui.perPage', { count: 25 })}</option>
+                <option value={50}>{t('runtime_history.ui.perPage', { count: 50 })}</option>
               </select>
             </div>
           </div>
@@ -1633,34 +1633,34 @@ export default function RuntimeHistory() {
           {/* Active Filter Pills Bar */}
           {(statusFilter !== "all" || assetFilter !== "all" || modeFilter !== "all" || searchQuery || sortBy !== "date_desc") && (
             <div className="px-4 py-2 bg-amber-500/5 border-b border-white/[0.06] flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-theme-text-muted text-[11px] font-semibold uppercase">Active Filters:</span>
+              <span className="text-theme-text-muted text-[11px] font-semibold uppercase">{t('runtime_history.ui.activeFilters')}</span>
               {statusFilter !== "all" && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px]">
-                  Status: {statusFilter === "success" ? "Success Only" : "With Errors"}
+                  {t('runtime_history.ui.statusFilterLabel')} {t(statusFilter === "success" ? 'runtime_history.ui.successOnly' : 'runtime_history.ui.withErrors')}
                   <button onClick={() => setStatusFilter("all")} className="hover:text-white"><X size={11} /></button>
                 </span>
               )}
               {assetFilter !== "all" && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[11px]">
-                  Assets: {assetFilter === "with_assets" ? "Created Assets (>0)" : "Zero Assets"}
+                  {t('runtime_history.ui.assetsFilterLabel')} {t(assetFilter === "with_assets" ? 'runtime_history.ui.createdAssetsFilter' : 'runtime_history.ui.zeroAssetsFilter')}
                   <button onClick={() => setAssetFilter("all")} className="hover:text-white"><X size={11} /></button>
                 </span>
               )}
               {modeFilter !== "all" && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px]">
-                  Mode: {modeFilter}
+                  {t('runtime_history.ui.modeFilterLabel')} {t(`runtime_history.ui.${modeFilter === 'dynamic_overlays' ? 'dynamicOverlays' : modeFilter}`, { defaultValue: modeFilter })}
                   <button onClick={() => setModeFilter("all")} className="hover:text-white"><X size={11} /></button>
                 </span>
               )}
               {searchQuery && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 text-white border border-white/20 text-[11px]">
-                  Search: "{searchQuery}"
+                  {t('runtime_history.ui.searchFilterLabel')} "{searchQuery}"
                   <button onClick={() => setSearchQuery("")} className="hover:text-rose-400"><X size={11} /></button>
                 </span>
               )}
               {sortBy !== "date_desc" && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px]">
-                  Sort: {sortBy === "duration_desc" ? "Longest Duration" : (sortBy === "assets_desc" ? "Most Assets" : sortBy)}
+                  {t('runtime_history.ui.sortFilterLabel')} {t(sortBy === 'duration_desc' ? 'runtime_history.ui.longestDuration' : sortBy === 'assets_desc' ? 'runtime_history.ui.mostAssets' : `runtime_history.ui.${sortBy}`, { defaultValue: sortBy })}
                   <button onClick={() => setSortBy("date_desc")} className="hover:text-white"><X size={11} /></button>
                 </span>
               )}
@@ -1674,7 +1674,7 @@ export default function RuntimeHistory() {
                 }}
                 className="text-[11px] text-amber-400 hover:text-amber-300 underline font-medium ml-auto"
               >
-                Clear all filters
+                {t('runtime_history.ui.clearAllFilters')}
               </button>
             </div>
           )}
@@ -1684,15 +1684,15 @@ export default function RuntimeHistory() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-black/30 border-b border-white/[0.06] text-theme-text-muted uppercase tracking-wider text-[10px] font-semibold">
-                  <th className="px-4 py-3 w-10 text-center">Status</th>
-                  <th className="px-4 py-3">Run ID & Mode</th>
-                  <th className="px-4 py-3">Start Time</th>
-                  <th className="px-4 py-3">Duration</th>
-                  <th className="px-4 py-3 text-right">Assets Created</th>
-                  <th className="px-4 py-3 text-center">Breakdown</th>
-                  <th className="px-4 py-3 text-center">Errors</th>
-                  <th className="px-4 py-3">Log File</th>
-                  <th className="px-4 py-3 text-right">Action</th>
+                  <th className="px-4 py-3 w-10 text-center">{t('runtime_history.ui.status')}</th>
+                  <th className="px-4 py-3">{t('runtime_history.ui.runIdMode')}</th>
+                  <th className="px-4 py-3">{t('runtime_history.ui.startTime')}</th>
+                  <th className="px-4 py-3">{t('runtime_history.ui.duration')}</th>
+                  <th className="px-4 py-3 text-right">{t('runtime_history.ui.assetsCreated')}</th>
+                  <th className="px-4 py-3 text-center">{t('runtime_history.ui.breakdown')}</th>
+                  <th className="px-4 py-3 text-center">{t('runtime_history.ui.errors')}</th>
+                  <th className="px-4 py-3">{t('runtime_history.ui.logFile')}</th>
+                  <th className="px-4 py-3 text-right">{t('runtime_history.ui.action')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.04]">
@@ -1713,11 +1713,11 @@ export default function RuntimeHistory() {
                         {/* Status Icon */}
                         <td className="px-4 py-3 text-center">
                           {hasError ? (
-                            <span className="inline-flex p-1 rounded-full bg-rose-500/15 text-rose-400" title={`${entry.errors} error(s)`}>
+                            <span className="inline-flex p-1 rounded-full bg-rose-500/15 text-rose-400" title={t('runtime_history.ui.errorCount', { count: entry.errors })}>
                               <AlertCircle size={14} />
                             </span>
                           ) : (
-                            <span className="inline-flex p-1 rounded-full bg-emerald-500/15 text-emerald-400" title="Completed Cleanly">
+                            <span className="inline-flex p-1 rounded-full bg-emerald-500/15 text-emerald-400" title={t('runtime_history.ui.completedCleanly')}>
                               <CheckCircle2 size={14} />
                             </span>
                           )}
@@ -1782,7 +1782,7 @@ export default function RuntimeHistory() {
                               <button
                                 onClick={(e) => handleCopyLog(entry.log_file, e)}
                                 className="opacity-0 group-hover:opacity-100 p-1 hover:text-white transition-opacity text-theme-text-muted"
-                                title="Copy Log Path"
+                                title={t('runtime_history.ui.copyLogPath')}
                               >
                                 {copiedLogId === entry.log_file ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                               </button>
@@ -1800,7 +1800,7 @@ export default function RuntimeHistory() {
                             className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-amber-500 hover:text-black transition-all text-xs font-medium inline-flex items-center gap-1 text-white border border-white/[0.08]"
                           >
                             <Eye size={12} />
-                            <span>Inspect</span>
+                            <span>{t('runtime_history.ui.inspect')}</span>
                           </button>
                         </td>
                       </tr>
@@ -1811,7 +1811,7 @@ export default function RuntimeHistory() {
                     <td colSpan={9} className="px-4 py-12 text-center text-theme-text-muted italic">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <ListIcon size={28} className="opacity-30" />
-                        <span>No execution records match your current filters</span>
+                        <span>{t('runtime_history.ui.noRecordsMatch')}</span>
                       </div>
                     </td>
                   </tr>
@@ -1823,7 +1823,7 @@ export default function RuntimeHistory() {
           {/* Table Footer with Pagination */}
           <div className="p-3.5 bg-black/25 border-t border-white/[0.06] flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-theme-text-muted">
             <div>
-              Showing {tableEntries.length === 0 ? 0 : currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, tableEntries.length)} of {tableEntries.length} runs
+              {t('runtime_history.ui.showingRuns', { from: tableEntries.length === 0 ? 0 : currentPage * pageSize + 1, to: Math.min((currentPage + 1) * pageSize, tableEntries.length), count: tableEntries.length })}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1831,17 +1831,17 @@ export default function RuntimeHistory() {
                 onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
                 className="px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.08] hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent text-white transition-colors"
               >
-                Previous
+                {t('runtime_history.ui.previous')}
               </button>
               <span className="font-mono px-2 text-white">
-                Page {currentPage + 1} of {Math.max(1, Math.ceil(tableEntries.length / pageSize))}
+                {t('runtime_history.ui.pageOf', { page: currentPage + 1, pages: Math.max(1, Math.ceil(tableEntries.length / pageSize)) })}
               </span>
               <button
                 disabled={(currentPage + 1) * pageSize >= tableEntries.length}
                 onClick={() => setCurrentPage(p => p + 1)}
                 className="px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.08] hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent text-white transition-colors"
               >
-                Next
+                {t('runtime_history.ui.next')}
               </button>
             </div>
           </div>
@@ -1867,16 +1867,16 @@ export default function RuntimeHistory() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2.5">
-                    <h2 className="text-lg font-bold text-white">Execution #{selectedEntry.id}</h2>
+                    <h2 className="text-lg font-bold text-white">{t('runtime_history.ui.executionNumber', { id: selectedEntry.id })}</h2>
                     <span className="px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border bg-amber-500/15 border-amber-500/30 text-amber-400">
                       {selectedEntry.mode || 'normal'}
                     </span>
                     <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border ${(selectedEntry.errors || 0) > 0 ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'}`}>
-                      {(selectedEntry.errors || 0) > 0 ? `${selectedEntry.errors} Errors` : 'Success'}
+                      {(selectedEntry.errors || 0) > 0 ? t('runtime_history.ui.errorCount', { count: selectedEntry.errors }) : t('runtime_history.ui.success')}
                     </span>
                   </div>
                   <div className="text-xs text-theme-text-muted mt-0.5 font-mono">
-                    {(parseRuntimeDate(selectedEntry.start_time || selectedEntry.timestamp) || new Date()).toLocaleString()} • Duration: {selectedEntry.runtime_formatted || formatDuration(selectedEntry.runtime_seconds)}
+                    {(parseRuntimeDate(selectedEntry.start_time || selectedEntry.timestamp) || new Date()).toLocaleString()} • {t('runtime_history.ui.durationValue', { value: selectedEntry.runtime_formatted || formatDuration(selectedEntry.runtime_seconds) })}
                   </div>
                 </div>
               </div>
@@ -1900,7 +1900,7 @@ export default function RuntimeHistory() {
                     : 'border-transparent text-theme-text-muted hover:text-white'
                 }`}
               >
-                <Activity size={14} /> Telemetry & Diagnostics
+                <Activity size={14} /> {t('runtime_history.ui.telemetryDiagnostics')}
               </button>
               <button
                 onClick={() => setActiveModalTab("assets")}
@@ -1910,7 +1910,7 @@ export default function RuntimeHistory() {
                     : 'border-transparent text-theme-text-muted hover:text-white'
                 }`}
               >
-                <Image size={14} /> Created Assets ({selectedEntry.total_images || 0})
+                <Image size={14} /> {t('runtime_history.ui.createdAssetsCount', { count: selectedEntry.total_images || 0 })}
               </button>
             </div>
 
@@ -1922,48 +1922,48 @@ export default function RuntimeHistory() {
                   {/* Top 4 stat tiles */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
                     <div className="bg-black/30 p-3.5 rounded-xl border border-white/[0.06]">
-                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">Total Runtime</div>
+                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">{t('runtime_history.ui.totalRuntime')}</div>
                       <div className="text-xl font-bold font-mono text-amber-400 mt-1">
                         {selectedEntry.runtime_formatted || formatDuration(selectedEntry.runtime_seconds)}
                       </div>
-                      <div className="text-[10px] text-theme-text-muted mt-0.5">{selectedEntry.runtime_seconds || 0} seconds total</div>
+                      <div className="text-[10px] text-theme-text-muted mt-0.5">{t('runtime_history.ui.secondsTotal', { count: selectedEntry.runtime_seconds || 0 })}</div>
                     </div>
 
                     <div className="bg-black/30 p-3.5 rounded-xl border border-white/[0.06]">
-                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">Images Created</div>
+                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">{t('runtime_history.ui.imagesCreated')}</div>
                       <div className="text-xl font-bold font-mono text-emerald-400 mt-1">
                         {selectedEntry.total_images || 0}
                       </div>
-                      <div className="text-[10px] text-theme-text-muted mt-0.5">Posters, cards & seasons</div>
+                      <div className="text-[10px] text-theme-text-muted mt-0.5">{t('runtime_history.ui.postersCardsSeasons')}</div>
                     </div>
 
                     <div className="bg-black/30 p-3.5 rounded-xl border border-white/[0.06]">
-                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">Exceptions</div>
+                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">{t('runtime_history.ui.exceptions')}</div>
                       <div className={`text-xl font-bold font-mono mt-1 ${(selectedEntry.errors || 0) > 0 ? 'text-rose-400' : 'text-gray-400'}`}>
                         {selectedEntry.errors || 0}
                       </div>
-                      <div className="text-[10px] text-theme-text-muted mt-0.5">Reported error count</div>
+                      <div className="text-[10px] text-theme-text-muted mt-0.5">{t('runtime_history.ui.reportedErrorCount')}</div>
                     </div>
 
                     <div className="bg-black/30 p-3.5 rounded-xl border border-white/[0.06]">
-                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">Space Saved</div>
+                      <div className="text-[11px] text-theme-text-muted uppercase font-semibold">{t('runtime_history.ui.spaceSaved')}</div>
                       <div className="text-xl font-bold font-mono text-sky-400 mt-1">
                         {selectedEntry.space_saved || "0 KB"}
                       </div>
-                      <div className="text-[10px] text-theme-text-muted mt-0.5">Image compression gains</div>
+                      <div className="text-[10px] text-theme-text-muted mt-0.5">{t('runtime_history.ui.imageCompressionGains')}</div>
                     </div>
                   </div>
 
                   {/* Asset Format Breakdown Grid */}
                   <div>
-                    <h4 className="text-xs font-bold text-theme-text-muted uppercase tracking-wider mb-3">Asset Format Breakdown</h4>
+                    <h4 className="text-xs font-bold text-theme-text-muted uppercase tracking-wider mb-3">{t('runtime_history.ui.assetFormatBreakdown')}</h4>
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                       {[
-                        { label: 'Posters', value: selectedEntry.posters || 0, color: 'text-blue-400', icon: Image },
-                        { label: 'Title Cards', value: selectedEntry.titlecards || 0, color: 'text-purple-400', icon: Layers },
-                        { label: 'Seasons', value: selectedEntry.seasons || 0, color: 'text-emerald-400', icon: Folder },
-                        { label: 'Backgrounds', value: selectedEntry.backgrounds || 0, color: 'text-gray-300', icon: Box },
-                        { label: 'Collections', value: selectedEntry.collections || 0, color: 'text-amber-400', icon: FileImage },
+                        { label: t('runtime_history.ui.posters'), value: selectedEntry.posters || 0, color: 'text-blue-400', icon: Image },
+                        { label: t('runtime_history.ui.titleCards'), value: selectedEntry.titlecards || 0, color: 'text-purple-400', icon: Layers },
+                        { label: t('runtime_history.ui.seasons'), value: selectedEntry.seasons || 0, color: 'text-emerald-400', icon: Folder },
+                        { label: t('runtime_history.ui.backgrounds'), value: selectedEntry.backgrounds || 0, color: 'text-gray-300', icon: Box },
+                        { label: t('runtime_history.ui.collections'), value: selectedEntry.collections || 0, color: 'text-amber-400', icon: FileImage },
                       ].map((item, i) => (
                         <div key={i} className="bg-black/30 p-3 rounded-xl border border-white/[0.06] flex items-center justify-between">
                           <div>
@@ -1978,22 +1978,22 @@ export default function RuntimeHistory() {
 
                   {/* Telemetry Tags */}
                   <div>
-                    <h4 className="text-xs font-bold text-theme-text-muted uppercase tracking-wider mb-3">Advanced Engine Telemetry</h4>
+                    <h4 className="text-xs font-bold text-theme-text-muted uppercase tracking-wider mb-3">{t('runtime_history.ui.advancedEngineTelemetry')}</h4>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                       <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
-                        <span className="text-theme-text-muted">Fallbacks Triggered:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.fallbacksTriggered')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.fallbacks || 0}</span>
                       </div>
                       <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
-                        <span className="text-theme-text-muted">Textless Posters:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.textlessPosters')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.textless || 0}</span>
                       </div>
                       <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
-                        <span className="text-theme-text-muted">TBA Episodes Skipped:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.tbaEpisodesSkipped')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.tba_skipped || 0}</span>
                       </div>
                       <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
-                        <span className="text-theme-text-muted">Cleared Items:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.clearedItems')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.images_cleared || 0}</span>
                       </div>
                     </div>
@@ -2001,26 +2001,26 @@ export default function RuntimeHistory() {
 
                   {/* System & Logs */}
                   <div className="bg-black/30 rounded-xl border border-white/[0.06] p-4 space-y-2 text-xs">
-                    <h4 className="font-bold text-theme-text-muted uppercase tracking-wider text-[11px] mb-2">Environment & Log Details</h4>
+                    <h4 className="font-bold text-theme-text-muted uppercase tracking-wider text-[11px] mb-2">{t('runtime_history.ui.environmentLogDetails')}</h4>
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between py-1 border-b border-white/[0.04]">
-                        <span className="text-theme-text-muted">Posterizarr Engine Version:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.engineVersion')}</span>
                         <span className="font-mono text-white font-medium">{selectedEntry.script_version || "v2.1.0"}</span>
                       </div>
                       <div className="flex items-center justify-between py-1 border-b border-white/[0.04]">
-                        <span className="text-theme-text-muted">ImageMagick Library:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.imageMagickLibrary')}</span>
                         <span className="font-mono text-white font-medium">{selectedEntry.im_version || "ImageMagick 7.x"}</span>
                       </div>
                       <div className="flex items-center justify-between py-1">
-                        <span className="text-theme-text-muted">Execution Log File:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.executionLogFile')}</span>
                         <div className="flex items-center gap-2 max-w-[450px]">
-                          <span className="font-mono text-white truncate text-[11px]">{selectedEntry.log_file || "Unknown"}</span>
+                          <span className="font-mono text-white truncate text-[11px]">{selectedEntry.log_file || t('runtime_history.ui.unknown')}</span>
                           {selectedEntry.log_file && (
                             <button
                               onClick={() => handleCopyLog(selectedEntry.log_file)}
                               className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white transition-colors text-[10px] flex items-center gap-1 shrink-0"
                             >
-                              <Copy size={11} /> Copy
+                              <Copy size={11} /> {t('runtime_history.ui.copy')}
                             </button>
                           )}
                         </div>
@@ -2039,7 +2039,7 @@ export default function RuntimeHistory() {
                   ) : runAssets.length > 0 ? (
                     <div className="space-y-2.5">
                       <div className="text-xs text-theme-text-muted mb-2">
-                        Displaying {runAssets.length} image choice records captured during this run:
+                        {t('runtime_history.ui.displayingAssetChoices', { count: runAssets.length })}
                       </div>
                       <div className="divide-y divide-white/[0.06] border border-white/[0.08] rounded-xl overflow-hidden bg-black/30">
                         {runAssets.map((asset, idx) => (
@@ -2048,7 +2048,7 @@ export default function RuntimeHistory() {
                               {asset.DownloadSource && typeof asset.DownloadSource === 'string' && asset.DownloadSource.startsWith('http') ? (
                                 <img
                                   src={asset.DownloadSource}
-                                  alt={asset.Title || "Asset"}
+                                  alt={asset.Title || t('runtime_history.ui.asset')}
                                   className="w-10 h-14 rounded-md object-cover border border-white/10 shadow-md bg-black/40 flex-shrink-0"
                                   loading="lazy"
                                   onError={(e) => {
@@ -2065,7 +2065,7 @@ export default function RuntimeHistory() {
                                 <Image size={18} />
                               </div>
                               <div className="min-w-0">
-                                <div className="font-bold text-white text-sm truncate max-w-md">{asset.Title || "Untitled"}</div>
+                                <div className="font-bold text-white text-sm truncate max-w-md">{asset.Title || t('runtime_history.ui.untitled')}</div>
                                 <div className="text-[11px] text-theme-text-muted flex flex-wrap items-center gap-2 mt-0.5">
                                   <span>{asset.LibraryName || asset.Rootfolder}</span>
                                   <span>•</span>
@@ -2081,7 +2081,7 @@ export default function RuntimeHistory() {
                                           className="text-amber-400 hover:text-amber-300 font-medium truncate max-w-xs hover:underline"
                                           title={asset.DownloadSource}
                                         >
-                                          Source Link
+                                          {t('runtime_history.ui.sourceLink')}
                                         </a>
                                       ) : (
                                         <span className="text-amber-400 font-medium truncate max-w-xs">{asset.DownloadSource}</span>
@@ -2101,16 +2101,16 @@ export default function RuntimeHistory() {
                   ) : (
                     <div className="text-center py-12 text-theme-text-muted italic space-y-3">
                       <Image size={32} className="mx-auto opacity-30" />
-                      <div>No individual image records linked to this run ID in the database choices table.</div>
+                      <div>{t('runtime_history.ui.noImageRecordsForRun')}</div>
                       <div className="text-xs text-theme-text-muted/70">
-                        (Total images generated: {selectedEntry.total_images || 0})
+                        {t('runtime_history.ui.totalImagesGenerated', { count: selectedEntry.total_images || 0 })}
                       </div>
                       <div className="pt-2 not-italic">
                         <button
                           onClick={() => handleOpenDetail(selectedEntry, true)}
                           className="px-3.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-medium transition-colors inline-flex items-center gap-1.5"
                         >
-                          <RefreshCw size={12} /> Retry with Extended Window (±30 min)
+                          <RefreshCw size={12} /> {t('runtime_history.ui.retryExtendedWindow')}
                         </button>
                       </div>
                     </div>
@@ -2137,25 +2137,25 @@ export default function RuntimeHistory() {
               <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30">
                 <Trash2 size={20} />
               </div>
-              <h3 className="text-base font-bold text-white">Clean Runtime History</h3>
+              <h3 className="text-base font-bold text-white">{t('runtime_history.ui.cleanRuntimeHistory')}</h3>
             </div>
 
             <p className="text-xs text-theme-text-muted leading-relaxed">
-              Prune execution records older than a selected threshold to reduce database footprint. Your actual generated posters, title cards, and libraries will <strong>not</strong> be affected.
+              {t('runtime_history.ui.pruneDescription')}
             </p>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-white">Retention Period</label>
+              <label className="text-xs font-semibold text-white">{t('runtime_history.ui.retentionPeriod')}</label>
               <select
                 value={pruneDays}
                 onChange={(e) => setPruneDays(Number(e.target.value))}
                 className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50"
               >
-                <option value={30}>Keep last 30 days (delete older)</option>
-                <option value={60}>Keep last 60 days (delete older)</option>
-                <option value={90}>Keep last 90 days (delete older)</option>
-                <option value={180}>Keep last 180 days (delete older)</option>
-                <option value={365}>Keep last 1 year (delete older)</option>
+                <option value={30}>{t('runtime_history.ui.keepDays', { count: 30 })}</option>
+                <option value={60}>{t('runtime_history.ui.keepDays', { count: 60 })}</option>
+                <option value={90}>{t('runtime_history.ui.keepDays', { count: 90 })}</option>
+                <option value={180}>{t('runtime_history.ui.keepDays', { count: 180 })}</option>
+                <option value={365}>{t('runtime_history.ui.keepYear')}</option>
               </select>
             </div>
 
@@ -2164,7 +2164,7 @@ export default function RuntimeHistory() {
                 onClick={() => setShowPruneModal(false)}
                 className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-medium transition-colors"
               >
-                Cancel
+                {t('runtime_history.ui.cancel')}
               </button>
               <button
                 disabled={isPruning}
@@ -2172,7 +2172,7 @@ export default function RuntimeHistory() {
                 className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold shadow-lg shadow-rose-500/25 transition-all flex items-center gap-1.5 disabled:opacity-50"
               >
                 {isPruning ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                <span>Prune Records</span>
+                <span>{t('runtime_history.ui.pruneRecords')}</span>
               </button>
             </div>
           </div>
@@ -2189,6 +2189,7 @@ export default function RuntimeHistory() {
  * Interactive SVG Area / Column Performance Chart
  */
 const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
+  const { t } = useTranslation();
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const containerRef = useRef(null);
 
@@ -2219,7 +2220,7 @@ const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
             style={{ bottom: `${Math.max(10, Math.min(95, (avgSec / maxVal) * 100))}%` }}
           >
             <span className="absolute -top-3.5 right-2 text-[9px] font-mono text-amber-400 bg-black/60 px-1 rounded">
-              Avg: {formatDuration(avgSec)}
+              {t('runtime_history.ui.averageValue', { value: formatDuration(avgSec) })}
             </span>
           </div>
         )}
@@ -2256,39 +2257,39 @@ const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
               {isHovered && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none whitespace-nowrap bg-[#12141a] border border-white/20 p-2.5 rounded-xl shadow-2xl text-[11px]">
                   <div className="font-bold text-white flex items-center justify-between gap-3 border-b border-white/10 pb-1 mb-1.5">
-                    <span>{d.isBucket ? (d.fullDate || d.shortDate) : `Run #${d.id}`}</span>
-                    <span className="text-[10px] text-theme-text-muted">{d.isBucket ? `${d.runCount} runs` : d.shortDate}</span>
+                    <span>{d.isBucket ? (d.fullDate || d.shortDate) : t('runtime_history.ui.runNumber', { id: d.id })}</span>
+                    <span className="text-[10px] text-theme-text-muted">{d.isBucket ? t('runtime_history.ui.runsCount', { count: d.runCount }) : d.shortDate}</span>
                   </div>
                   <div className="space-y-1 font-mono">
                     <div className="flex justify-between gap-3">
-                      <span className="text-theme-text-muted">{d.isBucket ? "Avg Duration:" : "Duration:"}</span>
+                      <span className="text-theme-text-muted">{d.isBucket ? t('runtime_history.ui.averageDuration') : t('runtime_history.ui.duration')}</span>
                       <span className="text-amber-400 font-bold">{d.runtimeFormatted}</span>
                     </div>
                     {d.isBucket && d.maxSec > 0 && (
                       <div className="flex justify-between gap-3">
-                        <span className="text-theme-text-muted">Peak Run:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.peakRun')}</span>
                         <span className="text-amber-300/80 font-medium">{d.maxFormatted || formatDuration(d.maxSec)}</span>
                       </div>
                     )}
                     <div className="flex justify-between gap-3">
-                      <span className="text-theme-text-muted">Total Assets:</span>
+                      <span className="text-theme-text-muted">{t('runtime_history.ui.totalAssetsLabel')}</span>
                       <span className="text-emerald-400 font-bold">{d.assets}</span>
                     </div>
                     {!d.isBucket && (
                       <div className="flex justify-between gap-3">
-                        <span className="text-theme-text-muted">Mode:</span>
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.modeFilterLabel')}</span>
                         <span className="text-white capitalize">{d.mode}</span>
                       </div>
                     )}
                     {d.errors > 0 && (
                       <div className="flex justify-between gap-3 text-rose-400 font-bold">
-                        <span>Errors:</span>
+                        <span>{t('runtime_history.ui.errors')}:</span>
                         <span>{d.errors}</span>
                       </div>
                     )}
                   </div>
                   <div className="text-[9px] text-theme-text-muted mt-1 text-center italic">
-                    {d.isBucket ? "Click to inspect latest run" : "Click to inspect"}
+                    {d.isBucket ? t('runtime_history.ui.inspectLatestRunHint') : t('runtime_history.ui.inspectRunHint')}
                   </div>
                 </div>
               )}
@@ -2311,6 +2312,7 @@ const PerformanceAreaChart = ({ data, avgSec, onSelectRun }) => {
  * Interactive SVG Bar Chart for Asset Volume
  */
 const AssetVolumeBarChart = ({ data, onSelectRun }) => {
+  const { t } = useTranslation();
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   if (!data || data.length === 0) return null;
@@ -2359,31 +2361,31 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
               {isHovered && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none whitespace-nowrap bg-[#12141a] border border-white/20 p-2.5 rounded-xl shadow-2xl text-[11px]">
                   <div className="font-bold text-white flex items-center justify-between gap-3 border-b border-white/10 pb-1 mb-1.5">
-                    <span>{d.isBucket ? (d.fullDate || d.shortDate) : `Run #${d.id}`}</span>
-                    <span className="text-[10px] text-theme-text-muted">{d.isBucket ? `${d.runCount} runs` : d.shortDate}</span>
+                    <span>{d.isBucket ? (d.fullDate || d.shortDate) : t('runtime_history.ui.runNumber', { id: d.id })}</span>
+                    <span className="text-[10px] text-theme-text-muted">{d.isBucket ? t('runtime_history.ui.runsCount', { count: d.runCount }) : d.shortDate}</span>
                   </div>
                   <div className="space-y-1 font-mono">
                     <div className="flex justify-between gap-3">
-                      <span className="text-theme-text-muted">Total Generated:</span>
-                      <span className="text-emerald-400 font-bold">{d.assets} images</span>
+                      <span className="text-theme-text-muted">{t('runtime_history.ui.totalGenerated')}</span>
+                      <span className="text-emerald-400 font-bold">{t('runtime_history.ui.imagesCount', { count: d.assets })}</span>
                     </div>
                     <div className="flex justify-between gap-3 text-theme-text-muted">
-                      <span>Posters:</span>
+                      <span>{t('runtime_history.ui.posters')}:</span>
                       <span className="text-white">{d.posters ?? d.raw?.posters ?? 0}</span>
                     </div>
                     <div className="flex justify-between gap-3 text-theme-text-muted">
-                      <span>Title Cards:</span>
+                      <span>{t('runtime_history.ui.titleCards')}:</span>
                       <span className="text-white">{d.titlecards ?? d.raw?.titlecards ?? 0}</span>
                     </div>
                     {((d.seasons || d.raw?.seasons || 0) > 0 || (d.backgrounds || d.raw?.backgrounds || 0) > 0) && (
                       <div className="flex justify-between gap-3 text-theme-text-muted">
-                        <span>Seasons / Backdrops:</span>
+                        <span>{t('runtime_history.ui.seasonsBackdrops')}:</span>
                         <span className="text-white">{(d.seasons || d.raw?.seasons || 0) + (d.backgrounds || d.raw?.backgrounds || 0)}</span>
                       </div>
                     )}
                   </div>
                   <div className="text-[9px] text-theme-text-muted mt-1 text-center italic">
-                    {d.isBucket ? "Click to inspect latest run" : "Click to inspect"}
+                    {d.isBucket ? t('runtime_history.ui.inspectLatestRunHint') : t('runtime_history.ui.inspectRunHint')}
                   </div>
                 </div>
               )}
@@ -2405,11 +2407,12 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
  * Circular SVG Donut Chart for Asset Distribution
  */
 const AssetDonutChart = ({ posters = 0, titlecards = 0, seasons = 0, backgrounds = 0, total = 0 }) => {
+  const { t } = useTranslation();
   const slices = [
-    { label: 'Posters', count: posters, color: THEME.blue },
-    { label: 'Title Cards', count: titlecards, color: THEME.purple },
-    { label: 'Seasons', count: seasons, color: THEME.teal },
-    { label: 'Backgrounds', count: backgrounds, color: THEME.gray },
+    { label: t('runtime_history.ui.posters'), count: posters, color: THEME.blue },
+    { label: t('runtime_history.ui.titleCards'), count: titlecards, color: THEME.purple },
+    { label: t('runtime_history.ui.seasons'), count: seasons, color: THEME.teal },
+    { label: t('runtime_history.ui.backgrounds'), count: backgrounds, color: THEME.gray },
   ];
 
   const grandTotal = Math.max(total, 1);
@@ -2460,7 +2463,7 @@ const AssetDonutChart = ({ posters = 0, titlecards = 0, seasons = 0, backgrounds
         {/* Center Text */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-xl font-bold font-mono text-white">{total.toLocaleString()}</span>
-          <span className="text-[9px] uppercase tracking-wider text-theme-text-muted">Total</span>
+          <span className="text-[9px] uppercase tracking-wider text-theme-text-muted">{t('runtime_history.ui.totalLabel')}</span>
         </div>
       </div>
 
@@ -2489,13 +2492,14 @@ const AssetDonutChart = ({ posters = 0, titlecards = 0, seasons = 0, backgrounds
  * Metadata Provider Request Visualizer
  */
 const ProviderStackVisualizer = ({ data }) => {
+  const { t } = useTranslation();
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   if (!data || data.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-xs text-theme-text-muted italic gap-1">
         <Globe size={24} className="opacity-30" />
-        <span>No provider telemetry logged</span>
+        <span>{t('runtime_history.ui.noProviderTelemetry')}</span>
       </div>
     );
   }
@@ -2549,7 +2553,7 @@ const ProviderStackVisualizer = ({ data }) => {
                     <div className="flex justify-between gap-3 text-cyan-400"><span>TMDB:</span><span>{valTmdb}</span></div>
                     <div className="flex justify-between gap-3 text-emerald-400"><span>TVDB:</span><span>{valTvdb}</span></div>
                     <div className="flex justify-between gap-3 text-sky-400"><span>Fanart:</span><span>{valFanart}</span></div>
-                    <div className="flex justify-between gap-3 text-purple-400"><span>Other:</span><span>{valOther}</span></div>
+                    <div className="flex justify-between gap-3 text-purple-400"><span>{t('runtime_history.ui.otherProvider')}:</span><span>{valOther}</span></div>
                   </div>
                 </div>
               )}

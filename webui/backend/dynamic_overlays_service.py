@@ -314,6 +314,7 @@ def get_dynamic_overlays_settings() -> Dict[str, Any]:
         "change_detection_enabled": True,# Fast bulk change detection for languages, cuts, runtime, status
         "change_detection_interval_minutes": 60, # Periodic auto-check interval
         "auto_resync_on_change": True,   # Automatically re-composite and sync when media changes detected
+        "change_detection_dry_run": True,  # Detect changes without automatically applying overlays
         "fast_bulk_query_enabled": True, # Bulk section-level query optimization
         "wizard_dismissed": False,       # Onboarding wizard dismissed state
         "last_change_detection_at": None,

@@ -186,14 +186,14 @@ const QueueView = () => {
             });
 
             if (response.ok) {
-                showToast(`Deleted ${selectedItems.size} items`, "success");
+                showToast(t("queue.deleteSelectedSuccess", { count: selectedItems.size }), "success");
                 setSelectedItems(new Set());
                 fetchQueue();
             } else {
-                showToast("Failed to delete items", "error");
+                showToast(t("queue.deleteSelectedFailed"), "error");
             }
         } catch (error) {
-            showToast("Error deleting items", "error");
+            showToast(t("queue.deleteSelectedError"), "error");
         }
     };
 

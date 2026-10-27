@@ -443,7 +443,7 @@ function TautulliContent() {
   const webhookSteps = t("autoTriggers.tautulli.webhook.steps", { returnObjects: true });
   const dockerSteps = t("autoTriggers.tautulli.docker.steps", { returnObjects: true });
   const windowsSteps = t("autoTriggers.tautulli.windows.steps", { returnObjects: true });
-  
+
   let steps;
   if (mode === "webhook") steps = webhookSteps;
   else if (mode === "docker") steps = dockerSteps;
@@ -523,10 +523,10 @@ function TautulliContent() {
           <div>
             <h3 className="font-semibold text-theme-text mb-1">{t("autoTriggers.tautulli.requirements.title")}</h3>
             <p className="text-sm text-theme-muted">
-              {mode === "webhook" 
-                ? t("autoTriggers.tautulli.requirements.webhook") 
-                : mode === "docker" 
-                  ? t("autoTriggers.tautulli.requirements.docker") 
+              {mode === "webhook"
+                ? t("autoTriggers.tautulli.requirements.webhook")
+                : mode === "docker"
+                  ? t("autoTriggers.tautulli.requirements.docker")
                   : t("autoTriggers.tautulli.requirements.windows")}
             </p>
           </div>

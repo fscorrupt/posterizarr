@@ -18,7 +18,7 @@ from animetafill_core.logger import logger
 
 def load_config():
     """
-    Loads configuration from config.yml, falling back to config.example.yml 
+    Loads configuration from config.yml, falling back to config.example.yml
     if the primary config is missing.
     """
     config_path = 'config.yml'
@@ -31,7 +31,7 @@ def load_config():
 def run_sync(scheduler=None, custom_config=None, force=False):
     """
     Core synchronization loop.
-    
+
     This function handles the end-to-end synchronization process:
     1. Reads Plex libraries to find shows.
     2. Imports manual overrides from existing Kometa YAML (Reverse Sync).
@@ -58,7 +58,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     srv_type = (server_conf.get('type') or config.get('media_server') or 'plex').lower()
     srv_url = server_conf.get('url') or config.get('server_url') or config.get('plex', {}).get('url') or ''
     srv_token = server_conf.get('token') or config.get('server_token') or config.get('plex', {}).get('token') or ''
-    
+
     from animetafill_core.media_scanner import MediaServerScanner
     scanner = MediaServerScanner(server_type=srv_type, url=srv_url, token=srv_token)
 
@@ -70,7 +70,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
 
     kometa_gen = KometaYamlGenerator(kometa_out, kometa_config=kometa_conf)
     kometa_gen.migrate_legacy_files("anime_overlays.yml")
-    
+
     # 2. Fetch shows from Media Server (Plex, Jellyfin, Emby)
     target_libraries = server_conf.get('libraries') or config.get('target_libraries') or config.get('plex', {}).get('libraries') or []
     shows = scanner.get_shows_from_libraries(target_libraries)
@@ -83,21 +83,21 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     # -- REVERSE SYNC PHASE: Import manual edits from YAML --
     logger.system("Checking for manual edits in existing YAML...")
     existing_overlays = kometa_gen.get_existing_overlays("anime_overlays.yml")
-    
+
     # Group by title (case-insensitive) to avoid redundant Sonarr lookups
     grouped_edits = {}
     for item in existing_overlays:
         t = item['title']
         norm_t = t.strip().lower()
-        if norm_t not in grouped_edits: 
+        if norm_t not in grouped_edits:
             grouped_edits[norm_t] = {"canonical": t, "edits": []}
         grouped_edits[norm_t]["edits"].append(item)
 
     for norm_title, data in grouped_edits.items():
         title = data["canonical"]
         edits = data["edits"]
-        
-        # Optimization: Only import from YAML if the show is not already synced 
+
+        # Optimization: Only import from YAML if the show is not already synced
         # OR if we are forcing a re-sync. This avoids redundant API calls.
         if db.has_ever_synced(title) and "--force" not in sys.argv:
             continue
@@ -108,9 +108,9 @@ def run_sync(scheduler=None, custom_config=None, force=False):
                 # Unpack numeric and title maps
                 sonarr_map, _ = sonarr.get_absolute_to_season_map(series_info['id'])
                 if not sonarr_map: continue
-                
+
                 inv_map = {v: k for k, v in sonarr_map.items()}
-                
+
                 all_eps = []
                 for item in edits:
                     cat_enum = EpisodeCategory.from_string(item['category'])
@@ -122,7 +122,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
                                 title=f"Episode {abs_num}",
                                 category=cat_enum
                             ))
-                
+
                 if all_eps:
                     db.upsert_episodes(title, all_eps)
                     logger.info(f"Imported {len(all_eps)} total markers for '{title}' from YAML.")
@@ -198,7 +198,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
                     title_candidates.insert(0, title)
 
                 search_success, source_url = classifier.force_update_mapping(
-                    title_candidates, 
+                    title_candidates,
                     tvdb_id=series_info.get('tvdb_id') if series_info else None,
                     expected_count=sonarr_count
                 )
@@ -270,7 +270,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
                     nrt = getattr(job, 'next_run_time', None)
                     if nrt:
                         run_times.append(nrt)
-                
+
                 if run_times:
                     next_run = min(run_times)
                     logger.success(f"Next Scheduled Run: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -281,13 +281,13 @@ def run_sync(scheduler=None, custom_config=None, force=False):
         logger.info("Reasons for Skipping:")
         for reason, count in skipped_reasons.items():
             logger.info(f"  - {reason:<25} : {count}")
-    
+
     logger.divider()
     logger.system("Sync Task Finished.")
 
 def main():
     """
-    Application entry point. 
+    Application entry point.
     Handles both immediate CLI execution and background daemon scheduling.
     """
     logger.system("""
@@ -311,7 +311,7 @@ def main():
     logger.info(f"Scheduler initialized with timezone: {tz}")
     mode = sched_conf.get('mode', 'daily').lower()
     time_str = sched_conf.get('time', '03:00')
-    
+
     # Parse time entries (Supports "03:00" or "02:30,05:30")
     time_points = []
     for entry in time_str.split(','):

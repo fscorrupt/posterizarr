@@ -64,31 +64,34 @@ const getBackgroundClass = (mode) => {
 };
 
 // COMPONENT: Background Toggle Buttons
-const BackgroundToggle = ({ current, onChange, className = "" }) => (
-    <div className={`flex items-center bg-theme-input rounded-lg p-1 border border-theme/50 ${className}`}>
+const BackgroundToggle = ({ current, onChange, className = "" }) => {
+        const { t } = useTranslation();
+        return (
+            <div className={`flex items-center bg-theme-input rounded-lg p-1 border border-theme/50 ${className}`}>
         <button
             onClick={(e) => { e.stopPropagation(); onChange("dark"); }}
             className={`p-1.5 rounded-md transition-all ${current === 'dark' ? 'bg-theme-primary text-white shadow-sm' : 'text-theme-muted hover:text-white'}`}
-            title="Dark Background"
+            title={t("overlayAssets.backgroundDark")}
         >
             <Moon className="w-3.5 h-3.5" />
         </button>
         <button
             onClick={(e) => { e.stopPropagation(); onChange("light"); }}
             className={`p-1.5 rounded-md transition-all ${current === 'light' ? 'bg-theme-primary text-white shadow-sm' : 'text-theme-muted hover:text-white'}`}
-            title="Light Background"
+            title={t("overlayAssets.backgroundLight")}
         >
             <Sun className="w-3.5 h-3.5" />
         </button>
         <button
             onClick={(e) => { e.stopPropagation(); onChange("checker"); }}
             className={`p-1.5 rounded-md transition-all ${current === 'checker' ? 'bg-theme-primary text-white shadow-sm' : 'text-theme-muted hover:text-white'}`}
-            title="Transparent/Grid Background"
+            title={t("overlayAssets.backgroundChecker")}
         >
             <Grid className="w-3.5 h-3.5" />
         </button>
-    </div>
-);
+      </div>
+    );
+};
 
 // COMPONENT: Interactive Layer
 const InteractiveLayer = ({ layer, index, isSelected, onSelect, onChange, parentRef }) => {
@@ -584,13 +587,13 @@ function AssetsManager() {
       <ScrollToButtons />
 
       {/* Header */}
-            <WorkspaceHeader icon={FileImage} title={t("overlayAssets.title", "Overlay Assets")}>
+            <WorkspaceHeader icon={FileImage} title={t("overlayAssets.title")}>
         <div className="flex bg-theme-hover p-1 rounded-lg border border-theme self-end sm:self-auto">
             <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 rounded-md flex items-center gap-2 transition-colors text-sm font-medium ${viewMode === "list" ? "bg-theme-primary text-white shadow-sm" : "text-theme-muted hover:text-white"}`}>
-                <FileImage className="w-4 h-4" /> {t("overlayAssets.list") || "Asset Library"}
+                <FileImage className="w-4 h-4" /> {t("overlayAssets.list")}
             </button>
             <button onClick={() => { setViewMode("create"); fetchCreatorPreview(); }} className={`px-3 py-1.5 rounded-md flex items-center gap-2 transition-colors text-sm font-medium ${viewMode === "create" ? "bg-theme-primary text-white shadow-sm" : "text-theme-muted hover:text-white"}`}>
-                <LayoutTemplate className="w-4 h-4" /> {t("overlayAssets.create") || "Overlay Creator"}
+                <LayoutTemplate className="w-4 h-4" /> {t("overlayAssets.create")}
             </button>
         </div>
     </WorkspaceHeader>
@@ -653,7 +656,7 @@ function AssetsManager() {
                             {/* BLUR SLIDER START */}
                             <div>
                                 <div className="flex justify-between text-sm mb-2">
-                                    <span className="text-theme-muted">{t("overlayAssets.blurStrength") || "Blur Strength"}</span>
+                                    <span className="text-theme-muted">{t("overlayAssets.blurStrength")}</span>
                                     <span className="text-theme-text font-mono">{options.blur_amount}px</span>
                                 </div>
                                 <input
@@ -761,7 +764,7 @@ function AssetsManager() {
                     <div>
                         <label className="text-sm font-medium text-theme-text block mb-2">{t("overlayAssets.saveAs")}</label>
                         <div className="flex items-center gap-2 bg-theme-input border border-theme rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-theme-primary/30 transition-all mb-4">
-                            <input type="text" value={options.filename} onChange={e => setOptions({...options, filename: e.target.value})} placeholder="my_overlay" className="flex-1 bg-transparent text-theme-text border-none focus:outline-none placeholder-theme-muted" />
+                            <input type="text" value={options.filename} onChange={e => setOptions({...options, filename: e.target.value})} placeholder={t("overlayAssets.filenamePlaceholder")} className="flex-1 bg-transparent text-theme-text border-none focus:outline-none placeholder-theme-muted" />
                             <span className="text-theme-muted text-sm font-mono border-l border-theme pl-2">.png</span>
                         </div>
                     </div>
@@ -854,9 +857,9 @@ function AssetsManager() {
             </div>
             <div className="bg-theme-card border border-theme rounded-lg p-6">
                 <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
-                    <h3 className="font-semibold text-theme-text">Your Assets</h3>
+                    <h3 className="font-semibold text-theme-text">{t("overlayAssets.yourAssets")}</h3>
                     <div className="flex items-center gap-2">
-                         <span className="text-xs text-theme-muted mr-2">Preview Background:</span>
+                        <span className="text-xs text-theme-muted mr-2">{t("overlayAssets.previewBackgroundLabel")}</span>
                          <BackgroundToggle current={previewBg} onChange={setPreviewBg} />
                     </div>
                 </div>
@@ -915,14 +918,14 @@ function AssetsManager() {
                     <img src={`/api/overlayfiles/preview/${previewFile.name}?v=${previewFile.mtime}`} alt={previewFile.name} className="relative z-0 max-w-full max-h-[80vh] object-contain shadow-2xl" />
                 ) : (
                     <div className="w-full max-h-[80vh] overflow-y-auto px-4 py-8">
-                        <img src={`/api/fonts/preview/${previewFile.name}?text=The Quick Brown Fox&v=${previewFile.size}`} alt="Sample text" className="w-full h-auto object-contain bg-white rounded p-4 shadow-xl" loading="lazy" />
+                        <img src={`/api/fonts/preview/${previewFile.name}?text=The Quick Brown Fox&v=${previewFile.size}`} alt={t("overlayAssets.sampleText")} className="w-full h-auto object-contain bg-white rounded p-4 shadow-xl" loading="lazy" />
                     </div>
                 )}
               </div>
 
               <div className="md:w-80 p-6 bg-theme-card overflow-y-auto border-l border-theme shrink-0">
-                <h3 className="text-xl font-bold text-theme-text mb-4">Details</h3>
-                <div className="space-y-4"><div><label className="text-sm text-theme-muted">Filename</label><p className="text-theme-text break-all font-mono text-sm mt-1">{previewFile.name}</p></div></div>
+                <h3 className="text-xl font-bold text-theme-text mb-4">{t("overlayAssets.details")}</h3>
+                <div className="space-y-4"><div><label className="text-sm text-theme-muted">{t("overlayAssets.filename")}</label><p className="text-theme-text break-all font-mono text-sm mt-1">{previewFile.name}</p></div></div>
               </div>
             </div>
           </div>

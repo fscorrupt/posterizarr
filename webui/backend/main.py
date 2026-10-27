@@ -19083,6 +19083,7 @@ async def get_dynamic_overlays_status():
     try:
         yaml_files = kometa_resolver.get_configured_yaml_files()
         defaults_files = kometa_resolver.get_available_defaults()
+        inventory = kometa_resolver.get_storage_inventory()
         stats = dynamic_overlay_cache.get_stats() if dynamic_overlay_cache else {}
         return {
             "success": True,
@@ -19094,6 +19095,7 @@ async def get_dynamic_overlays_status():
             "has_configs": len(yaml_files) > 0,
             "yaml_files": yaml_files,
             "defaults_files": defaults_files,
+            "inventory": inventory,
             "cache_stats": stats
         }
     except Exception as e:
@@ -20203,7 +20205,8 @@ async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
                 "is_enabled": False
             }
     except Exception as e:
-        logger.debug(f"[OverlaySync] Check dynamic overlays enabled error: {e}")
+        logger.error("[OverlaySync] Could not verify master switch; refusing sync: %s", e)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
     try:
         from overlay_sync_service import submit_overlay_sync_task
     except ImportError as e:
@@ -20298,7 +20301,8 @@ async def detect_dynamic_overlays_changes_endpoint(
                 "summary": {}
             }
     except Exception as e:
-        logger.debug(f"[DetectChanges] Check dynamic overlays enabled error: {e}")
+        logger.error("[DetectChanges] Could not verify master switch; refusing scan: %s", e)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False, "total_scanned": 0, "changed_count": 0, "changes": [], "summary": {}}
     try:
         from overlay_sync_service import detect_media_changes
         from dynamic_overlays_service import save_dynamic_overlays_settings
@@ -20346,7 +20350,8 @@ async def sync_changed_dynamic_overlays_endpoint(req: DynamicOverlaysSyncRequest
                 "is_enabled": False
             }
     except Exception as e:
-        logger.debug(f"[OverlaySync] Check dynamic overlays enabled error: {e}")
+        logger.error("[OverlaySync] Could not verify master switch; refusing changed-items sync: %s", e)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
     try:
         from overlay_sync_service import run_overlay_sync_task, is_overlay_sync_running
         if is_overlay_sync_running():
@@ -20563,6 +20568,7 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     change_detection_enabled: Optional[bool] = None
     change_detection_interval_minutes: Optional[int] = None
     auto_resync_on_change: Optional[bool] = None
+    change_detection_dry_run: Optional[bool] = None
     fast_bulk_query_enabled: Optional[bool] = None
     debug_logging: Optional[bool] = None
     concurrency: Optional[int] = None
@@ -20590,9 +20596,18 @@ async def save_dynamic_overlays_settings_endpoint(req: DynamicOverlaysSettingsRe
         from dynamic_overlays_service import save_dynamic_overlays_settings
         update_dict = {k: v for k, v in req.model_dump().items() if v is not None}
         saved = save_dynamic_overlays_settings(update_dict)
+        from overlay_sync_service import stop_overlay_change_detector_background
         if saved.get("enabled", False) and saved.get("change_detection_enabled", True):
             from overlay_sync_service import start_overlay_change_detector_background
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
+        else:
+            stop_overlay_change_detector_background()
+        if not saved.get("enabled", False):
+            from overlay_sync_service import stop_overlay_sync
+            stop_overlay_sync()
+        elif update_dict.get("change_detection_dry_run") is True:
+            from overlay_sync_service import stop_overlay_sync
+            stop_overlay_sync()
         return {"success": True, "settings": saved, "message": "Settings saved."}
     except Exception as e:
         return {"success": False, "error": str(e)}

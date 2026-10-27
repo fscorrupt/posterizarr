@@ -27,7 +27,6 @@ const externalLinks = [
   { name: 'Discord', href: 'https://discord.gg/fYyJQSGt54', icon: DiscordIcon },
   { name: 'Docs', href: 'https://fscorrupt.github.io/posterizarr', icon: BookOpen },
   { name: 'GitHub', href: 'https://github.com/fscorrupt/posterizarr', icon: GithubIcon },
-  { name: 'Sponsor', href: 'https://ko-fi.com/R6R81S6SC', icon: Heart },
 ];
 
 const Sidebar = () => {
@@ -374,6 +373,20 @@ const Sidebar = () => {
               ))}
             </div>
 
+            <a
+              href="https://ko-fi.com/R6R81S6SC"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={t("support.title")}
+              className="mb-4 flex w-full max-w-[208px] items-center gap-2.5 border-l-2 border-theme-primary/40 py-1.5 pl-3 transition-colors hover:border-theme-primary"
+            >
+              <Heart className="h-4 w-4 shrink-0 text-rose-400" />
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold text-theme-text">{t("support.title")}</span>
+                <span className="block text-[10px] leading-relaxed text-theme-muted">{t("support.message")}</span>
+              </span>
+            </a>
+
             {/* Subtle Integrated Divider */}
             <div className="w-12 h-px bg-theme-border/40 mb-4" />
 
@@ -387,7 +400,7 @@ const Sidebar = () => {
       <div className="app-topbar md:hidden fixed top-0 left-0 right-0 border-b border-theme z-50 h-16">
         <div className="flex items-center justify-between h-full px-4">
           <div className="flex items-center">
-            <button onClick={() => { setIsMobileMenuOpen(!isMobileMenuOpen); setIsThemeDropdownOpen(false); }} aria-label={isMobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={isMobileMenuOpen} aria-controls="mobile-navigation" className="min-w-11 min-h-11 p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-text">
+            <button onClick={() => { setIsMobileMenuOpen(!isMobileMenuOpen); setIsThemeDropdownOpen(false); }} aria-label={isMobileMenuOpen ? t("sidebar.closeNavigation") : t("sidebar.openNavigation")} aria-expanded={isMobileMenuOpen} aria-controls="mobile-navigation" className="min-w-11 min-h-11 p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-text">
               {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
             <span className="ml-3 text-lg font-bold text-theme-primary tracking-tight">Posterizarr</span>

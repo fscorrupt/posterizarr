@@ -129,7 +129,7 @@ const TMDBPosterSearchModal = React.memo(
       if (tmdbSearch.isLogoSearch) {
         // If logo search, update titletext with URL
         setManualForm({ ...manualForm, titletext: posterUrl });
-        showSuccess("Logo URL applied to Title Text");
+        showSuccess(t("runModes.tmdb.logoUrlApplied"));
       } else {
         // Normal behavior: update picturePath and text status
         setManualForm({ ...manualForm, picturePath: posterUrl, posterWithText: hasText });
@@ -391,7 +391,7 @@ const TMDBPosterSearchModal = React.memo(
                             : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
                         }`}
                       >
-                        {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
+                        {lang === "all" ? t("common.all") : lang.toUpperCase()}
                       </button>
                     ))}
                   </div>
@@ -426,7 +426,7 @@ const TMDBPosterSearchModal = React.memo(
                           <button
                             onClick={(e) => handleDownloadPoster(e, poster)}
                             className="absolute top-2 right-2 px-3 py-2 bg-theme-primary hover:bg-theme-primary/80 rounded-lg transition-all shadow-lg z-10 flex items-center gap-2"
-                            title={t("runModes.tmdb.download") || "Download"}
+                            title={t("runModes.tmdb.download")}
                           >
                             <Download className="w-4 h-4 text-white" />
                             <span className="text-white text-sm font-medium">
@@ -552,7 +552,7 @@ function RunModes() {
       if (!response.ok || !data.success) throw new Error("Could not load queue settings");
       if (!preferenceChanged) applyPreference(data.settings?.auto_queue_changes === true);
     }).catch(() => {
-      if (active) showError("Could not load Auto-Queue setting; automatic queueing is off.");
+      if (active) showError(t("assetReplacer.autoQueueLoadError"));
     }).finally(() => { if (active) setQueueSettingsLoaded(true); });
     return () => {
       active = false;
@@ -637,7 +637,7 @@ function RunModes() {
       "posterizarr_skip_modal_syncemby",
     ].forEach((k) => localStorage.removeItem(k));
     setHasSkippedModals(false);
-    showSuccess(t("runModes.quickRun.promptsReset", "Run mode confirmation dialogs restored."));
+    showSuccess(t("runModes.quickRun.promptsReset"));
   };
 
   const handleNormalModeClick = () => {
@@ -759,7 +759,7 @@ function RunModes() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith("image/")) {
-        showError("Please upload an image file!");
+        showError(t("runModes.validation.imageFileRequired"));
         return;
       }
 
@@ -774,7 +774,7 @@ function RunModes() {
 
       // Clear picturePath when file is uploaded
       setManualForm({ ...manualForm, picturePath: "" });
-      showSuccess(`File "${file.name}" uploaded successfully! `);
+      showSuccess(t("runModes.manual.fileUploaded", { name: file.name }));
     }
   };
 
@@ -787,7 +787,7 @@ function RunModes() {
   // Load folder items from assets directory
   const loadFolderItems = async () => {
     if (!manualForm.libraryName.trim()) {
-      showError("Please enter Library Name first");
+      showError(t("runModes.validation.libraryNameRequired"));
       return;
     }
 
@@ -812,17 +812,15 @@ function RunModes() {
         );
 
         if (data.folders?.length === 0) {
-          showError(
-            `No folders found in library "${manualForm.libraryName}". Please check the library name.`
-          );
+          showError(t("runModes.validation.noFoldersForLibrary", { library: manualForm.libraryName }));
         }
       } else {
-        showError(`Failed to load folders: ${data.error}`);
+        showError(t("runModes.validation.loadFoldersFailed", { error: data.error }));
         setShowFolderSelector(false);
       }
     } catch (error) {
       console.error("Error loading folder items:", error);
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setShowFolderSelector(false);
     } finally {
       setLoadingFolders(false);
@@ -849,7 +847,7 @@ function RunModes() {
 
     setShowFolderSelector(false);
     setFolderSearchQuery("");
-    showSuccess(`Folder "${folderName}" selected`);
+    showSuccess(t("runModes.manual.folderSelected", { folder: folderName }));
   };
 
   const loadLibraryItems = async () => {
@@ -874,15 +872,15 @@ function RunModes() {
         );
 
         if (filteredLibraries.length === 0) {
-          showError("No library folders found in assets directory (after filtering)");
+          showError(t("runModes.validation.noLibraryFolders"));
         }
       } else {
-        showError(`Failed to load libraries: ${data.error}`);
+        showError(t("runModes.validation.loadLibrariesFailed", { error: data.error }));
         setShowLibrarySelector(false);
       }
     } catch (error) {
       console.error("Error loading library items:", error);
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setShowLibrarySelector(false);
     } finally {
       setLoadingLibraries(false);
@@ -898,7 +896,7 @@ function RunModes() {
     }
     setShowLibrarySelector(false);
     setLibrarySearchQuery("");
-    showSuccess(`Library "${libraryName}" selected`);
+    showSuccess(t("runModes.manual.librarySelected", { library: libraryName }));
   };
 
   const handleRunRestore = async (options) => {
@@ -927,10 +925,10 @@ function RunModes() {
         const logExists = await waitForLogFile(logFile);
         navigate("/logs", { state: { logFile: logFile } });
       } else {
-        showError(`Error: ${data.detail || data.message || "Failed to start restore mode"}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.detail || data.message || t("runModes.validation.startRestoreFailed") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -987,10 +985,10 @@ function RunModes() {
           navigate("/logs", { state: navState });
         }
       } else {
-        showError(`Error: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -1099,14 +1097,14 @@ function RunModes() {
             error: data,
           });
           showError(
-            `Upload failed: ${data.detail || data.message || "Unknown error"}`
+            t("runModes.validation.uploadFailed", { error: data.detail || data.message || t("runModes.validation.unknownError") })
           );
           setLoading(false);
           return;
         }
 
         if (data.success) {
-          showSuccess(addToQueue ? "Manual run added to queue!" : "Manual mode started successfully!");
+          showSuccess(addToQueue ? t("runModes.manual.runQueued") : t("runModes.manualModeSuccess"));
           // Reset form
           setManualForm({
             picturePath: "",
@@ -1125,7 +1123,7 @@ function RunModes() {
           setAddToQueue(autoQueueChanges);
           fetchStatus();
         } else {
-          showError(`Error: ${data.message}`);
+          showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
         }
       } else {
         // Use URL/path - existing behavior
@@ -1148,13 +1146,13 @@ function RunModes() {
             statusText: response.statusText,
             error: data,
           });
-          showError(`Error: ${data.detail || data.message || "Unknown error"}`);
+          showError(t("runModes.validation.errorOccurred", { error: data.detail || data.message || t("runModes.validation.unknownError") }));
           setLoading(false);
           return;
         }
 
         if (data.success) {
-          showSuccess(addToQueue ? "Manual run added to queue!" : t("runModes.manualModeSuccess"));
+          showSuccess(addToQueue ? t("runModes.manual.runQueued") : t("runModes.manualModeSuccess"));
           // Reset form
           setManualForm({
             picturePath: "",
@@ -1174,12 +1172,12 @@ function RunModes() {
           setUploadPreview(null);
           fetchStatus();
         } else {
-          showError(`Error: ${data.message}`);
+          showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
         }
       }
     } catch (error) {
       console.error("Manual mode execution error:", error);
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -1218,10 +1216,10 @@ function RunModes() {
         showSuccess(data.message);
         setResetLibrary("");
       } else {
-        showError(`Error: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -1237,10 +1235,10 @@ function RunModes() {
         showSuccess(t("dashboard.stopped"));
         fetchStatus();
       } else {
-        showError(`Error: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -1427,16 +1425,16 @@ function RunModes() {
             // Translate: "No logos found matching languages: en, de"
             showError(t("runModes.tmdb.noLogosMatchingLanguages", { languages: languageOrder.join(", ") }));
           } else {
-            showError(`No logos found for "${query}"`);
+            showError(t("runModes.tmdb.noLogosFoundForQuery", { query }));
           }
         }
 
       } else {
-        showError(`Error fetching logos: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
         setTmdbSearch({ ...tmdbSearch, searching: false, isLogoSearch: false });
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setTmdbSearch({ ...tmdbSearch, searching: false, isLogoSearch: false });
     }
   };
@@ -1639,11 +1637,11 @@ function RunModes() {
         );
 
         if (visibleResultsCount === 0) {
-          let message = "No images found for this search";
+          let message = t("runModes.tmdb.noImagesFound");
           if (manualForm.posterType === "season") {
-            message = `No season ${tmdbSearch.seasonNumber} posters found`;
+            message = t("runModes.tmdb.noSeasonPostersFound", { season: tmdbSearch.seasonNumber });
           } else if (manualForm.posterType === "titlecard") {
-            message = `No images found for S${tmdbSearch.seasonNumber}E${tmdbSearch.episodeNumber}`;
+            message = t("runModes.tmdb.noEpisodeImagesFound", { season: tmdbSearch.seasonNumber, episode: tmdbSearch.episodeNumber });
           }
 
           // Add provider-specific message if prefix was used
@@ -1652,17 +1650,17 @@ function RunModes() {
               data.detected_provider === "imdb"
                 ? "Fanart.tv (via IMDB)"
                 : data.detected_provider.toUpperCase();
-            message += ` from ${providerName}`;
+            message = t("runModes.tmdb.noImagesFromProvider", { message, provider: providerName });
           }
 
           showError(message);
         }
       } else {
-        showError(`Error: ${data.message || "Failed to search providers"}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.tmdb.providerSearchFailed") }));
         setTmdbSearch({ ...tmdbSearch, searching: false });
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setTmdbSearch({ ...tmdbSearch, searching: false });
     }
   };
@@ -1742,7 +1740,7 @@ const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status,
               onChange={(e) => setDontShowAgain(e.target.checked)}
               className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
             />
-            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+            <span>{t("common.dontShowAgain")}</span>
           </label>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.jellyfin.cancel")}</button>
@@ -1834,7 +1832,7 @@ const EmbySyncModal = React.memo(({ show, onClose, onStart, loading, status, t }
               onChange={(e) => setDontShowAgain(e.target.checked)}
               className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
             />
-            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+            <span>{t("common.dontShowAgain")}</span>
           </label>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.emby.cancel")}</button>
@@ -1913,7 +1911,7 @@ const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t
               onChange={(e) => setDontShowAgain(e.target.checked)}
               className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
             />
-            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+            <span>{t("common.dontShowAgain")}</span>
           </label>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.backup.cancel")}</button>
@@ -2061,7 +2059,7 @@ const LogoUpdaterModal = React.memo(({
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <ImageIcon className="w-6 h-6 mr-3 text-white" />
-            <h3 className="text-xl font-bold text-white">Logo Updater Mode</h3>
+            <h3 className="text-xl font-bold text-white">{t("runModes.logoUpdater.title")}</h3>
           </div>
           <button onClick={onClose} className="text-white/80 hover:text-white transition-all p-1 hover:bg-white/10 rounded">
             <X className="w-6 h-6" />
@@ -2081,8 +2079,8 @@ const LogoUpdaterModal = React.memo(({
                 <RefreshCw className={`w-5 h-5 ${processAll ? 'animate-spin-slow' : ''}`} />
               </div>
               <div>
-                <p className="font-medium text-theme-text">Process All Libraries</p>
-                <p className="text-xs text-theme-muted">Loop through all compatible Plex libraries</p>
+                <p className="font-medium text-theme-text">{t("runModes.logoUpdater.processAllLibraries")}</p>
+                <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.processAllLibrariesDesc")}</p>
               </div>
             </div>
             <button type="button" className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${processAll ? 'bg-theme-primary' : 'bg-gray-700'}`}>
@@ -2100,7 +2098,7 @@ const LogoUpdaterModal = React.memo(({
                   type="text"
                   value={library}
                   onChange={(e) => setLibrary(e.target.value)}
-                  placeholder="e.g. Movies, TV Shows"
+                  placeholder={t("runModes.logoUpdater.libraryPlaceholder")}
                   disabled={loading || status.running}
                   className="flex-1 px-3 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary focus:border-theme-primary disabled:opacity-50"
                 />
@@ -2123,8 +2121,8 @@ const LogoUpdaterModal = React.memo(({
                 <RotateCcw className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-medium text-theme-text">Revert Mode</p>
-                <p className="text-xs text-theme-muted">Remove logos uploaded by Posterizarr</p>
+                <p className="font-medium text-theme-text">{t("runModes.logoUpdater.revertMode")}</p>
+                <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.revertModeDesc")}</p>
               </div>
             </div>
             <button type="button" className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${revert ? 'bg-red-600' : 'bg-gray-700'}`}>
@@ -2140,8 +2138,8 @@ const LogoUpdaterModal = React.memo(({
                   <FileCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="font-medium text-theme-text">{t("runModes.logoUpdater.exifCheck", "Only Replace Non-Posterizarr Logos")}</p>
-                  <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.exifCheckDesc", "Replace Plex default logos, but skip logos previously created by Posterizarr (EXIF check)")}</p>
+                    <p className="font-medium text-theme-text">{t("runModes.logoUpdater.exifCheck")}</p>
+                      <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.exifCheckDesc")}</p>
                 </div>
               </div>
               <button type="button" className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${exifCheck ? 'bg-purple-600' : 'bg-gray-700'}`}>
@@ -2176,7 +2174,7 @@ const LogoUpdaterModal = React.memo(({
               className={`flex items-center gap-2 px-4 py-2 ${revert ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all shadow-lg`}
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              {revert ? "Start Revert" : t("runModes.logoUpdater.start")}
+              {revert ? t("runModes.logoUpdater.startRevert") : t("runModes.logoUpdater.start")}
             </button>
           </div>
         </div>
@@ -2304,12 +2302,12 @@ const LogoUpdaterModal = React.memo(({
         onClose={() => setShowLogoUpdaterModal(false)}
         onStart={async () => {
           if (!processAllLibraries && !logoUpdaterLibrary.trim()) {
-            showError("Please select a library first");
+            showError(t("runModes.validation.libraryRequired"));
             return;
           }
 
           if (status.running) {
-            showError("Script is already running");
+            showError(t("runModes.scriptRunning"));
             return;
           }
 
@@ -2337,10 +2335,10 @@ const LogoUpdaterModal = React.memo(({
               const logExists = await waitForLogFile(logFile);
               navigate("/logs", { state: { logFile: logFile } });
             } else {
-              showError(`Error: ${data.detail || data.message || "Failed to start Logo Updater"}`);
+              showError(t("runModes.validation.errorOccurred", { error: data.detail || data.message || t("runModes.logoUpdater.failedToStart") }));
             }
           } catch (error) {
-            showError(`Error: ${error.message}`);
+            showError(t("runModes.validation.errorOccurred", { error: error.message }));
           } finally {
             setLoading(false);
           }
@@ -2372,7 +2370,7 @@ const LogoUpdaterModal = React.memo(({
       />
 
       {/* Header */}
-      <WorkspaceHeader icon={Play} title={t("runModes.title", "Run Modes")}>
+      <WorkspaceHeader icon={Play} title={t("nav.runModes")}>
         {/* Status Badge */}
         {status.running && (
           <div className="flex items-center gap-3 bg-theme-card px-4 py-2 rounded-lg border border-theme-primary/50">
@@ -2432,10 +2430,10 @@ const LogoUpdaterModal = React.memo(({
               type="button"
               onClick={resetModalPreferences}
               className="text-xs text-theme-muted hover:text-theme-primary transition-colors flex items-center gap-1.5 px-2.5 py-1 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg cursor-pointer shadow-sm"
-              title={t("runModes.quickRun.resetPromptsTooltip", "Restore all confirmation dialogs")}
+              title={t("runModes.quickRun.resetPromptsTooltip")}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>{t("runModes.quickRun.resetPrompts", "Reset modal prompts")}</span>
+              <span>{t("runModes.quickRun.resetPrompts")}</span>
             </button>
           )}
         </div>
@@ -2494,10 +2492,10 @@ const LogoUpdaterModal = React.memo(({
           >
             <Upload className="w-8 h-8 text-blue-400 mb-3 group-hover:scale-110 transition-transform" />
             <h3 className="font-semibold text-theme-text mb-1">
-              Restore Mode
+              {t("runModes.quickRun.restore.title")}
             </h3>
             <p className="text-sm text-theme-muted text-center">
-              Push local backup assets back to your media server
+              {t("runModes.quickRun.restore.description")}
             </p>
           </button>
 
@@ -2946,14 +2944,12 @@ const LogoUpdaterModal = React.memo(({
             {/* Recommended Size Info */}
             <div className="mb-3 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <p className="text-xs text-blue-400 flex items-center gap-2">
-                <span className="font-semibold">ℹ️ Recommended sizes:</span>
+                <span className="font-semibold">ℹ️ {t("runModes.manual.recommendedSizes")}</span>
                 {manualForm.posterType === "background" ||
                   manualForm.posterType === "titlecard" ? (
-                  <span>
-                    Backgrounds/Title Cards: 1920×1080px or higher (16:9 ratio)
-                  </span>
+                  <span>{t("runModes.manual.landscapeSizeHint")}</span>
                 ) : (
-                  <span>Posters: 1000×1500px or higher (2:3 ratio)</span>
+                  <span>{t("runModes.manual.portraitSizeHint")}</span>
                 )}
               </p>
             </div>
@@ -3003,7 +2999,7 @@ const LogoUpdaterModal = React.memo(({
                   <div className="flex items-center gap-3">
                     <img
                       src={uploadPreview}
-                      alt="Preview"
+                      alt={t("common.preview")}
                       className="w-16 h-24 object-cover rounded border border-theme-primary"
                     />
                     <div className="flex-1">
@@ -3021,8 +3017,8 @@ const LogoUpdaterModal = React.memo(({
               {/* Text / Textless Dropdown */}
               {(uploadedFile || manualForm.picturePath) && (
                 <div className="mt-3">
-                  <label className="block text-sm font-medium text-theme-text mb-2">
-                    Asset Type
+                    <label className="block text-sm font-medium text-theme-text mb-2">
+                    {t("runModes.manual.assetType")}
                   </label>
                   <select
                     value={manualForm.posterWithText ? "text" : "textless"}
@@ -3030,8 +3026,8 @@ const LogoUpdaterModal = React.memo(({
                     className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
                     disabled={loading || status.running}
                   >
-                    <option value="textless">Textless Asset (Clean)</option>
-                    <option value="text">Has Language / Text</option>
+                    <option value="textless">{t("runModes.manual.textlessAsset")}</option>
+                    <option value="text">{t("runModes.manual.assetHasText")}</option>
                   </select>
                 </div>
               )}
@@ -3039,7 +3035,7 @@ const LogoUpdaterModal = React.memo(({
               {/* Blueprint Selection */}
               <div className="space-y-1">
                 <label className="block text-xs font-medium text-theme-text/70 uppercase tracking-wider">
-                  Blueprint Selection
+                  {t("runModes.manual.blueprintSelection")}
                 </label>
                 <select
                   value={manualForm.blueprintId}
@@ -3047,13 +3043,13 @@ const LogoUpdaterModal = React.memo(({
                   className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
                   disabled={loading || status.running}
                 >
-                  <option value="none">Default (Global Config)</option>
+                  <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
                   {[...BLUEPRINTS, ...customBlueprints].map(bp => (
                     <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}</option>
                   ))}
                 </select>
                 <p className="text-xs text-theme-text/50 mt-1">
-                  Optionally override global settings with a specific blueprint for this run.
+                  {t("runModes.manual.blueprintOverrideHint")}
                 </p>
               </div>
 
@@ -3132,7 +3128,7 @@ const LogoUpdaterModal = React.memo(({
                     onClick={handleFetchLogos}
                     disabled={loading || status.running || tmdbSearch.searching}
                     className="px-3 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg text-theme-text transition-colors flex items-center gap-2 whitespace-nowrap"
-                    title="Browse for Logos/ClearArt"
+                    title={t("runModes.manual.browseLogosTooltip")}
                   >
                     {tmdbSearch.searching && tmdbSearch.isLogoSearch ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -3403,11 +3399,11 @@ const LogoUpdaterModal = React.memo(({
             <button
               type="button"
               role="switch"
-              aria-label="Add to Queue"
+              aria-label={t("assetReplacer.addToQueue")}
               aria-checked={addToQueue}
               onClick={() => setAddToQueue(!addToQueue)}
               disabled={autoQueueChanges || !queueSettingsLoaded || savingQueueSettings || loading}
-              title={autoQueueChanges ? "Controlled by Auto-Queue Changes" : "Queue this manual submission"}
+              title={autoQueueChanges ? t("runModes.manual.autoQueueControlled") : t("runModes.manual.queueManualSubmission")}
               className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-theme-primary focus:ring-offset-2 focus:ring-offset-theme-bg ${addToQueue ? "bg-theme-primary" : "bg-gray-600"
                 }`}
             >
@@ -3422,9 +3418,9 @@ const LogoUpdaterModal = React.memo(({
               <input type="checkbox" checked={autoQueueChanges}
                 disabled={!queueSettingsLoaded || savingQueueSettings || loading}
                 onChange={(event) => handleToggleAutoQueue(event.target.checked)}
-                title="Remember queueing for manual submissions and asset replacement dialogs"
+                title={t("runModes.manual.rememberQueue")}
                 className="w-4 h-4 shrink-0 rounded border-theme text-theme-primary" />
-              <span>Auto-Queue Changes</span>
+              <span>{t("runModes.manual.autoQueueChanges")}</span>
             </label>
           )}
 
@@ -3442,7 +3438,7 @@ const LogoUpdaterModal = React.memo(({
             ) : (
               <>
                 <Play className="w-5 h-5" />
-                {addToQueue ? "Queue Manual Asset" : t("runModes.manual.runButton")}
+                {addToQueue ? t("runModes.manual.queueButton") : t("runModes.manual.runButton")}
               </>
             )}
           </button>

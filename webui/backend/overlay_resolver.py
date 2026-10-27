@@ -94,6 +94,26 @@ OFFICIAL_KOMETA_ROOT_IMAGES = {
     "versions.png"
 }
 
+RATING_SOURCE_IMAGE_FILES = {
+    "imdb": ("IMDb.png",),
+    "tmdb": ("TMDb.png",),
+    "tomatoes": ("RT-Crit-Fresh.png", "RT-Crit-Rotten.png", "Critic.png"),
+    "rt_critic": ("RT-Crit-Fresh.png", "RT-Crit-Rotten.png", "Critic.png"),
+    "critic": ("Critic.png",),
+    "tomatoesaudience": ("RT-Aud-Fresh.png", "RT-Aud-Rotten.png", "Audience.png"),
+    "rt_audience": ("RT-Aud-Fresh.png", "RT-Aud-Rotten.png", "Audience.png"),
+    "audience": ("Audience.png",),
+    "trakt": ("Trakt.png",),
+    "letterboxd": ("Letterboxd.png",),
+    "metacritic": ("Metacritic.png",),
+    "omdb": ("OMDb.png",),
+    "anidb": ("AniDB.png",),
+    "mal": ("MAL.png",),
+    "serializd": ("Serializd.png",),
+    "star": ("Star.png",),
+    "floppy": ("Floppy.png",),
+}
+
 FLAG_CODE_ALIASES = {
     "en": "us", "ja": "jp", "zh": "cn", "ko": "kr", "da": "dk",
     "hi": "in", "el": "gr", "cs": "cz", "he": "il"
@@ -446,6 +466,58 @@ class OverlayResolver:
                 })
         return sorted(files, key=lambda x: x["name"])
 
+    def get_storage_inventory(self) -> Dict[str, Any]:
+        """Return local file counts, sizes, and paths for the importer status view."""
+        def file_stats(directory: Path, extensions: Optional[set] = None) -> Dict[str, int]:
+            count = 0
+            size_bytes = 0
+            if not directory.is_dir() or directory.is_symlink():
+                return {"files": count, "size_bytes": size_bytes}
+            for candidate in directory.rglob("*"):
+                if candidate.is_symlink() or not candidate.is_file():
+                    continue
+                if extensions and candidate.suffix.lower() not in extensions:
+                    continue
+                try:
+                    count += 1
+                    size_bytes += candidate.stat().st_size
+                except OSError:
+                    continue
+            return {"files": count, "size_bytes": size_bytes}
+
+        config_files = self.get_configured_yaml_files()
+        default_files = self.get_available_defaults()
+        official_default_names = {Path(name).name.lower() for name in OFFICIAL_OVERLAY_DEFAULTS}
+        installed_official_defaults = sum(
+            Path(item["name"]).name.lower() in official_default_names for item in default_files
+        )
+        return {
+            "configs": {
+                **file_stats(self.configs_dir, ALLOWED_CONFIG_EXTS),
+                "path": str(self.configs_dir),
+            },
+            "defaults": {
+                **file_stats(self.defaults_dir, ALLOWED_CONFIG_EXTS),
+                "official_installed": installed_official_defaults,
+                "official_known": len(OFFICIAL_OVERLAY_DEFAULTS),
+                "path": str(self.defaults_dir),
+            },
+            "images": {
+                "assets": {
+                    **file_stats(self.assets_dir, ALLOWED_IMAGE_EXTS),
+                    "path": str(self.assets_dir),
+                },
+                "default_cache": {
+                    **file_stats(self.defaults_dir / "images", ALLOWED_IMAGE_EXTS),
+                    "path": str(self.defaults_dir / "images"),
+                },
+            },
+            "fonts": {
+                **file_stats(self.fonts_dir, ALLOWED_FONT_EXTS),
+                "path": str(self.fonts_dir),
+            },
+        }
+
     async def import_defaults_from_github(self, overwrite: bool = False) -> Dict[str, Any]:
         """
         Directly download official Kometa default overlay templates from GitHub
@@ -522,7 +594,7 @@ class OverlayResolver:
                     logger.warning(f"[OverlayResolver] Failed downloading {fname}: {err}")
                     errors.append(f"{fname}: {err}")
 
-        total_defaults = len(list(self.defaults_dir.glob("*.yml")) + list(self.defaults_dir.glob("*.yaml")))
+        total_installed = len(list(self.defaults_dir.glob("*.yml")) + list(self.defaults_dir.glob("*.yaml")))
         return {
             "success": True,
             "imported": imported_files,
@@ -532,7 +604,8 @@ class OverlayResolver:
             "skipped": skipped_files,
             "errors": errors,
             "count": len(imported_files),
-            "total_available": total_defaults
+            "total_available": len(files_to_download),
+            "total_installed": total_installed,
         }
 
     def list_available_image_assets(self, category: Optional[str] = None) -> List[str]:
@@ -617,11 +690,14 @@ class OverlayResolver:
             # Check if any .yml or .yaml exists
             ymls = sorted(list(self.configs_dir.glob("*.yml")) + list(self.configs_dir.glob("*.yaml")))
             if not ymls:
+                rating_assets: Dict[str, Dict[str, Any]] = {}
+                self._add_configured_rating_assets(rating_assets)
                 return {
                     "has_configs": False,
-                    "message": "No configuration files found in Overlayfiles/kometa/configs/.",
+                    "message": f"No configuration files found in {self.configs_dir}.",
                     "libraries": {},
-                    "required_assets": []
+                    "required_assets": list(rating_assets.values()),
+                    "readiness": self._check_assets_readiness(list(rating_assets.values()))
                 }
             config_path = ymls[0]
 
@@ -754,6 +830,8 @@ class OverlayResolver:
             if cf.name not in ("config.yml", "config.yaml"):
                 self._parse_overlay_file_assets(cf.name, all_referenced_assets)
 
+        self._add_configured_rating_assets(all_referenced_assets, libraries)
+
         # Run readiness check on all discovered assets
         readiness_report = self._check_assets_readiness(list(all_referenced_assets.values()))
 
@@ -770,6 +848,71 @@ class OverlayResolver:
             "readiness": readiness_report,
             "available_config_files": available_config_files
         }
+
+    def _add_configured_rating_assets(
+        self,
+        asset_collector: Dict[str, Dict[str, Any]],
+        yaml_libraries: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Include provider logos used by active saved score badges in readiness checks."""
+        try:
+            from dynamic_overlays_service import get_dynamic_overlays_settings, load_visual_config
+            visual_config = load_visual_config() or {}
+            settings = get_dynamic_overlays_settings() or {}
+        except Exception:
+            visual_config = {}
+            settings = {}
+
+        configured_sources = []
+        visual_libraries = visual_config.get("libraries", {}) if isinstance(visual_config, dict) else {}
+        if isinstance(visual_libraries, dict):
+            for library in visual_libraries.values():
+                if not isinstance(library, dict):
+                    continue
+                badges = library.get("badges", {})
+                if not isinstance(badges, dict):
+                    continue
+                score_badge = badges.get("critic_rating")
+                if not isinstance(score_badge, dict) or not score_badge.get("enabled", True):
+                    single_rating = badges.get("rating")
+                    score_badge = single_rating if (
+                        isinstance(single_rating, dict)
+                        and single_rating.get("enabled")
+                        and single_rating.get("source") in ("ratings", "rating")
+                    ) else None
+                if isinstance(score_badge, dict) and score_badge.get("enabled", True):
+                    configured_sources.extend(
+                        score_badge.get("sources")
+                        or settings.get("rating_sources")
+                        or ["imdb", "tmdb", "tomatoes", "tomatoesaudience"]
+                    )
+
+        if isinstance(yaml_libraries, dict):
+            for library in yaml_libraries.values():
+                if not isinstance(library, dict):
+                    continue
+                for entry in library.get("overlay_files", []):
+                    if not isinstance(entry, dict):
+                        continue
+                    rule_name = str(entry.get("default") or entry.get("file") or "").lower()
+                    if rule_name == "ratings" or "ratings.yml" in rule_name or rule_name == "rating":
+                        variables = entry.get("template_variables", {})
+                        if isinstance(variables, dict):
+                            configured_sources.extend(variables.get("sources") or variables.get("rating_sources") or [])
+                        if not isinstance(variables, dict) or not (variables.get("sources") or variables.get("rating_sources")):
+                            configured_sources.extend(settings.get("rating_sources") or ["imdb", "tmdb", "tomatoes", "tomatoesaudience"])
+
+        if not configured_sources:
+            return
+
+        for source in configured_sources:
+            for filename in RATING_SOURCE_IMAGE_FILES.get(str(source).strip().lower(), ()):
+                name = f"rating/{filename}"
+                asset_collector.setdefault(f"image:{name}", {
+                    "category": "image",
+                    "name": name,
+                    "type": "provider_rating_image",
+                })
 
     def _parse_overlay_file_assets(self, filename: str, asset_collector: Dict[str, Dict[str, Any]], search_defaults: bool = False):
         """Parse sub-overlay files (like overlays_movies.yml, anime_overlays.yml, or defaults) for fonts and images."""
@@ -1104,6 +1247,9 @@ class OverlayResolver:
 
         tar_url = "https://github.com/Kometa-Team/Kometa/archive/refs/heads/master.tar.gz"
         imported_count = 0
+        updated_count = 0
+        unchanged_count = 0
+        outdated_count = 0
         dest_dirs = [self.assets_dir, self.defaults_dir / "images"]
         for d in dest_dirs:
             d.mkdir(parents=True, exist_ok=True)
@@ -1117,7 +1263,12 @@ class OverlayResolver:
             "total_bytes": 0,
             "download_percent": 0.0,
             "extracted_count": 0,
+            "processed_count": 0,
             "total_images": 0,
+            "imported_count": 0,
+            "updated_count": 0,
+            "unchanged_count": 0,
+            "outdated_count": 0,
             "extract_percent": 0.0,
             "overall_percent": 0.0,
             "message": "Connecting to GitHub archive...",
@@ -1126,7 +1277,7 @@ class OverlayResolver:
 
         try:
             def _download_and_extract():
-                nonlocal imported_count
+                nonlocal imported_count, updated_count, unchanged_count, outdated_count
                 req = urllib.request.Request(tar_url, headers={"User-Agent": "Posterizarr"})
                 with urllib.request.urlopen(req, timeout=180) as resp:
                     cl = resp.headers.get("Content-Length")
@@ -1181,23 +1332,47 @@ class OverlayResolver:
                         extracted_f = tf.extractfile(member)
                         if extracted_f:
                             data = extracted_f.read()
+                            wrote_file = False
+                            changed_existing = False
                             for dest_root in dest_dirs:
                                 dest_file = dest_root / rel_subpath
-                                if dest_file.exists() and not overwrite:
-                                    continue
+                                if dest_file.exists():
+                                    try:
+                                        if dest_file.read_bytes() == data:
+                                            continue
+                                    except OSError:
+                                        pass
+                                    changed_existing = True
+                                    if not overwrite:
+                                        continue
                                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                                 with open(dest_file, "wb") as out_f:
                                     out_f.write(data)
-                            imported_count += 1
+                                wrote_file = True
+
+                            if changed_existing:
+                                if overwrite:
+                                    updated_count += 1
+                                else:
+                                    outdated_count += 1
+                            elif wrote_file:
+                                imported_count += 1
+                            else:
+                                unchanged_count += 1
 
                         if idx % 20 == 0 or idx == total_members:
                             ext_pct = round((idx / total_members) * 100.0, 1) if total_members > 0 else 100.0
                             overall = round(50.0 + (ext_pct * 0.5), 1)
                             _images_import_progress.update({
-                                "extracted_count": imported_count,
+                                "extracted_count": imported_count + updated_count,
+                                "processed_count": idx,
                                 "extract_percent": ext_pct,
                                 "overall_percent": overall,
-                                "message": f"Extracting images: {idx} / {total_members} ({ext_pct}%)"
+                                "imported_count": imported_count,
+                                "updated_count": updated_count,
+                                "unchanged_count": unchanged_count,
+                                "outdated_count": outdated_count,
+                                "message": f"Checked images: {idx} / {total_members} ({ext_pct}%)"
                             })
 
             await asyncio.to_thread(_download_and_extract)
@@ -1205,15 +1380,28 @@ class OverlayResolver:
             _images_import_progress.update({
                 "is_running": False,
                 "phase": "completed",
-                "extracted_count": imported_count,
+                "extracted_count": imported_count + updated_count,
+                "processed_count": _images_import_progress.get("total_images", 0),
+                "imported_count": imported_count,
+                "updated_count": updated_count,
+                "unchanged_count": unchanged_count,
+                "outdated_count": outdated_count,
                 "overall_percent": 100.0,
-                "message": f"Successfully imported {imported_count} official overlay images!"
+                "message": (
+                    f"Checked {_images_import_progress.get('total_images', 0)} official images: "
+                    f"{imported_count} added, {updated_count} updated, {unchanged_count} unchanged, "
+                    f"{outdated_count} outdated."
+                )
             })
             return {
                 "success": True,
-                "count": imported_count,
-                "extracted_count": imported_count,
-                "message": f"Successfully imported {imported_count} official overlay images."
+                "count": imported_count + updated_count,
+                "imported_count": imported_count,
+                "updated_count": updated_count,
+                "unchanged_count": unchanged_count,
+                "outdated_count": outdated_count,
+                "total_images": _images_import_progress.get("total_images", 0),
+                "message": _images_import_progress["message"]
             }
         except Exception as e:
             logger.error(f"[OverlayResolver] Error importing default images: {e}", exc_info=True)

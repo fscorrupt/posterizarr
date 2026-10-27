@@ -1904,7 +1904,7 @@ const AssetOverview = () => {
   // Main Render
   return (
     <div className="workspace-page space-y-6">
-      <WorkspaceHeader title={t("assetOverview.title", "Asset Overview")} />
+      <WorkspaceHeader title={t("assetOverview.title")} />
       {/* Tabs */}
       <div className="flex border-b border-theme-muted/30">
         <button

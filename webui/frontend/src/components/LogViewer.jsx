@@ -358,7 +358,7 @@ function LogViewer() {
     try {
       // Validate log file name exists in available logs
       if (!availableLogs.some(log => log.name === logName)) {
-        showError("Invalid log file selected");
+        showError(t("logViewer.invalidLogSelected"));
         setIsLoadingFullLog(false);
         return;
       }
@@ -390,7 +390,7 @@ function LogViewer() {
 
   const gatherSupportZip = async () => {
     setIsGatheringSupportZip(true);
-    showInfo(t("logViewer.gatheringSupport", "Gathering support files... This may take a moment."));
+    showInfo(t("logViewer.gatheringSupport"));
     try {
       const response = await fetch(`${API_URL}/admin/support-zip`, {
         method: "POST",
@@ -427,11 +427,11 @@ function LogViewer() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      showSuccess(t("logViewer.gatheringSupportSuccess", "Support files downloaded."));
+      showSuccess(t("logViewer.gatheringSupportSuccess"));
 
     } catch (error) {
       console.error("Error gathering support zip:", error);
-      showError(t("logViewer.gatheringSupportFailed", "Failed to gather support files: {{message}}", { message: error.message }));
+      showError(t("logViewer.gatheringSupportFailed", { message: error.message }));
     } finally {
       setIsGatheringSupportZip(false);
     }
@@ -612,7 +612,7 @@ function LogViewer() {
           logToLoad = backendExists ? backendLog : (logsData[0]?.name || null);
 
           if (logToLoad === backendLog) {
-            showInfo(t("logViewer.fallbackToBackend", "Script logs not found, showing backend log."));
+            showInfo(t("logViewer.fallbackToBackend"));
           }
         }
       }
@@ -776,7 +776,7 @@ function LogViewer() {
     <div className="workspace-page space-y-6">
       {/* Header */}
       {/* +++ MODIFIED: Added gap-4 and new button +++ */}
-      <WorkspaceHeader title={t("sidebar.logs", "Logs")}>
+      <WorkspaceHeader title={t("sidebar.logs")}>
         {/* Gather Support Logs Button */}
         <button
           onClick={gatherSupportZip}
@@ -788,7 +788,7 @@ function LogViewer() {
           ) : (
             <LifeBuoy className="w-4 h-4" />
           )}
-          {t("logViewer.gatherSupport", "Gather Support Logs")}
+          {t("logViewer.gatherSupport")}
         </button>
 
         {/* Connection Status Badge */}
@@ -873,7 +873,7 @@ function LogViewer() {
               </div>
               <div>
                 <p className="font-semibold text-blue-200">
-                  {t("logViewer.testCompletedTitle", "Test run completed!")}
+                  {t("logViewer.testCompletedTitle")}
                 </p>
                 <p className="text-sm text-blue-300/80">
                   {redirectCountdown !== null
@@ -881,7 +881,7 @@ function LogViewer() {
                         count: redirectCountdown,
                         defaultValue: `Redirecting to Test Gallery in ${redirectCountdown}s...`,
                       })
-                    : t("logViewer.testAssetsReady", "Test assets are ready in the Test Gallery.")}
+                    : t("logViewer.testAssetsReady")}
                 </p>
               </div>
             </div>
@@ -892,7 +892,7 @@ function LogViewer() {
                   onClick={handleCancelRedirect}
                   className="px-3 py-1.5 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg text-xs font-medium text-theme-text transition-all cursor-pointer"
                 >
-                  {t("logViewer.stayOnLogs", "Stay on Logs")}
+                  {t("logViewer.stayOnLogs")}
                 </button>
               )}
               <button
@@ -903,7 +903,7 @@ function LogViewer() {
                 }}
                 className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white transition-all shadow flex items-center gap-1.5 cursor-pointer"
               >
-                <span>{t("logViewer.viewTestGalleryNow", "View Test Gallery Now")}</span>
+                <span>{t("logViewer.viewTestGalleryNow")}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1125,7 +1125,7 @@ function LogViewer() {
         <div className="bg-theme-primary/10 border border-theme-primary/30 rounded-lg p-3 mb-4 flex gap-3 text-sm text-theme-text items-start">
           <Info className="w-5 h-5 text-theme-primary flex-shrink-0 mt-0.5" />
           <div>
-            <strong>Hint:</strong> When reading logs during parallel processing, look at the Worker ID (e.g. <code className="bg-black/30 px-1 rounded text-theme-primary">[T32]</code>). Logs from the same worker runspace will have the same ID.
+            <strong>{t("logViewer.parallelProcessingHintTitle")}</strong> {t("logViewer.parallelProcessingHint", { workerId: "[T32]" })}
           </div>
         </div>
 

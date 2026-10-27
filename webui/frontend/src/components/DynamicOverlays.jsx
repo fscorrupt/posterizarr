@@ -79,29 +79,6 @@ import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
 import { getAniMetaFillPreview, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
 
-const AssetPreviewGuides = ({ config, template }) => {
-  const guides = getAssetPreviewGuides(config, template);
-  if (!guides) return null;
-  return (
-    <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden" aria-label="Asset configuration boundaries">
-      {guides.borderX > 0 && (
-        <div className="absolute border border-dashed border-rose-400" style={{
-          left: `${guides.borderX}%`, right: `${guides.borderX}%`,
-          top: `${guides.borderY}%`, bottom: `${guides.borderY}%`,
-        }} />
-      )}
-      {guides.boxes.map((box) => (
-        <div key={box.label} className="absolute border-2 border-dashed" style={{
-          left: `${box.left}%`, top: `${box.top}%`, width: `${box.width}%`, height: `${box.height}%`,
-          borderColor: box.color, backgroundColor: `${box.color}26`,
-        }}>
-          <span className="absolute top-0 left-0 max-w-full truncate bg-black/85 px-1 text-[10px] leading-4 font-semibold" style={{ color: box.color }}>{box.label}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
 const AssetPreviewLegend = ({ config, template, showAssetGuides, guideMode, snapToGuides, hasBadges }) => {
   const guides = showAssetGuides ? getAssetPreviewGuides(config, template) : null;
   const entries = (guides?.boxes || []).map((box) => ({
@@ -190,62 +167,17 @@ const ASSET_OVERRIDE_CATEGORIES = {
   direct_play: "root",
   mediastinger: "root",
   versions: "root",
-  ribbon: "ribbon",
-  edition: "edition",
 };
 
-const PositionPicker = ({ value, onChange, label = "Position" }) => {
-  const positions = [
-    ["top-left", "top-center", "top-right"],
-    ["center-left", "center", "center-right"],
-    ["bottom-left", "bottom-center", "bottom-right"]
-  ];
-  const shortLabels = {
-    "top-left": "TL", "top-center": "TC", "top-right": "TR",
-    "center-left": "CL", "center": "C", "center-right": "CR",
-    "bottom-left": "BL", "bottom-center": "BC", "bottom-right": "BR"
-  };
-  return (
-    <div className="space-y-1 shrink-0">
-      <div className="flex items-center justify-between gap-1">
-        <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">{label}</label>
-        <span className="text-[9px] font-mono text-theme-primary capitalize font-medium">{value?.replace("-", " ") || "top-left"}</span>
-      </div>
-      <div className="grid grid-cols-3 gap-0.5 w-20 p-1 bg-theme-hover/60 border border-theme rounded-lg">
-        {positions.flat().map((pos) => {
-          const isSel = value === pos;
-          return (
-            <button
-              key={pos}
-              type="button"
-              onClick={() => onChange(pos)}
-              className={`h-5 rounded text-[9px] font-bold transition-all ${
-                isSel
-                  ? "bg-theme-primary text-white shadow-sm ring-1 ring-white/30"
-                  : "bg-theme-card/60 hover:bg-theme-card text-theme-muted hover:text-theme-text border border-theme/40"
-              }`}
-              title={pos}
-            >
-              {shortLabels[pos]}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const TEXT_BADGE_KEYS = ["runtime", "rating", "status", "age_rating", "languages", "anime", "video_format"];
-
-const BadgeOffsetControls = ({ itemKey, offset, onChange, fonts = [] }) => {
+const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const align = offset?.align || "left";
-  const valign = offset?.valign || "top";
-  const x = offset?.x ?? 0;
-  const y = offset?.y ?? 0;
-  const fontSize = offset?.font_size ?? "";
-  const font = offset?.font ?? "";
-  const isTextBadge = TEXT_BADGE_KEYS.includes(itemKey);
+  const align = offset.align || "right";
+  const valign = offset.valign || "bottom";
+  const x = offset.x ?? 0;
+  const y = offset.y ?? 0;
+  const fontSize = offset.font_size ?? "";
+  const font = offset.font || "";
+  const isTextBadge = ["resolution", "rating", "age_rating", "runtime", "status"].includes(itemKey);
 
   return (
     <div className="pt-2 border-t border-theme/40 mt-1.5">
@@ -512,8 +444,10 @@ export default function DynamicOverlays() {
     rating_contrast_box: true,
     mdblist_api_key: "",
     omdb_api_key: "",
-    rating_cache_ttl_days: 7
+    rating_cache_ttl_days: 7,
+    change_detection_dry_run: true
   });
+  const isChangeDetectionDryRun = featureSettings?.change_detection_dry_run !== false;
   const [isUpdatingFeatureSettings, setIsUpdatingFeatureSettings] = useState(false);
   const [ratingsCacheStats, setRatingsCacheStats] = useState(null);
   const [isClearingRatingsCache, setIsClearingRatingsCache] = useState(false);
@@ -657,6 +591,7 @@ export default function DynamicOverlays() {
   // Action states
   const [isScanning, setIsScanning] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [defaultsImportReport, setDefaultsImportReport] = useState(null);
   const [isImportingImages, setIsImportingImages] = useState(false);
   const [showImportImagesWarningModal, setShowImportImagesWarningModal] = useState(false);
   const [showImportImagesProgressModal, setShowImportImagesProgressModal] = useState(false);
@@ -665,10 +600,15 @@ export default function DynamicOverlays() {
     is_running: false,
     phase: "idle",
     download_bytes: 0,
-    total_bytes: 231354348,
+    total_bytes: 0,
     download_percent: 0,
     extracted_count: 0,
-    total_images: 2331,
+    processed_count: 0,
+    total_images: 0,
+    imported_count: 0,
+    updated_count: 0,
+    unchanged_count: 0,
+    outdated_count: 0,
     extract_percent: 0,
     overall_percent: 0,
     message: "",
@@ -2414,6 +2354,7 @@ export default function DynamicOverlays() {
   const handleImport = async (overwrite = true) => {
     try {
       setIsImporting(true);
+      setDefaultsImportReport(null);
       const res = await fetch("/api/dynamic-overlays/import-defaults", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2422,6 +2363,7 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (data.success) {
         const imp = data.import_result || {};
+        setDefaultsImportReport({ ...imp, checkedAt: Date.now() });
         const count = imp.count || 0;
         const newCount = imp.new?.length || 0;
         const updatedCount = imp.updated?.length || 0;
@@ -2496,13 +2438,18 @@ export default function DynamicOverlays() {
       is_running: true,
       phase: "downloading",
       download_bytes: 0,
-      total_bytes: 231354348,
+      total_bytes: 0,
       download_percent: 0,
       extracted_count: 0,
-      total_images: 2331,
+      processed_count: 0,
+      total_images: 0,
+      imported_count: 0,
+      updated_count: 0,
+      unchanged_count: 0,
+      outdated_count: 0,
       extract_percent: 0,
       overall_percent: 0,
-      message: "Initiating archive download from GitHub (~230 MB)...",
+      message: "Connecting to GitHub archive...",
       error: null,
     });
 
@@ -4389,6 +4336,8 @@ export default function DynamicOverlays() {
   const readiness = scanData?.readiness || { total: 0, ready: 0, fetchable: 0, missing: 0, upload_needed: 0, assets: [] };
   const libraries = scanData?.libraries || {};
   const yamlFiles = statusData?.yaml_files || scanData?.yaml_files || [];
+  const inventory = statusData?.inventory;
+  const officialDefaultsAvailable = defaultsImportReport?.total_available ?? inventory?.defaults?.official_known ?? 0;
 
   const activeCustomImageId = customImages[previewTemplate]?.previewImageId;
   const customImgParam = activeCustomImageId ? `&custom_image_id=${encodeURIComponent(activeCustomImageId)}` : "";
@@ -4651,6 +4600,24 @@ export default function DynamicOverlays() {
                 />
               </button>
             </div>
+            <div
+              role="status"
+              aria-label={t(isChangeDetectionDryRun ? "dynamicOverlays.changeDetection.dryRunStatus" : "dynamicOverlays.changeDetection.livePushStatus")}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                isChangeDetectionDryRun
+                  ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                  : "border-red-500/30 bg-red-500/10 text-red-300"
+              }`}
+              title={isChangeDetectionDryRun
+                ? t("dynamicOverlays.changeDetection.dryRunTooltip")
+                : t("dynamicOverlays.changeDetection.livePushTooltip")}
+            >
+              {isChangeDetectionDryRun ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+              <span>{t(isChangeDetectionDryRun ? "dynamicOverlays.changeDetection.dryRunBadge" : "dynamicOverlays.changeDetection.livePushBadge")}</span>
+              <span className="font-normal opacity-80">
+                {t(featureSettings?.enabled ? "dynamicOverlays.changeDetection.active" : "dynamicOverlays.changeDetection.pausedMasterOff")}
+              </span>
+            </div>
 
             {featureSettings?.enabled && (
               <>
@@ -4762,29 +4729,29 @@ export default function DynamicOverlays() {
               {[
                 {
                   step: "01",
-                  title: "Configure",
-                  description: "Choose libraries and manage their configuration.",
+                  title: t("dynamicOverlays.navigation.configure"),
+                  description: t("dynamicOverlays.navigation.configureDescription"),
                   tabs: [
-                    { id: "rules", label: "Libraries & Rules", icon: Layers, badge: Object.keys(libraries || {}).length },
-                    { id: "importer", label: "Config & YAML Files", icon: FileCode, badge: yamlFiles.length }
+                    { id: "rules", label: t("dynamicOverlays.navigation.librariesRules"), icon: Layers, badge: Object.keys(libraries || {}).length },
+                    { id: "importer", label: t("dynamicOverlays.navigation.configYaml"), icon: FileCode, badge: yamlFiles.length }
                   ]
                 },
                 {
                   step: "02",
-                  title: "Design",
-                  description: "Choose badges, adjust their look, and preview the result.",
+                  title: t("dynamicOverlays.navigation.design"),
+                  description: t("dynamicOverlays.navigation.designDescription"),
                   tabs: [
-                    { id: "config", label: "Visual Badges", icon: Sliders },
-                    { id: "preview", label: "Live Preview", icon: Eye }
+                    { id: "config", label: t("dynamicOverlays.navigation.visualBadges"), icon: Sliders },
+                    { id: "preview", label: t("dynamicOverlays.navigation.livePreview"), icon: Eye }
                   ]
                 },
                 {
                   step: "03",
-                  title: "Apply & Maintain",
-                  description: "Run syncs, review cache, and manage anime metadata.",
+                  title: t("dynamicOverlays.navigation.applyMaintain"),
+                  description: t("dynamicOverlays.navigation.applyMaintainDescription"),
                   tabs: [
-                    { id: "sync", label: "Sync & Cache", icon: RefreshCw },
-                    { id: "anime", label: "AniMetaFill", icon: Sparkles }
+                    { id: "sync", label: t("dynamicOverlays.navigation.syncCache"), icon: RefreshCw },
+                    { id: "anime", label: t("dynamicOverlays.navigation.aniMetaFill"), icon: Sparkles }
                   ]
                 }
               ].map((group) => (
@@ -5113,11 +5080,13 @@ export default function DynamicOverlays() {
                 <details className="group rounded-xl bg-theme-card border border-theme">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3.5 sm:p-4">
                     <span className="min-w-0">
-                      <span className="block text-xs font-bold text-theme-text">Optional: Custom Badge Images</span>
-                      <span className="mt-0.5 block text-[10px] text-theme-muted">Replace a built-in image for a specific value.</span>
+                      <span className="block text-xs font-bold text-theme-text">{t("dynamicOverlays.assetOverrides.title")}</span>
+                      <span className="mt-0.5 block text-[10px] text-theme-muted">{t("dynamicOverlays.assetOverrides.description")}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2 text-xs text-theme-muted">
-                      {overrideRows.length > 0 ? `${overrideRows.length} active` : "None"}
+                      {overrideRows.length > 0
+                        ? t("dynamicOverlays.assetOverrides.active", { count: overrideRows.length })
+                        : t("dynamicOverlays.assetOverrides.none")}
                       <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                     </span>
                   </summary>
@@ -7268,7 +7237,7 @@ export default function DynamicOverlays() {
                   Config Folder & Readiness Checklist
                 </h2>
                 <p className="text-xs text-theme-muted mt-0.5 font-mono">
-                  Storage: Overlayfiles/dynamic_overlays/configs/
+                  {t("dynamicOverlays.readiness.configStorage", { path: statusData?.configs_dir || "Overlayfiles/dynamic_overlays/configs/" })}
                 </p>
               </div>
             </div>
@@ -7280,7 +7249,7 @@ export default function DynamicOverlays() {
                 className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-xs font-medium text-theme-text transition-all shadow-sm disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${isScanning ? "animate-spin text-theme-primary" : ""}`} />
-                {isScanning ? "Checking..." : "Recheck Dependencies"}
+                {isScanning ? "Checking..." : t("dynamicOverlays.readiness.recheckWithCount", { count: readiness.total })}
               </button>
 
               <button
@@ -7290,7 +7259,10 @@ export default function DynamicOverlays() {
                 className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-xs font-medium text-theme-text transition-all shadow-sm disabled:opacity-50"
               >
                 <Download className={`w-4 h-4 text-theme-primary ${isImporting ? "animate-bounce" : ""}`} />
-                {isImporting ? "Importing Defaults..." : "Import Overlay Defaults"}
+                {isImporting ? "Importing Defaults..." : t("dynamicOverlays.readiness.importDefaultsWithCount", {
+                  installed: inventory?.defaults?.official_installed ?? 0,
+                  available: officialDefaultsAvailable,
+                })}
               </button>
 
               <button
@@ -7299,7 +7271,9 @@ export default function DynamicOverlays() {
                 className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-xs font-medium text-theme-text transition-all shadow-sm"
               >
                 <Download className={`w-4 h-4 text-theme-primary ${isImportingImages ? "animate-bounce" : ""}`} />
-                {isImportingImages ? "Downloading Images..." : "Download Official Images"}
+                {isImportingImages ? t("dynamicOverlays.readiness.downloadingImages") : t("dynamicOverlays.readiness.downloadOfficialImagesCount", {
+                  count: (inventory?.images?.assets?.files || 0) + (inventory?.images?.default_cache?.files || 0),
+                })}
               </button>
 
               {isDefaultsScheduled ? (
@@ -7349,6 +7323,58 @@ export default function DynamicOverlays() {
             </div>
           </div>
 
+          {defaultsImportReport && (
+            <p role="status" className="text-xs text-theme-muted px-1">
+              {t("dynamicOverlays.readiness.importReport", {
+                added: defaultsImportReport.new?.length || 0,
+                updated: defaultsImportReport.updated?.length || 0,
+                unchanged: defaultsImportReport.unchanged?.length || 0,
+                installed: defaultsImportReport.total_installed || 0,
+                available: defaultsImportReport.total_available || 0,
+              })}
+              {defaultsImportReport.errors?.length > 0 && (
+                <> {t("dynamicOverlays.readiness.importErrors", { count: defaultsImportReport.errors.length })}</>
+              )}
+            </p>
+          )}
+
+          {inventory && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-theme-card border border-theme rounded-xl p-4 shadow-sm min-w-0">
+                <div className="text-xs font-semibold text-theme-text">{t("dynamicOverlays.readiness.configFiles")}</div>
+                <div className="text-xl font-bold text-theme-text mt-1">{inventory.configs.files}</div>
+                <div className="text-[11px] text-theme-muted mt-1">{formatFileSize(inventory.configs.size_bytes)}</div>
+                <div className="text-[10px] text-theme-muted font-mono break-all mt-1" title={inventory.configs.path}>{inventory.configs.path}</div>
+              </div>
+              <div className="bg-theme-card border border-theme rounded-xl p-4 shadow-sm min-w-0">
+                <div className="text-xs font-semibold text-theme-text">{t("dynamicOverlays.readiness.officialTemplates")}</div>
+                <div className="text-xl font-bold text-theme-text mt-1">{inventory.defaults.official_installed} / {officialDefaultsAvailable}</div>
+                <div className="text-[11px] text-theme-muted mt-1">{t("dynamicOverlays.readiness.localTemplateFiles", { count: inventory.defaults.files })}</div>
+                <div className="text-[11px] text-theme-muted mt-1">{formatFileSize(inventory.defaults.size_bytes)}</div>
+                <div className="text-[10px] text-theme-muted font-mono break-all mt-1" title={inventory.defaults.path}>{inventory.defaults.path}</div>
+                <div className="text-[10px] text-theme-muted mt-1">
+                  {defaultsImportReport ? t("dynamicOverlays.readiness.importFreshnessChecked") : t("dynamicOverlays.readiness.importFreshnessUnknown")}
+                </div>
+              </div>
+              <div className="bg-theme-card border border-theme rounded-xl p-4 shadow-sm min-w-0">
+                <div className="text-xs font-semibold text-theme-text">{t("dynamicOverlays.readiness.localImages")}</div>
+                <div className="text-xl font-bold text-theme-text mt-1">{inventory.images.assets.files + inventory.images.default_cache.files}</div>
+                <div className="text-[11px] text-theme-muted mt-1">{t("dynamicOverlays.readiness.imageInventoryBreakdown", {
+                  assets: inventory.images.assets.files,
+                  defaults: inventory.images.default_cache.files,
+                })}</div>
+                <div className="text-[10px] text-theme-muted font-mono break-all mt-1" title={inventory.images.assets.path}>{inventory.images.assets.path}</div>
+                <div className="text-[10px] text-theme-muted font-mono break-all" title={inventory.images.default_cache.path}>{inventory.images.default_cache.path}</div>
+              </div>
+              <div className="bg-theme-card border border-theme rounded-xl p-4 shadow-sm min-w-0">
+                <div className="text-xs font-semibold text-theme-text">{t("dynamicOverlays.readiness.localFonts")}</div>
+                <div className="text-xl font-bold text-theme-text mt-1">{inventory.fonts.files}</div>
+                <div className="text-[11px] text-theme-muted mt-1">{formatFileSize(inventory.fonts.size_bytes)}</div>
+                <div className="text-[10px] text-theme-muted font-mono break-all mt-1" title={inventory.fonts.path}>{inventory.fonts.path}</div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-theme-card border border-theme rounded-xl p-5 flex items-center gap-3.5 shadow-sm">
               <div className="p-2.5 rounded-lg bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -7356,7 +7382,7 @@ export default function DynamicOverlays() {
               </div>
               <div>
                 <div className="text-xl font-bold text-theme-text">{readiness.ready || 0}</div>
-                <div className="text-xs text-theme-muted">Assets Ready & Verified</div>
+                <div className="text-xs text-theme-muted">{t("dynamicOverlays.readiness.configuredReady")}</div>
               </div>
             </div>
 
@@ -7366,7 +7392,7 @@ export default function DynamicOverlays() {
               </div>
               <div>
                 <div className="text-xl font-bold text-theme-text">{readiness.fetchable || 0}</div>
-                <div className="text-xs text-theme-muted">Available from GitHub / Seed</div>
+                <div className="text-xs text-theme-muted">{t("dynamicOverlays.readiness.configuredFetchable")}</div>
               </div>
             </div>
 
@@ -7376,7 +7402,7 @@ export default function DynamicOverlays() {
               </div>
               <div>
                 <div className="text-xl font-bold text-theme-text">{readiness.upload_needed || 0}</div>
-                <div className="text-xs text-theme-muted">Custom Upload Needed</div>
+                <div className="text-xs text-theme-muted">{t("dynamicOverlays.readiness.configuredUploadNeeded")}</div>
               </div>
             </div>
 
@@ -7386,7 +7412,7 @@ export default function DynamicOverlays() {
               </div>
               <div>
                 <div className="text-xl font-bold text-theme-text">{readiness.missing || 0}</div>
-                <div className="text-xs text-theme-muted">Missing Assets</div>
+                <div className="text-xs text-theme-muted">{t("dynamicOverlays.readiness.configuredMissing")}</div>
               </div>
             </div>
           </div>
@@ -7406,7 +7432,7 @@ export default function DynamicOverlays() {
                     </span>
                   </div>
                   <p className="text-xs text-theme-muted font-mono mt-0.5">
-                    Overlayfiles/dynamic_overlays/configs/
+                    {statusData?.configs_dir || "Overlayfiles/dynamic_overlays/configs/"}
                   </p>
                 </div>
               </div>
@@ -7495,9 +7521,9 @@ export default function DynamicOverlays() {
                       <td colSpan={5} className="py-8 text-center text-theme-muted">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <FileCode className="w-8 h-8 text-theme-muted/50" />
-                          <p>No YAML configuration files uploaded yet.</p>
+                          <p>{t("dynamicOverlays.readiness.noYamlFiles")}</p>
                           <p className="text-[11px] text-theme-muted/80">
-                            Upload <code className="text-theme-primary font-mono">config.yml</code> or overlay YAMLs (<code className="text-theme-primary font-mono">overlays_tv.yml</code>, <code className="text-theme-primary font-mono">anime_overlays.yml</code>, <code className="text-theme-primary font-mono">overlays_movies.yml</code>) above.
+                            {t("dynamicOverlays.readiness.noYamlFilesDescription")}
                           </p>
                         </div>
                       </td>
@@ -7513,11 +7539,12 @@ export default function DynamicOverlays() {
               <div>
                 <h3 className="font-bold text-theme-text text-sm flex items-center gap-2">
                   <Layers className="w-4 h-4 text-theme-primary" />
-                  Asset Dependency Checklist
+                  {t("dynamicOverlays.readiness.dependencyChecklist")}
                 </h3>
                 <span className="text-xs text-theme-muted">
-                  {readiness.assets.length} total required assets found in YAMLs
+                  {t("dynamicOverlays.readiness.dependencyCount", { count: readiness.assets.length })}
                 </span>
+                <p className="text-[11px] text-theme-muted mt-1">{t("dynamicOverlays.readiness.dependencyScope")}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -7527,7 +7554,9 @@ export default function DynamicOverlays() {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-theme-hover hover:bg-theme-hover/80 border border-theme text-theme-text text-xs font-semibold transition-all"
                 >
                   <Download className={`w-3.5 h-3.5 text-theme-primary ${isImportingImages ? "animate-bounce" : ""}`} />
-                  <span>{isImportingImages ? "Downloading Images..." : "Download Official Images"}</span>
+                  <span>{isImportingImages ? t("dynamicOverlays.readiness.downloadingImages") : t("dynamicOverlays.readiness.downloadOfficialImagesCount", {
+                    count: (inventory?.images?.assets?.files || 0) + (inventory?.images?.default_cache?.files || 0),
+                  })}</span>
                 </button>
               </div>
             </div>
@@ -7635,7 +7664,7 @@ export default function DynamicOverlays() {
                   {readiness.assets.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-theme-muted">
-                        No overlay asset dependencies detected. Click "Import Overlay Defaults" or upload a config.yaml to Overlayfiles/dynamic_overlays/configs/.
+                        {t("dynamicOverlays.readiness.noDependencies")}
                       </td>
                     </tr>
                   )}
@@ -9816,18 +9845,18 @@ export default function DynamicOverlays() {
               </div>
             </div>
 
-            {/* Change Detection Settings: 2 Clean, Practical Settings */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Change Detection Settings */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Setting 1: Background Monitoring */}
               <div className="p-4 rounded-xl bg-theme-hover/40 border border-theme flex flex-col justify-between gap-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-xs font-bold text-theme-text flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-theme-muted" />
-                      Background Checking
+                      {t("dynamicOverlays.changeDetection.backgroundChecking")}
                     </div>
                     <div className="text-[11px] text-theme-muted mt-1 leading-relaxed">
-                      Periodically checks media servers in the background for new tracks, editions, and runtimes.
+                      {t("dynamicOverlays.changeDetection.backgroundDescription")}
                     </div>
                   </div>
                   <button
@@ -9848,7 +9877,7 @@ export default function DynamicOverlays() {
                 </div>
 
                 <div className="pt-2 border-t border-theme/40 flex items-center justify-between text-[11px]">
-                  <span className="text-theme-muted">Check interval:</span>
+                  <span className="text-theme-muted">{t("dynamicOverlays.changeDetection.checkInterval")}</span>
                   <select
                     value={featureSettings?.change_detection_interval_minutes || 60}
                     onChange={(e) => handleUpdateDynamicSettings({
@@ -9856,14 +9885,14 @@ export default function DynamicOverlays() {
                     })}
                     className="bg-theme-card border border-theme rounded-lg px-2 py-1 text-[11px] text-theme-text font-medium"
                   >
-                    <option value={15}>Every 15 minutes</option>
-                    <option value={30}>Every 30 minutes</option>
-                    <option value={60}>Every 1 hour</option>
-                    <option value={120}>Every 2 hours</option>
-                    <option value={240}>Every 4 hours</option>
-                    <option value={360}>Every 6 hours</option>
-                    <option value={720}>Every 12 hours</option>
-                    <option value={1440}>Every 24 hours</option>
+                    <option value={15}>{t("dynamicOverlays.changeDetection.every15Minutes")}</option>
+                    <option value={30}>{t("dynamicOverlays.changeDetection.every30Minutes")}</option>
+                    <option value={60}>{t("dynamicOverlays.changeDetection.everyHour")}</option>
+                    <option value={120}>{t("dynamicOverlays.changeDetection.every2Hours")}</option>
+                    <option value={240}>{t("dynamicOverlays.changeDetection.every4Hours")}</option>
+                    <option value={360}>{t("dynamicOverlays.changeDetection.every6Hours")}</option>
+                    <option value={720}>{t("dynamicOverlays.changeDetection.every12Hours")}</option>
+                    <option value={1440}>{t("dynamicOverlays.changeDetection.every24Hours")}</option>
                   </select>
                 </div>
               </div>
@@ -9874,16 +9903,19 @@ export default function DynamicOverlays() {
                   <div>
                     <div className="text-xs font-bold text-theme-text flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5 text-theme-muted" />
-                      Automatic Overlay Resync
+                      {t("dynamicOverlays.changeDetection.automaticResync")}
                     </div>
                     <div className="text-[11px] text-theme-muted mt-1 leading-relaxed">
-                      Re-renders and updates overlays automatically as soon as changes are detected.
+                      {t("dynamicOverlays.changeDetection.automaticResyncDescription")}
                     </div>
                   </div>
                   <button
                     type="button"
+                    role="switch"
+                    aria-checked={featureSettings?.auto_resync_on_change !== false}
+                    aria-label="Automatically resync changed media"
                     onClick={() => handleUpdateDynamicSettings({
-                      auto_resync_on_change: featureSettings?.auto_resync_on_change === false ? true : false
+                      auto_resync_on_change: featureSettings?.auto_resync_on_change === false
                     })}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                       featureSettings?.auto_resync_on_change !== false ? "bg-theme-primary" : "bg-theme-hover border-theme"
@@ -9898,9 +9930,57 @@ export default function DynamicOverlays() {
                 </div>
 
                 <div className="pt-2 border-t border-theme/40 text-[11px] text-theme-muted flex items-center justify-between">
-                  <span>Status:</span>
+                  <span>{t("dynamicOverlays.changeDetection.status")}</span>
                   <span className="font-medium text-theme-text">
-                    {featureSettings?.auto_resync_on_change !== false ? "Active on changes" : "Manual sync only"}
+                    {t(featureSettings?.auto_resync_on_change !== false
+                      ? "dynamicOverlays.changeDetection.autoResyncEnabled"
+                      : "dynamicOverlays.changeDetection.manualSyncOnly")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Setting 3: Upload Dry Run */}
+              <div className="p-4 rounded-xl bg-theme-hover/40 border border-theme flex flex-col justify-between gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold text-theme-text flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-theme-muted" />
+                      {t("dynamicOverlays.changeDetection.dryRunTitle")}
+                    </div>
+                    <div className="text-[11px] text-theme-muted mt-1 leading-relaxed">
+                      {t("dynamicOverlays.changeDetection.dryRunDescription")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isChangeDetectionDryRun}
+                    aria-label="Dry Run without media-server uploads"
+                    onClick={() => handleUpdateDynamicSettings({
+                      change_detection_dry_run: !isChangeDetectionDryRun
+                    })}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      isChangeDetectionDryRun ? "bg-theme-primary" : "bg-theme-hover border-theme"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        isChangeDetectionDryRun ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="pt-2 border-t border-theme/40 text-[11px] text-theme-muted flex items-center justify-between">
+                  <span>{t("dynamicOverlays.changeDetection.status")}</span>
+                  <span className="font-medium text-theme-text">
+                    {isChangeDetectionDryRun
+                      ? featureSettings?.enabled
+                        ? t("dynamicOverlays.changeDetection.renderOnlyNoPush")
+                        : t("dynamicOverlays.changeDetection.pausedMasterOff")
+                      : featureSettings?.enabled
+                        ? t("dynamicOverlays.changeDetection.serverPushAllowed")
+                        : t("dynamicOverlays.changeDetection.pausedMasterOff")}
                   </span>
                 </div>
               </div>
@@ -14494,7 +14574,7 @@ export default function DynamicOverlays() {
                   <span>Recommended: Lightweight On-Demand Fetch (Zero Waste)</span>
                 </div>
                 <p className="text-xs text-theme-text leading-relaxed">
-                  You do <strong>not</strong> need to download the full archive! You can use the <strong>"Fetch All Missing"</strong> button in the Asset Dependency Checklist below. It downloads <em>only</em> the specific flags and badges referenced by your active rules directly from GitHub raw URLs (~50 KB total, under 1 second).
+                  {t("dynamicOverlays.readiness.fetchConfiguredDescription")}
                 </p>
               </div>
 
@@ -14502,17 +14582,17 @@ export default function DynamicOverlays() {
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-2">
                 <div className="flex items-center gap-2 font-semibold text-xs text-amber-400">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-                  <span>Full Archive Notice (Consumes ~700 MB Disk Space)</span>
+                  <span>{t("dynamicOverlays.readiness.fullArchiveNotice")}</span>
                 </div>
                 <p className="text-xs text-theme-text leading-relaxed">
-                  Downloading the full Kometa archive will download the compressed repository from GitHub and extract <strong>over 2,300+ overlay images (~600–700 MB uncompressed)</strong> into your local storage:
+                  {t("dynamicOverlays.readiness.fullArchiveDescription")}
                 </p>
                 <ul className="text-xs text-theme-muted list-disc list-inside space-y-0.5 pl-1 font-mono text-[11px]">
-                  <li>Overlayfiles/dynamic_overlays/assets/</li>
-                  <li>Overlayfiles/dynamic_overlays/defaults/images/</li>
+                  <li>{statusData?.assets_dir || "Overlayfiles/dynamic_overlays/assets/"}</li>
+                  <li>{statusData?.defaults_dir ? `${statusData.defaults_dir}/images` : "Overlayfiles/dynamic_overlays/defaults/images/"}</li>
                 </ul>
                 <div className="text-[11px] text-amber-400/90 pt-1 font-medium">
-                  ⚠️ Please ensure your drive has at least <strong>1 GB of free space</strong> before proceeding.
+                  {t("dynamicOverlays.readiness.fullArchiveSpaceWarning")}
                 </div>
               </div>
 
@@ -14542,7 +14622,7 @@ export default function DynamicOverlays() {
                 title="Fetch only the specific assets needed by your current active rules"
               >
                 <Download className="w-3.5 h-3.5 text-green-400" />
-                <span>Fetch Only Configured (~50 KB)</span>
+                <span>{t("dynamicOverlays.readiness.fetchConfiguredAssets", { count: readiness.fetchable })}</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -14594,7 +14674,7 @@ export default function DynamicOverlays() {
                 <div>
                   <h3 className="text-base font-bold text-theme-text">
                     {importImagesProgress.phase === "completed"
-                      ? "Official Images Imported!"
+                      ? t("dynamicOverlays.readiness.imagesCheckedTitle")
                       : importImagesProgress.phase === "error"
                       ? "Image Import Failed"
                       : "Importing Official Kometa Images..."}
@@ -14605,7 +14685,14 @@ export default function DynamicOverlays() {
                       : importImagesProgress.phase === "extracting"
                       ? "Phase 2: Extracting overlay images to storage..."
                       : importImagesProgress.phase === "completed"
-                      ? "All official Kometa default images are ready to use."
+                      ? t(importImagesProgress.outdated_count > 0
+                        ? "dynamicOverlays.readiness.imagesCheckedWithOutdated"
+                        : "dynamicOverlays.readiness.imagesCheckedSummary", {
+                          added: importImagesProgress.imported_count || 0,
+                          updated: importImagesProgress.updated_count || 0,
+                          unchanged: importImagesProgress.unchanged_count || 0,
+                          outdated: importImagesProgress.outdated_count || 0,
+                        })
                       : "An error occurred during download or extraction."}
                   </p>
                 </div>
@@ -14697,14 +14784,14 @@ export default function DynamicOverlays() {
                     )}
                     <div>
                       <div className="font-semibold text-theme-text">2. Extract Overlay Images</div>
-                      <div className="text-[11px] text-theme-muted">Extracting defaults/overlays/images/ (~700 MB)</div>
+                      <div className="text-[11px] text-theme-muted">Extracting defaults/overlays/images/</div>
                     </div>
                   </div>
                   <div className="text-right font-mono text-[11px]">
                     <div>{importImagesProgress.extract_percent ? `${importImagesProgress.extract_percent}%` : "Pending"}</div>
                     <div className="text-theme-muted">
-                      {importImagesProgress.extracted_count || 0}
-                      {importImagesProgress.total_images > 0 ? ` / ${importImagesProgress.total_images}` : ""} files
+                      {importImagesProgress.processed_count || importImagesProgress.extracted_count || 0}
+                      {importImagesProgress.total_images > 0 ? ` / ${importImagesProgress.total_images}` : ""} {t("dynamicOverlays.readiness.checkedFiles")}
                     </div>
                   </div>
                 </div>
@@ -14723,7 +14810,10 @@ export default function DynamicOverlays() {
 
               {/* Space Notice Reminder */}
               <div className="text-[11px] text-theme-muted text-center pt-0.5">
-                <span>Disk consumption: ~700 MB in Overlayfiles/dynamic_overlays/</span>
+                <span>{t("dynamicOverlays.readiness.imageStoragePaths", {
+                  assets: statusData?.assets_dir || "Overlayfiles/dynamic_overlays/assets/",
+                  defaults: statusData?.defaults_dir ? `${statusData.defaults_dir}/images` : "Overlayfiles/dynamic_overlays/defaults/images/",
+                })}</span>
               </div>
             </div>
 

@@ -14,13 +14,22 @@ const TopNavbar = () => {
   const { isAuthEnabled, logout } = useAuth();
   const { isCollapsed } = useSidebar();
   const { pathname } = useLocation();
-  const viewNames = {
-    "/": "Dashboard", "/runtime-history": "Insights", "/run-modes": "Run Modes",
-    "/scheduler": "Scheduler", "/queue": "Queue", "/dynamic-overlays": "Dynamic Overlays",
-    "/assets-manager": "Asset Manager", "/blueprints": "Blueprints", "/logs": "Logs",
-    "/image-quarantine": "Plex Image Quarantine",
+  const viewNameKeys = {
+    "/": "topNavbar.views.dashboard",
+    "/runtime-history": "topNavbar.views.insights",
+    "/run-modes": "topNavbar.views.runModes",
+    "/scheduler": "topNavbar.views.scheduler",
+    "/queue": "topNavbar.views.queue",
+    "/dynamic-overlays": "dynamicOverlays.title",
+    "/assets-manager": "topNavbar.views.assetManager",
+    "/blueprints": "topNavbar.views.blueprints",
+    "/logs": "topNavbar.views.logs",
+    "/image-quarantine": "topNavbar.views.imageQuarantine",
+    "/config/system": "nav.config",
   };
-  const viewName = viewNames[pathname] || pathname.split("/").filter(Boolean).map(segment => segment.replaceAll("-", " ")).join(" / ");
+  const viewName = viewNameKeys[pathname]
+    ? t(viewNameKeys[pathname])
+    : pathname.split("/").filter(Boolean).map(segment => segment.replaceAll("-", " ")).join(" / ");
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
@@ -180,10 +189,10 @@ const TopNavbar = () => {
                        setShowStopConfirm(true);
                      }}
                      className="group flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-500 transition-all shadow-sm"
-                     title={`Stop ${task.name}`}
+                     title={t("topNavbar.actions.stopTask", { name: task.name })}
                    >
                      <Square className="w-3.5 h-3.5 fill-current" />
-                     <span className="text-xs font-semibold">Stop</span>
+                     <span className="text-xs font-semibold">{t("topNavbar.actions.stop")}</span>
                    </button>
                  )}
                </div>
@@ -199,7 +208,7 @@ const TopNavbar = () => {
                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
                  </span>
                  <span className="text-xs font-bold text-green-500 uppercase tracking-widest">
-                   {systemStatus.mode || "Running"}
+                   {systemStatus.mode || t("topNavbar.actions.running")}
                  </span>
                </div>
 
@@ -209,10 +218,10 @@ const TopNavbar = () => {
                    setShowStopConfirm(true);
                  }}
                  className="group flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-500 transition-all"
-                 title={t("topNavbar.stopSystem", "Stop System")}
+                 title={t("topNavbar.stopSystem")}
                >
                  <Square className="w-3.5 h-3.5 fill-current" />
-                 <span className="text-xs font-semibold">Stop</span>
+                 <span className="text-xs font-semibold">{t("topNavbar.actions.stop")}</span>
                </button>
              </div>
            )}
@@ -223,17 +232,17 @@ const TopNavbar = () => {
                <div className="flex items-center gap-2 px-4 py-1.5 bg-yellow-500/10 border border-yellow-500/20 rounded-full">
                  <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />
                  <span className="text-xs font-bold text-yellow-500 uppercase tracking-widest">
-                   LOCKED
+                   {t("topNavbar.actions.locked")}
                  </span>
                </div>
 
                <button
                  onClick={() => setShowLockConfirm(true)}
                  className="group flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/10 hover:border-orange-500/30 text-orange-400 hover:text-orange-500 transition-all"
-                 title={t("topNavbar.deleteLockfile", "Delete Running File")}
+                 title={t("topNavbar.deleteLockfile")}
                >
                  <Trash2 className="w-3.5 h-3.5" />
-                 <span className="text-xs font-semibold">Clear Lock</span>
+                 <span className="text-xs font-semibold">{t("topNavbar.actions.clearLock")}</span>
                </button>
              </div>
            )}
@@ -336,9 +345,9 @@ const TopNavbar = () => {
           setTaskToStop(null);
         }}
         onConfirm={handleStopSystem}
-        title={taskToStop ? `Stop ${taskToStop.name}` : t("topNavbar.stopSystem", "Stop System")}
-        message={taskToStop ? `Are you sure you want to stop ${taskToStop.name}?` : t("topNavbar.confirmStop", "Are you sure you want to force stop?")}
-        confirmText={t("common.stop", "Stop")}
+        title={taskToStop ? t("topNavbar.actions.stopTask", { name: taskToStop.name }) : t("topNavbar.stopSystem")}
+        message={taskToStop ? t("topNavbar.confirmStopTask", { name: taskToStop.name }) : t("topNavbar.confirmStop")}
+        confirmText={t("common.stop")}
         type="danger"
       />
 
@@ -346,9 +355,9 @@ const TopNavbar = () => {
         isOpen={showLockConfirm}
         onClose={() => setShowLockConfirm(false)}
         onConfirm={handleDeleteLockfile}
-        title={t("topNavbar.deleteLockfile", "Delete Running File")}
-        message={t("topNavbar.confirmDeleteLock", "Are you sure you want to delete the running file?")}
-        confirmText={t("common.delete", "Delete")}
+        title={t("topNavbar.deleteLockfile")}
+        message={t("topNavbar.confirmDeleteLock")}
+        confirmText={t("common.delete")}
         type="warning"
       />
     </div>
