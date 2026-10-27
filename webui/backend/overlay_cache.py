@@ -35,6 +35,11 @@ def _font_stat_signature(path):
 
 @lru_cache(maxsize=256)
 def _font_content_digest(path, signature):
+    from PIL import ImageFont
+    try:
+        ImageFont.truetype(path, size=12)
+    except (OSError, ValueError):
+        return None
     digest = hashlib.sha256()
     with open(path, "rb") as font_file:
         for chunk in iter(lambda: font_file.read(65536), b""):
@@ -48,6 +53,16 @@ def _recipe_layers(layers):
     return [{key: value for key, value in layer.items() if key != "image_element"} for layer in layers]
 
 
+def _font_digest_candidates(path):
+    requested = Path(path)
+    yield requested
+    from overlay_engine import get_candidate_font_dirs
+    for directory in get_candidate_font_dirs():
+        candidate = directory / requested.name
+        if candidate != requested:
+            yield candidate
+
+
 def _font_recipe_payload(layers):
     payload = _recipe_layers(layers)
     complete = True
@@ -55,12 +70,17 @@ def _font_recipe_payload(layers):
         path = layer.get("font_path")
         if not path:
             continue
-        try:
-            signature = _font_stat_signature(path)
-            with _font_digest_lock:
-                digest = _font_content_digest(str(path), signature)
-            layer["font_path"] = {"sha256": digest}
-        except OSError:
+        for candidate in _font_digest_candidates(path):
+            try:
+                signature = _font_stat_signature(candidate)
+                with _font_digest_lock:
+                    digest = _font_content_digest(str(candidate), signature)
+                if digest is not None:
+                    layer["font_path"] = {"sha256": digest}
+                    break
+            except OSError:
+                continue
+        else:
             complete = False
             layer["font_path"] = {"unavailable": str(path)}
     return payload, complete
@@ -109,7 +129,7 @@ def describe_overlay_layer_changes(attr_snapshot, layers, shared_snapshots=None)
                 new_value = json.dumps(after.get(field), ensure_ascii=True)[:120]
                 changes.append(f"{name}.{field}: {old_value} -> {new_value}")
     if not changes:
-        return "layer fields unchanged; fingerprint serialization differs"
+        return "layer fields unchanged; fingerprint differs"
     return "; ".join(changes[:4]) + (f"; {len(changes) - 4} more changes" if len(changes) > 4 else "")
 
 
@@ -541,6 +561,7 @@ class OverlayCache:
         is_cached_empty = cached_recipe_hash in empty_hashes
         is_current_empty = overlay_recipe_hash in empty_hashes
         migrate_font_recipe = False
+        font_migration_issue = None
         if cached_recipe_hash != overlay_recipe_hash and resolved_layers is not None:
             legacy_hash = hashlib.md5(json.dumps(_recipe_layers(resolved_layers), sort_keys=True).encode()).hexdigest()
             previous_layers = resolved_layers if cached_recipe_hash == legacy_hash else self.get_recipe_layers(entry)
@@ -553,11 +574,17 @@ class OverlayCache:
                 previous_payload, previous_complete = _font_recipe_payload(previous_layers)
                 content_hash = hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()
                 migrate_font_recipe = complete and previous_complete and payload == previous_payload and content_hash == overlay_recipe_hash
+                if not complete or not previous_complete:
+                    font_migration_issue = "font identity could not be resolved to a valid local font; migration deferred"
+                elif content_hash != overlay_recipe_hash:
+                    font_migration_issue = "font identity changed during recipe evaluation; migration deferred"
 
         if is_cached_empty and is_current_empty:
             pass  # Both indicate that no overlay rules apply
         elif cached_recipe_hash != overlay_recipe_hash and not migrate_font_recipe:
             details = f"; {describe_overlay_layer_changes(entry.get('attr_snapshot'), resolved_layers, self._layer_snapshots)}" if resolved_layers is not None else ""
+            if font_migration_issue:
+                details += f"; {font_migration_issue}"
             diff_reasons.append(f"Resolved overlay layers changed ({cached_recipe_hash[:8]} -> {overlay_recipe_hash[:8]}{details})")
 
         # Metadata signature drift check
