@@ -692,7 +692,8 @@ class OverlayCache:
 
     def update_verified_fingerprints(
         self, server_type, item_id, asset_type, clean_asset_hash, overlay_recipe_hash, metadata_hash,
-        attr_snapshot, clean_asset_mtime, clean_asset_size, cache_map=None, media_file_path=None, detected_video_source=None
+        attr_snapshot, clean_asset_mtime, clean_asset_size, cache_map=None, media_file_path=None, detected_video_source=None,
+        server_updated_at=None
     ) -> bool:
         key = (server_type.lower(), str(item_id), asset_type.lower())
         attr_snapshot = self._compact_attr_snapshot(attr_snapshot)
@@ -703,6 +704,8 @@ class OverlayCache:
         }
         if media_file_path:
             values.update({"media_file_path": str(media_file_path), "detected_video_source": detected_video_source})
+        if server_updated_at is not None:
+            values["server_updated_at"] = str(server_updated_at)
         with self.lock:
             try:
                 conn = self._get_connection()

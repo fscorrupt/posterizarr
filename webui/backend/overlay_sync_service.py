@@ -4575,14 +4575,15 @@ async def _run_overlay_sync_task(
                                                         fingerprints_saved = cache.update_verified_fingerprints(
                                                             s_type, str(ep_rk), "titlecard", tc_clean_hash, ep_recipe_hash, ep_meta_hash,
                                                             snapshot_value, tc_mtime, tc_size, cache_map=cache_map,
-                                                            media_file_path=ep_data["media_file_path"], detected_video_source=ep_data["video_source"]
+                                                            media_file_path=ep_data["media_file_path"], detected_video_source=ep_data["video_source"],
+                                                            server_updated_at=ep_data.get("server_updated_at")
                                                         )
                                                         if not fingerprints_saved:
                                                             await _inc_stats(failed=1)
                                                             write_log(f"  [!] {w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' already matches Plex, but cache fingerprints could not be saved. No upload performed.")
                                                             continue
                                                         await _inc_stats(skipped=1)
-                                                        write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Selected artwork already matches rendered output; cache fingerprints refreshed (no upload)")
+                                                        write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Selected artwork already matches rendered output; cache fingerprints refreshed (no upload) [Reason: {ep_sync_reason}]")
                                                         continue
 
                                                 tc_success = False
