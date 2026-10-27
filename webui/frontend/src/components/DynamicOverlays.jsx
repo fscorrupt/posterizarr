@@ -79,6 +79,30 @@ import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
 import { getAniMetaFillPreview, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
 
+const AssetPreviewGuides = ({ config, template }) => {
+  const guides = getAssetPreviewGuides(config, template);
+  if (!guides) return null;
+
+  return (
+    <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden" aria-label="Asset configuration boundaries">
+      {guides.borderX > 0 && (
+        <div className="absolute border border-dashed border-rose-400" style={{
+          left: `${guides.borderX}%`, right: `${guides.borderX}%`,
+          top: `${guides.borderY}%`, bottom: `${guides.borderY}%`,
+        }} />
+      )}
+      {guides.boxes.map((box) => (
+        <div key={box.label} className="absolute border-2 border-dashed" style={{
+          left: `${box.left}%`, top: `${box.top}%`, width: `${box.width}%`, height: `${box.height}%`,
+          borderColor: box.color, backgroundColor: `${box.color}26`,
+        }}>
+          <span className="absolute top-0 left-0 max-w-full truncate bg-black/85 px-1 text-[10px] leading-4 font-semibold" style={{ color: box.color }}>{box.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const AssetPreviewLegend = ({ config, template, showAssetGuides, guideMode, snapToGuides, hasBadges }) => {
   const guides = showAssetGuides ? getAssetPreviewGuides(config, template) : null;
   const entries = (guides?.boxes || []).map((box) => ({
