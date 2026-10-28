@@ -22,6 +22,7 @@ import re
 import json
 import time
 import base64
+import functools
 import socket
 import ipaddress
 import sqlite3
@@ -2516,6 +2517,32 @@ def _plex_season_resolutions(videos) -> Dict[str, str]:
     return best
 
 
+@functools.lru_cache(maxsize=64)
+def _overlay_file_text(path_str: str, mtime: float) -> str:
+    try:
+        return Path(path_str).read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return ""
+
+
+def _rule_files_mention(overlays_dir: Path, rules, keyword: str) -> bool:
+    """True if any external overlay file referenced by the rules (e.g. Kometa media_info.yml) contains keyword."""
+    for rule in rules:
+        if not isinstance(rule, dict) or not rule.get("file"):
+            continue
+        name = str(rule["file"]).strip()
+        name = name[7:] if name.startswith("config/") else name
+        for candidate in (overlays_dir / "configs" / name, Path(name)):
+            try:
+                if candidate.is_file():
+                    if keyword in _overlay_file_text(str(candidate), candidate.stat().st_mtime):
+                        return True
+                    break
+            except OSError:
+                continue
+    return False
+
+
 def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, Any]]:
     rk = it.get("ratingKey")
     if not rk:
@@ -3390,7 +3417,7 @@ async def _run_overlay_sync_task(
                     )
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
-                    needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str
+                    needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
 
                     # Fast in-memory cache lookup for poster & backdrop paths
                     cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None

@@ -2342,7 +2342,8 @@ class OverlayConfigEngine:
         if Path("/usr/share/fonts/custom") not in self.candidate_font_dirs:
             self.candidate_font_dirs.append(Path("/usr/share/fonts/custom"))
 
-        self.candidate_asset_dirs: List[Path] = []
+        # Bare <root>/assets is deliberately excluded: in Docker PROJECT_ROOT is "/" and /assets is the media asset mount
+        self.candidate_asset_dirs: List[Path] = [self.assets_dir] if self.assets_dir.exists() else []
         for cr in self.candidate_roots:
             for sub in [
                 cr / "Overlayfiles" / "dynamic_overlays" / "assets",
@@ -2352,7 +2353,6 @@ class OverlayConfigEngine:
                 cr / "defaults" / "images",
                 cr / "Overlayfiles" / "dynamic_overlays" / "configs",
                 cr / "Overlayfiles" / "kometa" / "configs",
-                cr / "assets"
             ]:
                 if sub.exists() and sub not in self.candidate_asset_dirs:
                     self.candidate_asset_dirs.append(sub)

@@ -127,7 +127,6 @@ def get_candidate_asset_dirs() -> List[Path]:
             r / "Overlayfiles" / "kometa" / "configs",
             r / "Overlayfiles" / "assets",
             r / "Overlayfiles",
-            r / "assets",
         ]:
             if sub.exists() and sub not in dirs:
                 dirs.append(sub)
