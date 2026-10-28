@@ -2485,10 +2485,13 @@ def _run_overlay_sync_queue():
 
 
 def _resolution_rank(res: Optional[str]) -> int:
+    if not res:
+        return -1
     if res == "4K":
         return 2160
-    digits = re.sub(r"\D", "", str(res or ""))
-    return int(digits) if digits else 0
+    digits = re.sub(r"\D", "", str(res))
+    # Non-numeric Plex values like "sd" ("sdp") still beat "no resolution found"
+    return int(digits) if digits else 1
 
 
 def _plex_media_resolution(media) -> Optional[str]:
