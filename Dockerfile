@@ -28,6 +28,7 @@ ENV APP_VERSION=$VERSION \
     PSMODULE_ANALYSIS_CACHE_ENABLED="false" \
     XDG_DATA_HOME="/usr/local/share/powershell" \
     XDG_CACHE_HOME="/usr/local/share/powershell" \
+    HOME="/tmp" \
     UMASK="0002"
 
 # Install runtime dependencies + PowerShell + ImageMagick
