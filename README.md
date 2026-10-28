@@ -27,11 +27,19 @@
   </p>
 </div>
 
-<p align="center">
-  Posterizarr is free to use. If it is useful to you, <a href="https://ko-fi.com/R6R81S6SC">optional support helps keep development going</a>.
-  ·
-  <a href="https://discord.gg/fYyJQSGt54">Join our Discord</a>
-</p>
+<div align="center">
+  <h3>☕ Support Posterizarr</h3>
+  <p>
+    Posterizarr is free to use. If it is useful to you, your support helps keep development going.
+  </p>
+  <a href="https://ko-fi.com/R6R81S6SC">
+    <img src="https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support on Ko-fi">
+  </a>
+  &nbsp;
+  <a href="https://discord.gg/fYyJQSGt54">
+    <img src="https://img.shields.io/badge/Join%20our-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord">
+  </a>
+</div>
 
 ## About The Project
 

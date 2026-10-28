@@ -21,7 +21,7 @@
     <img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style="height: 35px; width: auto;">
   </a>
 </p>
-  Posterizarr is free to use. If it saves you time, <a href="https://ko-fi.com/R6R81S6SC">optional support helps keep development going</a>.
+  Posterizarr is free to use. If it saves you time, <a href="https://ko-fi.com/R6R81S6SC">your support helps keep development going</a>.
   <br>
   <a href="https://discord.gg/fYyJQSGt54">Join our Discord</a>
 - **Kometa Integration:** Organizes assets in a Kometa-compatible folder structure.
