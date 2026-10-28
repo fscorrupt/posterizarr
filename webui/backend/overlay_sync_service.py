@@ -3901,7 +3901,10 @@ async def _run_overlay_sync_task(
                                         saved = cache.update_verified_fingerprints(
                                             s_type, str(item_id), "poster", clean_asset_hash, recipe_hash, meta_hash,
                                             snapshot_overlay_layers(json.dumps(poster_snapshot), overlay_layers), mtime, size,
-                                            cache_map=cache_map, media_file_path=item.get("media_file_path"), detected_video_source=item.get("video_source")
+                                            cache_map=cache_map, media_file_path=item.get("media_file_path"), detected_video_source=item.get("video_source"),
+                                            detected_languages=",".join(sorted(item["audio_languages"])) if item.get("audio_languages") else None,
+                                            detected_resolution=item.get("resolution"), detected_audio_codec=item.get("audio_codec"),
+                                            detected_video_format=item.get("video_format")
                                         )
                                         if saved:
                                             await _inc_stats(skipped=1)
@@ -4755,7 +4758,10 @@ async def _run_overlay_sync_task(
                                                             s_type, str(ep_rk), "titlecard", tc_clean_hash, ep_recipe_hash, ep_meta_hash,
                                                             snapshot_value, tc_mtime, tc_size, cache_map=cache_map,
                                                             media_file_path=ep_data["media_file_path"], detected_video_source=ep_data["video_source"],
-                                                            server_updated_at=ep_data.get("server_updated_at")
+                                                            server_updated_at=ep_data.get("server_updated_at"),
+                                                            detected_languages=",".join(sorted(ep_data["audio_languages"])) if ep_data.get("audio_languages") else None,
+                                                            detected_resolution=ep_data.get("resolution"), detected_audio_codec=ep_data.get("audio_codec"),
+                                                            detected_video_format=ep_data.get("video_format")
                                                         )
                                                         if not fingerprints_saved:
                                                             await _inc_stats(failed=1)
