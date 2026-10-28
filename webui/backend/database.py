@@ -406,6 +406,25 @@ class ImageChoicesDB:
                     conn.close()
                 return None
 
+    def get_choices_by_rootfolder(self, rootfolder: str) -> List[sqlite3.Row]:
+        """Get all choices for a Rootfolder"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM imagechoices WHERE Rootfolder = ? ORDER BY id DESC",
+                    (rootfolder,),
+                )
+                rows = cursor.fetchall()
+                conn.close()
+                return rows
+            except sqlite3.Error as e:
+                logger.error(f"Error getting choices by Rootfolder: {e}")
+                if 'conn' in locals():
+                    conn.close()
+                return []
+
     def update_choice(self, record_id: int, **kwargs):
         """Update an existing choice and auto-update 'updated_at'"""
         allowed_columns = {

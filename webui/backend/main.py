@@ -1964,6 +1964,36 @@ def parse_image_choices_csv(csv_path: Path) -> list:
 
     return assets
 
+_REMOTE_TEXT_CACHE: Dict[str, tuple] = {}
+_REMOTE_TEXT_TTL_OK = 3600
+_REMOTE_TEXT_TTL_FAIL = 300
+
+
+async def fetch_remote_text_cached(url: str) -> Optional[str]:
+    """Fetch a small text file (e.g. Release.txt) with TTL caching; failures are cached briefly too."""
+    now = time.monotonic()
+    cached = _REMOTE_TEXT_CACHE.get(url)
+    if cached:
+        ts, value = cached
+        ttl = _REMOTE_TEXT_TTL_OK if value is not None else _REMOTE_TEXT_TTL_FAIL
+        if now - ts < ttl:
+            return value
+
+    value = None
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=5.0)
+            response.raise_for_status()
+            value = response.text.strip()
+    except httpx.RequestError as e:
+        logger.warning(f"Could not fetch {url}: {e}")
+    except Exception as e:
+        logger.error(f"Error fetching {url}: {e}")
+
+    _REMOTE_TEXT_CACHE[url] = (now, value)
+    return value
+
+
 async def fetch_version(local_filename: str, github_url: str, version_type: str):
     """
     A reusable function to get a local version from a file and fetch the remote
@@ -1982,22 +2012,7 @@ async def fetch_version(local_filename: str, github_url: str, version_type: str)
 
     # Get Remote Version (if in Docker)
     if IS_DOCKER:
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(github_url, timeout=10.0)
-                response.raise_for_status()
-                remote_version = response.text.strip()
-                logger.info(
-                    f"Successfully fetched remote {version_type} version: {remote_version}"
-                )
-        except httpx.RequestError as e:
-            logger.warning(
-                f"Could not fetch remote {version_type} version from GitHub: {e}"
-            )
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while fetching remote {version_type} version: {e}"
-            )
+        remote_version = await fetch_remote_text_cached(github_url)
 
     # Check if local version is greater than remote (development version)
     display_version = local_version
@@ -2053,19 +2068,9 @@ async def get_script_version():
 
     # Get Remote Version from GitHub Release.txt
     # Always fetch from GitHub (both Docker and local)
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://raw.githubusercontent.com/fscorrupt/posterizarr/refs/heads/main/Release.txt",
-                timeout=10.0,
-            )
-            response.raise_for_status()
-            remote_version = response.text.strip()
-            logger.info(f"Remote version from GitHub Release.txt: {remote_version}")
-    except httpx.RequestError as e:
-        logger.warning(f"Could not fetch remote version from GitHub: {e}")
-    except Exception as e:
-        logger.error(f"Error fetching remote version: {e}")
+    remote_version = await fetch_remote_text_cached(
+        "https://raw.githubusercontent.com/fscorrupt/posterizarr/refs/heads/main/Release.txt"
+    )
 
     # SEMANTIC VERSION COMPARISON
     is_update_available = False
@@ -2662,26 +2667,16 @@ async def get_config(request: Request):
 
     # This block prevents unauthorized CLI access even if Middleware fails
     try:
-        # Check if Auth is enabled in the file directly (flat or nested structure)
+        # Check if Auth is enabled in the file directly
         auth_enabled = False
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 c = json.load(f)
-                val_root = c.get("basicAuthEnabled")
-                val_nested = c.get("WebUI", {}).get("basicAuthEnabled") if isinstance(c.get("WebUI"), dict) else None
-                enabled_val = val_root if val_root is not None else val_nested
-                auth_enabled = str(enabled_val).lower() in ["true", "1", "yes"]
+                webui = c.get("WebUI", {})
+                auth_enabled = str(webui.get("basicAuthEnabled", False)).lower() in ["true", "1", "yes"]
 
-        # 1. Check for API Key presence (query param, X-API-Key, or Bearer token)
-        api_key = (
-            request.query_params.get("api_key") 
-            or request.headers.get("X-API-Key")
-            or request.headers.get("x-api-key")
-        )
-        if not api_key:
-            auth_hdr = request.headers.get("authorization") or request.headers.get("Authorization") or ""
-            if auth_hdr.lower().startswith("bearer "):
-                api_key = auth_hdr[7:].strip()
+        # 1. Check for API Key presence
+        api_key = request.query_params.get("api_key") or request.headers.get("X-API-Key")
 
         # 2. Validate API Key if present
         is_key_valid = False
@@ -2700,21 +2695,11 @@ async def get_config(request: Request):
             referer = request.headers.get("referer", "")
             origin = request.headers.get("origin", "")
             host = request.headers.get("host", "")
-            fwd_host = request.headers.get("x-forwarded-host", "")
 
-            sec_site = request.headers.get("sec-fetch-site", "").lower()
-            is_valid_ui = sec_site in ("same-origin", "same-site")
-
-            if not is_valid_ui and (host or fwd_host):
-                hosts = [h.strip() for h in (host, fwd_host) if h and h.strip()]
-                for h in hosts:
-                    h_clean = h.split(":")[0].lower()
-                    if referer and (h.lower() in referer.lower() or h_clean in referer.lower()):
-                        is_valid_ui = True
-                        break
-                    if origin and (h.lower() in origin.lower() or h_clean in origin.lower()):
-                        is_valid_ui = True
-                        break
+            is_valid_ui = False
+            if host:
+                if referer and host in referer: is_valid_ui = True
+                if origin and host in origin: is_valid_ui = True
 
             if not is_valid_ui:
                 # If they provided a key but it was wrong, give a specific error
@@ -6962,7 +6947,9 @@ async def get_plex_export_runs():
 
 @app.get("/api/plex-export/library")
 async def get_plex_library_data(
-    run_timestamp: Optional[str] = None, limit: Optional[int] = None
+    run_timestamp: Optional[str] = None,
+    limit: Optional[int] = None,
+    rootfolder: Optional[str] = None,
 ):
     """
     Get Plex library export data
@@ -6970,6 +6957,7 @@ async def get_plex_library_data(
     Args:
         run_timestamp: Optional specific run to query (default: latest)
         limit: Optional limit on number of results
+        rootfolder: Optional filter on root folder name
     """
     try:
         if not MEDIA_EXPORT_DB_AVAILABLE or not media_export_db:
@@ -6978,7 +6966,9 @@ async def get_plex_library_data(
                 "message": "Plex export database not available",
             }
 
-        data = media_export_db.get_library_data(run_timestamp, limit)
+        data = await asyncio.to_thread(
+            media_export_db.get_library_data, run_timestamp, limit, rootfolder
+        )
 
         return {
             "success": True,
@@ -7094,7 +7084,9 @@ async def get_other_media_runs():
 
 @app.get("/api/other-media-export/library")
 async def get_other_media_library_data(
-    run_timestamp: Optional[str] = None, limit: Optional[int] = None
+    run_timestamp: Optional[str] = None,
+    limit: Optional[int] = None,
+    rootfolder: Optional[str] = None,
 ):
     """
     Get OtherMedia library export data
@@ -7102,6 +7094,7 @@ async def get_other_media_library_data(
     Args:
         run_timestamp: Optional specific run to query (default: latest)
         limit: Optional limit on number of results
+        rootfolder: Optional filter on root folder name
     """
     try:
         if not MEDIA_EXPORT_DB_AVAILABLE or not media_export_db:
@@ -7110,7 +7103,9 @@ async def get_other_media_library_data(
                 "message": "OtherMedia export database not available",
             }
 
-        data = media_export_db.get_other_library_data(run_timestamp)
+        data = await asyncio.to_thread(
+            media_export_db.get_other_library_data, run_timestamp, None, rootfolder
+        )
 
         if limit:
             data = data[:limit]
@@ -11135,7 +11130,7 @@ async def get_dashboard_all():
             "config_exists": False,
         }
 
-    # Fetch version (cached, so fast)
+    # Fetch version (remote part is TTL-cached)
     try:
         version_response = await get_version()
         result["version"] = version_response
@@ -16612,13 +16607,16 @@ async def get_assets_overview():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/imagechoices")
-async def get_all_imagechoices():
-    """Get all image choice records"""
+async def get_all_imagechoices(rootfolder: Optional[str] = None):
+    """Get all image choice records (optionally filtered by Rootfolder)"""
     if not DATABASE_AVAILABLE or db is None:
         raise HTTPException(status_code=503, detail="Database not available")
 
     try:
-        records = db.get_all_choices()
+        if rootfolder:
+            records = await asyncio.to_thread(db.get_choices_by_rootfolder, rootfolder)
+        else:
+            records = await asyncio.to_thread(db.get_all_choices)
         # Convert sqlite3.Row to dict
         return [dict(record) for record in records]
     except Exception as e:

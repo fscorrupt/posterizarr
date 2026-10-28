@@ -335,7 +335,8 @@ function ImagePreviewModal({
           let foundMatch = null;
 
           // Check ImageChoices DB FIRST because it has perfectly formatted Titles like 'S01E01 | Pilot' and actual 'Season' records
-          const choicesRes = await fetch("/api/imagechoices");
+          const rf = encodeURIComponent(rootfolder);
+          const choicesRes = await fetch(`/api/imagechoices?rootfolder=${rf}`);
           if (choicesRes.ok) {
             const choicesData = await choicesRes.json();
             foundMatch = findBestMatch(choicesData, false);
@@ -343,7 +344,7 @@ function ImagePreviewModal({
 
           // Check Plex Export DB if not found in ImageChoices
           if (!foundMatch) {
-            const plexRes = await fetch("/api/plex-export/library");
+            const plexRes = await fetch(`/api/plex-export/library?rootfolder=${rf}`);
             if (plexRes.ok) {
               const plexData = await plexRes.json();
               if (plexData.success && plexData.data) {
@@ -354,7 +355,7 @@ function ImagePreviewModal({
 
           // Check Jellyfin/Emby Export DB if still not found
           if (!foundMatch) {
-            const otherRes = await fetch("/api/other-media-export/library");
+            const otherRes = await fetch(`/api/other-media-export/library?rootfolder=${rf}`);
             if (otherRes.ok) {
               const otherData = await otherRes.json();
               if (otherData.success && otherData.data) {

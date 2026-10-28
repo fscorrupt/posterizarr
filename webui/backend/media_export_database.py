@@ -1085,7 +1085,10 @@ class MediaExportDatabase:
                 return []
 
     def get_library_data(
-        self, run_timestamp: Optional[str] = None, limit: Optional[int] = None
+        self,
+        run_timestamp: Optional[str] = None,
+        limit: Optional[int] = None,
+        root_foldername: Optional[str] = None,
     ) -> List[Dict]:
         """
         Get library export data
@@ -1093,6 +1096,7 @@ class MediaExportDatabase:
         Args:
             run_timestamp: Optional specific run to query (default: latest)
             limit: Optional limit on number of results
+            root_foldername: Optional filter on root folder name
 
         Returns:
             List of library records
@@ -1103,16 +1107,21 @@ class MediaExportDatabase:
                 cursor = conn.cursor()
 
                 if run_timestamp:
-                    query = "SELECT * FROM plex_library_export WHERE run_timestamp = ? ORDER BY title"
+                    query = "SELECT * FROM plex_library_export WHERE run_timestamp = ?"
                     params = [run_timestamp]
                 else:
                     # Get latest run
                     query = """
                         SELECT * FROM plex_library_export
                         WHERE run_timestamp = (SELECT MAX(run_timestamp) FROM plex_library_export)
-                        ORDER BY title
                     """
                     params = []
+
+                if root_foldername:
+                    query += " AND root_foldername = ?"
+                    params.append(root_foldername)
+
+                query += " ORDER BY title"
 
                 if limit:
                     query += " LIMIT ?"
@@ -1254,7 +1263,10 @@ class MediaExportDatabase:
                 return []
 
     def get_other_library_data(
-        self, run_timestamp: Optional[str] = None, limit: Optional[int] = None
+        self,
+        run_timestamp: Optional[str] = None,
+        limit: Optional[int] = None,
+        root_foldername: Optional[str] = None,
     ) -> List[Dict]:
         """
         Get OtherMedia library data for a specific run or all runs
@@ -1262,6 +1274,7 @@ class MediaExportDatabase:
         Args:
             run_timestamp: Optional specific run to query (default: latest)
             limit: Optional limit on number of results
+            root_foldername: Optional filter on root folder name
 
         Returns:
             List of library records
@@ -1271,16 +1284,22 @@ class MediaExportDatabase:
                 conn = self._get_connection()
                 cursor = conn.cursor()
 
+                where = []
+                params = []
                 if run_timestamp:
-                    query = """
-                        SELECT * FROM other_media_library_export
-                        WHERE run_timestamp = ?
-                        ORDER BY library_name, title
-                    """
-                    params = [run_timestamp]
+                    where.append("run_timestamp = ?")
+                    params.append(run_timestamp)
+                if root_foldername:
+                    where.append("root_foldername = ?")
+                    params.append(root_foldername)
+
+                query = "SELECT * FROM other_media_library_export"
+                if where:
+                    query += " WHERE " + " AND ".join(where)
+                if run_timestamp:
+                    query += " ORDER BY library_name, title"
                 else:
-                    query = "SELECT * FROM other_media_library_export ORDER BY run_timestamp DESC, library_name, title"
-                    params = []
+                    query += " ORDER BY run_timestamp DESC, library_name, title"
 
                 if limit:
                     query += " LIMIT ?"

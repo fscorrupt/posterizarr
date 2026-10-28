@@ -344,6 +344,8 @@ def build_attr_snapshot(item: Dict[str, Any]) -> str:
         "audio_track_title": item.get("audio_track_title") or None,
         "subtitle_languages": item.get("subtitle_languages") or [],
         "aspect_ratio": item.get("aspect_ratio"),
+        "season_resolutions": item.get("season_resolutions"),
+        "leaf_count": item.get("leaf_count"),
     }, sort_keys=True)
 
 
@@ -2482,6 +2484,35 @@ def _run_overlay_sync_queue():
             logger.exception("[OverlaySync] Queued overlay sync failed.")
 
 
+def _resolution_rank(res: Optional[str]) -> int:
+    if res == "4K":
+        return 2160
+    digits = re.sub(r"\D", "", str(res or ""))
+    return int(digits) if digits else 0
+
+
+def _plex_media_resolution(media) -> Optional[str]:
+    width = int(media.get("width") or 0)
+    vr = media.get("videoResolution")
+    if width >= 3840 or vr in ("4k", "2160"):
+        return "4K"
+    return f"{vr}p" if vr else None
+
+
+def _plex_season_resolutions(videos) -> Dict[str, str]:
+    """Highest resolution per season (keyed by season index string) across all episode media versions."""
+    best: Dict[str, str] = {}
+    for video in videos:
+        season = video.get("parentIndex")
+        if season is None:
+            continue
+        for media in video.findall("Media"):
+            res = _plex_media_resolution(media)
+            if res and _resolution_rank(res) > _resolution_rank(best.get(season)):
+                best[season] = res
+    return best
+
+
 def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, Any]]:
     rk = it.get("ratingKey")
     if not rk:
@@ -2555,6 +2586,7 @@ def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, An
         "edition": ed_val,
         "server_updated_at": s_up_at,
         "server_thumb": it.get("thumb"),
+        "leaf_count": it.get("leafCount"),
         "resolution": res_val,
         "rating": aud_rating,
         "audience_rating": aud_rating,
@@ -3355,6 +3387,7 @@ async def _run_overlay_sync_task(
                     )
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
+                    needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str
 
                     # Fast in-memory cache lookup for poster & backdrop paths
                     cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None
@@ -3596,6 +3629,35 @@ async def _run_overlay_sync_task(
                                                 break
                             except Exception as m_err:
                                 logger.debug(f"Metadata stream query error for {title}: {m_err}")
+
+                    # Plex show/season nodes carry no <Media>; derive resolution from the episodes instead
+                    if s_type == "plex" and m_type == "show" and needs_resolution:
+                        try:
+                            res_snap = json.loads((cached_entry or {}).get("attr_snapshot") or "{}")
+                        except (TypeError, ValueError):
+                            res_snap = {}
+                        cached_seasons = res_snap.get("season_resolutions") if isinstance(res_snap, dict) else None
+                        season_res = None
+                        if (
+                            scope in ("incremental", "changed")
+                            and isinstance(cached_seasons, dict)
+                            and str(res_snap.get("leaf_count")) == str(item.get("leaf_count"))
+                            and str(cached_entry.get("server_updated_at") or "") == str(item.get("server_updated_at") or "")
+                        ):
+                            season_res = cached_seasons
+                        else:
+                            try:
+                                leaves_resp = await http_client.get(
+                                    f"{s_url}/library/metadata/{item_id}/allLeaves",
+                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                )
+                                if leaves_resp.status_code == 200:
+                                    season_res = _plex_season_resolutions(fromstring(leaves_resp.content).findall(".//Video"))
+                            except Exception as leaves_err:
+                                logger.debug(f"[OverlaySync] Episode resolution lookup failed for {title}: {leaves_err}")
+                        if season_res:
+                            item["season_resolutions"] = season_res
+                            item["resolution"] = max(season_res.values(), key=_resolution_rank)
 
                     # For TV Shows across all server types: resolve canonical status, networks, and content rating from TMDb API
                     # Fast-path: if status is already cached and server_updated_at matches, skip remote TMDb HTTP call!
@@ -4219,8 +4281,10 @@ async def _run_overlay_sync_task(
                                 clean_season = find_season_poster(show_parent, s_num, root_f, dir_cache=dir_cache) if has_season_posters else None
                                 if clean_season:
                                     smtime, ssize, sclean_hash = compute_file_fingerprint(clean_season)
+                                    s_resolution = (item.get("season_resolutions") or {}).get(str(s_num)) or item.get("resolution")
                                     s_item_meta = {
                                         **item,
+                                        "resolution": s_resolution,
                                         "media_type": "season",
                                         "is_season": True,
                                         "season_number": s_num,
@@ -4236,7 +4300,7 @@ async def _run_overlay_sync_task(
                                         runtime_mins=None,
                                         edition=None,
                                         status=item.get("status"),
-                                        resolution=item.get("resolution"),
+                                        resolution=s_resolution,
                                         content_rating=item.get("content_rating"),
                                         network=item.get("network"),
                                         multi_ratings=None,
@@ -4330,7 +4394,7 @@ async def _run_overlay_sync_task(
                                                     metadata_hash=s_meta_hash,
                                                     detected_audio_codec=item.get("audio_codec"),
                                                     detected_video_format=item.get("video_format"),
-                                                    detected_resolution=item.get("resolution"),
+                                                    detected_resolution=s_resolution,
                                                     cache_map=cache_map
                                                 )
                                                 await _inc_stats(synced=1)
@@ -4460,6 +4524,7 @@ async def _run_overlay_sync_task(
                                                         "title": ep_title,
                                                         "runtime_mins": ep_dur_mins,
                                                         "resolution": ep_res,
+                                                        "audience_rating": ep_elem.get("audienceRating") or ep_elem.get("rating"),
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
                                                         **ep_stream_metadata,
@@ -4527,6 +4592,7 @@ async def _run_overlay_sync_task(
                                                         "title": ep_title,
                                                         "runtime_mins": ep_dur_mins,
                                                         "resolution": ep_res,
+                                                        "audience_rating": ep_obj.get("CommunityRating"),
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
                                                         **_extract_stream_overlay_metadata(ep_obj),
@@ -4558,6 +4624,8 @@ async def _run_overlay_sync_task(
                                                 "show_title": title,
                                                 "runtime_mins": ep_data["runtime_mins"],
                                                 "resolution": ep_data["resolution"],
+                                                "audience_rating": ep_data.get("audience_rating"),
+                                                "rating": ep_data.get("audience_rating"),
                                                 "audio_codec": ep_data["audio_codec"],
                                                 "audio_languages": ep_data["audio_languages"],
                                                 "subtitle_languages": ep_data.get("subtitle_languages", []),
