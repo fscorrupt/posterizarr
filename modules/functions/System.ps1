@@ -10,19 +10,24 @@ function Invoke-PosterizarrMutexLock {
     $lockAcquired = $false
     [System.Threading.Monitor]::Enter($processLock)
     try {
-        try {
-            $mutexName = if ($IsWindows) { "Global\$Name" } else { $Name }
-            $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+        if (-not $global:PosterizarrNamedMutexUnsupported) {
             try {
-                if ($TimeoutMilliseconds -lt 0) {
-                    $lockAcquired = $mutex.WaitOne()
-                } else {
-                    $lockAcquired = $mutex.WaitOne($TimeoutMilliseconds)
+                $mutexName = if ($IsWindows) { "Global\$Name" } else { $Name }
+                $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+                try {
+                    if ($TimeoutMilliseconds -lt 0) {
+                        $lockAcquired = $mutex.WaitOne()
+                    } else {
+                        $lockAcquired = $mutex.WaitOne($TimeoutMilliseconds)
+                    }
+                } catch [System.Threading.AbandonedMutexException] {
+                    $lockAcquired = $true
                 }
-            } catch [System.Threading.AbandonedMutexException] {
-                $lockAcquired = $true
-            }
-        } catch {}
+            } catch [System.IO.IOException] {
+                # Some .NET builds (e.g. Alpine PowerShell 7.6) can't create named mutexes; stop retrying, Monitor lock still applies
+                $global:PosterizarrNamedMutexUnsupported = $true
+            } catch {}
+        }
 
         & $Action
     } finally {

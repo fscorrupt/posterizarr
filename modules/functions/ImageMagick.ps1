@@ -331,6 +331,10 @@ function InvokeMagickCommand {
         Write-Entry -Subtext "Skipping: No arguments provided for magick command." -Path $global:configLogging -Color Cyan -log Debug
         return
     }
+    # IM saves all-gray JPEGs as 1-channel Gray; later composites onto them drop all color (logos, text, overlays)
+    if ($Arguments -match '(?i)\.jpe?g"\s*$') {
+        $Arguments = "-type TrueColor $Arguments"
+    }
     function GetMagickErrorMessage {
         param (
             [string]$ErrorMessage

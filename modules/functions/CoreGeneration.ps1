@@ -569,10 +569,10 @@ function Invoke-MoviePosterCreation {
                                                     $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                                                     if ($urlExtension -match "(?i)\.svg") {
                                                         Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                                                        $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                                        $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                                                     }
                                                     else {
-                                                        $Arguments = "`"$PosterImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                                        $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                                                     }
                                                     Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                     Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
@@ -1366,10 +1366,10 @@ function Invoke-MoviePosterCreation {
                                                     $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                                                     if ($urlExtension -match "(?i)\.svg") {
                                                         Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                                                        $Arguments = "`"$backgroundImage`" ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
+                                                        $Arguments = "`"$backgroundImage`" -colorspace sRGB ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                     }
                                                     else {
-                                                        $Arguments = "`"$backgroundImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
+                                                        $Arguments = "`"$backgroundImage`" -colorspace sRGB ( -background none `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                     }
                                                     Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                     Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
@@ -2304,10 +2304,10 @@ function Invoke-ShowPosterCreation {
                                                 $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                                                 if ($urlExtension -match "(?i)\.svg") {
                                                     Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                                                    $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                                    $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                                                 }
                                                 else {
-                                                    $Arguments = "`"$PosterImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                                    $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoImage`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                                                 }
                                                 Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                 Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
@@ -3142,10 +3142,10 @@ function Invoke-ShowPosterCreation {
                                                 $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                                                 if ($urlExtension -match "(?i)\.svg") {
                                                     Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                                                    $Arguments = "`"$backgroundImage`" ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
+                                                    $Arguments = "`"$backgroundImage`" -colorspace sRGB ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                 }
                                                 else {
-                                                    $Arguments = "`"$backgroundImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
+                                                    $Arguments = "`"$backgroundImage`" -colorspace sRGB ( -background none `"$LogoImage`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                 }
                                                 Write-Entry -Subtext "Logo URL: $global:LogoUrl" -Path $global:configLogging -Color White -log Info
                                                 Write-Entry -Subtext "Applying Logo..." -Path $global:configLogging -Color White -log Info
@@ -4205,10 +4205,10 @@ function Invoke-ShowPosterCreation {
 
                                                                 if ($urlExtension -match "(?i)\.svg") {
                                                                     Write-Entry -Subtext "Detected SVG. Applying High-Res settings for Season Show Logo." -Path $global:configLogging -Color Cyan -log Info
-                                                                    $ShowOnSeasonArguments = "`"$SeasonImage`" ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$SeasonImage`""
+                                                                    $ShowOnSeasonArguments = "`"$SeasonImage`" -colorspace sRGB ( -background none -density 300 `"$LogoImage`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$SeasonImage`""
                                                                 }
                                                                 else {
-                                                                    $ShowOnSeasonArguments = "`"$SeasonImage`" ( -background none `"$LogoImage`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$SeasonImage`""
+                                                                    $ShowOnSeasonArguments = "`"$SeasonImage`" -colorspace sRGB ( -background none `"$LogoImage`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$SeasonImage`""
                                                                 }
 
                                                                 Write-Entry -Subtext "Applying Show Logo to Season..." -Path $global:configLogging -Color White -log Info

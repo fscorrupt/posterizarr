@@ -855,10 +855,10 @@
                             # Logo Logic
                             if ($Titletext -match "(?i)\.svg") {
                                 Write-Entry -Subtext "Detected SVG. Applying High-Res settings for Show Logo on Season." -Path $global:configLogging -Color Cyan -log Info
-                                $ShowOnSeasonArguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                $ShowOnSeasonArguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                             }
                             else {
-                                $ShowOnSeasonArguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                $ShowOnSeasonArguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                             }
                         }
                         else {
@@ -888,10 +888,10 @@
                         $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                         if ($Titletext -match "(?i)\.svg") {
                             Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                            $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         else {
-                            $Arguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                     } else {
                         $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $CollectionfontImagemagick -box_width $CollectionMaxWidth  -box_height $CollectionMaxHeight -min_pointsize $CollectionminPointSize -max_pointsize $CollectionmaxPointSize -lineSpacing $CollectionlineSpacing
@@ -965,10 +965,10 @@
                         $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                         if ($Titletext -match "(?i)\.svg") {
                             Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                            $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         else {
-                            $Arguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
 
                         Write-Entry -Subtext "    Applying logo..." -Path $global:configLogging -Color White -log Info
@@ -995,10 +995,10 @@
                         $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                         if ($Titletext -match "(?i)\.svg") {
                             Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                            $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         else {
-                            $Arguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         Write-Entry -Subtext "    Applying logo..." -Path $global:configLogging -Color White -log Info
                     }
