@@ -3631,6 +3631,7 @@ async def _run_overlay_sync_task(
                                 logger.debug(f"Metadata stream query error for {title}: {m_err}")
 
                     # Plex show/season nodes carry no <Media>; derive resolution from the episodes instead
+                    season_res_changed = False
                     if s_type == "plex" and m_type == "show" and needs_resolution:
                         try:
                             res_snap = json.loads((cached_entry or {}).get("attr_snapshot") or "{}")
@@ -3653,11 +3654,16 @@ async def _run_overlay_sync_task(
                                 )
                                 if leaves_resp.status_code == 200:
                                     season_res = _plex_season_resolutions(fromstring(leaves_resp.content).findall(".//Video"))
+                                else:
+                                    write_log(f"  [!] {w_tag}'{title}': episode resolution lookup returned HTTP {leaves_resp.status_code}; keeping '{item.get('resolution')}'.")
                             except Exception as leaves_err:
-                                logger.debug(f"[OverlaySync] Episode resolution lookup failed for {title}: {leaves_err}")
+                                write_log(f"  [!] {w_tag}'{title}': episode resolution lookup failed ({type(leaves_err).__name__}); keeping '{item.get('resolution')}'.")
                         if season_res:
+                            season_res_changed = season_res != cached_seasons
                             item["season_resolutions"] = season_res
                             item["resolution"] = max(season_res.values(), key=_resolution_rank)
+                            if debug_log_enabled:
+                                write_log(f"  [Debug] {w_tag}'{title}': resolution from episodes -> show={item['resolution']}, seasons={season_res}")
 
                     # For TV Shows across all server types: resolve canonical status, networks, and content rating from TMDb API
                     # Fast-path: if status is already cached and server_updated_at matches, skip remote TMDb HTTP call!
@@ -4221,7 +4227,7 @@ async def _run_overlay_sync_task(
                                 return
 
                             # FAST-PATH: If show itself is up-to-date, server timestamp unchanged, and no clean artwork in show directory was modified since last sync:
-                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry and not (s_type == "plex" and has_titlecards):
+                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards):
                                 c_up = cached_entry.get("server_updated_at")
                                 s_up = item.get("server_updated_at")
                                 if c_up and s_up and str(c_up) == str(s_up):
@@ -4447,19 +4453,17 @@ async def _run_overlay_sync_task(
 
                                                     dur_ms = int(ep_elem.get("duration") or 0)
                                                     ep_dur_mins = dur_ms // 60000 if dur_ms > 0 else None
-                                                    ep_res = "1080p"
+                                                    ep_res = None
                                                     ep_audio_c = None
                                                     ep_has_dv = False
                                                     ep_has_hdr = False
                                                     for med in ep_elem.findall(".//Media"):
-                                                        w_val = int(med.get("width") or 0)
-                                                        vr_val = med.get("videoResolution")
-                                                        if w_val >= 3840 or vr_val in ["4k", "2160"]:
-                                                            ep_res = "4K"
-                                                        elif vr_val:
-                                                            ep_res = f"{vr_val}p"
+                                                        med_res = _plex_media_resolution(med)
+                                                        if med_res and _resolution_rank(med_res) > _resolution_rank(ep_res):
+                                                            ep_res = med_res
                                                         if med.get("audioCodec"):
                                                             ep_audio_c = med.get("audioCodec")
+                                                    ep_res = ep_res or "1080p"
 
                                                     ep_langs = []
                                                     for st_node in ep_elem.findall(".//Stream"):
@@ -4903,6 +4907,18 @@ async def _run_overlay_sync_task(
             }
             _last_sync_result = res
             return res
+
+        if scope == "changed":
+            try:
+                # The saved report predates this sync; re-detect so resolved items drop out of "View Changes"
+                refreshed = await detect_media_changes(
+                    target_server=target_server, library=library, base_dir=base_dir, config_path=config_path
+                )
+                write_log(f"Change report refreshed: {refreshed.get('changed_count', 0)} item(s) still pending.")
+                from dynamic_overlays_service import save_dynamic_overlays_settings
+                save_dynamic_overlays_settings({"last_change_detection_summary": refreshed.get("summary")})
+            except Exception as refresh_err:
+                logger.warning("[OverlaySync] Could not refresh change detection report: %s", refresh_err)
 
         write_log("=" * 70)
         write_log(f"DYNAMIC OVERLAYS SYNC COMPLETE")

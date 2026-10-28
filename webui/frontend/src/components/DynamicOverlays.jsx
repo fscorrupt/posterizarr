@@ -1053,9 +1053,10 @@ export default function DynamicOverlays() {
       const res = await fetch("/api/webui-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auto_overlay_sync: nextVal, auto_kometa_overlay_sync: nextVal })
+        body: JSON.stringify({ settings: { auto_overlay_sync: nextVal, auto_kometa_overlay_sync: nextVal } })
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
         setAutoOverlaySync(nextVal);
         showSuccess(nextVal
           ? "Enabled automated overlay sync on new media creation!"
