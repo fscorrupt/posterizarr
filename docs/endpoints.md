@@ -53,6 +53,9 @@ Returns the basic status of the API server.
 
 ### `/api/system-info`
 Returns hardware and OS information about the host system.
+OS, CPU model, core count, and Docker detection are cached for the backend process
+lifetime. Memory usage is collected on every request. Collection runs in worker
+threads so system probes do not block unrelated API requests.
 
 ??? example "View Response"
     ```json
@@ -538,8 +541,29 @@ List of timestamps for previous non-Plex export runs.
 
 ## 🖥️ Dashboard & Logs
 
+### `/api/sidebar/counts`
+Returns only `success`, `assets_with_issues`, and `manual_assets` for the navigation
+badges, rather than full asset lists. The issue count uses the same classification
+as `/api/assets/overview`; manual totals come from the existing asset cache.
+Results are cached for 60 seconds per backend process, with concurrent requests
+sharing one calculation. `?refresh=true` bypasses the cached counts after an asset
+replacement. Failed calculations are not cached.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "assets_with_issues": 12,
+      "manual_assets": 7
+    }
+    ```
+
 ### `/api/dashboard/all`
 A combined endpoint used to populate the main dashboard (Status + Version + System Info).
+The dashboard uses `?include_version=false` to receive status, scheduler jobs, and
+system information without waiting for the remote version check. In this mode
+`version` is `null`; the frontend loads `/api/version` independently. The parameter
+defaults to `true` for compatibility with existing clients.
 
 ??? example "View Response"
     ```json
@@ -1189,12 +1213,30 @@ Retrieves data from `/api/assets-folder-images/{image_type}/{folder_path:path}`.
     ```
 
 ### `/api/recent-assets`
-Retrieves data from `/api/recent-assets`.
+Returns recently modified assets with existing artwork. The dashboard requests only
+its visible page using `limit` (1-100, default 100), `offset` (default 0), and `tab`
+(`All`, `Posters`, `Collections`, `Backgrounds`, `Seasons`, or `TitleCards`).
+The latest 100 matching records are deduplicated before tab filtering and pagination.
+`total_count` is the selected tab's count; `counts` contains counts for all tabs.
+An offset beyond the available entries is adjusted to the last page.
+Asset metadata is still matched against the in-memory file cache to preserve
+modification-time ordering; pagination limits the response, not the database scan.
 
 ??? example "View Response"
     ```json
     {
-      "success": true
+      "success": true,
+      "assets": [],
+      "total_count": 0,
+      "offset": 0,
+      "counts": {
+        "All": 0,
+        "Posters": 0,
+        "Collections": 0,
+        "Backgrounds": 0,
+        "Seasons": 0,
+        "TitleCards": 0
+      }
     }
     ```
 

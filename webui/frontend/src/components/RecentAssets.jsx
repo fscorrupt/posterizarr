@@ -28,7 +28,10 @@ function RecentAssets({ refreshTrigger = 0 }) {
   const { showSuccess, showError, showInfo } = useToast();
   const { startLoading, finishLoading } = useDashboardLoading();
   const hasInitiallyLoaded = useRef(false);
-  const [assets, setAssets] = useState(cachedAssets || []);
+  const requestController = useRef(null);
+  const [assets, setAssets] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [tabCounts, setTabCounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -43,99 +46,89 @@ function RecentAssets({ refreshTrigger = 0 }) {
   // Tab filter state
   const [activeTab, setActiveTab] = useState(() => {
     const saved = localStorage.getItem("recent-assets-tab");
-    return saved || "All";
+    return ["All", "Posters", "Collections", "Backgrounds", "Seasons", "TitleCards"].includes(saved) ? saved : "All";
   });
 
   // Pagination offset state
   const [pageOffset, setPageOffset] = useState(() => {
     const saved = localStorage.getItem(`recent-assets-offset-${activeTab}`);
-    return saved ? parseInt(saved) : 0;
+    return Math.max(0, parseInt(saved) || 0);
   });
 
   // Asset count state
   const [assetCount, setAssetCount] = useState(() => {
     const saved = localStorage.getItem("recent-assets-count");
-    const count = saved ? parseInt(saved) : 10;
+    const count = parseInt(saved) || 10;
     return Math.min(Math.max(count, 5), 20);
   });
 
+  const query = new URLSearchParams({ limit: assetCount, offset: pageOffset, tab: activeTab }).toString();
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
   const fetchRecentAssets = async (silent = false) => {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    const requestedQuery = queryRef.current;
     if (!silent) {
       setRefreshing(true);
-      startLoading("recent-assets");
     }
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/recent-assets`);
+      const response = await fetch(`${API_URL}/recent-assets?${requestedQuery}`, { signal: controller.signal });
+      if (!response.ok) throw new Error(t("recentAssets.loadError"));
       const data = await response.json();
+      if (controller.signal.aborted || requestedQuery !== queryRef.current) return;
 
       if (data.success) {
-        // We filter out duplicates that have the same path, type, and creation time.
-        // If a duplicate is found, we prefer the one that DOES NOT have a URL as the title.
-        const uniqueMap = new Map();
-
-        data.assets.forEach((asset) => {
-          // Create a unique key based on properties that define a specific upload event
-          const uniqueKey = `${asset.rootfolder}-${asset.type}-${asset.created}`;
-
-          if (!uniqueMap.has(uniqueKey)) {
-            uniqueMap.set(uniqueKey, asset);
-          } else {
-            // Collision detected. Check if we should swap the existing one for this one.
-            const existing = uniqueMap.get(uniqueKey);
-
-            // Check if titles look like URLs (indicators of malformed data)
-            const existingTitleIsUrl = existing.title?.startsWith("http");
-            const newTitleIsUrl = asset.title?.startsWith("http");
-
-            // If the stored one is a URL but the new one is a real title, use the new one.
-            if (existingTitleIsUrl && !newTitleIsUrl) {
-              uniqueMap.set(uniqueKey, asset);
-            }
-          }
-        });
-
-        const cleanedAssets = Array.from(uniqueMap.values());
-
-        cachedAssets = cleanedAssets;
-        setAssets(cleanedAssets);
-        setError(null);
-
-        if (!hasInitiallyLoaded.current) {
-          hasInitiallyLoaded.current = true;
-          finishLoading("recent-assets");
+        cachedAssets = { query: requestedQuery, data };
+        setAssets(data.assets);
+        setTotalCount(data.total_count);
+        setTabCounts(data.counts || {});
+        const requestedParams = new URLSearchParams(requestedQuery);
+        if (Number.isInteger(data.offset) && data.offset !== Number(requestedParams.get("offset"))) {
+          setPageOffset(data.offset);
+          localStorage.setItem(`recent-assets-offset-${requestedParams.get("tab")}`, String(data.offset));
         }
+        setError(null);
       } else {
         const errorMsg = data.error || t("recentAssets.loadError");
         setError(errorMsg);
         showError(errorMsg);
       }
     } catch (err) {
+      if (controller.signal.aborted || requestedQuery !== queryRef.current) return;
       const errorMsg = err.message || t("recentAssets.loadError");
       setError(errorMsg);
       showError(errorMsg);
       console.error("Error fetching recent assets:", err);
     } finally {
-      setLoading(false);
-      if (!silent) {
-        setTimeout(() => {
-          setRefreshing(false);
-        }, 500);
+      if (!controller.signal.aborted && requestedQuery === queryRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+        if (!hasInitiallyLoaded.current) {
+          hasInitiallyLoaded.current = true;
+          finishLoading("recent-assets");
+        }
       }
     }
   };
 
   useEffect(() => {
     startLoading("recent-assets");
-    if (cachedAssets) {
-      setAssets(cachedAssets);
+    hasInitiallyLoaded.current = false;
+    if (cachedAssets?.query === query) {
+      setAssets(cachedAssets.data.assets);
+      setTotalCount(cachedAssets.data.total_count);
+      setTabCounts(cachedAssets.data.counts || {});
       setLoading(false);
-      if (!hasInitiallyLoaded.current) {
-        hasInitiallyLoaded.current = true;
-        finishLoading("recent-assets");
-      }
+      hasInitiallyLoaded.current = true;
+      finishLoading("recent-assets");
     } else {
+      setAssets([]);
+      setLoading(true);
       fetchRecentAssets(true);
     }
 
@@ -143,9 +136,12 @@ function RecentAssets({ refreshTrigger = 0 }) {
       fetchRecentAssets(true);
     }, 2 * 60 * 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      requestController.current?.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [query]);
 
   useEffect(() => {
     if (refreshTrigger > 0) {
@@ -155,6 +151,7 @@ function RecentAssets({ refreshTrigger = 0 }) {
 
   useEffect(() => {
     const handleAssetReplaced = () => {
+      cachedAssets = null;
       fetchRecentAssets(true);
     };
     window.addEventListener("assetReplaced", handleAssetReplaced);
@@ -175,12 +172,11 @@ function RecentAssets({ refreshTrigger = 0 }) {
     setActiveTab(tab);
     localStorage.setItem("recent-assets-tab", tab);
     const savedOffset = localStorage.getItem(`recent-assets-offset-${tab}`);
-    setPageOffset(savedOffset ? parseInt(savedOffset) : 0);
+    setPageOffset(Math.max(0, parseInt(savedOffset) || 0));
   };
 
   const handlePageChange = (direction) => {
-    const filteredAssets = filterAssetsByTab(assets);
-    const maxOffset = Math.max(0, filteredAssets.length - assetCount);
+    const maxOffset = Math.max(0, (Math.ceil(totalCount / assetCount) - 1) * assetCount);
 
     let newOffset = pageOffset;
     if (direction === "prev") {
@@ -194,38 +190,6 @@ function RecentAssets({ refreshTrigger = 0 }) {
       `recent-assets-offset-${activeTab}`,
       newOffset.toString()
     );
-  };
-
-  const filterAssetsByTab = (assetList) => {
-    if (activeTab === "All") {
-      return assetList;
-    }
-
-    return assetList.filter((asset) => {
-      const type = asset.type?.toLowerCase() || "";
-
-      switch (activeTab) {
-        case "Posters":
-          return (
-            type === "movie" ||
-            type === "poster" ||
-            type === "show" ||
-            type === "collection"
-          );
-        case "Collections":
-          return type === "collection";
-        case "Backgrounds":
-          return type.includes("background");
-        case "Seasons":
-          return type === "season";
-        case "TitleCards":
-          return (
-            type === "episode" || type === "titlecard" || type === "title_card"
-          );
-        default:
-          return true;
-      }
-    });
   };
 
   const getTypeColor = (type) => {
@@ -302,16 +266,12 @@ function RecentAssets({ refreshTrigger = 0 }) {
     return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
   };
 
-  const filteredAssets = filterAssetsByTab(assets);
-  const displayedAssets = filteredAssets.slice(
-    pageOffset,
-    pageOffset + assetCount
-  );
+  const displayedAssets = assets;
 
-  const totalPages = Math.ceil(filteredAssets.length / assetCount);
+  const totalPages = Math.ceil(totalCount / assetCount);
   const currentPage = Math.floor(pageOffset / assetCount) + 1;
   const hasPrevPage = pageOffset > 0;
-  const hasNextPage = pageOffset + assetCount < filteredAssets.length;
+  const hasNextPage = pageOffset + assetCount < totalCount;
 
   const allTabs = [
     { id: "All", label: "All" },
@@ -322,33 +282,9 @@ function RecentAssets({ refreshTrigger = 0 }) {
     { id: "TitleCards", label: "TitleCards" },
   ];
 
-  const tabs = allTabs.filter((tab) => {
-    if (tab.id === "All") {
-      return assets.length > 0;
-    }
-    const tabAssets = assets.filter((asset) => {
-      const type = asset.type?.toLowerCase() || "";
-      switch (tab.id) {
-        case "Posters":
-          return type === "movie" || type === "poster" || type === "show";
-        case "Collections":
-          return type === "collection";
-        case "Backgrounds":
-          return type.includes("background");
-        case "Seasons":
-          return type === "season";
-        case "TitleCards":
-          return (
-            type === "episode" || type === "titlecard" || type === "title_card"
-          );
-        default:
-          return false;
-      }
-    });
-    return tabAssets.length > 0;
-  });
+  const tabs = allTabs.filter((tab) => tab.id === activeTab || (tabCounts[tab.id] || 0) > 0);
 
-  if (!loading && assets.length === 0) {
+  if (!loading && !error && totalCount === 0 && !tabCounts.All) {
     return null;
   }
 
@@ -404,7 +340,6 @@ function RecentAssets({ refreshTrigger = 0 }) {
       {/* Modern Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-none mask-fade-right">
         {tabs.map((tab) => {
-          const tabFilteredCount = filterAssetsByTab(assets).length;
           const isActive = activeTab === tab.id;
 
           return (
@@ -423,9 +358,7 @@ function RecentAssets({ refreshTrigger = 0 }) {
               <span>{tab.label}</span>
               {isActive && (
                 <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold">
-                  {tab.id === "All"
-                    ? assets.length
-                    : filterAssetsByTab(assets).length}
+                  {tabCounts[tab.id] || 0}
                 </span>
               )}
             </button>
@@ -578,12 +511,12 @@ function RecentAssets({ refreshTrigger = 0 }) {
               Showing{" "}
               <span className="text-theme-text">
                 {pageOffset + 1}-
-                {Math.min(pageOffset + assetCount, filteredAssets.length)}
+                {Math.min(pageOffset + assetCount, totalCount)}
               </span>{" "}
               of{" "}
-              <span className="text-theme-text">{filteredAssets.length}</span>{" "}
+              <span className="text-theme-text">{totalCount}</span>{" "}
               {activeTab !== "All" && `${activeTab.toLowerCase()} `}
-              {filteredAssets.length === 1 ? "asset" : "assets"}
+              {totalCount === 1 ? "asset" : "assets"}
             </div>
 
             {totalPages > 1 && (

@@ -5594,8 +5594,7 @@ async def receive_ui_logs_batch(batch: UILogBatch):
         return {"success": False, "error": str(e)}
 
 
-@app.get("/api/system-info")
-async def get_system_info():
+def _get_static_system_info():
     """Get system information (CPU, RAM, OS, Platform) - Optimized for Docker & Windows"""
     import platform
     import os
@@ -5609,10 +5608,6 @@ async def get_system_info():
         "os_version": "Unknown",
         "cpu_model": "Unknown",
         "cpu_cores": os.cpu_count() or 0,
-        "total_memory": "Unknown",
-        "used_memory": "Unknown",
-        "free_memory": "Unknown",
-        "memory_percent": 0,
         "is_docker": Path("/.dockerenv").exists() or Path("/run/secrets/docker_secret").exists()
     }
 
@@ -5710,7 +5705,23 @@ async def get_system_info():
         if not cpu_found:
             system_info["cpu_model"] = platform.processor() or "Unknown CPU"
 
+    except Exception:
+        pass
 
+    return system_info
+
+
+def _get_memory_info():
+    import platform
+
+    system_info = {
+        "total_memory": "Unknown",
+        "used_memory": "Unknown",
+        "free_memory": "Unknown",
+        "memory_percent": 0,
+    }
+
+    try:
         # =========================================================
         # MEMORY USAGE
         # =========================================================
@@ -5775,6 +5786,21 @@ async def get_system_info():
         pass
 
     return system_info
+
+
+_static_system_info_cache = None
+_static_system_info_lock = asyncio.Lock()
+
+
+@app.get("/api/system-info")
+async def get_system_info():
+    global _static_system_info_cache
+    async with _static_system_info_lock:
+        if _static_system_info_cache is None:
+            _static_system_info_cache = await asyncio.to_thread(_get_static_system_info)
+        static_info = _static_system_info_cache
+    memory_info = await asyncio.to_thread(_get_memory_info)
+    return {**static_info, **memory_info}
 
 # ============================================================================
 # LOG LEVEL MANAGEMENT ENDPOINTS
@@ -10826,20 +10852,28 @@ async def get_folder_view_browse(path: Optional[str] = Query(None)):
         return {"success": False, "error": str(e), "items": []}
 
 @app.get("/api/recent-assets")
-async def get_recent_assets():
+async def get_recent_assets(
+    limit: int = Query(100, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    tab: str = Query("All", pattern="^(All|Posters|Collections|Backgrounds|Seasons|TitleCards)$"),
+):
     """
     Get recently created assets from the imagechoices database
     Returns the most recent assets with their poster images from assets folder
     USES FAST CACHE FOR IMAGE LOOKUPS
     """
+    tab_names = ("All", "Posters", "Collections", "Backgrounds", "Seasons", "TitleCards")
+    empty_result = {
+        "success": True,
+        "assets": [],
+        "total_count": 0,
+        "offset": 0,
+        "counts": dict.fromkeys(tab_names, 0),
+    }
     try:
         if not DATABASE_AVAILABLE or db is None:
             # Return empty list instead of crashing if DB isn't ready
-            return {
-                "success": True,
-                "assets": [],
-                "total_count": 0,
-            }
+            return empty_result
 
         # CSV import is handled by logs_watcher, no import needed here
         try:
@@ -10855,11 +10889,7 @@ async def get_recent_assets():
         # If no assets found, return early
         if not db_records:
             logger.warning(" No assets found in database")
-            return {
-                "success": True,
-                "assets": [],
-                "total_count": 0,
-            }
+            return empty_result
 
         # Create a fast lookup map from the asset cache
         # This scans the cache (memory) not the disk
@@ -10987,10 +11017,39 @@ async def get_recent_assets():
             f"Returning {len(recent_assets)} most recent assets with existing images from database"
         )
 
+        unique_assets = {}
+        for asset in recent_assets:
+            key = (asset["rootfolder"], asset["type"], asset["created"])
+            existing = unique_assets.get(key)
+            if existing is None or (
+                existing["title"].startswith("http") and not asset["title"].startswith("http")
+            ):
+                unique_assets[key] = asset
+
+        categories = {name: [] for name in tab_names}
+        for asset in unique_assets.values():
+            categories["All"].append(asset)
+            asset_type = (asset["type"] or "").lower()
+            if asset_type in ("movie", "poster", "show", "collection"):
+                categories["Posters"].append(asset)
+            if asset_type == "collection":
+                categories["Collections"].append(asset)
+            if "background" in asset_type:
+                categories["Backgrounds"].append(asset)
+            if asset_type == "season":
+                categories["Seasons"].append(asset)
+            if asset_type in ("episode", "titlecard", "title_card"):
+                categories["TitleCards"].append(asset)
+
+        filtered_assets = categories[tab]
+        total_count = len(filtered_assets)
+        page_offset = min(offset, max(0, ((total_count - 1) // limit) * limit))
         return {
             "success": True,
-            "assets": recent_assets,
-            "total_count": len(recent_assets),
+            "assets": filtered_assets[page_offset:page_offset + limit],
+            "total_count": total_count,
+            "offset": page_offset,
+            "counts": {name: len(items) for name, items in categories.items()},
         }
 
     except Exception as e:
@@ -11104,7 +11163,7 @@ async def get_github_releases():
 
 
 @app.get("/api/dashboard/all")
-async def get_dashboard_all():
+async def get_dashboard_all(include_version: bool = True):
     """
     Combined endpoint for all dashboard data - reduces HTTP requests from 4 to 1
     Returns: status, version, scheduler_status, system_info
@@ -11131,12 +11190,13 @@ async def get_dashboard_all():
         }
 
     # Fetch version (remote part is TTL-cached)
-    try:
-        version_response = await get_version()
-        result["version"] = version_response
-    except Exception as e:
-        logger.error(f"Error fetching version in dashboard/all: {e}")
-        result["version"] = {"local": None, "remote": None}
+    if include_version:
+        try:
+            version_response = await get_version()
+            result["version"] = version_response
+        except Exception as e:
+            logger.error(f"Error fetching version in dashboard/all: {e}")
+            result["version"] = {"local": None, "remote": None}
 
     # Fetch scheduler status (if available)
     if SCHEDULER_AVAILABLE and scheduler:
@@ -11148,6 +11208,7 @@ async def get_dashboard_all():
                 "running": scheduler_status.get("running", False),
                 "is_executing": scheduler_status.get("is_executing", False),
                 "schedules": scheduler_status.get("schedules", []),
+                "active_jobs": scheduler_status.get("active_jobs", []),
                 "next_run": scheduler_status.get("next_run"),
                 "timezone": scheduler_status.get("timezone"),
             }
@@ -16304,8 +16365,7 @@ def _get_effective_provider(library_name: str, asset_type: str, api_part: dict) 
 
     return str(api_part.get("FavProvider", "")).lower()
 
-@app.get("/api/assets/overview")
-async def get_assets_overview():
+def _build_assets_overview(counts_only=False):
     """
     Get asset overview with categorized issues.
     Categories: Missing Assets, Non-Primary Lang, Non-Primary Provider, Truncated Text, Total with Issues, Resolved
@@ -16581,6 +16641,9 @@ async def get_assets_overview():
             if has_issue:
                 assets_with_issues.append(record_dict)
 
+        if counts_only:
+            return len(assets_with_issues)
+
         return {
             "categories": {
                 "missing_assets": {"count": len(missing_assets), "assets": missing_assets},
@@ -16605,6 +16668,36 @@ async def get_assets_overview():
     except Exception as e:
         logger.error(f"Error fetching assets overview: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/assets/overview")
+async def get_assets_overview():
+    return await asyncio.to_thread(_build_assets_overview)
+
+
+def _build_sidebar_counts():
+    issue_count = _build_assets_overview(counts_only=True)
+    cache = get_fresh_assets()
+    return {
+        "success": True,
+        "assets_with_issues": issue_count,
+        "manual_assets": cache.get("manual_gallery", {}).get("total_assets", 0),
+    }
+
+
+_sidebar_counts_cache = {"data": None, "expires_at": 0}
+_sidebar_counts_lock = asyncio.Lock()
+
+
+@app.get("/api/sidebar/counts")
+async def get_sidebar_counts(refresh: bool = False):
+    async with _sidebar_counts_lock:
+        if not refresh and _sidebar_counts_cache["data"] is not None and time.monotonic() < _sidebar_counts_cache["expires_at"]:
+            return _sidebar_counts_cache["data"]
+        data = await asyncio.to_thread(_build_sidebar_counts)
+        _sidebar_counts_cache.update(data=data, expires_at=time.monotonic() + 60)
+        return data
+
 
 @app.get("/api/imagechoices")
 async def get_all_imagechoices(rootfolder: Optional[str] = None):

@@ -160,7 +160,7 @@ function Dashboard() {
   const fetchDashboardData = async (silent = false) => {
     if (!silent) setIsRefreshing(true);
     try {
-      const response = await fetch(`${API_URL}/dashboard/all`);
+      const response = await fetch(`${API_URL}/dashboard/all?include_version=false`);
       const data = await response.json();
       if (data.success) {
         if (data.status) {
@@ -240,7 +240,8 @@ function Dashboard() {
         const res = await fetch(`${API_URL}/version`);
         if(res.ok) {
             const data = await res.json();
-            setVersion({ local: data.local, remote: data.remote, is_update_available: data.is_update_available });
+          cachedVersion = { local: data.local, remote: data.remote, is_update_available: data.is_update_available };
+          setVersion(cachedVersion);
         }
     } catch(e){}
   }
@@ -290,6 +291,7 @@ function Dashboard() {
   useEffect(() => {
     startLoading("dashboard");
     fetchDashboardData(false);
+    fetchVersion(true);
     const statusInterval = setInterval(() => { fetchStatus(true); fetchSchedulerStatus(true); fetchSystemInfo(true); }, 3000);
     const versionInterval = setInterval(() => fetchVersion(true, true), 24 * 60 * 60 * 1000);
     const handleVisibilityChange = () => {

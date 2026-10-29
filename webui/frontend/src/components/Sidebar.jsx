@@ -67,37 +67,32 @@ const Sidebar = () => {
 
   // Counts Fetching Logic
   React.useEffect(() => {
-    const fetchMissingAssetsCount = async () => {
+    const controller = new AbortController();
+    let requestId = 0;
+    const fetchCounts = async (refresh = false) => {
+      const currentRequest = ++requestId;
       try {
-        const response = await fetch("/api/assets/overview");
+        const response = await fetch(`/api/sidebar/counts${refresh ? "?refresh=true" : ""}`, { signal: controller.signal });
         if (response.ok) {
           const data = await response.json();
-          setMissingAssetsCount(data.categories.assets_with_issues.count);
+          if (!controller.signal.aborted && currentRequest === requestId && data.success) {
+            setMissingAssetsCount(data.assets_with_issues || 0);
+            setManualAssetsCount(data.manual_assets || 0);
+          }
         }
-      } catch (error) { console.error("Failed to fetch missing assets count:", error); }
+      } catch (error) {
+        if (error.name !== "AbortError") console.error("Failed to fetch sidebar counts:", error);
+      }
     };
-    fetchMissingAssetsCount();
-    const handleAssetReplaced = () => fetchMissingAssetsCount();
+    fetchCounts();
+    const handleAssetReplaced = () => fetchCounts(true);
     window.addEventListener("assetReplaced", handleAssetReplaced);
-    const interval = setInterval(fetchMissingAssetsCount, 60000);
-    return () => { clearInterval(interval); window.removeEventListener("assetReplaced", handleAssetReplaced); };
-  }, []);
-
-  React.useEffect(() => {
-    const fetchManualAssetsCount = async () => {
-      try {
-        const response = await fetch("/api/manual-assets-gallery");
-        if (response.ok) {
-          const data = await response.json();
-          setManualAssetsCount(data.total_assets || 0);
-        }
-      } catch (error) { console.error("Failed to fetch manual assets count:", error); }
+    const interval = setInterval(() => fetchCounts(), 60000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      window.removeEventListener("assetReplaced", handleAssetReplaced);
     };
-    fetchManualAssetsCount();
-    const handleAssetReplaced = () => fetchManualAssetsCount();
-    window.addEventListener("assetReplaced", handleAssetReplaced);
-    const interval = setInterval(fetchManualAssetsCount, 600000);
-    return () => { clearInterval(interval); window.removeEventListener("assetReplaced", handleAssetReplaced); };
   }, []);
 
   React.useEffect(() => {
