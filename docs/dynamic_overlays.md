@@ -1,13 +1,13 @@
-# Dynamic Overlays (Kometa Migration)
+# Dynamic Overlays (Kometa-Compatible)
 
-**Native in-memory dynamic overlay engine for Posterizarr WebUI.**
-Replaces external Kometa overlay pipelines with a zero-footprint, high-performance Pillow (`PIL`) compositor.
+**Posterizarr's native in-memory dynamic overlay engine.**
+It uses a Pillow (`PIL`) compositor and can read a supported subset of Kometa-compatible configuration and assets. It does not run Kometa.
 
 ---
 
 ## Overview
 
-Historically, applying dynamic badges, ratings, ribbons, and status banners required running a separate Kometa (Plex Meta Manager) container alongside Posterizarr. This often caused media server artwork overwrite loops, required Plex as an intermediary to mirror images to Jellyfin or Emby, and modified files or required complex Docker setups.
+Kometa (formerly Plex Meta Manager) is a separate application. Posterizarr's Dynamic Overlays provides a native alternative for supported overlay rules, without requiring a Kometa container or routing artwork through Plex.
 
 **Dynamic Overlays** in Posterizarr solves this natively:
 
@@ -18,23 +18,39 @@ Historically, applying dynamic badges, ratings, ribbons, and status banners requ
 3. **Change-Detection Fingerprint Cache:**
    Tracks a composite hash of clean asset metadata + applied overlay parameters. If media ratings, video resolution, or series status haven't changed, items are skipped with **0 rendering and 0 network uploads**.
 4. **Predictable File Layout:**
-   All Kometa-compatible configs and overlay assets reside in a dedicated subfolder inside `Overlayfiles/kometa/`.
+   Configurations, downloaded defaults, and custom overlay assets are stored under `Overlayfiles/dynamic_overlays/` in the writable application data directory.
 
 ---
 
 ## Folder Layout
 
-All configuration and assets live inside `Overlayfiles/kometa/`:
+The canonical location is `Overlayfiles/dynamic_overlays/` under the writable application data directory. In Docker this is normally `/config/Overlayfiles/dynamic_overlays/`; local installations use the application data/project root.
 
 ```text
 Overlayfiles/
-├── (default fonts & frame overlays: Colus-Regular.ttf, overlay.png, etc.)
-└── kometa/
-    ├── configs/     # Your YAML configuration files (config.yml, anime_overlays.yml, etc.)
-    ├── defaults/    # On-demand cached Kometa GitHub templates (network.yml, status.yml, etc.)
-    ├── assets/      # Overlay image files (rating badges, 4K banners, network logos, flags)
-    └── fonts/       # Overlay font files (CircularStd-Bold.otf, Comfortaa, etc.)
+├── (asset-creation fonts and frame overlays, when configured)
+└── dynamic_overlays/
+   ├── configs/        # YAML configuration files (config.yml, anime_overlays.yml, etc.)
+   ├── defaults/       # Downloaded Kometa-compatible YAML templates
+   │   └── images/     # Images downloaded for those templates
+   ├── assets/         # Custom/local overlay images
+   └── fonts/          # Custom/local overlay fonts
 ```
+
+Place Dynamic Overlays configuration and assets in `Overlayfiles/dynamic_overlays/`.
+
+## Kometa Compatibility and Attribution
+
+**Is Kometa built into Posterizarr as a plugin? No.** Dynamic Overlays is implemented and run by Posterizarr. It does not embed, launch, or require Kometa, and it is not a Kometa plugin. Posterizarr parses supported Kometa-style YAML itself and renders overlays through its own code. This is compatibility with selected configuration formats and rendering behavior, not full Kometa feature parity.
+
+| Area | Posterizarr implementation | Kometa source / relationship |
+|---|---|---|
+| Coordinate placement and text/backdrop composition | [`overlay_engine.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_engine.py) (`get_coordinates`, `draw_backdrop_and_text`) | Adapted from the coordinate and backdrop-rendering methods in [Kometa `modules/overlay.py`](https://github.com/Kometa-Team/Kometa/blob/master/modules/overlay.py). The Posterizarr module is an adaptation, not Kometa's runtime or a copy of the complete module. |
+| Kometa-style config and defaults | [`overlay_resolver.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_resolver.py) | Posterizarr reads and validates YAML itself. Downloaded default templates are upstream data from [Kometa `defaults/overlays`](https://github.com/Kometa-Team/Kometa/tree/master/defaults/overlays); they are not executable Kometa code. |
+| Default overlay artwork and fonts | [`overlay_resolver.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_resolver.py), [`overlay_engine.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_engine.py) | Images and official fonts may be fetched from [Kometa's overlay images](https://github.com/Kometa-Team/Kometa/tree/master/defaults/overlays/images) and [fonts directory](https://github.com/Kometa-Team/Kometa/tree/master/fonts). Custom assets remain supported. |
+| Sync, media-server APIs, preview, and cache | [`overlay_sync_service.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_sync_service.py), [`overlay_preview.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_preview.py), [`overlay_cache.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_cache.py) | Posterizarr-native code; it renders and uploads directly to configured Plex, Jellyfin, and Emby servers. It does not call Kometa to perform these operations. |
+
+The rendering adaptations are attributed under the MIT License below. Upstream templates, images, and fonts remain Kometa project assets; see their source repository for the applicable project license and notices.
 
 ---
 
@@ -78,10 +94,10 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 - **Always Accessible:** Reopenable anytime via the **Setup Wizard** button on the Dynamic Overlays header.
 
 ### 1. Importer & Pre-flight Validator
-- **Config Scanner:** Detects all YAML files in `Overlayfiles/kometa/configs/`.
+- **Config Scanner:** Detects YAML files in `Overlayfiles/dynamic_overlays/configs/`.
 - **Readiness Checklist:** Automatically lists every font, image, and template required by your YAML files.
 - **1-Click Remote Fetch:** Automatically downloads missing templates and badges from official GitHub repositories.
-- **Import Kometa Defaults (from GitHub):** 1-click download of all 25 official Kometa default overlay templates directly from GitHub into `Overlayfiles/kometa/defaults/`.
+- **Import Kometa Defaults (from GitHub):** Download official Kometa default overlay templates directly from GitHub into `Overlayfiles/dynamic_overlays/defaults/`.
 - **Scheduled Auto-Updates (GitHub Sync):** Automatically keeps templates up to date via the Scheduler (`kometadefaults` run mode). The scheduler queries GitHub's API to discover newly added defaults and updates existing templates with upstream improvements. Can be scheduled on daily, weekly, or custom cron intervals, or enabled via 1-click Quick Schedule directly from the Dynamic Overlays page.
 - **Direct Asset Uploader:** Easily drop custom fonts (`.ttf`, `.otf`) or badge PNGs directly into the UI.
 - **Per-variant Asset Overrides:** Select a local image for a Kometa default and variant key (for example `resolution / 1080p` or `audio_codec / truehd_atmos`). Existing `file_<key>` values are imported from Kometa YAML; selections are written back to Kometa-compatible YAML and the Visual Config. The picker lists local assets from `assets/` and `defaults/images/`; import official images or upload custom artwork first. Custom/default names can also be entered for imported or hand-written rules.
@@ -194,9 +210,9 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 
 ## Security Architecture
 
-Posterizarr enforces strict security controls for all dynamic overlay operations:
+Posterizarr enforces strict security controls for dynamic overlay file operations. The active root is `Overlayfiles/dynamic_overlays/`:
 
-- **Path Traversal Mitigation:** All configuration and asset file operations are strictly jailed inside `Overlayfiles/kometa/`. Traversal patterns (`..`, `~`), null bytes (`\x00`), and path escapes are strictly blocked.
+- **Path Traversal Mitigation:** Configuration and asset file operations are confined to the active overlay root. Traversal patterns (`..`, `~`), null bytes (`\x00`), and path escapes are blocked.
 - **Strict Extension Whitelisting:** Only safe configuration (`.yml`, `.yaml`), image (`.png`, `.jpg`, `.jpeg`, `.webp`), and font (`.ttf`, `.otf`) extensions are permitted.
 - **SSRF Mitigation:** All remote asset downloads strictly enforce HTTPS, resolve hostnames against public IP ranges, and block loopback (`127.0.0.1`), link-local (`169.254.x.x`), private IP ranges, and multicast targets.
 
@@ -204,7 +220,7 @@ Posterizarr enforces strict security controls for all dynamic overlay operations
 
 ## Open Source Attribution & License
 
-The mathematical coordinate algorithms, optical bounding box calculations, and template parsing logic are adapted from the project **Kometa** (formerly Plex Meta Manager) by **meisnate12** and the Kometa team, licensed under the **MIT License**:
+The coordinate placement and text/backdrop rendering algorithms in [`webui/backend/overlay_engine.py`](https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_engine.py) are adapted from [Kometa's `modules/overlay.py`](https://github.com/Kometa-Team/Kometa/blob/master/modules/overlay.py), by **meisnate12** and the Kometa team, under the **MIT License**. Posterizarr's YAML handling, media-server integration, preview, sync, and cache are separate Posterizarr implementations; see the source map above.
 
 ```text
 MIT License
