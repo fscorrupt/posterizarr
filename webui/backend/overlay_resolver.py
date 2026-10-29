@@ -2799,15 +2799,6 @@ class OverlayConfigEngine:
                 elif str(rule_entry.get("default", "")).lower() == "aspect":
                     resolved_ov["mapping_name"] = "aspect_" + mapping_name
 
-                # Resolution badge contrast fallback: if back_color not specified, default to dark glass pill
-                if str(resolved_ov.get("name") or "").lower() in ("4k", "1080p", "720p", "576p", "480p", "resolution"):
-                    if resolved_ov.get("back_color") is None:
-                        is_land_item = bool(item_metadata.get("is_landscape") or item_metadata.get("is_backdrop") or is_episode)
-                        resolved_ov["back_color"] = "#00000099"
-                        resolved_ov["back_radius"] = 15
-                        resolved_ov["back_width"] = 260 if is_land_item else 245
-                        resolved_ov["back_height"] = 85 if is_land_item else 95
-
                 q_name = resolved_ov["queue"]
                 if q_name:
                     if q_name not in queue_overlays:
@@ -3360,7 +3351,7 @@ class OverlayConfigEngine:
                 return None
             b_col = ov.get("back_color")
             is_trans = (b_col in ("#00000000", "transparent", None)) or (isinstance(b_col, str) and b_col.endswith("00") and len(b_col) == 9)
-            return {
+            image_layer = {
                 "name": ov.get("mapping_name", name_str),
                 "type": "image",
                 "image_path": str(image_path),
@@ -3377,6 +3368,9 @@ class OverlayConfigEngine:
                 "back_padding": int(ov.get("back_padding") or 0),
                 "back_align": ov.get("back_align", "center"),
             }
+            if name_str.strip().lower() in ("4k", "1080p", "720p", "576p", "480p", "resolution"):
+                image_layer["fit_to_box"] = True
+            return image_layer
 
     def _render_text_tokens(self, text_tpl: str, meta: Dict[str, Any]) -> str:
         res = text_tpl

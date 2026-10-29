@@ -1563,6 +1563,17 @@ def build_multi_rating_layers(
         except (OSError, ValueError):
             pass
 
+    if measure_font:
+        digit_width = max(measure_font.getbbox(str(digit))[2] - measure_font.getbbox(str(digit))[0] for digit in range(10))
+        dot_width = measure_font.getbbox(".")[2] - measure_font.getbbox(".")[0]
+        percent_width = measure_font.getbbox("%")[2] - measure_font.getbbox("%")[0]
+        score_bounds = measure_font.getbbox("0123456789.%")
+        score_height = score_bounds[3] - score_bounds[1]
+    else:
+        digit_width = (font_size * 3 + 3) // 4
+        dot_width = percent_width = digit_width
+        score_height = font_size
+
     # Determine corners
     if "left" in position:
         h_align = "left"
@@ -1693,8 +1704,14 @@ def build_multi_rating_layers(
         else:
             text_width = (len(score_text) * font_size * 3 + 3) // 4
             text_height = font_size
-        content_width = text_width + logo_width + (8 if logo_width else 0)
-        content_height = max(text_height, logo_height)
+        if src in ("tomatoes", "tomatoesaudience", "trakt"):
+            score_width = 3 * digit_width + percent_width + 4
+        elif src == "metacritic":
+            score_width = 3 * digit_width + 4
+        else:
+            score_width = 3 * digit_width + dot_width + 4
+        content_width = max(text_width, score_width) + logo_width + (8 if logo_width else 0)
+        content_height = max(text_height, score_height, logo_height)
 
         # Calculate position for this badge
         if alignment == "vertical":
@@ -1727,6 +1744,9 @@ def build_multi_rating_layers(
             "addon_position": "left",
             "addon_offset": 8,
             "scale_height": scale_h,
+            "back_width": content_width,
+            "back_height": content_height,
+            "back_align": "left",
         }
 
         if theme in ("brand", "score"):
@@ -1741,6 +1761,11 @@ def build_multi_rating_layers(
             layer_def["back_padding"] = back_padding
 
         layers.append(layer_def)
+
+    if alignment == "vertical":
+        row_width = max(layer["back_width"] for layer in layers)
+        for layer in layers:
+            layer["back_width"] = row_width
 
     return layers
 
@@ -1820,6 +1845,8 @@ def build_overlay_layers_for_item(
         )
         for layer in single_layers:
             layer.update({"name": "single_rating", "type": "text", "image_path": None})
+            for key in ("back_width", "back_height", "back_align"):
+                layer.pop(key, None)
         native_rating_layers.extend(single_layers)
     for rule in resolution_rules:
         variables = rule.get("template_variables") or {}
@@ -1879,6 +1906,7 @@ def build_overlay_layers_for_item(
                 "back_color": variables.get("back_color", "#00000099"), "back_radius": int(variables.get("back_radius", 15)),
                 "back_width": int(variables.get("back_width") or (260 if is_landscape else 245)),
                 "back_height": int(variables.get("back_height") or (85 if is_landscape else 95)),
+                "fit_to_box": True,
             })
     for rule in rating_rules:
         variables = rule.get("template_variables") or {}

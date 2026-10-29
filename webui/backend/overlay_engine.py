@@ -788,6 +788,16 @@ class DynamicOverlayCompositor:
                 if target_w and target_h:
                     elem_img = elem_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
+            if layer.get("fit_to_box"):
+                box_width = int(layer.get("back_width") or elem_img.width)
+                box_height = int(layer.get("back_height") or elem_img.height)
+                fit_scale = min(1.0, box_width / elem_img.width, box_height / elem_img.height)
+                if fit_scale < 1.0:
+                    elem_img = elem_img.resize(
+                        (max(1, int(elem_img.width * fit_scale)), max(1, int(elem_img.height * fit_scale))),
+                        Image.Resampling.LANCZOS,
+                    )
+
             # Optional drop shadow for light posters (e.g. Commonsense icon)
             if layer.get("drop_shadow"):
                 pad = 4
