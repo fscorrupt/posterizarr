@@ -1,4 +1,15 @@
-# Kometa Integration
+# Optional Kometa Compatibility
+
+**Kometa is not required for Posterizarr artwork generation, direct uploads, or
+supported Dynamic Overlays.** For the native workflow, start with
+[Dynamic Overlays](dynamic_overlays.md): design supported badges, preview them,
+and sync directly to Plex, Jellyfin, or Emby while keeping clean source artwork
+unchanged on disk.
+
+This page is only for installations that deliberately continue using a separate
+Kometa instance. Keep one owner for each server/library/artwork type to avoid
+different upload jobs replacing one another's artwork. The instructions below
+describe that optional external workflow, not a prerequisite for Posterizarr.
 
 Posterizarr generates assets in a folder structure that is fully compatible with [Kometa](https://kometa.wiki/en/latest/kometa/guides/assets/), eliminating the need for manual renaming or relocation.
 

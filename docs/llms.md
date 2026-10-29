@@ -9,12 +9,12 @@
 
 ### Primary Capabilities:
 1. **Multi-Provider Artwork Scraping**: Queries metadata providers (**TMDB**, **TVDB**, **Fanart.tv**, and local media servers, with IMDb fallback) using configurable language sequences and priority strategies.
-2. **Dynamic Overlay & Badge Compositing**: Uses **ImageMagick 7** to dynamically composite overlays (borders, inner glow, gradient fades, resolution banners like 4K/1080p, HDR/Dolby Vision flags, audio codec badges, source watermarks, and custom typography) onto posters, season posters, backgrounds, and title cards.
+2. **Artwork Generation and Native Dynamic Overlays**: The **ImageMagick 7** asset-generation pipeline creates clean/styled artwork with typography, borders, and configured static overlays. The separate **Python/Pillow Dynamic Overlays** engine renders supported metadata-driven badges in memory and uploads directly to Plex, Jellyfin, or Emby without modifying clean source files. It does not require an external Kometa runtime.
 3. **Textless Detection & ClearLogo Compositing**: Automatically detects textless artwork, scrapes transparent clearlogos/clearart from TVDB, TMDB, or Fanart, converts colors if requested (monochrome silhouettes), and falls back gracefully to formatted typography.
 4. **Direct Media Server Synchronization**: Uploads processed artwork directly to Plex, Jellyfin, or Emby via REST APIs. Embeds EXIF metadata/hashes to prevent redundant reprocessing.
 5. **Interactive Live Collection Designer**: Offers a real-time canvas editor in the Web UI for designing collection posters with customizable linear/radial gradients, vignettes, matte masks, film grain textures, typography alignments, drop shadows, and preset thumbnail capture.
 6. **Web UI & Management Dashboard**: Modern single-page React application with real-time dashboards, asset overview tables, manual image choice pickers (Asset Replacer), clearlogo browsers, logs viewer (WebSocket streaming), and background queue runners.
-7. **Arr & Companion Integrations**: Webhook handlers and trigger scripts for Radarr, Sonarr, and Tautulli, automated callbacks for **Agregarr**, Kometa (Plex Meta Manager) folder alignment, native C# media server plugins, Uptime Kuma monitoring, and Discord rich embeds.
+7. **Arr & Companion Integrations**: Webhook handlers and trigger scripts for Radarr, Sonarr, and Tautulli, automated callbacks for **Agregarr**, native C# media server plugins, Uptime Kuma monitoring, and Discord rich embeds. Asset-folder compatibility with external consumers is optional, not part of the native overlay runtime.
 
 ---
 
@@ -26,6 +26,7 @@
 | **Web UI Backend** | Python 3.13 + FastAPI + Uvicorn | `webui/backend/` | Serves REST API and WebSockets, manages SQLite DBs, coordinates background runs, enforces SSRF protections, handles image proxies. |
 | **Web UI Frontend** | React 18 + Vite + Tailwind CSS | `webui/frontend/` | Single-page application: Dashboard, Asset Overview, Live Collection Editor, Settings Editor, Logs, Queue Manager, Onboarding Wizard. |
 | **Image Processing** | ImageMagick 7 (`magick`) + Pillow | Alpine packages / `Overlayfiles/` | Compositing overlays, badge positioning, typography rendering, color extraction, textless detection, and UI preview rendering. |
+| **Native Dynamic Overlays** | Python + Pillow + SQLite | `overlay_engine.py`, `overlay_resolver.py`, `overlay_preview.py`, `overlay_sync_service.py`, `overlay_cache.py` | Per-library rules, live preview, in-memory composition, metadata/rating caches, and direct artwork uploads. Supported YAML compatibility does not embed Kometa. |
 | **Databases** | SQLite3 | `database/*.db` | Six specialized databases: `imagechoices.db`, `config.db`, `queue.db`, `server_libraries.db`, `media_export.db`, `runtime_history.db`. |
 | **Containerization** | Docker (Alpine 3.24) | `Dockerfile`, `Start.ps1`, `start.sh` | Multi-stage build with multi-process orchestration (`uvicorn` backend daemon + `pwsh Start.ps1` scheduler/worker). |
 | **Media Server Plugins** | C# (.NET 8/9/10) | `modules/Posterizarr.Plugin*/` | Native plugins for Jellyfin (10.11.x on .NET 9, 12.0.x on .NET 10) and Emby (on .NET 8) providing automated event notifications and metadata sync. |
@@ -117,7 +118,7 @@ PosterizarrUI_dev/
 In Docker (`IS_DOCKER = True`), paths and permissions follow a strict container layout:
 - `/config` (`$env:APP_DATA`): Writable volume containing `config.json`, `Logs/`, `RotatedLogs/`, `database/`, and cached assets.
 - `/app` (`$env:APP_ROOT`): Read-only application root containing PowerShell modules, FastAPI backend, and precompiled frontend.
-- `/assets`: Output directory where processed artwork is written (structured for Kometa compatibility).
+- `/assets`: Local clean/generated artwork in a predictable library/title structure, consumed by Posterizarr's native workflows and optional external tools.
 - `/manualassets`: Custom images placed by users to override automated scrapers.
 - `/assetsbackup`: Original unmodified artwork downloaded during backup runs.
 - `/posterizarr/watcher`: Monitored directory for `.posterizarr` trigger files created by `ArrTrigger.sh`.
@@ -391,9 +392,13 @@ The backend (`webui/backend/main.py`) provides over 170 REST and WebSocket endpo
 - **Native Webhook**: Webhook pointed to `http://POSTERIZARR:8000/api/webhook/tautulli?api_key=KEY` triggering on `Recently Added`.
 - **Custom Script**: `trigger.py` configured under Tautulli Notification Agents.
 
-### 4. Kometa (Plex Meta Manager) Integration
-- Posterizarr outputs artwork into the standard Kometa directory hierarchy: `AssetPath/LibraryName/MediaTitle (Year)/poster.ext`.
-- Pointing Kometa's `asset_directory` directly to Posterizarr's `/assets` folder enables seamless overlay layering without file moves.
+<a id="4-kometa-plex-meta-manager-integration"></a>
+### 4. Native Dynamic Overlays and Optional Asset Compatibility
+- **Primary workflow:** Posterizarr creates artwork, renders supported Dynamic Overlays in memory, and uploads directly to Plex, Jellyfin, or Emby. The Web UI provides per-library rules, format-specific previews, asset readiness, targeted sync, and cache inspection. Start in Dry Run.
+- **Local assets:** the common library-folder layout is `AssetPath/LibraryName/MediaTitle (Year)/poster.ext`. Media from different NAS mounts can share a library asset root; ambiguous title/edition folders still require distinct naming.
+- **Optional interoperability:** existing Kometa installations can consume the local assets and supported Kometa-style YAML can be imported. Kometa is not installed or executed by the native engine, and compatibility is not full Kometa feature parity.
+- **Ownership:** avoid multiple uploaders managing the same server/library/artwork type. A clean local-artwork sync can replace overlaid artwork, regardless of which tool produced it.
+- **References:** [Native Dynamic Overlays](dynamic_overlays.md), [optional Kometa compatibility](kometaintegration.md). Existing inbound links to the old Kometa section are retained by the anchor above.
 
 ### 5. Media Server C# Plugins
 - **`modules/Posterizarr.Plugin`**: In-tree C# plugin for Jellyfin.

@@ -12,7 +12,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/fscorrupt/posterizarr">
-    <img src="/docs/images/posterizarr_banner.jpg" alt="Logo" width="650" height="550">
+    <img src="docs/images/posterizarr_banner.jpg" alt="Posterizarr artwork formats with selected Plex posters, titlecard and Matrix (1999) background" width="1200">
   </a>
     <br />
     <br />
@@ -49,7 +49,7 @@ Posterizarr is a PowerShell script with a full Web UI that automates generating 
 * **Native Dynamic Overlays:** In-memory compositing for ratings, 4K resolution banners, language flags, and series status ribbons directly to Plex, Jellyfin, and Emby — without modifying clean artwork on disk or needing an external Kometa container.
 * **Logo Management:** Search, preview, and manually replace clearlogos directly from the Web UI.
 * **Multiple Media Servers:** Supports Plex, Jellyfin, and Emby.
-* **Kometa Integration:** Organizes assets in a Kometa-compatible folder structure.
+* **Organized Local Assets:** Keeps artwork in a predictable library/title structure for Posterizarr's native workflows and optional external consumers.
 * **Smart Integration:** Trigger runs from Tautulli, Sonarr, and Radarr.
 
 ### Web UI & Dynamic Overlays
@@ -84,7 +84,10 @@ Posterizarr does not run Kometa or provide complete Kometa feature parity.
   </a>
 </p>
 
-Screenshots show a development build with example library/title names. Insights
+The banner and [Showcase](docs/showcase.md) use selected Plex artwork, with the
+existing Posterizarr logo for project branding.
+
+UI screenshots show a development build with example library/title names. Insights
 sample telemetry is simulated; preview badges use sample metadata rather than
 the metadata of a particular media-server item.
 

@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="images/logo_banner.png" alt="Logo" width="350">
+  <img src="images/logo_banner.png" alt="Posterizarr" width="160">
 
   <h1 align="center">Welcome to Posterizarr</h1>
 
@@ -9,8 +9,8 @@
 </div>
 
 <div align="center">
-  <a href="https://github.com/fscorrupt/posterizarr">
-    <img src="images/posterizarr_banner.jpg" alt="Logo" width="650" height="650">
+  <a href="showcase/">
+    <img src="images/posterizarr_banner.jpg" alt="Posterizarr artwork formats and native Dynamic Overlay examples" width="1200">
   </a>
   <br />
   <p>

@@ -6,6 +6,11 @@
 
 The Posterizarr Plugin acts as a local asset proxy for Jellyfin. It is designed to work alongside the [Posterizarr](https://github.com/fscorrupt/posterizarr) automation script, allowing your media server to utilize locally generated or managed assets (posters, backgrounds, title cards) as metadata.
 
+Posterizarr's [native Dynamic Overlays](../../docs/dynamic_overlays.md) can upload
+supported overlaid artwork directly to Jellyfin, without Plex or Kometa as an
+intermediary. This plugin's local-asset mapping and optional Plex mirroring are
+separate workflows. Avoid competing upload/sync jobs for the same artwork.
+
 > [!IMPORTANT]
 > This middleware does not allow you to browse, search, or download assets.
 > Its sole purpose is to replace the default artwork by mapping library items to your local file system.
@@ -15,9 +20,9 @@ The Posterizarr Plugin acts as a local asset proxy for Jellyfin. It is designed 
 *   **Local Asset Mapping:** Maps local files to library items without replacing original metadata permanently in some configurations.
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds (Fanart), and Title Cards.
-*   **Plex Direct Sync (Kometa Mirroring):** High-speed direct mirroring of active Plex artwork into Jellyfin for movies, TV series, seasons, episode title cards, and backdrops. Bulk-queries Plex metadata in seconds and detects changes via Plex artwork version timestamps (disabled by default, enabled via plugin settings).
+*   **Optional Plex Artwork Mirroring:** Mirrors active Plex artwork into Jellyfin for movies, TV series, seasons, episode title cards, and backdrops. Uses Plex metadata and artwork version timestamps, regardless of which tool produced the artwork (disabled by default, enabled via plugin settings).
 *   **Real-Time WebSocket Sync:** Listens for live asset events from Posterizarr to immediately apply changes.
-*   **Hybrid Sync Support:** Real-Time Sync and Plex Direct Sync can be used together. New Posterizarr assets apply immediately via WebSocket, and scheduled Plex sync runs will replace them if Kometa overlays differ in Plex.
+*   **Hybrid Sync Support:** Real-Time Sync and Plex Direct Sync can be used together. New Posterizarr assets apply via WebSocket, and scheduled Plex sync runs replace them when the selected Plex artwork differs.
 *   **Broad Version Compatibility:** Multi-targeted for **Jellyfin 10.11.x** (.NET 9) and **Jellyfin 12.0.x** (.NET 10). The plugin repository manifest automatically serves the appropriate build for your server version.
 
 ## Installation
@@ -54,7 +59,7 @@ The plugin registers two scheduled background tasks under **Scheduled Tasks**:
 *   **Sync Artwork from Plex** (default: daily at 03:00 AM): High-speed direct query and mirroring of active artwork from Plex (only runs when *Enable Plex Direct Sync* is enabled).
 
 > [!NOTE]
-> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are bypassed for movies and TV series so local asset files will never overwrite Kometa/Plex overlays. If **Update Collections** is enabled, the scheduled task will exclusively sync **Collections (BoxSets)** from collection asset folders (`/assets/Collections`). Real-Time Sync remains active to deliver new assets immediately, with Plex Direct Sync taking precedence when overlays differ.
+> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are bypassed for movies and TV series so local files do not replace the selected Plex artwork through that local-sync path. If **Update Collections** is enabled, the scheduled task will exclusively sync **Collections (BoxSets)** from collection asset folders (`/assets/Collections`). Real-Time Sync remains active, with Plex Direct Sync taking precedence when artwork differs. Choose the intended artwork owner for each library and format.
 
 ### Configuring the Sync Schedule
 

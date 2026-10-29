@@ -6,6 +6,11 @@
 
 The Posterizarr Plugin acts as a local asset proxy for Jellyfin. It is designed to work alongside the [Posterizarr](https://github.com/fscorrupt/posterizarr) automation script, allowing your media server to utilize locally generated or managed assets (posters, backgrounds, title cards) as metadata.
 
+For supported native overlays, Posterizarr can [upload directly to Jellyfin](dynamic_overlays.md).
+Plex mirroring is optional, not a prerequisite for overlays. Keep local-image sync,
+direct overlay uploads, and Plex mirroring scoped so they do not compete over the
+same artwork.
+
 !!! tip "Middleware purpose"
     This middleware does not allow you to browse, search, or download assets.
     Its sole purpose is to replace the default artwork by mapping library items to your local file system.
@@ -16,15 +21,15 @@ The Posterizarr Plugin acts as a local asset proxy for Jellyfin. It is designed 
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds, Seasons, and Title Cards.
 *   **Real-Time WebSocket Sync:** Direct connection to Posterizarr's event stream. Automatically refreshes media items immediately when an asset is created or edited in Posterizarr, eliminating the need to wait for scheduled tasks.
-*   **Plex Direct Sync (Kometa Mirroring):** High-speed direct mirroring of active Plex artwork into Jellyfin for movies, TV series, seasons, episode title cards, and backdrops. Detects changes via Plex artwork version timestamps.
-*   **Hybrid Sync (Combined Real-Time & Plex Sync):** Run real-time WebSocket sync and Plex Direct Sync together. New Posterizarr artwork applies instantly, while scheduled Plex sync runs will replace it whenever Kometa overlays differ in Plex.
+*   **Optional Plex Artwork Mirroring:** Mirrors active Plex artwork into Jellyfin for movies, TV series, seasons, episode title cards, and backdrops. Detects changes via Plex artwork version timestamps, independently of which tool produced it.
+*   **Hybrid Sync (Combined Real-Time & Plex Sync):** Run real-time WebSocket sync and Plex Direct Sync together. New Posterizarr artwork applies via events, while scheduled Plex sync runs replace it whenever the selected Plex artwork differs.
 *   **Scheduled Background Sync:** Automatically runs on a configurable schedule to keep artwork in sync.
 *   **Version Compatibility:** Fully compatible with both **Jellyfin 10.11.x** (.NET 9) and **Jellyfin 12.0.x** (.NET 10). The repository manifest automatically serves the appropriate build for your server version.
 
 ## Installation
 
-!!! tip "Plex & Kometa Compatibility"
-    If you sync metadata or overlays from Plex (such as Kometa overlays), you can enable **Plex Direct Sync** in the plugin settings to mirror artwork directly from Plex. You can also combine it with **Real-Time Sync** for instant updates.
+!!! tip "Optional Plex artwork source"
+    Enable **Plex Direct Sync** only when Plex should be the source of artwork for this workflow. It can mirror Posterizarr's native overlay results or other selected Plex artwork. Direct native uploads to Jellyfin do not require this option.
 
 ### Via Repository (Recommended)
 
@@ -74,7 +79,7 @@ flowchart TD
 
     subgraph Scheduled["2. Scheduled Plex Direct Sync"]
         D[Scheduled Plex Sync runs] --> E{Compare Plex artwork with Jellyfin}
-        E -->|Different e.g. Kometa overlays| F[Plex sync wins: applies Kometa overlay]
+        E -->|Different artwork| F[Plex sync wins: applies selected Plex artwork]
         E -->|Identical| G[Skips re-save & updates cache]
     end
 
@@ -82,7 +87,7 @@ flowchart TD
 ```
 
 * **Instant Updates:** You don't have to wait for a daily or scheduled Plex sync task to see fresh artwork in Jellyfin. The WebSocket listener updates Jellyfin immediately upon rendering.
-* **Kometa Priority:** When the scheduled Plex Sync task runs, it evaluates the item. If Kometa added overlays (borders, badges, ratings) in Plex, **Plex sync takes precedence and updates the artwork**. If the artwork is identical, it avoids redundant downloads and disk writes.
+* **Plex Source Priority:** When the scheduled Plex Sync task runs, **the selected Plex artwork takes precedence**, including artwork produced by native Dynamic Overlays or another uploader. Identical artwork avoids redundant downloads and disk writes.
 
 ### Local Collection Syncing in Plex Sync Mode
 

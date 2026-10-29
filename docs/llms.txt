@@ -2,7 +2,7 @@
 
 > Automated artwork scraping, dynamic overlay generation, and media server synchronization for Plex, Jellyfin, and Emby.
 
-Posterizarr is a modular media automation system that combines a multi-threaded PowerShell automation engine, an ImageMagick 7 image composition pipeline, a Python 3.13 FastAPI backend, and a React 18 / Tailwind CSS single-page web interface. It automates fetching metadata and artwork across TMDB, TVDB, and Fanart.tv, composites custom typography, borders, badges, and gradient overlays, tags EXIF metadata, and synchronizes artwork directly with media servers and companion services.
+Posterizarr combines a PowerShell/ImageMagick asset-generation pipeline, a native Python/Pillow Dynamic Overlays engine, a FastAPI backend, and a React web interface. It fetches artwork and metadata, creates styled assets, renders supported metadata-driven badges in memory, and uploads directly to Plex, Jellyfin, or Emby. Clean source artwork stays unchanged on disk. A separate Kometa runtime is not required.
 
 ## LLM & AI Architecture Guides
 - [LLM Master Architecture Guide](https://fscorrupt.github.io/posterizarr/llms/): Exhaustive, authoritative architecture guide for LLMs and AI coding agents. Details system architecture, multi-process lifecycle, run modes, database schemas, rendering engine, REST endpoints, and conventions.
@@ -25,10 +25,11 @@ Posterizarr is a modular media automation system that combines a multi-threaded 
 - [Usage & Execution Modes](https://fscorrupt.github.io/posterizarr/modes/): Comprehensive operational guide for all execution modes: Normal, Testing, Manual, Backup, Restore, Sync, PosterReset, LogoUpdater, ArrMode, and TautulliMode.
 - [Action Center Guide](https://fscorrupt.github.io/posterizarr/action_center/): Artwork resolution, fallback provider tracking, and manual image replacement workflows.
 - [Blueprints & Recipes](https://fscorrupt.github.io/posterizarr/blueprints/): Curated overlay styling blueprints and community design recipes.
+- [Native Dynamic Overlays](https://fscorrupt.github.io/posterizarr/dynamic_overlays/): Supported badge rules, visual previews, direct multi-server uploads, Dry Run, dependency readiness, targeted sync, and cache/ratings management.
 
 ## Integrations & Media Servers
 - [Agregarr Integration](https://fscorrupt.github.io/posterizarr/agregarrintegration/): Setup and webhook callback specifications, bitr8/agregarr:develop fork requirements and PR #103 details, multi-episode import expansion, and retry timeout handling.
-- [Kometa Integration](https://fscorrupt.github.io/posterizarr/kometaintegration/): Docker volume sharing, asset folder directory structure alignment, and metadata prioritization.
+- [Optional Kometa Compatibility](https://fscorrupt.github.io/posterizarr/kometaintegration/): Legacy/external asset sharing for users who choose to keep Kometa. Not required for Posterizarr's native overlays or direct uploads.
 - [Jellyfin Plugin](https://fscorrupt.github.io/posterizarr/jellyfin_plugin/): Installation and setup of the native C# plugin for Jellyfin event automation.
 - [Emby Plugin](https://fscorrupt.github.io/posterizarr/emby_plugin/): Installation and setup of the native C# plugin for Emby event automation.
 - [Homepage Custom API](https://fscorrupt.github.io/posterizarr/homepage/): Widget configuration for displaying library counts, asset stats, and missing artwork on the Homepage dashboard.

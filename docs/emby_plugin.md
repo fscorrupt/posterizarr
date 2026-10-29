@@ -11,6 +11,11 @@
 
 The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to work alongside the [Posterizarr](https://github.com/fscorrupt/posterizarr) automation script, allowing your media server to utilize locally generated or managed assets (posters, backgrounds, title cards) as metadata.
 
+For supported native overlays, Posterizarr can [upload directly to Emby](dynamic_overlays.md).
+Plex mirroring is optional, not a prerequisite for overlays. Keep local-image sync,
+direct overlay uploads, and Plex mirroring scoped so they do not compete over the
+same artwork.
+
 !!! tip "Middleware purpose"
     This middleware does not allow you to browse, search, or download assets.
     Its sole purpose is to replace the default artwork by mapping library items to your local file system.
@@ -21,14 +26,14 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds, Seasons, and Title Cards.
 *   **Real-Time WebSocket Sync:** Connects directly to Posterizarr's event stream. Automatically refreshes Emby library items immediately when artwork is created, edited, or overlay-processed in Posterizarr.
-*   **Plex Direct Sync (Kometa Mirroring):** High-speed direct mirroring of active Plex artwork into Emby for movies, TV series, seasons, episode title cards, and backdrops. Detects changes via Plex artwork version timestamps.
-*   **Hybrid Sync (Combined Real-Time & Plex Sync):** Run real-time WebSocket sync and Plex Direct Sync together. New Posterizarr artwork applies instantly, while scheduled Plex sync runs will replace it whenever Kometa overlays differ in Plex.
+*   **Optional Plex Artwork Mirroring:** Mirrors active Plex artwork into Emby for movies, TV series, seasons, episode title cards, and backdrops. Detects changes via Plex artwork version timestamps, independently of which tool produced it.
+*   **Hybrid Sync (Combined Real-Time & Plex Sync):** Run real-time WebSocket sync and Plex Direct Sync together. New Posterizarr artwork applies via events, while scheduled Plex sync runs replace it whenever the selected Plex artwork differs.
 *   **Scheduled Sync Task:** Registers a background task to keep library images in sync with your local assets automatically on a customized schedule.
 
 ## Installation
 
-!!! tip "Plex & Kometa Compatibility"
-    If you sync metadata or overlays from Plex (such as Kometa overlays), you can enable **Plex Direct Sync** in the plugin settings to mirror artwork directly from Plex. You can also combine it with **Real-Time Sync** for instant updates.
+!!! tip "Optional Plex artwork source"
+    Enable **Plex Direct Sync** only when Plex should be the source of artwork for this workflow. It can mirror Posterizarr's native overlay results or other selected Plex artwork. Direct native uploads to Emby do not require this option.
 
 1.  Download the latest version of `Posterizarr.Plugin.Emby.dll` from the [GitHub Releases](https://github.com/fscorrupt/posterizarr/releases).
 2.  Copy `Posterizarr.Plugin.Emby.dll` into your Emby Server's plugin directory:
@@ -72,7 +77,7 @@ flowchart TD
 
     subgraph Scheduled["2. Scheduled Plex Direct Sync"]
         D[Scheduled Plex Sync runs] --> E{Compare Plex artwork with Emby}
-        E -->|Different e.g. Kometa overlays| F[Plex sync wins: applies Kometa overlay]
+        E -->|Different artwork| F[Plex sync wins: applies selected Plex artwork]
         E -->|Identical| G[Skips re-save & updates cache]
     end
 
@@ -80,7 +85,7 @@ flowchart TD
 ```
 
 * **Instant Updates:** You don't have to wait for a daily or scheduled Plex sync task to see fresh artwork in Emby. The WebSocket listener updates Emby immediately upon rendering.
-* **Kometa Priority:** When the scheduled Plex Sync task runs, it evaluates the item. If Kometa added overlays (borders, badges, ratings) in Plex, **Plex sync takes precedence and updates the artwork**. If the artwork is identical, it avoids redundant downloads and disk writes.
+* **Plex Source Priority:** When the scheduled Plex Sync task runs, **the selected Plex artwork takes precedence**, including artwork produced by native Dynamic Overlays or another uploader. Identical artwork avoids redundant downloads and disk writes.
 
 ### Local Collection Syncing in Plex Sync Mode
 
