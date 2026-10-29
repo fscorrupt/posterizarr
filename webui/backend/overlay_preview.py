@@ -307,7 +307,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
             allowed_streaming_options = {"region", "availability_types", "style", "overlay_limit", "spacing", "orientation"}
             rule.setdefault("template_variables", {}).update({key: value for key, value in (options.get("streaming_options") or {}).items() if key in allowed_streaming_options})
     layers = builder(metadata, rules, Path(overlays_dir), is_landscape=landscape)
-    if options.get("rating_mode") == "providers":
+    if options.get("rating_mode") in ("single", "providers"):
         layers = [
             layer for layer in layers
             if str(layer.get("name") or "").lower() not in LEGACY_AUDIENCE_RATING_LAYERS
