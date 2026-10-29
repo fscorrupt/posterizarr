@@ -1723,7 +1723,9 @@ def build_multi_rating_layers(
             score_width = 3 * digit_width + 4
         else:
             score_width = 3 * digit_width + dot_width + 4
-        if score_size_mode == "fixed" and requested_score_width:
+        if score_size_mode == "content":
+            score_width = text_width
+        elif score_size_mode == "fixed" and requested_score_width:
             score_width = max(16, requested_score_width)
         content_width = (score_width if custom_score_layout else max(text_width, score_width)) + logo_width + (8 if logo_width else 0)
         content_height = max(text_height, score_height, logo_height)
