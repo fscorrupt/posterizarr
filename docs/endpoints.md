@@ -288,6 +288,24 @@ Returns the full configuration.
 
 ## 📁 Assets & File Management
 
+### `/api/assets/overview/page`
+Returns only the visible Action Center rows, plus category counts, type/library
+filter options, and the configuration used to display issue tags.
+
+- `limit`: 1-500 rows (default 25); `offset`: zero-based starting row (default 0).
+- `tab`: `active` (default) or `skipped`.
+- `status`: `Unresolved` (default), `Resolved`, or `All`.
+- `category`: a category key from `/api/assets/overview`, or empty for all categories.
+- `search`: case-insensitive title/root-folder search; `asset_type` and `library`: exact filters.
+- `all_matches=true`: return the complete filtered set for an explicitly confirmed
+  bulk action. Normal browsing does not use this option.
+
+`total_count` counts all filtered matches, not just returned rows. `offset` is
+adjusted to the last available page if necessary. Category counts and filter
+options remain independent of pagination. The backend still classifies the full
+metadata snapshot; this endpoint limits serialization and transfer, not the
+underlying database read. The original full overview endpoint remains available.
+
 ### `/api/assets/overview`
 Returns a categorized overview of assets (missing, non-primary language, etc.).
 

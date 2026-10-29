@@ -805,6 +805,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Fetch database data if not provided (e.g., when opened from FolderView)
   useEffect(() => {
+    const controller = new AbortController();
     // Determine what kind of asset we are dealing with based on the path
     const assetPathLower = asset?.path?.toLowerCase() || "";
     const isTitleCard = assetPathLower.includes("titlecard") || /s\d+e\d+/i.test(assetPathLower);
@@ -916,6 +917,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       if (!pathParts || pathParts.length < 2) return;
       const libraryName = pathParts[0];
       const rootfolder = pathParts[1];
+      const lookupQuery = new URLSearchParams({ rootfolder }).toString();
       // --- End Parse Path ---
 
       try {
@@ -924,9 +926,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         // Only check Plex Export if we don't already have dbData
         if (!dbData) {
           console.log("Checking Plex Export DB (/api/plex-export/library)...");
-          response = await fetch(`${API_URL}/plex-export/library`);
+          response = await fetch(`${API_URL}/plex-export/library?${lookupQuery}`, { signal: controller.signal });
           if (response.ok) {
             const plexData = await response.json();
+            if (controller.signal.aborted) return;
             if (plexData.success && plexData.data) {
               const matchingRecord = findMatch(plexData.data, libraryName, rootfolder);
               if (matchingRecord) {
@@ -940,9 +943,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         // Only check Other Media Export (Jellyfin/Emby) if we don't already have dbData
         if (!dbData) {
           console.log("Checking Other Media Export DB (/api/other-media-export/library)...");
-          response = await fetch(`${API_URL}/other-media-export/library`);
+          response = await fetch(`${API_URL}/other-media-export/library?${lookupQuery}`, { signal: controller.signal });
           if (response.ok) {
             const otherData = await response.json();
+            if (controller.signal.aborted) return;
             if (otherData.success && otherData.data) {
               const matchingRecord = findMatch(otherData.data, libraryName, rootfolder);
               if (matchingRecord) {
@@ -955,9 +959,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         // --- Try ImageChoices (Posterizarr DB) ---
         console.log("Checking ImageChoices DB for Asset specific info...");
-        response = await fetch(`${API_URL}/imagechoices`);
+        response = await fetch(`${API_URL}/imagechoices?${lookupQuery}`, { signal: controller.signal });
         if (response.ok) {
           const allRecords = await response.json();
+          if (controller.signal.aborted) return;
           const matchingRecord = findMatch(allRecords, libraryName, rootfolder);
 
           if (matchingRecord) {
@@ -977,11 +982,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         }
 
       } catch (error) {
-        console.error("Error fetching database data:", error);
+        if (error.name !== "AbortError") console.error("Error fetching database data:", error);
       }
     };
 
     fetchDatabaseData();
+    return () => controller.abort();
   }, [asset.path, dbData]);
 
   // Load custom blueprints

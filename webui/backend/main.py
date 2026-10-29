@@ -16675,6 +16675,62 @@ async def get_assets_overview():
     return await asyncio.to_thread(_build_assets_overview)
 
 
+def _paginate_asset_overview(overview, limit=25, offset=0, category="", status="Unresolved", search="", asset_type="", library="", all_matches=False):
+    categories = overview.get("categories", {})
+    unique_assets = {}
+    for group in categories.values():
+        for asset in group.get("assets", []):
+            unique_assets.setdefault(asset["id"], asset)
+
+    def matches_status(asset):
+        resolved = asset.get("Manual") in ("Yes", "true", True)
+        return status == "All" or (resolved if status == "Resolved" else not resolved)
+
+    status_assets = [asset for asset in unique_assets.values() if matches_status(asset)]
+    candidates = categories.get(category, {}).get("assets", []) if category else status_assets
+    query = search.strip().lower()
+    assets = [
+        asset for asset in candidates
+        if matches_status(asset)
+        and (not query or query in (asset.get("Title") or "").lower() or query in (asset.get("Rootfolder") or "").lower())
+        and (not asset_type or asset.get("Type") == asset_type)
+        and (not library or asset.get("LibraryName") == library)
+    ]
+    total_count = len(assets)
+    page_offset = 0 if all_matches else min(offset, max(0, ((total_count - 1) // limit) * limit))
+    return {
+        "assets": assets if all_matches else assets[page_offset:page_offset + limit],
+        "total_count": total_count,
+        "offset": page_offset,
+        "categories": {name: {"count": group.get("count", len(group.get("assets", [])))} for name, group in categories.items()},
+        "types": sorted({asset["Type"] for asset in status_assets if asset.get("Type")}),
+        "libraries": sorted({asset["LibraryName"] for asset in status_assets if asset.get("LibraryName")}),
+        "config": overview.get("config", {}),
+    }
+
+
+@app.get("/api/assets/overview/page")
+async def get_assets_overview_page(
+    limit: int = Query(25, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    tab: str = Query("active", pattern="^(active|skipped)$"),
+    category: str = "",
+    status: str = Query("Unresolved", pattern="^(All|Resolved|Unresolved)$"),
+    search: str = "",
+    asset_type: str = "",
+    library: str = "",
+    all_matches: bool = False,
+):
+    if tab == "skipped":
+        assets = await get_skipped_assets()
+        overview = {"categories": {"skipped": {"count": len(assets), "assets": assets}}}
+    else:
+        overview = await asyncio.to_thread(_build_assets_overview)
+    return await asyncio.to_thread(
+        _paginate_asset_overview, overview, limit, offset, category, status, search, asset_type, library, all_matches
+    )
+
+
 def _build_sidebar_counts():
     issue_count = _build_assets_overview(counts_only=True)
     cache = get_fresh_assets()

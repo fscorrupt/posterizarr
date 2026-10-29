@@ -28,6 +28,7 @@ The frontend follows a component-based architecture located entirely within `web
 - **Responsive verification:** all 37 registered routes (including redirects) were audited at 320px, 768px, and 1440px; all nine configuration tabs were also checked with populated example settings and expanded groups. Interactive checks covered mobile navigation and representative add-library, YAML, variable-editor, sync, ratings-cache, image-preview fallback, and first-run dialogs, including 740x360 landscape. Tests used a local build with read-only API fixtures and blocked live writes. Conditional dialog content, real artwork delivery, device keyboards, and physical iOS/Android behavior still need release QA; shared bounds alone are not a claim that every possible dialog state was exercised.
 
 - **`App.jsx`**: The root component. Handles routing (React Router) and wraps the application in Context providers.
+- **View loading:** Dashboard and navigation stay eager. Other route views and onboarding use `React.lazy` with a `Suspense` loading state; routed content reuses `ErrorBoundary` for recovery without removing navigation. Blueprints remains shared/eager because replacement-modal controls import it. Build chunks are split by actual route imports instead of manually grouping page modules with Dashboard.
 - **`Sidebar.jsx`**: The main side navigation menu.
 - **`TopNavbar.jsx`**: The top bar, housing breadcrumbs, user profile, and version badges.
 - **`Dashboard.jsx`**: The primary landing page. Aggregates statistics, recent assets, and quick-action buttons.
@@ -47,6 +48,7 @@ The frontend follows a component-based architecture located entirely within `web
 ### Media & Assets Management
 
 - **`AssetsManager.jsx` & `AssetOverview.jsx`**: High-level views for managing generated posters, local assets, and storage usage.
+- **Action Center paging:** `AssetOverview` requests `/api/assets/overview/page` with page size, tab, status, category, search, type, and library. Search is debounced; obsolete requests are aborted and ignored. Only visible rows are transferred during browsing, while counts and filter options describe the full result set. Filter controls remain mounted during refresh, selections retain their records across pages, and confirmed all-filtered bulk actions explicitly fetch all matching records before submitting changes.
 - **`RecentAssets.jsx`**: Dashboard carousel displaying recently processed assets with direct integration into `AssetReplacer` for instant correction.
 - **`GalleryHub.jsx`, `Gallery.jsx`, `SeasonGallery.jsx`, `TitleCardGallery.jsx`, `TestGallery.jsx`**: Interactive grids displaying generated artwork with lazy loading, filtering, pagination, and detailed inspection.
 - **`BackgroundsGallery.jsx`**: Specialized gallery for viewing and selecting background source images.
@@ -54,6 +56,7 @@ The frontend follows a component-based architecture located entirely within `web
 - **`BackupAssets.jsx`**: Gallery view for inspecting and managing original images preserved under `/assetsbackup`.
 - **`ImagePreviewModal.jsx`**: A modal component to view full-resolution posters, EXIF metadata, and provider links.
 - **`AssetReplacer.jsx`**: Deep inspection and replacement modal for swapping out posters or logos on the fly.
+- **Replacement metadata:** when metadata is not supplied, export and image-choice requests include `rootfolder` instead of downloading complete libraries. Existing library and exact episode matching are preserved, and closing or switching the asset aborts obsolete metadata requests.
 - **`AssetSearchModal.jsx`**: Provider search modal (TMDB, TVDB, Fanart) to find and apply replacement artwork or clearlogos by title or ID.
 - **`LogoBrowser.jsx`**: Media server library browser for inspecting, filtering, and uploading missing ClearLogos directly to Plex, Jellyfin, or Emby.
 - **`CollectionExplorer.jsx`**: Visual collection manager listing collections across connected media servers. Displays enriched collection metadata (item count and release year ranges, e.g. `12 items • 1979 - 2024`), Asset Details modal inspection (`ImagePreviewModal.jsx`), real-time diff status badges (`In Sync`, `Update Ready`, `Missing on Plex`, `No Local Asset`), quick diff view toggling (`LOCAL` vs `SERVER`), 1-click single-poster push to Plex, batch out-of-sync push, and status filtering.
