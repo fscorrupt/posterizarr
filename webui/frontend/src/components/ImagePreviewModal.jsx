@@ -82,6 +82,59 @@ function parseCollectionSummary(summary) {
   };
 }
 
+function PreviewArtwork({ src, thumbnailSrc, name }) {
+  const { t } = useTranslation();
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const showThumbnail = thumbnailSrc && !thumbnailFailed && !loaded;
+
+  return (
+    <div className="relative w-full h-[45dvh] lg:h-[84dvh] flex items-center justify-center" aria-busy={!loaded && !failed}>
+      {showThumbnail && (
+        <img
+          src={thumbnailSrc}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-contain rounded"
+          onError={() => setThumbnailFailed(true)}
+        />
+      )}
+      {!failed && (
+        <img
+          src={src}
+          alt={name}
+          decoding="async"
+          className={`absolute inset-0 w-full h-full object-contain drop-shadow-2xl rounded ${loaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={async (event) => {
+            try {
+              await event.currentTarget.decode();
+              setLoaded(true);
+            } catch {
+              setFailed(true);
+            }
+          }}
+          onError={() => setFailed(true)}
+        />
+      )}
+      {!loaded && !failed && (
+        <RefreshCw className="absolute w-8 h-8 text-white animate-spin drop-shadow" aria-hidden="true" />
+      )}
+      {failed && !showThumbnail && (
+        <div className="text-center flex flex-col items-center justify-center">
+          <div className="p-4 rounded-full bg-theme-primary/20 inline-block mb-4">
+            <ImageIcon className="w-16 h-16 text-theme-primary" />
+          </div>
+          <p className="text-white text-lg font-semibold mb-2">
+            {t("gallery.previewNotAvailable")}
+          </p>
+          <p className="text-gray-400 text-sm">{t("gallery.useFileExplorer")}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Global Image Preview Modal Component
  * Displays a full-screen preview of an image with metadata and action buttons
@@ -104,13 +157,15 @@ function ImagePreviewModal({
   onDelete,
   onReplace,
   isDeleting = false,
-  cacheBuster = Date.now(),
+  cacheBuster,
   formatDisplayPath,
   formatTimestamp,
   getMediaType,
   getTypeColor,
 }) {
   const { t } = useTranslation();
+  const [defaultCacheBuster] = useState(Date.now);
+  const imageVersion = cacheBuster ?? defaultCacheBuster;
 
   // Get the display media type - use type from backend if available, otherwise fallback
   const getDisplayMediaType = () => {
@@ -409,29 +464,14 @@ function ImagePreviewModal({
         <div className="w-full min-w-0 flex flex-col lg:flex-row lg:max-h-[92dvh]">
           {/* Image */}
           <div className="flex-1 min-w-0 flex items-center justify-center bg-black/95 p-3 sm:p-4 lg:p-8 min-h-[180px] lg:min-h-[350px] relative overflow-hidden">
-            <img
-              src={`${selectedImage.url}?t=${cacheBuster}`}
-              alt={selectedImage.name}
-              className="max-w-full max-h-[45dvh] lg:max-h-[84dvh] object-contain drop-shadow-2xl rounded"
-              onError={(e) => {
-                e.target.style.display = "none";
-                e.target.nextSibling.style.display = "flex";
-              }}
+            <PreviewArtwork
+              key={`${selectedImage.url}:${imageVersion}`}
+              src={`${selectedImage.url}${selectedImage.url.includes("?") ? "&" : "?"}t=${imageVersion}`}
+              thumbnailSrc={/^\/(poster_assets|manual_poster_assets|backup_assets|test|images)\//.test(selectedImage.url)
+                ? `/api/thumbnail?path=${encodeURIComponent(selectedImage.url)}&t=${imageVersion}`
+                : null}
+              name={selectedImage.name}
             />
-            <div
-              className="text-center flex-col items-center justify-center"
-              style={{ display: "none" }}
-            >
-              <div className="p-4 rounded-full bg-theme-primary/20 inline-block mb-4">
-                <ImageIcon className="w-16 h-16 text-theme-primary" />
-              </div>
-              <p className="text-white text-lg font-semibold mb-2">
-                {t("gallery.previewNotAvailable")}
-              </p>
-              <p className="text-gray-400 text-sm">
-                {t("gallery.useFileExplorer")}
-              </p>
-            </div>
           </div>
 
           {/* Info Panel */}
