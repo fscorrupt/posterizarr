@@ -79,6 +79,54 @@ import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
 import { getAniMetaFillPreview, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
 
+const DEFAULT_RATING_SOURCES = ["imdb", "tomatoes", "tmdb"];
+const RATING_PROVIDER_OPTIONS = [
+  { id: "imdb", label: "IMDb" },
+  { id: "tomatoes", label: "RT Critics" },
+  { id: "tomatoesaudience", label: "RT Audience" },
+  { id: "tmdb", label: "TMDb" },
+  { id: "trakt", label: "Trakt" },
+  { id: "metacritic", label: "Metacritic" },
+  { id: "letterboxd", label: "Letterboxd" },
+];
+
+const RatingScoreLayoutControls = ({ options, onChange }) => {
+  const mode = options.score_size_mode || "auto";
+  const controlClass = "mt-1 w-full min-w-0 bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text disabled:opacity-50";
+  return (
+    <div className="grid grid-cols-2 gap-2 min-w-0">
+      <label className="text-xs text-theme-muted">Score sizing
+        <select aria-label="Rating score size mode" value={mode} onChange={event => {
+          const value = event.target.value;
+          onChange({ score_size_mode: value, ...(value === "fixed" && !options.score_width ? { score_width: 120 } : {}) });
+        }} className={controlClass}>
+          <option value="auto">Automatic fixed slots</option>
+          <option value="fixed">Custom fixed width</option>
+          <option value="content">Fit score content</option>
+        </select>
+      </label>
+      <label className="text-xs text-theme-muted">Number side
+        <select aria-label="Rating number side" value={options.score_position || "right"} onChange={event => onChange({ score_position: event.target.value })} className={controlClass}>
+          <option value="left">Left of logo</option>
+          <option value="right">Right of logo</option>
+        </select>
+      </label>
+      {mode === "fixed" && (
+        <label className="text-xs text-theme-muted">Score width (px)
+          <input aria-label="Rating score width" type="number" min="16" max="600" step="1" value={options.score_width || 120} onChange={event => onChange({ score_width: Math.max(16, Math.min(600, Number(event.target.value) || 16)) })} className={controlClass} />
+        </label>
+      )}
+      <label className="text-xs text-theme-muted">Number alignment
+        <select aria-label="Rating number alignment" disabled={mode === "content"} value={options.score_alignment || "left"} onChange={event => onChange({ score_alignment: event.target.value })} className={controlClass}>
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+    </div>
+  );
+};
+
 const AssetPreviewGuides = ({ config, template }) => {
   const guides = getAssetPreviewGuides(config, template);
   if (!guides) return null;
@@ -690,7 +738,7 @@ export default function DynamicOverlays() {
   const [applyAssetOverlay, setApplyAssetOverlay] = useState(true);
   const [previewRating, setPreviewRating] = useState("8.4");
   const [previewRatingMode, setPreviewRatingMode] = useState("providers");
-  const [previewRatingDefaults, setPreviewRatingDefaults] = useState({ sources: ["imdb", "tomatoes", "tmdb"], theme: "dark", orientation: "horizontal", contrast_box: true, spacing: 15 });
+  const [previewRatingDefaults, setPreviewRatingDefaults] = useState({ sources: [...DEFAULT_RATING_SOURCES], theme: "dark", orientation: "horizontal", contrast_box: true, spacing: 15, score_size_mode: "auto", score_width: 0, score_position: "right", score_alignment: "left" });
   const [previewResolution, setPreviewResolution] = useState("4K");
   const [previewStatus, setPreviewStatus] = useState("");
   const [previewStatusColor, setPreviewStatusColor] = useState("#FFA500");
@@ -4423,7 +4471,11 @@ export default function DynamicOverlays() {
     theme: selectedScoreBadge?.theme || previewRatingDefaults.theme,
     orientation: selectedScoreBadge?.orientation || previewRatingDefaults.orientation,
     contrast_box: selectedScoreBadge?.contrast_box ?? previewRatingDefaults.contrast_box,
-    spacing: selectedScoreBadge?.spacing ?? previewRatingDefaults.spacing
+    spacing: selectedScoreBadge?.spacing ?? previewRatingDefaults.spacing,
+    score_size_mode: selectedScoreBadge?.score_size_mode || previewRatingDefaults.score_size_mode,
+    score_width: selectedScoreBadge?.score_width ?? previewRatingDefaults.score_width,
+    score_position: selectedScoreBadge?.score_position || previewRatingDefaults.score_position,
+    score_alignment: selectedScoreBadge?.score_alignment || previewRatingDefaults.score_alignment
   };
   const updatePreviewRatingOptions = (patch) => {
     setPreviewRatingDefaults(previous => ({ ...previous, ...patch }));
@@ -5341,16 +5393,8 @@ export default function DynamicOverlays() {
                       <div className="space-y-1">
                         <label className="text-[9px] font-semibold text-theme-muted uppercase">Active Rating Sources</label>
                         <div className="flex flex-wrap gap-1">
-                          {[
-                            { id: "imdb", label: "IMDb" },
-                            { id: "tomatoes", label: "RT Critics" },
-                            { id: "tomatoesaudience", label: "RT Audience" },
-                            { id: "tmdb", label: "TMDb" },
-                            { id: "trakt", label: "Trakt" },
-                            { id: "metacritic", label: "Metacritic" },
-                            { id: "letterboxd", label: "Letterboxd" }
-                          ].map((src) => {
-                            const curSources = criticBadge.sources || featureSettings?.rating_sources || ["imdb", "tomatoes", "tmdb"];
+                          {RATING_PROVIDER_OPTIONS.map((src) => {
+                            const curSources = criticBadge.sources || featureSettings?.rating_sources || DEFAULT_RATING_SOURCES;
                             const isSel = curSources.includes(src.id);
                             return (
                               <button
@@ -5425,6 +5469,7 @@ export default function DynamicOverlays() {
                         </select>
                         <p className="text-[10px] text-theme-muted">Shown as the rating badge in Live Preview after saving.</p>
                       </div>
+                      <RatingScoreLayoutControls options={criticBadge} onChange={patch => updateBadge("critic_rating", patch)} />
                     </div>
                   )}
                 </div>
@@ -8327,6 +8372,22 @@ export default function DynamicOverlays() {
                     </select>
                   </label>
                 </div>
+                {previewRatingMode === "providers" && (
+                  <>
+                    <fieldset className="space-y-2">
+                      <legend className="text-xs text-theme-muted">Rating providers</legend>
+                      <div className="grid grid-cols-2 gap-2">
+                        {RATING_PROVIDER_OPTIONS.map(provider => (
+                          <label key={provider.id} className="flex min-w-0 items-center gap-2 text-xs text-theme-text">
+                            <input type="checkbox" aria-label={`Preview rating provider ${provider.label}`} checked={previewRatingOptions.sources.includes(provider.id)} onChange={event => updatePreviewRatingOptions({ sources: event.target.checked ? [...previewRatingOptions.sources, provider.id] : previewRatingOptions.sources.filter(source => source !== provider.id) })} className="shrink-0 accent-theme-primary" />
+                            {provider.label}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <RatingScoreLayoutControls options={previewRatingOptions} onChange={updatePreviewRatingOptions} />
+                  </>
+                )}
                 <input
                   type="range"
                   min="0.0"

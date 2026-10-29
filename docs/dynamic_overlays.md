@@ -64,6 +64,31 @@ the backend. As a workaround for a blank variables block, use
 `template_variables: {}`. Never replace a populated variables block with an empty
 one; its values define the overlay's behavior.
 
+### Provider Ratings and Score Layout
+
+Provider badges support IMDb (`imdb`), Rotten Tomatoes critics (`tomatoes`),
+Rotten Tomatoes audience (`tomatoesaudience`), TMDb (`tmdb`), Trakt (`trakt`),
+Metacritic (`metacritic`), and Letterboxd (`letterboxd`). Choose providers in
+**Visual Badges** or **Live Preview**. The initial IMDb/RT Critics/TMDb selection
+is a default, not a three-provider limit. Cached ratings are independent of this
+selection; having seven cached values does not automatically enable seven badges.
+Live Preview uses sample values, not the selected item's cached ratings.
+
+Provider score controls are saved with the library and artwork-format layout:
+
+| Setting | Behavior |
+|---|---|
+| Automatic fixed slots (`score_size_mode: auto`) | Reserve provider-specific score space so changing scores does not move the logo. |
+| Custom fixed width (`score_size_mode: fixed`) | Set `score_width` from 16 to 600 reference-canvas pixels; narrower slots shrink only the number to fit. |
+| Fit score content (`score_size_mode: content`) | Fit the backdrop to the current score while keeping the logo anchored. |
+| Number side (`score_position`) | Place the number to the `left` or `right` of its provider logo. |
+| Number alignment (`score_alignment`) | Align the number `left`, `center`, or `right` within automatic/custom fixed slots. Not used in content mode. |
+
+Widths scale from the portrait 1000 x 1500 or landscape 1920 x 1080 reference
+canvas to the output artwork. These controls affect multi-provider badges, not
+the compact single-score badge. Previewing and saving do not upload artwork;
+existing configurations without the new fields retain their legacy rendering.
+
 ## Folder Layout
 
 The canonical location is `Overlayfiles/dynamic_overlays/` under the writable application data directory. In Docker this is normally `/config/Overlayfiles/dynamic_overlays/`; local installations use the application data/project root.

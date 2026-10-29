@@ -261,6 +261,53 @@ def get_coordinates(
     return int(x), int(y)
 
 
+def _render_provider_score_layout(canvas_box, layer, font, image_element):
+    result = Image.new("RGBA", canvas_box, (0, 0, 0, 0))
+    text = str(layer.get("text") or "")
+    stroke_width = int(layer.get("stroke_width") or 0)
+    bounds = font.getbbox(text, stroke_width=stroke_width)
+    number = Image.new("RGBA", (max(1, bounds[2] - bounds[0]), max(1, bounds[3] - bounds[1])), (0, 0, 0, 0))
+    ImageDraw.Draw(number).text(
+        (-bounds[0], -bounds[1]), text, font=font, fill=hex_to_rgba(layer.get("font_color", "#FFFFFF")),
+        stroke_width=stroke_width, stroke_fill=hex_to_rgba(layer.get("stroke_color") or "#000000"),
+    )
+    logo_width, logo_height = image_element.size if image_element is not None else (0, 0)
+    score_width = max(1, int(layer.get("score_width") or number.width))
+    gap = int(layer.get("addon_offset") or 0) if logo_width else 0
+    box_width = int(layer.get("back_width") or (logo_width + gap + score_width))
+    box_height = int(layer.get("back_height") or max(logo_height, number.height))
+    number.thumbnail((score_width, max(1, box_height)), Image.Resampling.LANCZOS)
+    origin_x, origin_y = get_coordinates(
+        canvas_box, (box_width, box_height),
+        horizontal_align=layer.get("horizontal_align", "left"), horizontal_offset=layer.get("horizontal_offset", 0),
+        vertical_align=layer.get("vertical_align", "top"), vertical_offset=layer.get("vertical_offset", 0),
+    )
+    on_left = layer.get("score_position") == "left"
+    logo_x = origin_x + box_width - logo_width if on_left else origin_x
+    slot_x = logo_x - gap - score_width if on_left and logo_width else origin_x + logo_width + gap
+    alignment = layer.get("score_alignment", "left")
+    if layer.get("score_size_mode") == "content":
+        number_x = logo_x - gap - number.width if on_left and logo_width else slot_x
+    else:
+        free_width = max(0, score_width - number.width)
+        number_x = slot_x + (free_width if alignment == "right" else free_width // 2 if alignment == "center" else 0)
+    number_y = origin_y + (box_height - number.height) // 2
+    logo_y = origin_y + (box_height - logo_height) // 2
+    back_color = layer.get("back_color")
+    if back_color and hex_to_rgba(back_color)[3] > 0:
+        left, right = origin_x, origin_x + box_width
+        if layer.get("score_size_mode") == "content":
+            left = min(logo_x, number_x) if logo_width else number_x
+            right = max(logo_x + logo_width, number_x + number.width) if logo_width else number_x + number.width
+        padding = int(layer.get("back_padding") or 0)
+        rectangle = (left - padding, origin_y - padding, right + padding, origin_y + box_height + padding)
+        ImageDraw.Draw(result).rounded_rectangle(rectangle, radius=int(layer.get("back_radius") or 0), fill=hex_to_rgba(back_color))
+    if image_element is not None:
+        result.alpha_composite(image_element, (int(logo_x), int(logo_y)))
+    result.alpha_composite(number, (int(number_x), int(number_y)))
+    return result
+
+
 def draw_backdrop_and_text(
     canvas_box: Tuple[int, int],
     text: Optional[str] = None,
@@ -644,6 +691,8 @@ class DynamicOverlayCompositor:
             scaled["stroke_width"] = max(1, int(round(layer["stroke_width"] * sy)))
         if "back_width" in layer and layer["back_width"]:
             scaled["back_width"] = int(round(layer["back_width"] * sx))
+        if "score_width" in layer and layer["score_width"]:
+            scaled["score_width"] = int(round(layer["score_width"] * sx))
         if "back_height" in layer and layer["back_height"]:
             scaled["back_height"] = int(round(layer["back_height"] * sy))
         if "back_radius" in layer and layer["back_radius"]:
@@ -967,6 +1016,9 @@ class DynamicOverlayCompositor:
             if lum > 200:
                 stroke_width = 2
                 stroke_color = stroke_color or "#000000D0"
+
+        if "score_size_mode" in layer:
+            return _render_provider_score_layout(canvas_box, layer, font, elem_img)
 
         return draw_backdrop_and_text(
             canvas_box=canvas_box,

@@ -1550,6 +1550,19 @@ def build_multi_rating_layers(
     spacing = max(0, int(dyn_settings.get("spacing", 15)))
     badge_step_h = dyn_settings.get("badge_step_h")
     badge_step_v = dyn_settings.get("badge_step_v")
+    score_options = {"score_size_mode", "score_width", "score_position", "score_alignment"}
+    custom_score_layout = any(key in dyn_settings for key in score_options)
+    score_size_mode = str(dyn_settings.get("score_size_mode") or "auto").lower()
+    if score_size_mode not in ("auto", "fixed", "content"):
+        score_size_mode = "auto"
+    score_position = "left" if dyn_settings.get("score_position") == "left" else "right"
+    score_alignment = str(dyn_settings.get("score_alignment") or "left").lower()
+    if score_alignment not in ("left", "center", "right"):
+        score_alignment = "left"
+    try:
+        requested_score_width = max(0, min(600, int(dyn_settings.get("score_width") or 0)))
+    except (TypeError, ValueError):
+        requested_score_width = 0
 
     is_land = canvas_type == "landscape"
     font_size = int(dyn_settings.get("font_size", 28 if is_land else 44))
@@ -1710,7 +1723,9 @@ def build_multi_rating_layers(
             score_width = 3 * digit_width + 4
         else:
             score_width = 3 * digit_width + dot_width + 4
-        content_width = max(text_width, score_width) + logo_width + (8 if logo_width else 0)
+        if score_size_mode == "fixed" and requested_score_width:
+            score_width = max(16, requested_score_width)
+        content_width = (score_width if custom_score_layout else max(text_width, score_width)) + logo_width + (8 if logo_width else 0)
         content_height = max(text_height, score_height, logo_height)
 
         # Calculate position for this badge
@@ -1748,6 +1763,13 @@ def build_multi_rating_layers(
             "back_height": content_height,
             "back_align": "left",
         }
+        if custom_score_layout:
+            layer_def.update({
+                "score_size_mode": score_size_mode,
+                "score_width": score_width,
+                "score_position": score_position,
+                "score_alignment": score_alignment,
+            })
 
         if theme in ("brand", "score"):
             back_color, font_color = _rating_theme_colors(theme, src, num)
@@ -1845,7 +1867,7 @@ def build_overlay_layers_for_item(
         )
         for layer in single_layers:
             layer.update({"name": "single_rating", "type": "text", "image_path": None})
-            for key in ("back_width", "back_height", "back_align"):
+            for key in ("back_width", "back_height", "back_align", "score_size_mode", "score_width", "score_position", "score_alignment"):
                 layer.pop(key, None)
         native_rating_layers.extend(single_layers)
     for rule in resolution_rules:

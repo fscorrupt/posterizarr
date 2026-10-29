@@ -1093,11 +1093,15 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "offset_y": vars_dict.get("vertical_offset", 25),
                     "back_color": vars_dict.get("back_color", "#00000000"),
                     "back_width": vars_dict.get("back_width", 150),
-                    "sources": vars_dict.get("sources") or vars_dict.get("rating_sources") or ["imdb", "tomatoes", "tmdb"],
+                    "sources": vars_dict["sources"] if vars_dict.get("sources") is not None else (vars_dict.get("rating_sources") or ["imdb", "tomatoes", "tmdb"]),
                     "orientation": vars_dict.get("orientation", "horizontal"),
                     "spacing": vars_dict.get("spacing", 15),
                     "contrast_box": vars_dict.get("contrast_box", True),
                     "theme": vars_dict.get("theme", "dark"),
+                    "score_size_mode": vars_dict.get("score_size_mode", "auto"),
+                    "score_width": vars_dict.get("score_width", 0),
+                    "score_position": vars_dict.get("score_position", "right"),
+                    "score_alignment": vars_dict.get("score_alignment", "left"),
                     "back_radius": vars_dict.get("back_radius", 8),
                     "back_padding": vars_dict.get("back_padding", 6),
                     "font_size": vars_dict.get("font_size", 30)
@@ -1290,7 +1294,7 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             }
             if b_score.get("level"):
                 score_vars["builder_level"] = b_score["level"]
-            if b_score.get("sources"):
+            if b_score.get("sources") is not None:
                 score_vars["sources"] = b_score["sources"]
             if b_score.get("orientation"):
                 score_vars["orientation"] = b_score["orientation"]
@@ -1306,6 +1310,14 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 score_vars["back_padding"] = int(b_score["back_padding"])
             if b_score.get("font_size") is not None:
                 score_vars["font_size"] = int(b_score["font_size"])
+            if b_score.get("score_size_mode") in ("auto", "fixed", "content"):
+                score_vars["score_size_mode"] = b_score["score_size_mode"]
+            if b_score.get("score_width") is not None:
+                score_vars["score_width"] = max(0, min(600, int(b_score["score_width"])))
+            if b_score.get("score_position") in ("left", "right"):
+                score_vars["score_position"] = b_score["score_position"]
+            if b_score.get("score_alignment") in ("left", "center", "right"):
+                score_vars["score_alignment"] = b_score["score_alignment"]
 
             overlay_files.append({
                 "default": "ratings",

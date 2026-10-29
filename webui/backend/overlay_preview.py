@@ -276,7 +276,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         if not matching:
             rules.append({"default": defaults[key], "template_variables": {"builder_level": "all", **({"use_subtitles": True} if key == "subtitle_languages" else {})}})
     rating_options = options.get("rating_options") or {}
-    allowed_rating_options = {"sources", "theme", "orientation", "contrast_box", "spacing"}
+    allowed_rating_options = {"sources", "theme", "orientation", "contrast_box", "spacing", "score_size_mode", "score_width", "score_position", "score_alignment"}
     for rule in rules:
         default_name = str(rule.get("default", "")).lower() if isinstance(rule, dict) else ""
         if isinstance(rule, dict) and options.get("rating_mode") in ("single", "providers") and any(name in str(rule.get("file") or "") for name in ("overlays_movies.yml", "overlays_tv.yml")):
