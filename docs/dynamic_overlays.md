@@ -16,11 +16,53 @@ Kometa (formerly Plex Meta Manager) is a separate application. Posterizarr's Dyn
 2. **True Multi-Media Server Support:**
    Pushes overlaid artwork directly to **Plex**, **Jellyfin**, and **Emby** via their respective REST APIs.
 3. **Change-Detection Fingerprint Cache:**
-   Tracks a composite hash of clean asset metadata + applied overlay parameters. If media ratings, video resolution, or series status haven't changed, items are skipped with **0 rendering and 0 network uploads**.
+   Tracks clean artwork, metadata, overlay recipes, and verified artwork identity to avoid unnecessary renders and uploads. Incremental runs still enumerate items, evaluate rules, and may perform media-server verification requests. Changed metadata, rules, artwork selection, and explicit full/forced runs can require rendering or uploads.
 4. **Predictable File Layout:**
    Configurations, downloaded defaults, and custom overlay assets are stored under `Overlayfiles/dynamic_overlays/` in the writable application data directory.
 
 ---
+
+## Quick Start From the Web UI
+
+1. Open **Builders > Dynamic Overlays**. Use **Setup Wizard** for a guided first
+   setup, or import your supported Kometa-style YAML in **Config & YAML Files**.
+2. Keep **Dry Run** enabled while testing. Check the Master Switch and confirm
+   which libraries and artwork formats are in scope before running a sync.
+3. In **Libraries & Rules**, review the imported rules. Check readiness and fetch
+   any required official templates, fonts, or images before previewing.
+4. Open **Visual Badges** or **Live Preview**, choose the library and format, and
+   adjust the badges. **Save Layout** persists the layout; a preview alone does
+   not update media-server artwork.
+5. Run a dry-run sync in **Sync & Cache** and review the log and cache results.
+   Turn off Dry Run only when you intend to upload artwork to the selected server.
+6. For a smaller test, use **Select Movie / Show** in **Sync & Cache** instead of
+   processing an entire library. Avoid **Force Reapply** unless you deliberately
+   want to reapply artwork.
+
+![Live Preview showing sample artwork, resolution and score badges, placement controls and alignment guides](images/ui-dynamic-overlays.png)
+
+*Development-build screenshot with example library names. The artwork and badge
+metadata are preview samples, not the result of a media-server sync. The visible
+configuration is an example, not the installation defaults.*
+
+!!! warning "Kometa compatibility is selective"
+    Importing a syntactically valid Kometa configuration does not mean every
+    Kometa builder, collection rule, or overlay is implemented. Review imported
+    rules and readiness before applying them. Posterizarr renders supported
+    overlays itself; it does not start Kometa.
+
+### Importing an Existing Configuration
+
+Upload `config.yml` or `config.yaml` together with any referenced custom overlay
+YAML files. Readiness reports missing dependencies separately from YAML syntax
+errors. Blank optional `libraries`, `overlay_files`, and `template_variables`
+sections are accepted by the current importer as empty containers. Existing
+nonempty values are retained, and uploading does not rewrite the YAML bytes.
+
+If an older build reports `argument of type 'NoneType' is not iterable`, upgrade
+the backend. As a workaround for a blank variables block, use
+`template_variables: {}`. Never replace a populated variables block with an empty
+one; its values define the overlay's behavior.
 
 ## Folder Layout
 

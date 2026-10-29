@@ -59,7 +59,7 @@ nav:
     - 'Usage & Modes': 'modes.md'
     - 'Action Center Guide': 'action_center.md'
     - 'Blueprints & Recipes': 'blueprints.md'
-    - 'Dynamic Overlays (Kometa)': 'dynamic_overlays.md'
+    - 'Dynamic Overlays': 'dynamic_overlays.md'
     - 'Plex Image Cleanup (ImageMaid)': 'plex_image_cleanup.md'
     - 'Agregarr Integration': 'agregarrintegration.md'
     - 'Kometa Integration': 'kometaintegration.md'

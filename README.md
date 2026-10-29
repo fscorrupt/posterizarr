@@ -52,11 +52,41 @@ Posterizarr is a PowerShell script with a full Web UI that automates generating 
 * **Kometa Integration:** Organizes assets in a Kometa-compatible folder structure.
 * **Smart Integration:** Trigger runs from Tautulli, Sonarr, and Radarr.
 
+### Web UI & Dynamic Overlays
+
+Use the Web UI to monitor the dashboard, review generated artwork in the
+**Action Center**, inspect run history in **Insights**, and schedule automation.
+Heavy views load on demand, while artwork previews keep the thumbnail visible
+until the full-resolution image is ready.
+
+**Builders > Dynamic Overlays** adds a native overlay workflow for movie, show,
+and season posters, titlecards, and backgrounds. Preview supported badges,
+adjust their placement, inspect missing assets, and sync directly to Plex,
+Jellyfin, or Emby. Clean source artwork stays unchanged on disk.
+
+Start with **Dry Run**, which evaluates and renders changes without uploading
+artwork. Kometa-style YAML import supports a subset of Kometa configuration;
+Posterizarr does not run Kometa or provide complete Kometa feature parity.
+
+- [Dynamic Overlays guide](https://fscorrupt.github.io/posterizarr/dynamic_overlays/)
+- [Action Center guide](https://fscorrupt.github.io/posterizarr/action_center/)
+- [Installation and upgrades](https://fscorrupt.github.io/posterizarr/installation/)
+
 <p align="center">
   <a href="https://fscorrupt.github.io/posterizarr/installation">
-    <img alt="Web UI Preview" width="100%" src="/docs/images/PosterizarrUI.png">
+    <img alt="Current Posterizarr dashboard with scheduler and recent artwork" width="100%" src="docs/images/ui-dashboard.png">
   </a>
 </p>
+
+<p align="center">
+  <a href="https://fscorrupt.github.io/posterizarr/dynamic_overlays/">
+    <img alt="Dynamic Overlays live preview with resolution, rating and series-status badges" width="100%" src="docs/images/ui-dynamic-overlays.png">
+  </a>
+</p>
+
+Screenshots show a development build with example library/title names. Insights
+sample telemetry is simulated; preview badges use sample metadata rather than
+the metadata of a particular media-server item.
 
 ## 🚀 Get Started
 
