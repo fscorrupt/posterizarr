@@ -10,6 +10,10 @@ from overlay_engine import DynamicOverlayCompositor, PORTRAIT_DIM, LANDSCAPE_DIM
 
 logger = logging.getLogger(__name__)
 
+LEGACY_AUDIENCE_RATING_LAYERS = {
+    "rating_high", "rating_mid", "rating_low", "user_rating", "user_rating_black",
+}
+
 
 def _enabled(value):
     return value is True or str(value).strip().lower() == "true"
@@ -303,6 +307,11 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
             allowed_streaming_options = {"region", "availability_types", "style", "overlay_limit", "spacing", "orientation"}
             rule.setdefault("template_variables", {}).update({key: value for key, value in (options.get("streaming_options") or {}).items() if key in allowed_streaming_options})
     layers = builder(metadata, rules, Path(overlays_dir), is_landscape=landscape)
+    if options.get("rating_mode") == "providers":
+        layers = [
+            layer for layer in layers
+            if str(layer.get("name") or "").lower() not in LEGACY_AUDIENCE_RATING_LAYERS
+        ]
     anime_layer = _animetafill_preview_layer(options, animetafill_config)
     if anime_layer:
         layers = [layer for layer in layers if preview_layer_key(layer) != "anime"]

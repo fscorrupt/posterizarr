@@ -73,6 +73,9 @@ Metacritic (`metacritic`), and Letterboxd (`letterboxd`). Choose providers in
 is a default, not a three-provider limit. Cached ratings are independent of this
 selection; having seven cached values does not automatically enable seven badges.
 Live Preview uses sample values, not the selected item's cached ratings.
+When provider ratings are available, the built-in provider layout suppresses the
+legacy `rating_high` / `user_rating` audience badges from imported overlay files,
+so the old audience score is not drawn a second time.
 
 Provider score controls are saved with the library and artwork-format layout:
 

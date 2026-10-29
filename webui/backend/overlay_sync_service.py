@@ -1798,6 +1798,9 @@ RATING_BRAND_COLORS = {
     "trakt": ("#ED1C24E6", "#FFFFFF"),
     "letterboxd": ("#14181CE6", "#00E054"),
 }
+LEGACY_AUDIENCE_RATING_LAYERS = {
+    "rating_high", "rating_mid", "rating_low", "user_rating", "user_rating_black",
+}
 
 
 def _rating_theme_colors(theme: str, source: str, score: Optional[float]) -> Tuple[str, str]:
@@ -1959,6 +1962,11 @@ def build_overlay_layers_for_item(
             _CACHED_CONFIG_ENGINE_ROOT = project_root
         engine = _CACHED_CONFIG_ENGINE
         layers = engine.evaluate_item(item_metadata, engine_rules)
+        if rating_rules and item_metadata.get("multi_ratings"):
+            layers = [
+                layer for layer in layers
+                if str(layer.get("name") or "").lower() not in LEGACY_AUDIENCE_RATING_LAYERS
+            ]
         if any(layer.get("name") in ("resolution_banner", "resolution") for layer in native_rating_layers):
             layers = [layer for layer in layers if str(layer.get("name") or "").lower() not in ("4k_banner", "resolution_banner", "resolution", "4k", "1080p", "720p", "576p", "480p")]
 
