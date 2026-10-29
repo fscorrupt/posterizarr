@@ -903,13 +903,13 @@ export default function RuntimeHistory() {
               ? "border-amber-500/50 shadow-amber-500/10 ring-1 ring-amber-500/30"
               : "border-white/[0.07] hover:border-amber-500/40"
           }`}
-          title={t('runtime_history.ui.resetFilters')}
+          title={t('runtime_history.kpis.resetFilters')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.totalRuns')}</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.kpis.totalRuns')}</span>
               <span className="text-[9px] text-amber-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                {t('runtime_history.ui.clickToViewAll')}
+                {t('runtime_history.kpis.clickToViewAll')}
               </span>
             </div>
             <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 group-hover:scale-110 transition-transform">
@@ -919,10 +919,10 @@ export default function RuntimeHistory() {
           <div className="my-1">
             <div className="text-2xl lg:text-3xl font-bold tracking-tight text-white">{kpis.totalRuns.toLocaleString()}</div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center gap-1.5">
-              <span className="text-emerald-400 font-medium">{kpis.successRuns} {t('runtime_history.ui.ok')}</span>
+              <span className="text-emerald-400 font-medium">{kpis.successRuns} {t('runtime_history.kpis.ok')}</span>
               <span>•</span>
               <span className={kpis.failedRuns > 0 ? "text-rose-400 font-medium" : "text-theme-text-muted"}>
-                {kpis.failedRuns} {t('runtime_history.ui.errorsAbbr')}
+                {kpis.failedRuns} {t('runtime_history.kpis.errorsAbbr')}
               </span>
             </div>
           </div>
@@ -946,13 +946,13 @@ export default function RuntimeHistory() {
               ? "border-emerald-500 ring-2 ring-emerald-500/60 bg-emerald-500/10 shadow-emerald-500/15"
               : "border-white/[0.07] hover:border-emerald-500/40"
           }`}
-          title={t('runtime_history.ui.toggleSuccessFilter')}
+          title={t('runtime_history.kpis.toggleSuccessFilter')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.successRate')}</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.kpis.successRate')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${statusFilter === "success" ? "text-emerald-300 opacity-100" : "text-emerald-400 opacity-0 group-hover:opacity-100"}`}>
-                {statusFilter === "success" ? `✓ ${t('runtime_history.ui.filterActive')}` : t('runtime_history.ui.clickToFilter')}
+                {statusFilter === "success" ? `✓ ${t('runtime_history.kpis.filterActive')}` : t('runtime_history.kpis.clickToFilter')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${statusFilter === "success" ? "bg-emerald-500 text-black" : "bg-emerald-500/10 text-emerald-400"}`}>
@@ -965,7 +965,7 @@ export default function RuntimeHistory() {
             </div>
             <div className="text-[11px] mt-0.5 font-medium flex items-center gap-1">
               <span className={kpis.successRate >= 95 ? "text-emerald-400" : (kpis.successRate >= 80 ? "text-amber-400" : "text-rose-400")}>
-                {statusFilter === "success" ? t('runtime_history.ui.showingSuccessfulRuns') : (kpis.successRate >= 95 ? t('runtime_history.ui.optimalHealth') : (kpis.successRate >= 80 ? t('runtime_history.ui.attentionNeeded') : t('runtime_history.ui.degraded')))}
+                {statusFilter === "success" ? t('runtime_history.kpis.showingSuccessfulRuns') : (kpis.successRate >= 95 ? t('runtime_history.kpis.optimalHealth') : (kpis.successRate >= 80 ? t('runtime_history.kpis.attentionNeeded') : t('runtime_history.kpis.degraded')))}
               </span>
             </div>
           </div>
@@ -995,13 +995,13 @@ export default function RuntimeHistory() {
               ? "border-blue-500 ring-2 ring-blue-500/60 bg-blue-500/10 shadow-blue-500/15"
               : "border-white/[0.07] hover:border-blue-500/40"
           }`}
-          title={t('runtime_history.ui.filterRunsByAssets')}
+          title={t('runtime_history.kpis.filterRunsByAssets')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.assetsCreated')}</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.kpis.assetsCreated')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${assetFilter === "with_assets" ? "text-blue-300 opacity-100" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}>
-                {assetFilter === "with_assets" ? `✓ ${t('runtime_history.ui.filterActive')}` : t('runtime_history.ui.clickToFilter')}
+                {assetFilter === "with_assets" ? `✓ ${t('runtime_history.kpis.filterActive')}` : t('runtime_history.kpis.clickToFilter')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${assetFilter === "with_assets" ? "bg-blue-500 text-black" : "bg-blue-500/10 text-blue-400"}`}>
@@ -1034,13 +1034,13 @@ export default function RuntimeHistory() {
               ? "border-purple-500 ring-2 ring-purple-500/60 bg-purple-500/10 shadow-purple-500/15"
               : "border-white/[0.07] hover:border-purple-500/40"
           }`}
-          title={t('runtime_history.ui.sortByDuration')}
+          title={t('runtime_history.kpis.sortByDuration')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.avgDuration')}</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.kpis.avgDuration')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${sortBy === "duration_desc" ? "text-purple-300 opacity-100" : "text-purple-400 opacity-0 group-hover:opacity-100"}`}>
-                {sortBy === "duration_desc" ? `✓ ${t('runtime_history.ui.sortedLongest')}` : t('runtime_history.ui.clickToSort')}
+                {sortBy === "duration_desc" ? `✓ ${t('runtime_history.kpis.sortedLongest')}` : t('runtime_history.kpis.clickToSort')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${sortBy === "duration_desc" ? "bg-purple-500 text-black" : "bg-purple-500/10 text-purple-400"}`}>
@@ -1050,7 +1050,7 @@ export default function RuntimeHistory() {
           <div className="my-1">
             <div className="text-2xl lg:text-3xl font-bold tracking-tight text-white font-mono">{kpis.avgDurationFormatted}</div>
             <div className="text-[11px] text-theme-text-muted mt-0.5">
-              {t('runtime_history.ui.minMaxDuration', { min: formatDuration(kpis.minDurationSec), max: formatDuration(kpis.maxDurationSec) })}
+              {t('runtime_history.kpis.minMaxDuration', { min: formatDuration(kpis.minDurationSec), max: formatDuration(kpis.maxDurationSec) })}
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
@@ -1065,13 +1065,13 @@ export default function RuntimeHistory() {
         <div
           onClick={() => navigate("/asset-overview")}
           className="bg-theme-card/80 backdrop-blur-md rounded-2xl border border-white/[0.07] p-4 flex flex-col justify-between hover:border-cyan-500/40 transition-all group shadow-md relative overflow-hidden cursor-pointer hover:scale-[1.02] active:scale-[0.99]"
-          title={t('runtime_history.ui.assetStorageOverview')}
+          title={t('runtime_history.kpis.assetStorageOverview')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.storageFootprint')}</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.kpis.storageFootprint')}</span>
               <span className="text-[9px] text-cyan-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                {t('runtime_history.ui.openOverview')} →
+                {t('runtime_history.kpis.openOverview')} →
               </span>
             </div>
             <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:scale-110 transition-transform">
@@ -1083,7 +1083,7 @@ export default function RuntimeHistory() {
               {assetStats?.stats?.total_size ? formatBytes(assetStats.stats.total_size) : kpis.totalSpaceSaved}
             </div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center justify-between">
-              <span>{t('runtime_history.ui.savedApprox', { value: kpis.totalSpaceSaved })}</span>
+              <span>{t('runtime_history.kpis.savedApprox', { value: kpis.totalSpaceSaved })}</span>
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
@@ -1103,13 +1103,13 @@ export default function RuntimeHistory() {
               ? "border-rose-500 ring-2 ring-rose-500/60 bg-rose-500/10 shadow-rose-500/15"
               : "border-white/[0.07] hover:border-rose-500/40"
           }`}
-          title={t('runtime_history.ui.toggleErrorFilter')}
+          title={t('runtime_history.kpis.toggleErrorFilter')}
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.ui.errorsAlerts')}</span>
+              <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">{t('runtime_history.kpis.errorsAlerts')}</span>
               <span className={`text-[9px] font-medium transition-opacity ${statusFilter === "errors" ? "text-rose-300 opacity-100" : "text-rose-400 opacity-0 group-hover:opacity-100"}`}>
-                {statusFilter === "errors" ? `✓ ${t('runtime_history.ui.filterActive')}` : t('runtime_history.ui.clickToFilter')}
+                {statusFilter === "errors" ? `✓ ${t('runtime_history.kpis.filterActive')}` : t('runtime_history.kpis.clickToFilter')}
               </span>
             </div>
             <div className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${statusFilter === "errors" ? "bg-rose-500 text-black" : (kpis.totalErrors > 0 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/10 text-emerald-400')}`}>
@@ -1122,7 +1122,7 @@ export default function RuntimeHistory() {
             </div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${kpis.totalErrors > 0 ? 'bg-rose-500' : 'bg-emerald-400'}`}></span>
-              <span>{statusFilter === "errors" ? t('runtime_history.ui.showingErrorsOnly') : (kpis.totalErrors === 0 ? t('runtime_history.ui.cleanExecutions') : t('runtime_history.ui.exceptionsCaught'))}</span>
+              <span>{statusFilter === "errors" ? t('runtime_history.kpis.showingErrorsOnly') : (kpis.totalErrors === 0 ? t('runtime_history.kpis.cleanExecutions') : t('runtime_history.kpis.exceptionsCaught'))}</span>
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">

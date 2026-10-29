@@ -818,12 +818,12 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
         # Inspect overlay files in config for movie vs tv hints
         has_movie_rules = any(
             "overlays_movies" in str(e.get("file", "")).lower() or
-            str(e.get("template_variables", {}).get("builder_level", "")).lower() == "movie"
+            str((e.get("template_variables") or {}).get("builder_level", "")).lower() == "movie"
             for e in overlay_files if isinstance(e, dict)
         )
         has_tv_rules = any(
             "overlays_tv" in str(e.get("file", "")).lower() or
-            str(e.get("template_variables", {}).get("builder_level", "")).lower() in ("show", "episode", "season")
+            str((e.get("template_variables") or {}).get("builder_level", "")).lower() in ("show", "episode", "season")
             for e in overlay_files if isinstance(e, dict)
         )
 

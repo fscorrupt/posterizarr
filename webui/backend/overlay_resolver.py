@@ -720,7 +720,7 @@ class OverlayResolver:
             except Exception as ex:
                 logger.debug(f"[OverlayResolver] API key extraction on scan skipped: {ex}")
 
-        libraries = main_config.get("libraries", {})
+        libraries = main_config.get("libraries") or {}
         parsed_libraries = {}
         all_referenced_assets: Dict[str, Dict[str, Any]] = {}
         parsed_def_assets = set()
@@ -729,7 +729,7 @@ class OverlayResolver:
             if not isinstance(lib_data, dict):
                 continue
 
-            overlay_files = lib_data.get("overlay_files", [])
+            overlay_files = lib_data.get("overlay_files") or []
             active_overlays = []
 
             for entry in overlay_files:
@@ -742,7 +742,7 @@ class OverlayResolver:
                     active_overlays.append({
                         "type": "default",
                         "name": def_name,
-                        "variables": entry.get("template_variables", {})
+                        "variables": entry.get("template_variables") or {}
                     })
                     # Add default template asset
                     all_referenced_assets[f"default:{def_name}"] = {
@@ -757,7 +757,7 @@ class OverlayResolver:
                         self._parse_overlay_file_assets(f"{def_name}.yml", all_referenced_assets, search_defaults=True)
 
                     # Inspect variables for custom fonts or colors
-                    tv = entry.get("template_variables", {})
+                    tv = entry.get("template_variables") or {}
                     if "font" in tv and tv["font"]:
                         raw_font = str(tv["font"]).strip()
                         if not is_template_placeholder(raw_font):
@@ -777,7 +777,7 @@ class OverlayResolver:
                     active_overlays.append({
                         "type": "file",
                         "name": file_name,
-                        "variables": entry.get("template_variables", {})
+                        "variables": entry.get("template_variables") or {}
                     })
                     self._parse_overlay_file_assets(file_name, all_referenced_assets)
 
@@ -801,12 +801,12 @@ class OverlayResolver:
             if not lib_media_type:
                 has_mov = any(
                     "overlays_movies" in str(e.get("file", "")).lower() or
-                    str(e.get("template_variables", {}).get("builder_level", "")).lower() == "movie"
+                    str((e.get("template_variables") or {}).get("builder_level", "")).lower() == "movie"
                     for e in overlay_files if isinstance(e, dict)
                 )
                 has_tv = any(
                     "overlays_tv" in str(e.get("file", "")).lower() or
-                    str(e.get("template_variables", {}).get("builder_level", "")).lower() in ("show", "episode", "season")
+                    str((e.get("template_variables") or {}).get("builder_level", "")).lower() in ("show", "episode", "season")
                     for e in overlay_files if isinstance(e, dict)
                 )
                 if has_mov and not has_tv:
@@ -891,7 +891,7 @@ class OverlayResolver:
             for library in yaml_libraries.values():
                 if not isinstance(library, dict):
                     continue
-                for entry in library.get("overlay_files", []):
+                for entry in library.get("overlay_files") or []:
                     if not isinstance(entry, dict):
                         continue
                     rule_name = str(entry.get("default") or entry.get("file") or "").lower()
