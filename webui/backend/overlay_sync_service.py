@@ -2197,9 +2197,114 @@ def build_overlay_layers_for_item(
         target = str(variables.get("builder_level", "show" if item_level == "show" else "movie")).lower()
         if target in ("all", item_level) or (item_level == "backdrop" and target in ("movie", "show")):
             native_rating_layers.extend(build_streaming_layers(item_metadata, variables, overlays_dir))
-    engine_rules = [rule for rule in library_rules if rule not in rating_rules and rule not in single_rules and rule not in resolution_rules and rule not in streaming_rules]
+    aggregated_parent = bool(item_metadata.get("_aggregated_episode_streams")) and item_level in ("show", "season", "backdrop")
+    native_language_layers = []
+    native_parent_stream_layers = []
+    flag_assets_dir = overlays_dir / "assets"
+    flag_dirs = [
+        flag_assets_dir / "flag" / "square", flag_assets_dir / "flags" / "square",
+        flag_assets_dir / "flag" / "round", flag_assets_dir / "flags" / "round",
+        flag_assets_dir / "flag", flag_assets_dir / "flags", flag_assets_dir,
+        overlays_dir / "defaults" / "images" / "flag" / "square",
+        overlays_dir / "defaults" / "images" / "flags" / "square",
+        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flag" / "square",
+        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flags" / "square",
+        Path("/config/Overlayfiles/dynamic_overlays/assets/flag/square"),
+        Path("/config/Overlayfiles/dynamic_overlays/assets/flags/square"),
+        Path("/app/Overlayfiles/dynamic_overlays/assets/flag/square"),
+    ]
+
+    def resolve_parent_flag(code):
+        filename = LANGUAGE_TO_FLAG_MAP.get(code, f"{code}.png")
+        return next((directory / filename for directory in flag_dirs if (directory / filename).exists()), flag_assets_dir / "flag" / "square" / filename)
+
+    if aggregated_parent:
+        for rule in library_rules:
+            if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "languages":
+                continue
+            variables = rule.get("template_variables") or {}
+            target = str(variables.get("builder_level", "all")).lower()
+            target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
+            if target not in ("all", target_level, "episode"):
+                continue
+            subtitle_rule = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
+            detected = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
+            allowed = [str(code).strip().lower() for code in variables.get("languages", ["de", "en", "ja", "zh", "ko"])]
+            selected = []
+            for value in detected:
+                code = str(value).strip().lower()
+                code = LANGUAGE_MAP.get(code, code)
+                if code in allowed and code not in selected:
+                    selected.append(code)
+            if not item_metadata.get("_language_order_precomputed"):
+                priority = {code: index for index, code in enumerate(allowed)}
+                selected.sort(key=priority.__getitem__)
+            selected = selected[:max(0, min(5, int(variables.get("overlay_limit", 5))))]
+            horizontal_align = variables.get("horizontal_align") or variables.get("horizontal_position", "left")
+            vertical_align = variables.get("vertical_align") or variables.get("vertical_position", "bottom")
+            horizontal_offset = int(variables.get("horizontal_offset", 48))
+            vertical_offset = int(variables.get("vertical_offset", 37))
+            for index, code in enumerate(selected):
+                native_language_layers.append({
+                    "name": f"language_flag_{code}",
+                    "type": "image",
+                    "image_path": str(resolve_parent_flag(code)),
+                    "scale_width": 46,
+                    "scale_height": 28,
+                    "horizontal_align": horizontal_align,
+                    "horizontal_offset": horizontal_offset,
+                    "vertical_align": vertical_align,
+                    "vertical_offset": vertical_offset + (len(selected) - index - 1) * 32,
+                })
+
+        for rule in library_rules:
+            if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "audio_codec":
+                continue
+            variables = rule.get("template_variables") or {}
+            target = str(variables.get("builder_level", "all")).lower()
+            target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
+            if target not in ("all", target_level, "episode"):
+                continue
+            candidates = [
+                str(item_metadata.get(key) or "")
+                for key in ("audio_track_title", "audio_title", "audio_codec", "audio_profile", "filepath", "clean_tc", "title")
+            ]
+            matched_codec = next((name for name, pattern in AUDIO_CODEC_PATTERNS if pattern.search(" ".join(candidates))), None)
+            if not matched_codec:
+                continue
+            style = str(variables.get("style", "compact")).lower()
+            codec_dir = flag_assets_dir / "audio_codec" / style
+            if not codec_dir.exists():
+                codec_dir = flag_assets_dir / "audio_codec" / "compact"
+            codec_image = codec_dir / f"{matched_codec}.png"
+            if not codec_image.exists():
+                codec_image = flag_assets_dir / "audio_codec" / "standard" / f"{matched_codec}.png"
+            if codec_image.exists():
+                native_parent_stream_layers.append({
+                    "name": f"audio_codec_{matched_codec}",
+                    "type": "image",
+                    "image_path": str(codec_image),
+                    "back_color": "#00000099",
+                    "back_width": 305,
+                    "back_height": 105,
+                    "back_radius": 12,
+                    "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position", "center"),
+                    "horizontal_offset": int(variables.get("horizontal_offset", 0)),
+                    "vertical_align": variables.get("vertical_align") or variables.get("vertical_position", "top"),
+                    "vertical_offset": int(variables.get("vertical_offset", 15)),
+                })
+
+    engine_rules = []
+    for rule in library_rules:
+        if rule in rating_rules or rule in single_rules or rule in resolution_rules or rule in streaming_rules:
+            continue
+        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("languages", "audio_codec"):
+            continue
+        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() == "languages":
+            continue
+        engine_rules.append(rule)
     try:
-        from overlay_resolver import OverlayConfigEngine, PROJECT_ROOT
+        from overlay_resolver import OverlayConfigEngine
         global _CACHED_CONFIG_ENGINE, _CACHED_CONFIG_ENGINE_ROOT
         project_root = overlays_dir.parent.parent
         if not (project_root / "Overlayfiles" / "dynamic_overlays").exists() and not (project_root / "defaults").exists():
@@ -2217,7 +2322,7 @@ def build_overlay_layers_for_item(
         if any(layer.get("name") in ("resolution_banner", "resolution") for layer in native_rating_layers):
             layers = [layer for layer in layers if str(layer.get("name") or "").lower() not in ("4k_banner", "resolution_banner", "resolution", "4k", "1080p", "720p", "576p", "480p")]
 
-        if layers or native_rating_layers or not engine_rules:
+        if layers or native_rating_layers or native_language_layers or native_parent_stream_layers or not engine_rules:
             if is_landscape:
                 layers = [l for l in layers if l.get("name") not in ("4K_banner", "resolution_banner")]
             else:
@@ -2230,7 +2335,7 @@ def build_overlay_layers_for_item(
                         )
                     ]
             layers = [l for l in layers if str(l.get("name") or "").lower() != "force-filter"]
-            return layers + native_rating_layers
+            return layers + native_rating_layers + native_language_layers + native_parent_stream_layers
     except Exception as e:
         logger.warning(f"[OverlaySync] OverlayConfigEngine evaluation error: {e}. Falling back to standard rules.")
 
