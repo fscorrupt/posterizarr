@@ -329,6 +329,18 @@ def _audience_rating_from_scores(ratings: Optional[Dict[str, Any]]) -> Optional[
     return None
 
 
+def _animetafill_targets_library(library_name: str, config: Dict[str, Any]) -> bool:
+    if not config.get("enabled"):
+        return False
+    target_libraries = config.get("target_libraries")
+    if target_libraries is None:
+        target_libraries = config.get("plex_libraries", [])
+    library_key = str(library_name or "").strip().casefold()
+    return bool(library_key and isinstance(target_libraries, list) and any(
+        str(target or "").strip().casefold() == library_key for target in target_libraries
+    ))
+
+
 def build_attr_snapshot(item: Dict[str, Any]) -> str:
     """
     Serialize hash-relevant attributes that are not stored in dedicated cache columns
@@ -1723,9 +1735,7 @@ def build_multi_rating_layers(
             score_width = 3 * digit_width + 4
         else:
             score_width = 3 * digit_width + dot_width + 4
-        if score_size_mode == "content":
-            score_width = text_width
-        elif score_size_mode == "fixed" and requested_score_width:
+        if score_size_mode == "fixed" and requested_score_width:
             score_width = max(16, requested_score_width)
         content_width = (score_width if custom_score_layout else max(text_width, score_width)) + logo_width + (8 if logo_width else 0)
         content_height = max(text_height, score_height, logo_height)
@@ -3427,10 +3437,10 @@ async def _run_overlay_sync_task(
 
                 # Check if AniMetaFill integration is active once for the library
                 try:
-                    from animetafill_service import is_animetafill_enabled
-                    anim_enabled = is_animetafill_enabled()
+                    from animetafill_service import get_animetafill_config
+                    anim_config = get_animetafill_config()
                 except Exception:
-                    anim_enabled = False
+                    anim_config = {}
 
                 write_log(f"Processing {len(media_items)} items on {s_type.upper()} (Concurrency: {concurrency}, Debug Logging: {debug_log_enabled})...")
 
@@ -4748,7 +4758,7 @@ async def _run_overlay_sync_task(
                                                     str(r.get("file", "")).endswith("anime_overlays.yml")
                                                     for r in effective_ep_rules if isinstance(r, dict)
                                                 )
-                                                if anim_enabled and not has_anime_rule:
+                                                if _animetafill_targets_library(lib_name, anim_config) and not has_anime_rule:
                                                     effective_ep_rules.append({"file": "config/anime_overlays.yml"})
 
                                             ep_layers = build_overlay_layers_for_item(
