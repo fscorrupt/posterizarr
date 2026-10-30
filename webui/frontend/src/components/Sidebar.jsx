@@ -5,7 +5,7 @@ import {
   Activity, Play, Image, Settings, Clock, FileText, Info, Menu, X,
   ChevronDown, ChevronRight, Film, Layers, Tv, Database, Server,
   Palette, Bell, Lock, User, FileImage, Lightbulb, AlertTriangle,
-  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer, Sparkles
+  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer
 } from "lucide-react";
 import VersionBadge from "./VersionBadge";
 import { useSidebar } from "../context/SidebarContext";
@@ -27,6 +27,7 @@ const externalLinks = [
   { name: 'Discord', href: 'https://discord.gg/fYyJQSGt54', icon: DiscordIcon },
   { name: 'Docs', href: 'https://fscorrupt.github.io/posterizarr', icon: BookOpen },
   { name: 'GitHub', href: 'https://github.com/fscorrupt/posterizarr', icon: GithubIcon },
+  { name: 'Sponsor', href: 'https://ko-fi.com/R6R81S6SC', icon: Heart },
 ];
 
 const Sidebar = () => {
@@ -41,25 +42,8 @@ const Sidebar = () => {
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [missingAssetsCount, setMissingAssetsCount] = useState(0);
   const [manualAssetsCount, setManualAssetsCount] = useState(0);
-  const [showPlexQuarantine, setShowPlexQuarantine] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null);
   const [hoveredItem, setHoveredItem] = useState(null);
-
-  React.useEffect(() => {
-    if (!isMobileMenuOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const closeOnEscape = (event) => { if (event.key === "Escape") setIsMobileMenuOpen(false); };
-    const media = window.matchMedia("(min-width: 768px)");
-    const closeOnDesktop = (event) => { if (event.matches) setIsMobileMenuOpen(false); };
-    document.addEventListener("keydown", closeOnEscape);
-    media.addEventListener("change", closeOnDesktop);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", closeOnEscape);
-      media.removeEventListener("change", closeOnDesktop);
-    };
-  }, [isMobileMenuOpen]);
 
   const [viewMode, setViewMode] = useState(() => {
     return localStorage.getItem("gallery-view-mode") || "grid";
@@ -67,32 +51,37 @@ const Sidebar = () => {
 
   // Counts Fetching Logic
   React.useEffect(() => {
-    const controller = new AbortController();
-    let requestId = 0;
-    const fetchCounts = async (refresh = false) => {
-      const currentRequest = ++requestId;
+    const fetchMissingAssetsCount = async () => {
       try {
-        const response = await fetch(`/api/sidebar/counts${refresh ? "?refresh=true" : ""}`, { signal: controller.signal });
+        const response = await fetch("/api/assets/overview");
         if (response.ok) {
           const data = await response.json();
-          if (!controller.signal.aborted && currentRequest === requestId && data.success) {
-            setMissingAssetsCount(data.assets_with_issues || 0);
-            setManualAssetsCount(data.manual_assets || 0);
-          }
+          setMissingAssetsCount(data.categories.assets_with_issues.count);
         }
-      } catch (error) {
-        if (error.name !== "AbortError") console.error("Failed to fetch sidebar counts:", error);
-      }
+      } catch (error) { console.error("Failed to fetch missing assets count:", error); }
     };
-    fetchCounts();
-    const handleAssetReplaced = () => fetchCounts(true);
+    fetchMissingAssetsCount();
+    const handleAssetReplaced = () => fetchMissingAssetsCount();
     window.addEventListener("assetReplaced", handleAssetReplaced);
-    const interval = setInterval(() => fetchCounts(), 60000);
-    return () => {
-      controller.abort();
-      clearInterval(interval);
-      window.removeEventListener("assetReplaced", handleAssetReplaced);
+    const interval = setInterval(fetchMissingAssetsCount, 60000);
+    return () => { clearInterval(interval); window.removeEventListener("assetReplaced", handleAssetReplaced); };
+  }, []);
+
+  React.useEffect(() => {
+    const fetchManualAssetsCount = async () => {
+      try {
+        const response = await fetch("/api/manual-assets-gallery");
+        if (response.ok) {
+          const data = await response.json();
+          setManualAssetsCount(data.total_assets || 0);
+        }
+      } catch (error) { console.error("Failed to fetch manual assets count:", error); }
     };
+    fetchManualAssetsCount();
+    const handleAssetReplaced = () => fetchManualAssetsCount();
+    window.addEventListener("assetReplaced", handleAssetReplaced);
+    const interval = setInterval(fetchManualAssetsCount, 600000);
+    return () => { clearInterval(interval); window.removeEventListener("assetReplaced", handleAssetReplaced); };
   }, []);
 
   React.useEffect(() => {
@@ -101,28 +90,6 @@ const Sidebar = () => {
     const interval = setInterval(handleStorageChange, 500);
     return () => { window.removeEventListener("viewModeChanged", handleStorageChange); clearInterval(interval); };
   }, []);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    const checkPlexQuarantine = async () => {
-      try {
-        const response = await fetch("/api/plex-image-cleanup/availability", { signal: controller.signal });
-        if (!response.ok) throw new Error("Availability lookup failed");
-        const result = await response.json();
-        if (!controller.signal.aborted) setShowPlexQuarantine(result.visible === true);
-      } catch (error) {
-        if (error.name !== "AbortError") setShowPlexQuarantine(false);
-      }
-    };
-    checkPlexQuarantine();
-    const interval = setInterval(checkPlexQuarantine, 60000);
-    window.addEventListener("plexQuarantineChanged", checkPlexQuarantine);
-    return () => {
-      controller.abort();
-      clearInterval(interval);
-      window.removeEventListener("plexQuarantineChanged", checkPlexQuarantine);
-    };
-  }, [location.pathname]);
 
   const themeArray = Object.entries(themes).map(([id, config]) => ({
     id, name: config.name, color: config.variables["--theme-primary"],
@@ -155,7 +122,6 @@ const Sidebar = () => {
           { path: "/gallery/posters", label: t("assets.assetsFolders"), icon: FolderKanban },
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
-          ...(showPlexQuarantine ? [{ path: "/image-quarantine", label: "Plex Image Quarantine", icon: Archive }] : []),
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ]
@@ -166,7 +132,6 @@ const Sidebar = () => {
           { path: "/gallery/titlecards", label: t("assets.titleCards"), icon: Tv },
           { path: "/manual-assets", label: "Manual Assets", icon: FileImage, badge: manualAssetsCount, badgeColor: "green" },
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
-          ...(showPlexQuarantine ? [{ path: "/image-quarantine", label: "Plex Image Quarantine", icon: Archive }] : []),
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ],
@@ -182,7 +147,6 @@ const Sidebar = () => {
         { path: "/media-server-collections", label: "Collection Builder", icon: Layers },
         { path: "/media-server-logos", label: "Logo Builder", icon: Image },
         { path: "/assets-manager", label: "Overlay Builder", icon: Layers },
-        { path: "/dynamic-overlays", label: "Dynamic Overlays", icon: Sparkles },
         { path: "/blueprints", label: "Blueprint Builder", icon: Layers }
       ]
     },
@@ -190,7 +154,7 @@ const Sidebar = () => {
     { id: "config", path: "/config/system", label: t("nav.config"), icon: Settings },
 
     { id: "runtimeHistory", path: "/runtime-history", label: t("nav.runtimeHistory"), icon: TrendingUp },
-    { id: "logs", path: "/logs", label: t("nav.logs"), icon: FileText },
+    { id: "logs", path: "/logs", label: t("sidebar.logs"), icon: FileText },
     { id: "howItWorks", path: "/how-it-works", label: t("nav.howItWorks"), icon: Lightbulb },
     { id: "about", path: "/about", label: t("nav.about"), icon: Info },
   ];
@@ -216,19 +180,19 @@ const Sidebar = () => {
   const handleDragOver = (e, index) => { e.preventDefault(); if (draggedItem === null || draggedItem === index) return; const newOrder = [...navOrder]; const draggedId = newOrder[draggedItem]; newOrder.splice(draggedItem, 1); newOrder.splice(index, 0, draggedId); setDraggedItem(index); setNavOrder(newOrder); };
   const handleDragEnd = () => { if (draggedItem !== null) saveNavOrder(navOrder); setDraggedItem(null); };
 
-  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/image-quarantine") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
+  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
   const isInMediaServerSection = location.pathname.startsWith("/media-server-export");
   const isInConfigSection = location.pathname.startsWith("/config");
-  const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/dynamic-overlays") || location.pathname.startsWith("/blueprints");
+  const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/blueprints");
 
   return (
     <>
       {/* REMOVED border-r, added shadow-2xl for cleaner separation */}
-      <div className={`app-sidebar hidden md:flex flex-col fixed left-0 top-0 h-screen transition-all duration-300 z-50 ${isCollapsed ? "w-20" : "w-64"}`}>
+      <div className={`hidden md:flex flex-col fixed left-0 top-0 h-screen bg-theme-card shadow-2xl transition-all duration-300 z-50 ${isCollapsed ? "w-20" : "w-80"}`}>
 
         {/* Header Logo Area - REMOVED border-b */}
-        <div className="flex items-center px-4 h-16 shrink-0">
-          <button onClick={() => setIsCollapsed(!isCollapsed)} title={isCollapsed ? "Expand navigation" : "Collapse navigation"} aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"} className="p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-muted hover:text-theme-text">
+        <div className="flex items-center p-5 h-20">
+          <button onClick={() => setIsCollapsed(!isCollapsed)} className="p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-muted hover:text-theme-text">
             <Menu className="w-5 h-5" />
           </button>
           {!isCollapsed && (
@@ -239,7 +203,7 @@ const Sidebar = () => {
           )}
         </div>
 
-        <nav aria-label="Main navigation" className="flex-1 overflow-y-auto py-6 px-3 scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
+        <nav className="flex-1 overflow-y-auto py-6 px-3 scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
           <div className="space-y-1.5">
             {navItems.map((item, index) => {
               const Icon = item.icon;
@@ -300,7 +264,6 @@ const Sidebar = () => {
                             <Link
                               key={subItem.path}
                               to={subItem.path}
-                              aria-current={isSubActive ? "page" : undefined}
                               className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${isSubActive ? activeClass : "text-theme-muted hover:bg-theme-hover hover:text-theme-text"}`}
                             >
                               <div className="flex items-center">
@@ -325,7 +288,6 @@ const Sidebar = () => {
                 <div key={item.id} draggable={!isCollapsed} onDragStart={(e) => handleDragStart(e, index)} onDragOver={(e) => handleDragOver(e, index)} onDragEnd={handleDragEnd} onMouseEnter={() => setHoveredItem(index)} onMouseLeave={() => setHoveredItem(null)} className={`relative ${isDragging ? "opacity-50" : ""}`}>
                   <Link
                     to={item.path}
-                    aria-current={isActive ? "page" : undefined}
                     className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between px-4"} py-3 rounded-xl text-sm font-medium transition-all duration-200 group relative ${isActive ? activeClass : inactiveClass}`}
                     title={isCollapsed ? item.label : ""}
                   >
@@ -351,7 +313,7 @@ const Sidebar = () => {
 
         {!isCollapsed && (
           <div className="mt-auto p-4 flex flex-col items-center bg-theme-hover/5">
-
+            
             {/* External Links Section */}
             <div className="flex items-center gap-4 mb-4">
               {externalLinks.map((link) => (
@@ -368,20 +330,6 @@ const Sidebar = () => {
               ))}
             </div>
 
-            <a
-              href="https://ko-fi.com/R6R81S6SC"
-              target="_blank"
-              rel="noopener noreferrer"
-              title={t("support.title")}
-              className="mb-4 flex w-full max-w-[208px] items-center gap-2.5 border-l-2 border-theme-primary/40 py-1.5 pl-3 transition-colors hover:border-theme-primary"
-            >
-              <Heart className="h-4 w-4 shrink-0 text-rose-400" />
-              <span className="min-w-0">
-                <span className="block text-xs font-semibold text-theme-text">{t("support.title")}</span>
-                <span className="block text-[10px] leading-relaxed text-theme-muted">{t("support.message")}</span>
-              </span>
-            </a>
-
             {/* Subtle Integrated Divider */}
             <div className="w-12 h-px bg-theme-border/40 mb-4" />
 
@@ -392,27 +340,27 @@ const Sidebar = () => {
       </div>
 
       {/* Mobile Menu */}
-      <div className="app-topbar md:hidden fixed top-0 left-0 right-0 border-b border-theme z-50 h-16">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-theme-card/90 backdrop-blur-md border-b border-theme z-50 h-16 shadow-lg">
         <div className="flex items-center justify-between h-full px-4">
           <div className="flex items-center">
-            <button onClick={() => { setIsMobileMenuOpen(!isMobileMenuOpen); setIsThemeDropdownOpen(false); }} aria-label={isMobileMenuOpen ? t("sidebar.closeNavigation") : t("sidebar.openNavigation")} aria-expanded={isMobileMenuOpen} aria-controls="mobile-navigation" className="min-w-11 min-h-11 p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-text">
+            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-text">
               {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
             <span className="ml-3 text-lg font-bold text-theme-primary tracking-tight">Posterizarr</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <button onClick={() => { setIsThemeDropdownOpen(!isThemeDropdownOpen); setIsMobileMenuOpen(false); }} aria-label="Change theme" aria-expanded={isThemeDropdownOpen} className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><Palette className="w-5 h-5" /></button>
+              <button onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)} className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><Palette className="w-5 h-5" /></button>
               {isThemeDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsThemeDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-48 max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain rounded-xl bg-theme-card border border-theme shadow-xl z-50">
+                  <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-theme-card border border-theme shadow-xl z-50 overflow-hidden">
                     <div className="p-2 space-y-1">{themeArray.map((t) => (<button key={t.id} onClick={() => { setTheme(t.id); setIsThemeDropdownOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${theme === t.id ? "bg-theme-primary text-white" : "text-gray-300 hover:bg-theme-hover"}`}><span>{t.name}</span><div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.color }} /></button>))}</div>
                   </div>
                 </>
               )}
             </div>
-            <Link to="/config/system" onClick={() => { setIsMobileMenuOpen(false); setIsThemeDropdownOpen(false); }} aria-label="Account settings" className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><User className="w-5 h-5" /></Link>
+            <button className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><User className="w-5 h-5" /></button>
           </div>
         </div>
       </div>
@@ -420,8 +368,8 @@ const Sidebar = () => {
       {isMobileMenuOpen && (
         <>
           <div className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 top-16" onClick={() => setIsMobileMenuOpen(false)} />
-          <div id="mobile-navigation" className="md:hidden fixed left-0 top-16 bottom-0 w-72 max-w-[calc(100vw-1rem)] bg-theme-card border-r border-theme z-40 flex flex-col shadow-2xl">
-            <nav aria-label="Mobile navigation" className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="md:hidden fixed left-0 top-16 bottom-0 w-72 bg-theme-card border-r border-theme z-40 flex flex-col shadow-2xl">
+            <nav className="flex-1 overflow-y-auto py-6">
               <div className="space-y-1 px-4">
                 {navItems.map((item, index) => {
                   const Icon = item.icon;

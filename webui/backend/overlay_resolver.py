@@ -163,7 +163,7 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
     asset_indices = [index for index, part in enumerate(parts) if part.lower() == "assets"]
     if asset_indices:
         clean = str(PurePosixPath(*parts[asset_indices[-1] + 1:]))
-    if clean.lower().startswith("flags/"):
+    if clean.lower().startswith(("flag/", "flags/")):
         flag_parts = list(PurePosixPath(clean).parts)
         flag_parts[0] = "flag"
         flag_name = PurePosixPath(flag_parts[-1])
