@@ -3843,6 +3843,7 @@ export default function DynamicOverlays() {
         layoutPayload.languages = {
           languages: previewLanguages.split(",").map(code => code.trim()).filter(Boolean),
           overlay_limit: previewLanguageLimit,
+          ...(["show_poster", "season_poster", "backdrop", "background"].includes(previewTemplate) ? { aggregate_parent_streams: true } : {}),
           hide_text: !previewLanguageLabels,
           final_name: "text(<<final_text>>)",
           font_color: "#FFFFFF",

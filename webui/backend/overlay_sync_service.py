@@ -349,6 +349,24 @@ def _configured_language_order(rules):
             return [str(code).strip().lower() for code in languages if str(code).strip()]
     return ["de", "en", "ja", "zh", "ko"]
 
+def _parent_stream_aggregation_requested(rules):
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        default = str(rule.get("default", "")).lower()
+        if default not in ("languages", "audio_codec"):
+            continue
+        variables = rule.get("template_variables") or {}
+        if variables.get("aggregate_parent_streams") is True:
+            return True
+        builder_level = variables.get("builder_level")
+        if builder_level is None:
+            continue
+        levels = builder_level if isinstance(builder_level, list) else str(builder_level).split(",")
+        if any(str(level).strip().lower() in ("all", "show", "season") for level in levels):
+            return True
+    return False
+
 def _normalized_stream_language(value):
     code = str(value or "").strip().lower().replace("_", "-").split("-")[0]
     if not code:
@@ -2225,7 +2243,8 @@ def build_overlay_layers_for_item(
             variables = rule.get("template_variables") or {}
             target = str(variables.get("builder_level", "all")).lower()
             target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
-            if target not in ("all", target_level, "episode"):
+            parent_opt_in = variables.get("aggregate_parent_streams") is True
+            if target not in ("all", target_level) and not (target == "episode" and parent_opt_in):
                 continue
             subtitle_rule = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
             detected = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
@@ -2261,7 +2280,8 @@ def build_overlay_layers_for_item(
             variables = rule.get("template_variables") or {}
             target = str(variables.get("builder_level", "all")).lower()
             target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
-            if target not in ("all", target_level, "episode"):
+            parent_opt_in = variables.get("aggregate_parent_streams") is True
+            if target not in ("all", target_level) and not (target == "episode" and parent_opt_in):
                 continue
             candidates = [
                 str(item_metadata.get(key) or "")
@@ -3833,6 +3853,7 @@ async def _run_overlay_sync_task(
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
+                    needs_parent_stream_aggregation = _parent_stream_aggregation_requested(lib_rules)
 
                     # Fast in-memory cache lookup for poster & backdrop paths
                     cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None
@@ -4213,7 +4234,7 @@ async def _run_overlay_sync_task(
                     ratings_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
 
                     show_stream_data = None
-                    if m_type == "show" and (needs_languages or needs_audio) and (clean_asset or clean_backdrop):
+                    if m_type == "show" and needs_parent_stream_aggregation and (clean_asset or clean_backdrop):
                         try:
                             show_stream_data = await fetch_show_episode_stream_data(
                                 http_client, s_type, s_url, item_id, creds, cache_map,
