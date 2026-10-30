@@ -199,15 +199,18 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
     if not hours and not minutes and runtime.isdigit():
         runtime_mins = int(runtime)
     status = str(options.get("status_label") or "").lower().replace(" series", "").strip()
+    is_backdrop = template in ("backdrop", "background")
+    is_aggregated_parent_preview = bool(options.get("languages") and not episode and (show or is_backdrop))
     try:
         imdb_sample = f"{float(options.get('rating')):.1f}"
     except (TypeError, ValueError):
         imdb_sample = "8.4"
     metadata = {
-        "title": "Preview", "media_type": "episode" if episode else "show" if show else "movie",
+        "title": "Preview", "media_type": "episode" if episode else options.get("media_type") or ("show" if show else "movie"),
         "is_episode": episode, "is_season": season,
         "is_landscape": landscape,
-        "is_backdrop": template in ("backdrop", "background"),
+        "is_backdrop": is_backdrop,
+        "_aggregated_episode_streams": is_aggregated_parent_preview,
         "rating": options.get("rating"), "audience_rating": options.get("rating"),
         "multi_ratings": {
             "imdb": imdb_sample, "tomatoes": "93", "tomatoesaudience": "88", "tmdb": "8.1",
@@ -296,6 +299,8 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         if default_name == "languages":
             variables = rule.setdefault("template_variables", {})
             subtitle = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
+            if not subtitle and options.get("language_limit") is not None:
+                variables["overlay_limit"] = int(options["language_limit"])
             label_option = "subtitle_labels" if subtitle else "language_labels"
             if options.get(label_option) is not None:
                 variables["hide_text"] = not options[label_option]

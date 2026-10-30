@@ -2371,8 +2371,12 @@ def build_overlay_layers_for_item(
     if "languages" in rule_names:
         lang_vars = rule_names["languages"]
         builder_level = str(lang_vars.get("builder_level", "")).lower()
-        # If builder_level is episode, it does not apply to movie or show posters
-        if not (builder_level == "episode" and media_type in ["show", "season"]):
+        # Episode rules may also render on parent art when their episode data was aggregated.
+        if not (
+            builder_level == "episode"
+            and media_type in ["show", "season"]
+            and not item_metadata.get("_aggregated_episode_streams")
+        ):
             allowed_langs = [str(l).lower() for l in lang_vars.get("languages", ["de", "en", "ja", "zh", "ko"])]
             subtitle_rule = str(lang_vars.get("use_subtitles", False)).lower() in ("true", "1")
             item_langs = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
@@ -4120,6 +4124,7 @@ async def _run_overlay_sync_task(
                                     item["subtitle_languages"] = aggregate["subtitle_languages"]
                                 if aggregate["audio_codec"]:
                                     item["audio_codec"] = aggregate["audio_codec"]
+                                item["_aggregated_episode_streams"] = True
                                 item["_language_order_precomputed"] = True
                                 stream_count = sum(len(items) for items in show_stream_data["episodes_by_season"].values())
                                 write_log(f"  [i] {w_tag}Aggregated audio metadata from {stream_count} episodes for show artwork")

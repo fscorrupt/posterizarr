@@ -748,6 +748,7 @@ export default function DynamicOverlays() {
   const [previewLanguageLabels, setPreviewLanguageLabels] = useState(false);
   const [previewSubtitleLabels, setPreviewSubtitleLabels] = useState(false);
   const [previewLanguages, setPreviewLanguages] = useState("de,en");
+  const [previewLanguageLimit, setPreviewLanguageLimit] = useState(5);
   const [previewSubtitles, setPreviewSubtitles] = useState("");
   const [previewAspect, setPreviewAspect] = useState("");
   const [previewStudio, setPreviewStudio] = useState("");
@@ -3841,6 +3842,7 @@ export default function DynamicOverlays() {
       if (previewLanguages && previewLanguages !== "Off") {
         layoutPayload.languages = {
           languages: previewLanguages.split(",").map(code => code.trim()).filter(Boolean),
+          overlay_limit: previewLanguageLimit,
           hide_text: !previewLanguageLabels,
           final_name: "text(<<final_text>>)",
           font_color: "#FFFFFF",
@@ -4146,8 +4148,9 @@ export default function DynamicOverlays() {
     const shouldShowLanguages = Boolean(badges.audio_languages?.enabled) && (
       (targetFormat === "movie_poster" && (langLevel === "movie" || langLevel === "all")) ||
       (targetFormat === "episode_card" && (langLevel === "episode" || langLevel === "all")) ||
-      (targetFormat === "show_poster" && (langLevel === "show" || langLevel === "all")) ||
-      (targetFormat === "season_poster" && (langLevel === "season" || langLevel === "all"))
+      (targetFormat === "show_poster" && (langLevel === "show" || langLevel === "all" || langLevel === "episode")) ||
+      (targetFormat === "season_poster" && (langLevel === "season" || langLevel === "all" || langLevel === "episode")) ||
+      (["backdrop", "background"].includes(targetFormat) && (langLevel === "show" || langLevel === "all" || langLevel === "episode"))
     );
 
     if (shouldShowLanguages) {
@@ -4166,6 +4169,7 @@ export default function DynamicOverlays() {
         ? badges.audio_languages.languages.join(",")
         : "de,en";
       setPreviewLanguages(langs);
+      setPreviewLanguageLimit(Math.max(1, Math.min(5, Number(badges.audio_languages.limit) || 5)));
     } else {
       setPreviewLanguages("");
     }
@@ -4523,7 +4527,7 @@ export default function DynamicOverlays() {
     || (selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" && getAvailableFormats(selectedSaveLibrary).some((format) => format.id === "show_poster"))
     ? "show" : "movie";
   const assetOverlayQuery = `&asset_overlay=${applyAssetOverlay}&media_type=${assetMediaType}`;
-  const compositorPreviewUrl = `${previewUrl}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
+  const compositorPreviewUrl = `${previewUrl}&language_limit=${previewLanguageLimit}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
 
   useEffect(() => {
     if (activeTab !== "preview" || !featureSettings?.enabled || draggingItem) return;
@@ -8725,6 +8729,19 @@ export default function DynamicOverlays() {
                     </button>
                   ))}
                 </div>
+                {previewLanguages && (
+                  <label className="flex items-center justify-between gap-3 text-xs text-theme-text">
+                    <span>Max flags</span>
+                    <select
+                      aria-label="Maximum audio language flags"
+                      value={previewLanguageLimit}
+                      onChange={(event) => { setPreviewLanguageLimit(Number(event.target.value)); setPreviewTimestamp(Date.now()); }}
+                      className="bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text"
+                    >
+                      {[1, 2, 3, 4, 5].map((limit) => <option key={limit} value={limit}>{limit}</option>)}
+                    </select>
+                  </label>
+                )}
                 {previewLanguages && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={previewLanguageLabels} onChange={event => { setPreviewLanguageLabels(event.target.checked); setPreviewTimestamp(Date.now()); }} />Show Language Codes</label>}
                 {previewLanguages && (
                   <BadgeOffsetControls
