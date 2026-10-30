@@ -4314,9 +4314,9 @@ async def _run_overlay_sync_task(
                                 write_log(f"  [!] {w_tag}Could not verify selected Plex poster for '{title}': {format_sync_error(identity_error, phase='verifying poster selection')}. Artwork left untouched.")
                                 return
 
-                        if scope != "incremental" or not is_current or force_target_sync or legacy_skipped_entry:
+                        if scope not in ("incremental", "changed") or not is_current or force_target_sync or legacy_skipped_entry:
                             sync_reason = (
-                                f"Forced sync (scope={scope})" if scope != "incremental"
+                                f"Forced sync (scope={scope})" if scope not in ("incremental", "changed")
                                 else ("Targeted sync" if is_target_mode and is_current else cache_reason)
                             )
                             comp_phase = "reading clean asset"
@@ -4378,7 +4378,7 @@ async def _run_overlay_sync_task(
                                         composited_jpeg = base_bytes
 
                                 upload_success = False
-                                if s_type == "plex" and scope == "incremental" and cached_entry and composited_jpeg is not None:
+                                if s_type == "plex" and scope in ("incremental", "changed") and cached_entry and composited_jpeg is not None:
                                     comp_phase = "comparing rendered poster with selected Plex artwork"
                                     identical, identity_reason, verified_snapshot = await _plex_rendered_titlecard_status(
                                         http_client, s_url, item_id, creds.get("token"), {}, None, composited_jpeg, verify_thumbnail=True
@@ -4550,9 +4550,9 @@ async def _run_overlay_sync_task(
                             resolved_layers=b_layers
                         )
 
-                        if scope != "incremental" or not b_is_current or force_target_sync:
+                        if scope not in ("incremental", "changed") or not b_is_current or force_target_sync:
                             b_sync_reason = (
-                                f"Forced sync (scope={scope})" if scope != "incremental"
+                                f"Forced sync (scope={scope})" if scope not in ("incremental", "changed")
                                 else ("Targeted sync" if is_target_mode and b_is_current else b_cache_reason)
                             )
                             b_phase = "reading clean backdrop"
@@ -4824,8 +4824,8 @@ async def _run_overlay_sync_task(
                                         resolved_layers=s_layers
                                     )
 
-                                    if scope != "incremental" or not s_current or force_target_sync:
-                                        s_sync_reason = f"Forced sync (scope={scope})" if scope != "incremental" else s_cache_reason
+                                    if scope not in ("incremental", "changed") or not s_current or force_target_sync:
+                                        s_sync_reason = f"Forced sync (scope={scope})" if scope not in ("incremental", "changed") else s_cache_reason
                                         s_phase = "reading clean season poster"
                                         try:
                                             with open(clean_season, "rb") as csf:
@@ -5218,7 +5218,7 @@ async def _run_overlay_sync_task(
                                                 if refreshed_snapshot:
                                                     cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", refreshed_snapshot, cache_map=cache_map)
 
-                                            if scope == "incremental" and ep_current and not force_target_sync:
+                                            if scope in ("incremental", "changed") and ep_current and not force_target_sync:
                                                 cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", titlecard_attr_snapshot(ep_data, ep_cached_entry.get("attr_snapshot")), cache_map=cache_map)
                                                 cache.update_media_file_metadata(s_type, str(ep_rk), "titlecard", ep_data["media_file_path"], ep_data["video_source"], cache_map=cache_map)
                                                 cache.seed_recipe_snapshot(s_type, str(ep_rk), "titlecard", ep_recipe_hash, ep_layers, ep_cached_entry, cache_map=cache_map)
@@ -5228,7 +5228,7 @@ async def _run_overlay_sync_task(
                                                     cache.update_server_updated_at(s_type, str(ep_rk), "titlecard", ep_data.get("server_updated_at"), cache_map=cache_map)
                                                 continue
 
-                                            ep_sync_reason = f"Forced sync (scope={scope})" if scope != "incremental" else ep_cache_reason
+                                            ep_sync_reason = f"Forced sync (scope={scope})" if scope not in ("incremental", "changed") else ep_cache_reason
                                             tc_phase = "reading clean titlecard"
                                             try:
                                                 with open(clean_tc, "rb") as tcf:
@@ -5249,7 +5249,7 @@ async def _run_overlay_sync_task(
                                                 else:
                                                     tc_comp = tc_base_bytes
 
-                                                if s_type == "plex" and scope == "incremental" and ep_cached_entry:
+                                                if s_type == "plex" and scope in ("incremental", "changed") and ep_cached_entry:
                                                     tc_phase = "comparing rendered titlecard with selected Plex artwork"
                                                     try:
                                                         previous_snapshot = json.loads(ep_cached_entry.get("attr_snapshot") or "{}")
@@ -5699,24 +5699,25 @@ async def detect_media_changes(
                                                     if not status_val and v_node.get("status"):
                                                         status_val = v_node.get("status")
 
-                                                cached_langs = sorted([l.strip().lower() for l in (cached.get("detected_languages") or "").split(",") if l.strip()])
-                                                cur_langs = sorted(cur_langs)
-                                                if cur_langs != cached_langs:
-                                                    item_changes.append("languages")
-                                                    detail_notes.append(f"Audio languages: {cached_langs or '[]'} -> {cur_langs or '[]'}")
-                                                    summary["languages"] += 1
+                                                if sec_type == "movie":
+                                                    cached_langs = sorted([l.strip().lower() for l in (cached.get("detected_languages") or "").split(",") if l.strip()])
+                                                    cur_langs = sorted(cur_langs)
+                                                    if cur_langs != cached_langs:
+                                                        item_changes.append("languages")
+                                                        detail_notes.append(f"Audio languages: {cached_langs or '[]'} -> {cur_langs or '[]'}")
+                                                        summary["languages"] += 1
 
-                                                cached_rt = cached.get("runtime_mins")
-                                                if rt_mins and cached_rt and abs(rt_mins - cached_rt) > 1:
-                                                    item_changes.append("runtime")
-                                                    detail_notes.append(f"Runtime: {cached_rt}m -> {rt_mins}m")
-                                                    summary["runtimes"] += 1
+                                                    cached_rt = cached.get("runtime_mins")
+                                                    if rt_mins and cached_rt and abs(rt_mins - cached_rt) > 1:
+                                                        item_changes.append("runtime")
+                                                        detail_notes.append(f"Runtime: {cached_rt}m -> {rt_mins}m")
+                                                        summary["runtimes"] += 1
 
-                                                cached_ed = cached.get("edition")
-                                                if ed_val and str(ed_val).strip().lower() != str(cached_ed or "").strip().lower():
-                                                    item_changes.append("edition")
-                                                    detail_notes.append(f"Edition: '{cached_ed or 'Standard'}' -> '{ed_val}'")
-                                                    summary["editions"] += 1
+                                                    cached_ed = cached.get("edition")
+                                                    if ed_val and str(ed_val).strip().lower() != str(cached_ed or "").strip().lower():
+                                                        item_changes.append("edition")
+                                                        detail_notes.append(f"Edition: '{cached_ed or 'Standard'}' -> '{ed_val}'")
+                                                        summary["editions"] += 1
 
                                                 cached_st = cached.get("show_status")
                                                 if status_val and cached_st and status_val.strip().lower() != cached_st.strip().lower():
@@ -5904,23 +5905,24 @@ async def detect_media_changes(
                                     except Exception:
                                         pass
 
-                                    cached_langs = sorted([l.strip().lower() for l in (cached.get("detected_languages") or "").split(",") if l.strip()])
-                                    if cur_langs != cached_langs:
-                                        item_changes.append("languages")
-                                        detail_notes.append(f"Audio languages: {cached_langs or '[]'} -> {cur_langs or '[]'}")
-                                        summary["languages"] += 1
+                                    if str(it_type or "").lower() == "movie":
+                                        cached_langs = sorted([l.strip().lower() for l in (cached.get("detected_languages") or "").split(",") if l.strip()])
+                                        if cur_langs != cached_langs:
+                                            item_changes.append("languages")
+                                            detail_notes.append(f"Audio languages: {cached_langs or '[]'} -> {cur_langs or '[]'}")
+                                            summary["languages"] += 1
 
-                                    cached_rt = cached.get("runtime_mins")
-                                    if rt_mins and cached_rt and abs(rt_mins - cached_rt) > 1:
-                                        item_changes.append("runtime")
-                                        detail_notes.append(f"Runtime: {cached_rt}m -> {rt_mins}m")
-                                        summary["runtimes"] += 1
+                                        cached_rt = cached.get("runtime_mins")
+                                        if rt_mins and cached_rt and abs(rt_mins - cached_rt) > 1:
+                                            item_changes.append("runtime")
+                                            detail_notes.append(f"Runtime: {cached_rt}m -> {rt_mins}m")
+                                            summary["runtimes"] += 1
 
-                                    cached_ed = cached.get("edition")
-                                    if ed_val and str(ed_val).strip().lower() != str(cached_ed or "").strip().lower():
-                                        item_changes.append("edition")
-                                        detail_notes.append(f"Edition: '{cached_ed or 'Standard'}' -> '{ed_val}'")
-                                        summary["editions"] += 1
+                                        cached_ed = cached.get("edition")
+                                        if ed_val and str(ed_val).strip().lower() != str(cached_ed or "").strip().lower():
+                                            item_changes.append("edition")
+                                            detail_notes.append(f"Edition: '{cached_ed or 'Standard'}' -> '{ed_val}'")
+                                            summary["editions"] += 1
 
                                     cached_st = cached.get("show_status")
                                     if status_val and cached_st and str(status_val).strip().lower() != str(cached_st).strip().lower():
