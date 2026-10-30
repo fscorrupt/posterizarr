@@ -5,7 +5,8 @@
   },
   "sidebar": {
     "openNavigation": "Open navigation",
-    "closeNavigation": "Close navigation"
+    "closeNavigation": "Close navigation",
+    "logs": "Logs"
   },
   "dynamicOverlays": {
     "title": "Dynamic Overlays",
