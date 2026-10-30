@@ -2249,12 +2249,10 @@ def build_overlay_layers_for_item(
                     "name": f"language_flag_{code}",
                     "type": "image",
                     "image_path": str(resolve_parent_flag(code)),
-                    "scale_width": 46,
-                    "scale_height": 28,
                     "horizontal_align": horizontal_align,
                     "horizontal_offset": horizontal_offset,
                     "vertical_align": vertical_align,
-                    "vertical_offset": vertical_offset + (len(selected) - index - 1) * 32,
+                    "vertical_offset": vertical_offset + (len(selected) - index - 1) * 61,
                 })
 
         for rule in library_rules:
