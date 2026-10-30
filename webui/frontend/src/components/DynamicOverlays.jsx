@@ -4155,8 +4155,8 @@ export default function DynamicOverlays() {
       const rawX = badges.audio_languages.offset_x;
       const rawY = badges.audio_languages.offset_y;
       nextOffsets.languages = {
-        x: (rawX !== undefined && rawX !== null && Number(rawX) > 0) ? Number(rawX) : 30,
-        y: (rawY !== undefined && rawY !== null && Number(rawY) > 0) ? Number(rawY) : (isLandscape ? 30 : 35),
+        x: rawX !== undefined && rawX !== null && rawX !== "" && Number.isFinite(Number(rawX)) ? Number(rawX) : 48,
+        y: rawY !== undefined && rawY !== null && rawY !== "" && Number.isFinite(Number(rawY)) ? Number(rawY) : 37,
         align: p.align,
         valign: p.valign,
         font_size: badges.audio_languages?.font_size ?? "",
@@ -4178,7 +4178,12 @@ export default function DynamicOverlays() {
       setter(enabled ? (key === "subtitle_languages" ? (badge.languages || ["de", "en"]).join(",") : sample) : "");
       if (enabled) {
         const position = parsePos(badge.position, "center", "bottom");
-        nextOffsets[key] = { x: badge.offset_x ?? 0, y: badge.offset_y ?? 150, align: position.align, valign: position.valign };
+        nextOffsets[key] = {
+          x: badge.offset_x ?? (key === "subtitle_languages" ? 48 : 0),
+          y: badge.offset_y ?? (key === "subtitle_languages" ? 37 : 150),
+          align: position.align,
+          valign: position.valign
+        };
       }
     }
 
@@ -12551,7 +12556,7 @@ export default function DynamicOverlays() {
                       enabled: true,
                       badges: {
                         resolution: { enabled: false, banner_4k: true, banner_1080p: false, banner_720p: false },
-                        audio_languages: { enabled: true, languages: ["de", "en"], position: "bottom-left", offset_x: 30, offset_y: newLibForm.media_type === "show" ? 30 : 35, limit: 5 },
+                        audio_languages: { enabled: true, languages: ["de", "en"], position: "bottom-left", offset_x: 48, offset_y: 37, limit: 5 },
                         runtime: { enabled: true, position: "bottom-right", offset_x: 18, offset_y: 20, back_width: 205, back_height: 80 },
                         status: { enabled: newLibForm.media_type === "show", position: "bottom-center", offset_x: 0, offset_y: 23, font_size: 80, colors: { airing: "#27C24C", returning: "#FFA500", ended: "#FF0000", canceled: "#ED1F1F" } },
                         network: { enabled: false, level: "season", position: "bottom-center", offset_x: 30, offset_y: 50 },

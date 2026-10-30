@@ -185,7 +185,7 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
     response = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
     response.raise_for_status()
     episode = fromstring(response.content).find(".//Video")
-    if episode is None and artwork_type == "poster":
+    if episode is None and artwork_type in ("poster", "season"):
         episode = fromstring(response.content).find(".//Directory")
     if episode is None or not episode.get("thumb"):
         raise RuntimeError(f"Plex did not return a thumbnail for the confirmed {artwork_type}")
@@ -4430,7 +4430,7 @@ async def _run_overlay_sync_task(
                                         resolved_layers=s_layers
                                     )
 
-                                    if scope != "incremental" or not s_current:
+                                    if scope != "incremental" or not s_current or force_target_sync:
                                         s_sync_reason = f"Forced sync (scope={scope})" if scope != "incremental" else s_cache_reason
                                         s_phase = "reading clean season poster"
                                         try:
@@ -4453,6 +4453,7 @@ async def _run_overlay_sync_task(
                                                 s_comp = s_base_bytes
 
                                             s_success = False
+                                            season_snapshot = None
                                             s_phase = f"uploading season poster to {s_type.upper()}"
                                             if s_type == "plex":
                                                 s_resp = await _post_artwork_with_retry(
@@ -4481,6 +4482,12 @@ async def _run_overlay_sync_task(
                                             if _cancel_requested:
                                                 return
                                             if s_success:
+                                                if s_type == "plex":
+                                                    s_phase = "confirming Plex season poster selection"
+                                                    season_snapshot = await _confirm_plex_titlecard(
+                                                        http_client, s_url, s_rk, creds.get("token"), s_comp,
+                                                        artwork_type="season"
+                                                    )
                                                 cache.record_push(
                                                     server_type=s_type,
                                                     server_url=s_url,
@@ -4501,6 +4508,7 @@ async def _run_overlay_sync_task(
                                                     edition=None,
                                                     show_status=item.get("status"),
                                                     metadata_hash=s_meta_hash,
+                                                    attr_snapshot=season_snapshot,
                                                     detected_audio_codec=item.get("audio_codec"),
                                                     detected_video_format=item.get("video_format"),
                                                     detected_resolution=s_resolution,
@@ -4809,7 +4817,7 @@ async def _run_overlay_sync_task(
                                                 if refreshed_snapshot:
                                                     cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", refreshed_snapshot, cache_map=cache_map)
 
-                                            if scope == "incremental" and ep_current:
+                                            if scope == "incremental" and ep_current and not force_target_sync:
                                                 cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", titlecard_attr_snapshot(ep_data, ep_cached_entry.get("attr_snapshot")), cache_map=cache_map)
                                                 cache.update_media_file_metadata(s_type, str(ep_rk), "titlecard", ep_data["media_file_path"], ep_data["video_source"], cache_map=cache_map)
                                                 cache.seed_recipe_snapshot(s_type, str(ep_rk), "titlecard", ep_recipe_hash, ep_layers, ep_cached_entry, cache_map=cache_map)

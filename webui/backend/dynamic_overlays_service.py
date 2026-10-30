@@ -659,8 +659,8 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
                     "level": "movie" if is_movie else "episode",
                     "position": "bottom-left",
                     "style": "square",
-                    "offset_x": 30,
-                    "offset_y": 35 if is_movie else 30,
+                    "offset_x": 48,
+                    "offset_y": 37,
                     "limit": 5
                 },
                 "runtime": {
@@ -900,8 +900,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 "level": "episode" if media_type == "show" else "movie",
                 "position": "bottom-left",
                 "style": "square",
-                "offset_x": 30,
-                "offset_y": 35 if media_type == "movie" else 30,
+                "offset_x": 48,
+                "offset_y": 37,
                 "limit": 5
             },
             "runtime": {
@@ -986,7 +986,6 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 v_pos = vars_dict.get("vertical_position") or vars_dict.get("vertical_align", "bottom")
                 raw_x = vars_dict.get("horizontal_offset")
                 raw_y = vars_dict.get("vertical_offset")
-                def_y = 35 if media_type == "movie" else 30
                 language_key = "subtitle_languages" if str(vars_dict.get("use_subtitles", False)).lower() in ("true", "1") else "audio_languages"
                 badges[language_key] = {
                     "enabled": True,
@@ -994,8 +993,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "level": vars_dict.get("builder_level", "episode" if media_type == "show" else "movie"),
                     "position": _to_unified_position(h_pos, v_pos),
                     "style": vars_dict.get("style", "square"),
-                    "offset_x": int(raw_x) if raw_x is not None else 30,
-                    "offset_y": int(raw_y) if raw_y is not None else def_y,
+                    "offset_x": int(raw_x) if raw_x is not None else 48,
+                    "offset_y": int(raw_y) if raw_y is not None else 37,
                     "limit": vars_dict.get("overlay_limit", 5),
                     "show_labels": str(vars_dict.get("hide_text", True)).lower() not in ("true", "1"),
                     "template_variables": dict(vars_dict)
@@ -1357,8 +1356,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                     "horizontal_position": h,
                     "vertical_position": v,
                     "style": b_lang.get("style", "square"),
-                    "horizontal_offset": int(b_lang.get("offset_x", 30)),
-                    "vertical_offset": int(b_lang.get("offset_y", 35 if media_type == "movie" else 30)),
+                    "horizontal_offset": int(b_lang.get("offset_x", 48)),
+                    "vertical_offset": int(b_lang.get("offset_y", 37)),
                     "back_color": "#00000000",
                     "hide_text": not b_lang.get("show_labels", False),
                     "font_color": "#FFFFFF",
