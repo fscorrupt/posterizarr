@@ -3293,6 +3293,8 @@ export default function DynamicOverlays() {
         showToast("Updated template variables!", "success");
         setEditVariablesModal(null);
         if (data.scan) setScanData(data.scan);
+        await fetchVisualConfig();
+        setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed updating variables", "error");
       }
