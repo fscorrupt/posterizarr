@@ -12173,13 +12173,10 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                 if not matched:
                     language_groups["other"].append(item)
 
-            # Build result list in order of preference, then add other languages
+            # Build result list in order of preference (only configured preferred languages)
             result = []
             for lang in normalized_preferred_languages:
                 result.extend(language_groups[lang])
-
-            # Add other languages at the end
-            #result.extend(language_groups["other"])
 
             return result
 
@@ -12525,6 +12522,33 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             }
                                         )
 
+                            # Also fetch show backdrops so user can crop season posters from backdrops
+                            try:
+                                show_img_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/images"
+                                show_resp = await client.get(show_img_url, headers=headers)
+                                if show_resp.status_code == 200:
+                                    show_data = show_resp.json()
+                                    for backdrop in show_data.get("backdrops", []):
+                                        original_url = f"https://image.tmdb.org/t/p/original{backdrop.get('file_path')}"
+                                        if original_url not in seen_urls:
+                                            seen_urls.add(original_url)
+                                            all_results.append(
+                                                {
+                                                    "url": f"https://image.tmdb.org/t/p/w500{backdrop.get('file_path')}",
+                                                    "original_url": original_url,
+                                                    "source": "TMDB",
+                                                    "source_type": source,
+                                                    "type": "backdrop",
+                                                    "sub_type": "background",
+                                                    "language": backdrop.get("iso_639_1") or "xx",
+                                                    "vote_average": backdrop.get("vote_average", 0),
+                                                    "width": backdrop.get("width", 0),
+                                                    "height": backdrop.get("height", 0),
+                                                }
+                                            )
+                            except Exception as show_err:
+                                logger.debug(f"Could not fetch show backdrops for season: {show_err}")
+
                         elif request.asset_type == "background":
                             # Backgrounds
                             url = f"https://api.themoviedb.org/3/{media_endpoint}/{tmdb_id}/images"
@@ -12623,6 +12647,28 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 ),
                                                 "width": poster.get("width", 0),
                                                 "height": poster.get("height", 0),
+                                            }
+                                        )
+
+                                # Also include backdrops so users can select and crop posters from backdrops
+                                for backdrop in data.get("backdrops", []):
+                                    original_url = f"https://image.tmdb.org/t/p/original{backdrop.get('file_path')}"
+                                    if original_url not in seen_urls:
+                                        seen_urls.add(original_url)
+                                        all_results.append(
+                                            {
+                                                "url": f"https://image.tmdb.org/t/p/w500{backdrop.get('file_path')}",
+                                                "original_url": original_url,
+                                                "source": "TMDB",
+                                                "source_type": source,
+                                                "type": "backdrop",
+                                                "sub_type": "background",
+                                                "language": backdrop.get("iso_639_1") or "xx",
+                                                "vote_average": backdrop.get(
+                                                    "vote_average", 0
+                                                ),
+                                                "width": backdrop.get("width", 0),
+                                                "height": backdrop.get("height", 0),
                                             }
                                         )
 
@@ -12850,10 +12896,14 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 sub_type_val = "clearart" if art_type in ['22', '24'] else "clearlogo"
 
                                         elif request.asset_type in ["poster", "standard"]:
-                                            # Series: 2, Movies: 14
+                                            # Series: 2, Movies: 14 (Posters)
+                                            # Series: 3, Movies: 15 (Backgrounds)
                                             if art_type in ['2', '14']:
                                                 is_match = True
                                                 sub_type_val = "poster" if request.asset_type == "texture" else None
+                                            elif art_type in ['3', '15']:
+                                                is_match = True
+                                                sub_type_val = "background"
 
                                         elif request.asset_type in ["background", "texture"]:
                                             # Series: 3, Movies: 15
@@ -12887,7 +12937,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 "original_url": image_url,
                                                 "source": "TVDB",
                                                 "source_type": source,
-                                                "type": "logo" if request.asset_type in ["logo", "clearlogo", "clearart"] else request.asset_type,
+                                                "type": "backdrop" if sub_type_val == "background" else ("logo" if request.asset_type in ["logo", "clearlogo", "clearart"] else request.asset_type),
                                                 **({"sub_type": sub_type_val} if sub_type_val else {}),
                                                 "language": final_lang,
                                                 # Map 'score' to 'vote_average' to ensure they aren't sorted to the bottom
@@ -12956,7 +13006,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             "hdtvclearart", "hdtvlogo", "clearart", "clearlogo" # TV
                                         ]
                                     elif request.asset_type == "poster":
-                                        fanart_keys = ["movieposter"]
+                                        fanart_keys = ["movieposter", "moviebackground"]
                                     elif request.asset_type == "background":
                                         fanart_keys = ["moviebackground"]
                                     elif request.asset_type == "texture":
@@ -12969,9 +13019,13 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             item_url = item.get("url")
                                             if item_url and item_url not in seen_urls:
                                                 seen_urls.add(item_url)
-                                                # Determine sub_type
+                                                # Determine sub_type and item_type
                                                 sub_type = None
-                                                if request.asset_type == "logo":
+                                                item_type = request.asset_type
+                                                if "background" in key:
+                                                    sub_type = "background"
+                                                    item_type = "backdrop"
+                                                elif request.asset_type == "logo":
                                                     sub_type = "clearart" if "art" in key else "clearlogo"
                                                 elif request.asset_type == "texture":
                                                     if "poster" in key:
@@ -12985,7 +13039,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                         "original_url": item_url,
                                                         "source": "Fanart.tv",
                                                         "source_type": source,
-                                                        "type": request.asset_type,
+                                                        "type": item_type,
                                                         **({"sub_type": sub_type} if sub_type else {}),
                                                         "language": item.get("lang"),
                                                         "likes": item.get("likes", 0),
@@ -13009,7 +13063,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         "hdtvclearart", "hdtvlogo", "clearart", "clearlogo" # TV
                                     ]
                                 elif request.asset_type == "poster":
-                                    fanart_keys = ["movieposter"]
+                                    fanart_keys = ["movieposter", "moviebackground"]
                                 elif request.asset_type == "background":
                                     fanart_keys = ["moviebackground"]
                                 else:
@@ -13020,14 +13074,22 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         item_url = item.get("url")
                                         if item_url and item_url not in seen_urls:
                                             seen_urls.add(item_url)
+                                            sub_type = None
+                                            item_type = request.asset_type
+                                            if "background" in key:
+                                                sub_type = "background"
+                                                item_type = "backdrop"
+                                            elif request.asset_type == "logo":
+                                                sub_type = "clearart" if "art" in key else "clearlogo"
+
                                             all_results.append(
                                                 {
                                                     "url": item_url,
                                                     "original_url": item_url,
                                                     "source": "Fanart.tv",
                                                     "source_type": "imdb_id",
-                                                    "type": request.asset_type,
-                                                    **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
+                                                    "type": item_type,
+                                                    **({"sub_type": sub_type} if sub_type else {}),
                                                     "language": item.get("lang"),
                                                     "likes": item.get("likes", 0),
                                                 }
@@ -13057,12 +13119,11 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         "hdtvclearart", "hdtvlogo", "clearart", "clearlogo" # TV
                                     ]
                                 elif request.asset_type == "poster":
-                                    # Standard TV show posters
-                                    fanart_keys = ["tvposter"]
+                                    # Standard TV show posters and show backgrounds
+                                    fanart_keys = ["tvposter", "showbackground"]
                                 elif request.asset_type == "season":
-                                    # Season-specific posters
-                                    # Fanart.tv has seasonposter but requires season filtering
-                                    fanart_keys = ["seasonposter"]
+                                    # Season-specific posters and show backgrounds
+                                    fanart_keys = ["seasonposter", "showbackground"]
                                 elif request.asset_type == "background":
                                     fanart_keys = ["showbackground"]
                                 elif request.asset_type == "texture":
@@ -13108,14 +13169,22 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         item_url = item.get("url")
                                         if item_url and item_url not in seen_urls:
                                             seen_urls.add(item_url)
+                                            sub_type = None
+                                            item_type = request.asset_type
+                                            if "background" in key:
+                                                sub_type = "background"
+                                                item_type = "backdrop"
+                                            elif request.asset_type == "logo":
+                                                sub_type = "clearart" if "art" in key else "clearlogo"
+
                                             all_results.append(
                                                 {
                                                     "url": item_url,
                                                     "original_url": item_url,
                                                     "source": "Fanart.tv",
                                                     "source_type": source,  # "provided_id" or "title_search"
-                                                    "type": request.asset_type,
-                                                    **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
+                                                    "type": item_type,
+                                                    **({"sub_type": sub_type} if sub_type else {}),
                                                     "language": item.get("lang"),
                                                     "likes": item.get("likes", 0),
                                                 }
@@ -18062,12 +18131,20 @@ ALLOWED_IMAGE_DOMAINS = {
     "wikimedia.org",
     "wikipedia.org",
     "githubusercontent.com",
+    "theposterdb.com",
+    "posterspy.com",
+    "imgur.com",
+    "redd.it",
+    "redditmedia.com",
+    "discordapp.com",
+    "discordapp.net",
+    "fbcdn.net",
 }
 
 
 @app.get("/api/proxy-image")
 async def proxy_image(url: str):
-    """Proxy external images (like TMDB/Fanart) to avoid CORS issues on frontend canvas."""
+    """Proxy external images (like TMDB/Fanart/Custom URLs) to avoid CORS issues on frontend canvas."""
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ["http", "https"] or not parsed.hostname:
         raise HTTPException(status_code=400, detail="Invalid URL")
@@ -18097,9 +18174,6 @@ async def proxy_image(url: str):
             is_allowed = True
             allow_private = True
 
-    if not is_allowed:
-        raise HTTPException(status_code=403, detail="Domain not permitted for image proxy")
-
     safe_url = urllib.parse.urlunsplit((
         parsed.scheme,
         parsed.netloc,
@@ -18108,20 +18182,24 @@ async def proxy_image(url: str):
         ""
     ))
 
+    # If still not explicitly in whitelist, allow if it's a safe public internet URL (not private IP, not loopback, not cloud metadata)
+    if not is_allowed:
+        if is_safe_url(safe_url, allow_private=False, allow_loopback=False):
+            is_allowed = True
+
+    if not is_allowed:
+        raise HTTPException(status_code=403, detail="Domain not permitted for image proxy")
+
     # Block localhost, private IPs, and cloud metadata unless configured media server
     if not is_safe_url(safe_url, allow_private=allow_private, allow_loopback=allow_private):
         raise HTTPException(status_code=403, detail="Forbidden URL target")
 
-    async def stream_image():
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("GET", safe_url) as resp:
-                if resp.status_code != 200:
-                    yield b""
-                    return
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
-
-    return StreamingResponse(stream_image(), media_type="image/jpeg")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(safe_url)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail="Failed to fetch image")
+        content_type = resp.headers.get("content-type", "image/jpeg")
+        return Response(content=resp.content, media_type=content_type)
 
 
 

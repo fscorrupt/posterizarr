@@ -11,10 +11,13 @@ import {
   Image as ImageIcon,
   AlertCircle,
   Search,
+  Crop,
+  Link,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
+import ImageCropModal from "./ImageCropModal";
 import { BLUEPRINTS } from "./Blueprints";
 
 const API_URL = "/api";
@@ -50,14 +53,28 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const uploadChoiceRef = useRef(null);
   const autoQueuedFileRef = useRef(null);
   const [uploadedImage, setUploadedImage] = useState(null);
+  const [rawUploadedImage, setRawUploadedImage] = useState(null);
+  const [rawUploadedFile, setRawUploadedFile] = useState(null);
+  const [showCropModal, setShowCropModal] = useState(false);
   const [blueprintId, setBlueprintId] = useState("none");
   const [customBlueprints, setCustomBlueprints] = useState([]);
   const [uploadedFile, setUploadedFile] = useState(null); // Store the actual file
   const [uploadHasText, setUploadHasText] = useState(false); // Track if uploaded asset has text
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
   const [isDimensionValid, setIsDimensionValid] = useState(false); // Track if dimensions are valid
+  const contentScrollRef = useRef(null);
   const [activeProviderTab, setActiveProviderTab] = useState("tmdb"); // Provider tabs: tmdb, tvdb, fanart
   const [languageFilter, setLanguageFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("poster"); // Default to posters only
+  const [customImageUrl, setCustomImageUrl] = useState("");
+  const [loadingUrl, setLoadingUrl] = useState(false);
+
+  // Always reset scroll to top when tab, provider, type, or language changes so first asset is visible
+  useEffect(() => {
+    if (contentScrollRef.current) {
+      contentScrollRef.current.scrollTop = 0;
+    }
+  }, [activeTab, activeProviderTab, typeFilter, languageFilter]);
 
   useEffect(() => {
     let active = true;
@@ -509,6 +526,20 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const useHorizontalLayout =
     metadata.asset_type === "background" || metadata.asset_type === "titlecard";
 
+  const isPosterType =
+    metadata.asset_type === "poster" ||
+    metadata.asset_type === "season" ||
+    metadata.asset_type === "collection";
+  const isTitlecard = metadata.asset_type === "titlecard";
+  const targetRatio = isPosterType ? 2 / 3 : 16 / 9;
+  const targetWidth = isPosterType ? 2000 : (isTitlecard ? 1920 : 3840);
+  const targetHeight = isPosterType ? 3000 : (isTitlecard ? 1080 : 2160);
+
+  // Sync default type filter with current asset type
+  useEffect(() => {
+    setTypeFilter(metadata.asset_type === "background" ? "backdrop" : "poster");
+  }, [metadata.asset_type]);
+
   // Manual search state - initialize with detected metadata
   const [manualSearch, setManualSearch] = useState(false);
   const [searchTitle, setSearchTitle] = useState("");
@@ -668,6 +699,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         if (totalResults > 0) {
           setActiveProviderTab(activeProvider);
           setActiveTab("previews");
+        if (contentScrollRef.current) {
+          contentScrollRef.current.scrollTop = 0;
+        }
         } else {
           // If 0 results, check if it was due to strict filtering
           if (languageOrderList.length > 0) {
@@ -1178,6 +1212,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         else if (results.fanart.length > 0) setActiveProviderTab("fanart");
 
         setActiveTab("previews");
+        if (contentScrollRef.current) {
+          contentScrollRef.current.scrollTop = 0;
+        }
       } else {
         console.error("API returned error:", data.error || "Unknown error");
         showError(t("assetReplacer.fetchPreviewsError"));
@@ -1192,8 +1229,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     }
   };
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+  const processSelectedFile = (file) => {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -1202,14 +1238,15 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     }
 
     uploadChoiceRef.current = file;
+    setRawUploadedFile(file);
     setIsDimensionValid(false);
     setImageDimensions(null);
-    setUploadedFile(file);
 
     const reader = new FileReader();
     reader.onloadend = () => {
       if (uploadChoiceRef.current !== file) return;
-      setUploadedImage(reader.result);
+      const dataUrl = reader.result;
+      setRawUploadedImage(dataUrl);
 
       const img = new Image();
       img.onload = () => {
@@ -1224,9 +1261,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         if (height === 0) {
           setIsDimensionValid(false);
-          showError(
-            t("assetReplacer.imageHeightZero")
-          );
+          showError(t("assetReplacer.imageHeightZero"));
           return;
         }
 
@@ -1235,10 +1270,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         let expectedRatio = 0;
         let expectedRatioString = "";
 
-        if (
-          metadata.asset_type === "poster" ||
-          metadata.asset_type === "season"
-        ) {
+        if (isPosterType) {
           expectedRatio = POSTER_RATIO;
           expectedRatioString = "2:3";
           isValid = Math.abs(imageRatio - POSTER_RATIO) <= TOLERANCE;
@@ -1248,27 +1280,85 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
           isValid = Math.abs(imageRatio - BACKGROUND_RATIO) <= TOLERANCE;
         }
 
-        setIsDimensionValid(isValid);
+        setUploadedImage(dataUrl);
+        setUploadedFile(file);
 
         if (!isValid) {
-          showError(
-            t("assetReplacer.invalidImageRatio", {
-              width,
-              height,
-              ratio: imageRatio.toFixed(3),
-              expectedRatioString: expectedRatioString,
-              expectedRatio: expectedRatio.toFixed(3),
-            })
-          );
+          setIsDimensionValid(false);
+          // Automatically open crop modal so user can immediately frame and crop
+          setShowCropModal(true);
         } else {
+          setIsDimensionValid(true);
           showSuccess(
             t("assetReplacer.imageDimensionsValid", { width, height })
           );
         }
       };
-      img.src = reader.result;
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      processSelectedFile(file);
+    }
+    event.target.value = "";
+  };
+
+  const handleCropComplete = ({ file, dataUrl, width, height }) => {
+    uploadChoiceRef.current = file;
+    setUploadedFile(file);
+    setUploadedImage(dataUrl);
+    setRawUploadedImage(dataUrl);
+    setRawUploadedFile(file);
+    setImageDimensions({ width, height });
+    setIsDimensionValid(true);
+    showSuccess(
+      t("assetReplacer.cropSuccess", "Image cropped to {{width}}x{{height}}px!", { width, height })
+    );
+    setActiveTab("upload");
+  };
+
+  const handleLoadFromUrl = async () => {
+    const rawUrl = customImageUrl.trim();
+    if (!rawUrl) return;
+
+    setLoadingUrl(true);
+    showError(null);
+
+    try {
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(rawUrl)}`;
+      let res;
+      try {
+        res = await fetch(proxyUrl);
+        if (!res.ok) throw new Error(`Proxy error ${res.status}`);
+      } catch (proxyErr) {
+        res = await fetch(rawUrl);
+      }
+
+      if (!res.ok) {
+        throw new Error(`Failed to load image: ${res.statusText}`);
+      }
+
+      const blob = await res.blob();
+      if (!blob.type.startsWith("image/")) {
+        throw new Error("URL did not return an image.");
+      }
+
+      const rawFilename = rawUrl.split("/").pop()?.split("?")[0] || "downloaded_image.jpg";
+      const filename = rawFilename.includes(".") ? rawFilename : `${rawFilename}.jpg`;
+      const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+
+      processSelectedFile(file);
+      setCustomImageUrl("");
+    } catch (err) {
+      console.error("Error loading image from URL:", err);
+      showError(t("assetReplacer.invalidImageUrl", "Invalid image URL or failed to load image."));
+    } finally {
+      setLoadingUrl(false);
+    }
   };
 
   const handleUploadClick = () => {
@@ -1423,6 +1513,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
     if (isPosterizarrRunning && !addToQueue) {
       showError(t("assetReplacer.posterizarrRunningError"));
+      return;
+    }
+
+    const isBackdrop = preview.type === "backdrop" || preview.type === "background" || preview.sub_type === "background";
+    const isTargetPoster = metadata.asset_type === "poster" || metadata.asset_type === "season" || metadata.asset_type === "collection";
+
+    // If selecting a backdrop when target is a poster/season, open ImageCropModal directly
+    if (isBackdrop && isTargetPoster) {
+      const rawUrl = preview.original_url || preview.url;
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(rawUrl)}`;
+      setRawUploadedImage(proxyUrl);
+      setRawUploadedFile(new File([], "backdrop.jpg", { type: "image/jpeg" }));
+      setShowCropModal(true);
       return;
     }
 
@@ -1632,12 +1735,27 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const totalPreviews = Object.values(previews).flat().length;
 
   const currentProviderPreviews = previews[activeProviderTab] || [];
-  const availableLanguages = ["all", ...new Set(currentProviderPreviews.map(p => (p.language || "xx").toLowerCase()))];
+  const hasPosters = currentProviderPreviews.some(p => p.type === "poster" || p.type === "season" || p.type === "season_poster");
+  const hasBackdrops = currentProviderPreviews.some(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background");
+
+  const effectiveTypeFilter = (typeFilter === "poster" && !hasPosters && hasBackdrops)
+    ? "backdrop"
+    : (typeFilter === "backdrop" && !hasBackdrops && hasPosters)
+      ? "poster"
+      : typeFilter;
+
+  const typeFilteredPreviews = effectiveTypeFilter === "all"
+    ? currentProviderPreviews
+    : effectiveTypeFilter === "poster"
+      ? currentProviderPreviews.filter(p => p.type === "poster" || p.type === "season" || p.type === "season_poster")
+      : currentProviderPreviews.filter(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background");
+
+  const availableLanguages = ["all", ...new Set(typeFilteredPreviews.map(p => (p.language || "xx").toLowerCase()))];
   const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
 
   const filteredPreviews = effectiveLanguageFilter === "all"
-    ? currentProviderPreviews
-    : currentProviderPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
+    ? typeFilteredPreviews
+    : typeFilteredPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
 
   return (
     <div className="app-dialog-backdrop fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
@@ -1725,7 +1843,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+        <div ref={contentScrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4">
           {activeTab === "upload" && (
             <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
               {/* Process with Overlays Toggle */}
@@ -2118,7 +2236,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                     <h3 className="text-base sm:text-lg font-semibold text-theme-text mb-3">
                       {t("assetReplacer.uploadYourOwnImage")}
                     </h3>
-                    <label className="block border-2 border-dashed border-theme rounded-lg p-4 sm:p-6 text-center cursor-pointer hover:border-theme-primary transition-colors">
+                    <label
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (uploading) return;
+                        const files = e.dataTransfer.files;
+                        if (files && files.length > 0) {
+                          processSelectedFile(files[0]);
+                        }
+                      }}
+                      className="block border-2 border-dashed border-theme rounded-lg p-4 sm:p-6 text-center cursor-pointer hover:border-theme-primary transition-colors"
+                    >
                       <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-theme-muted mx-auto mb-2" />
                       <p className="text-xs sm:text-sm text-theme-muted mb-2 sm:mb-3">
                         {t("assetReplacer.selectCustomImage")}
@@ -2137,6 +2267,45 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         disabled={uploading}
                       />
                     </label>
+
+                    {/* URL Input */}
+                    <div className="mt-3 pt-3 border-t border-theme/40">
+                      <label className="block text-xs font-medium text-theme-text mb-1.5">
+                        {t("assetReplacer.enterImageUrl", "Or paste image URL")}
+                      </label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Link className="w-4 h-4 text-theme-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="url"
+                            value={customImageUrl}
+                            onChange={(e) => setCustomImageUrl(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleLoadFromUrl();
+                              }
+                            }}
+                            placeholder="https://..."
+                            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-theme-bg border border-theme rounded-lg text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-colors"
+                            disabled={loadingUrl || uploading}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleLoadFromUrl}
+                          disabled={loadingUrl || uploading || !customImageUrl.trim()}
+                          className="px-3 sm:px-4 py-2 bg-theme-primary/10 hover:bg-theme-primary/20 text-theme-primary border border-theme-primary/30 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                        >
+                          {loadingUrl ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                          <span>{loadingUrl ? t("assetReplacer.loadingUrl", "Loading...") : t("assetReplacer.loadUrl", "Load")}</span>
+                        </button>
+                      </div>
+                    </div>
 
                     {/* Text / Textless Dropdown */}
                     {uploadedImage && (
@@ -2187,6 +2356,21 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           {isDimensionValid ? " ✓" : " ✗"}
                         </div>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowCropModal(true)}
+                        className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border ${
+                          !isDimensionValid
+                            ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shadow-md animate-pulse"
+                            : "bg-theme-card hover:bg-theme-hover border-theme text-theme-text"
+                        }`}
+                      >
+                        <Crop className="w-3.5 h-3.5" />
+                        {isPosterType
+                          ? t("assetReplacer.cropToPoster", "Crop to 2:3 Poster")
+                          : t("assetReplacer.cropImage", "Crop Image")}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2306,6 +2490,45 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   </div>
 
                   <div>
+                    {/* Type Filter (Posters vs Backdrops) */}
+                    {hasPosters && hasBackdrops && (
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("poster")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "poster"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          {t("assetReplacer.filterPosters", "Posters")} ({currentProviderPreviews.filter(p => p.type === "poster" || p.type === "season" || p.type === "season_poster").length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("backdrop")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "backdrop"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          {t("assetReplacer.filterBackgrounds", "Backgrounds")} ({currentProviderPreviews.filter(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background").length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("all")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "all"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          {t("assetReplacer.filterAllTypes", "All Types")} ({currentProviderPreviews.length})
+                        </button>
+                      </div>
+                    )}
+
                     {/* Language Filter */}
                     {availableLanguages.length > 2 && (
                       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
@@ -2319,14 +2542,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                 : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
                             }`}
                           >
-                            {lang === "all" ? t("common.all") : lang.toUpperCase()}
+                            {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
                           </button>
                         ))}
                       </div>
                     )}
 
-                    <div className={useHorizontalLayout
-                      ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
+                    <div className={useHorizontalLayout || typeFilter === "backdrop"
+                      ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2"
                       : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
                     }>
                       {filteredPreviews.map((preview, index) => (
@@ -2336,6 +2559,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           onSelect={() => handlePreviewClick(preview)}
                           disabled={uploading || (isPosterizarrRunning && !addToQueue)}
                           isHorizontal={useHorizontalLayout}
+                          isTargetPoster={isPosterType}
                         />
                       ))}
                     </div>
@@ -2355,6 +2579,18 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         message={t("assetReplacer.confirmReplaceMessage")}
         confirmText={t("assetReplacer.confirmReplaceButton")}
         type="warning"
+      />
+
+      <ImageCropModal
+        isOpen={showCropModal}
+        onClose={() => setShowCropModal(false)}
+        imageSrc={rawUploadedImage || uploadedImage}
+        originalFile={rawUploadedFile || uploadedFile}
+        targetRatio={targetRatio}
+        targetWidth={targetWidth}
+        targetHeight={targetHeight}
+        assetType={metadata.asset_type}
+        onCropComplete={handleCropComplete}
       />
 
       <ConfirmDialog
@@ -2386,10 +2622,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   );
 }
 
-function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
+function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTargetPoster = false }) {
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  const isBackdrop = preview.type === "backdrop" || preview.type === "background" || preview.sub_type === "background";
 
   // Detect if it is a logo (updated to handle multiple variants)
   const isLogo = preview.type === "logo" ||
@@ -2428,9 +2666,14 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
       onClick={disabled ? undefined : onSelect}
     >
       <div
-        className={`relative ${isLogo ? "bg-slate-700/50" : "bg-theme"} ${isHorizontal ? "aspect-[16/9]" : "aspect-[2/3]"
+        className={`relative ${isLogo ? "bg-slate-700/50" : "bg-theme"} ${(isHorizontal || isBackdrop) ? "aspect-[16/9]" : "aspect-[2/3]"
           }`}
       >
+        {isBackdrop && (
+          <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-black/70 border border-white/20 text-[10px] font-mono uppercase tracking-wider text-white">
+            16:9
+          </div>
+        )}
         {!imageLoaded && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-theme-muted" />
@@ -2516,10 +2759,19 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
           </div>
 
           <p className="text-white text-sm font-semibold mt-3 flex items-center gap-2">
-            <Check className="w-4 h-4" />
-            {disabled
-              ? t("assetReplacer.uploading")
-              : t("assetReplacer.select")}
+            {isBackdrop && isTargetPoster ? (
+              <>
+                <Crop className="w-4 h-4 text-theme-primary" />
+                {t("assetReplacer.cropBackdropNotice", "Crop to poster")}
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                {disabled
+                  ? t("assetReplacer.uploading")
+                  : t("assetReplacer.select")}
+              </>
+            )}
           </p>
         </div>
       </div>
