@@ -4074,7 +4074,7 @@ export default function DynamicOverlays() {
     );
     setResolutionMode(isLandscape ? "corner_badge" : (isResBanner ? "banner" : "corner_badge"));
     if (badges.resolution?.enabled || badges.resolution?.banner_4k || badges.resolution?.banner_1080p || badges.resolution?.titlecard_enabled) {
-      if (targetFormat === "movie_poster" || targetFormat === "show_poster") {
+      if (targetFormat === "movie_poster" || targetFormat === "show_poster" || targetFormat === "season_poster") {
         if (isResBanner) {
           nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
           setPreviewResolution("4K");
@@ -5363,6 +5363,7 @@ export default function DynamicOverlays() {
                             onChange={(e) => updateBadge("critic_rating", { level: e.target.value })}
                             className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium"
                           >
+                            <option value="all">All (Show, Season, Episode)</option>
                             <option value="show">Show Main Poster (2:3)</option>
                             <option value="season">Season Posters (2:3)</option>
                             <option value="episode">Episode Titlecards (16:9)</option>

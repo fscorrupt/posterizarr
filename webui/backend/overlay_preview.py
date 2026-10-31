@@ -97,13 +97,8 @@ def _position_compound_preview_layers(layers, placements, canvas_box):
         right = max(part[3][2] for part in rendered)
         bottom = max(part[3][3] for part in rendered)
         size = (right - left, bottom - top)
-        anchor = rendered[0][1]
-        # The recipe's own anchor offsets reproduce the production position exactly; drags shift relative to it.
-        original_left, original_top = get_coordinates(
-            canvas_box, size,
-            horizontal_align=anchor.get("horizontal_align") or "left", horizontal_offset=anchor.get("horizontal_offset", 0),
-            vertical_align=anchor.get("vertical_align") or "top", vertical_offset=anchor.get("vertical_offset", 0),
-        )
+        # The recipe layers render at their exact coordinates; drags shift relative to their bounding box.
+        original_left, original_top = left, top
         target_left, target_top = get_coordinates(
             canvas_box, size,
             horizontal_align=placement["align"], horizontal_offset=placement["x"],

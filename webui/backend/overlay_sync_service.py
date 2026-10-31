@@ -2263,16 +2263,69 @@ def build_overlay_layers_for_item(
             vertical_align = variables.get("vertical_align") or variables.get("vertical_position", "bottom")
             horizontal_offset = int(variables.get("horizontal_offset", 48))
             vertical_offset = int(variables.get("vertical_offset", 37))
+            hide_text = str(variables.get("hide_text", True)).lower() in ("true", "1")
+            font_file = None
+            if not hide_text:
+                if variables.get("font"):
+                    f_cand = Path(variables["font"])
+                    if f_cand.exists():
+                        font_file = str(f_cand)
+                    else:
+                        for fd in (overlays_dir / "fonts", PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts"):
+                            if (fd / f_cand.name).exists():
+                                font_file = str(fd / f_cand.name)
+                                break
+                if not font_file:
+                    for cand_f in [overlays_dir / "fonts" / "Inter-Bold.ttf", PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts" / "Inter-Bold.ttf"]:
+                        if cand_f.exists():
+                            font_file = str(cand_f)
+                            break
+                    if not font_file:
+                        font_file = "Inter-Bold.ttf"
+
             for index, code in enumerate(selected):
-                native_language_layers.append({
-                    "name": f"language_flag_{code}",
-                    "type": "image",
-                    "image_path": str(resolve_parent_flag(code)),
-                    "horizontal_align": horizontal_align,
-                    "horizontal_offset": horizontal_offset,
-                    "vertical_align": vertical_align,
-                    "vertical_offset": vertical_offset + (len(selected) - index - 1) * 61,
-                })
+                if hide_text:
+                    native_language_layers.append({
+                        "name": f"language_flag_{code}",
+                        "type": "image",
+                        "image_path": str(resolve_parent_flag(code)),
+                        "horizontal_align": horizontal_align,
+                        "horizontal_offset": horizontal_offset,
+                        "vertical_align": vertical_align,
+                        "vertical_offset": vertical_offset + (len(selected) - index - 1) * 61,
+                    })
+                else:
+                    lang_text = code.lower() if str(variables.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                    style = str(variables.get("style", "round")).lower()
+                    flag_align = variables.get("flag_alignment") or ("right" if subtitle_rule else "left")
+                    back_radius = 26 if style in ("round", "half") else 0
+                    if variables.get("back_radius") is not None:
+                        try:
+                            back_radius = int(variables["back_radius"])
+                        except (ValueError, TypeError):
+                            pass
+
+                    native_language_layers.append({
+                        "name": f"language_flag_{code}",
+                        "type": "text",
+                        "text": lang_text,
+                        "image_path": str(resolve_parent_flag(code)),
+                        "addon_position": flag_align,
+                        "addon_offset": int(variables.get("offset", 10)),
+                        "font_path": font_file,
+                        "font_size": int(variables.get("font_size") or (70 if variables.get("size") == "big" else 50)),
+                        "font_color": variables.get("font_color", "#FFFFFF"),
+                        "back_color": variables.get("back_color", "#00000000"),
+                        "back_width": int(variables["back_width"]) if variables.get("back_width") else (290 if variables.get("three_characters") and variables.get("size") == "big" else (230 if variables.get("three_characters") else (216 if variables.get("size") == "big" else 190))),
+                        "back_height": int(variables["back_height"]) if variables.get("back_height") else (60 if variables.get("size") == "big" else None),
+                        "back_radius": back_radius,
+                        "back_padding": int(variables.get("back_padding", 0)),
+                        "back_align": flag_align,
+                        "horizontal_align": horizontal_align,
+                        "horizontal_offset": horizontal_offset,
+                        "vertical_align": vertical_align,
+                        "vertical_offset": vertical_offset + (len(selected) - index - 1) * 61,
+                    })
 
         for rule in library_rules:
             if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "audio_codec":
@@ -2306,6 +2359,7 @@ def build_overlay_layers_for_item(
                     "back_width": 305,
                     "back_height": 105,
                     "back_radius": 12,
+                    "back_align": "center",
                     "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position", "center"),
                     "horizontal_offset": int(variables.get("horizontal_offset", 0)),
                     "vertical_align": variables.get("vertical_align") or variables.get("vertical_position", "top"),
@@ -2523,49 +2577,77 @@ def build_overlay_layers_for_item(
                 v_offset = int(lang_vars.get("vertical_offset", 37))
                 h_offset = int(lang_vars.get("horizontal_offset", 48))
 
-                if len(clean_detected) == 1:
-                    code = clean_detected[0]
-                    flag_path = resolve_flag_path(code)
-                    layers.append({
-                        "name": f"language_flag_{code}",
-                        "type": "image",
-                        "image_path": str(flag_path),
-                        "scale_width": flag_w,
-                        "scale_height": flag_h,
-                        "horizontal_align": "left",
-                        "horizontal_offset": h_offset,
-                        "vertical_align": "bottom",
-                        "vertical_offset": v_offset
-                    })
-                elif len(clean_detected) >= 2:
-                    # Stack flags vertically: first flag on top, second flag on bottom (Image 2 style)
-                    code_top = clean_detected[0]
-                    code_bottom = clean_detected[1]
-                    top_flag_file = resolve_flag_path(code_top)
-                    bot_flag_file = resolve_flag_path(code_bottom)
+                hide_text = str(lang_vars.get("hide_text", True)).lower() in ("true", "1")
+                if hide_text:
+                    if len(clean_detected) == 1:
+                        code = clean_detected[0]
+                        flag_path = resolve_flag_path(code)
+                        layers.append({
+                            "name": f"language_flag_{code}",
+                            "type": "image",
+                            "image_path": str(flag_path),
+                            "scale_width": flag_w,
+                            "scale_height": flag_h,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset
+                        })
+                    elif len(clean_detected) >= 2:
+                        # Stack flags vertically: first flag on top, second flag on bottom (Image 2 style)
+                        code_top = clean_detected[0]
+                        code_bottom = clean_detected[1]
+                        top_flag_file = resolve_flag_path(code_top)
+                        bot_flag_file = resolve_flag_path(code_bottom)
 
-                    layers.append({
-                        "name": f"language_flag_{code_bottom}",
-                        "type": "image",
-                        "image_path": str(bot_flag_file),
-                        "scale_width": flag_w,
-                        "scale_height": flag_h,
-                        "horizontal_align": "left",
-                        "horizontal_offset": h_offset,
-                        "vertical_align": "bottom",
-                        "vertical_offset": v_offset
-                    })
-                    layers.append({
-                        "name": f"language_flag_{code_top}",
-                        "type": "image",
-                        "image_path": str(top_flag_file),
-                        "scale_width": flag_w,
-                        "scale_height": flag_h,
-                        "horizontal_align": "left",
-                        "horizontal_offset": h_offset,
-                        "vertical_align": "bottom",
-                        "vertical_offset": v_offset + flag_h + 4
-                    })
+                        layers.append({
+                            "name": f"language_flag_{code_bottom}",
+                            "type": "image",
+                            "image_path": str(bot_flag_file),
+                            "scale_width": flag_w,
+                            "scale_height": flag_h,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset
+                        })
+                        layers.append({
+                            "name": f"language_flag_{code_top}",
+                            "type": "image",
+                            "image_path": str(top_flag_file),
+                            "scale_width": flag_w,
+                            "scale_height": flag_h,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset + flag_h + 4
+                        })
+                else:
+                    for index, code in enumerate(clean_detected):
+                        flag_path = resolve_flag_path(code)
+                        lang_text = code.lower() if str(lang_vars.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                        style = str(lang_vars.get("style", "round")).lower()
+                        flag_align = lang_vars.get("flag_alignment") or "left"
+                        back_radius = 26 if style in ("round", "half") else 0
+                        layers.append({
+                            "name": f"language_flag_{code}",
+                            "type": "text",
+                            "text": lang_text,
+                            "image_path": str(flag_path),
+                            "addon_position": flag_align,
+                            "addon_offset": int(lang_vars.get("offset", 10)),
+                            "font_path": font_to_use,
+                            "font_size": int(lang_vars.get("font_size", 50)),
+                            "font_color": lang_vars.get("font_color", "#FFFFFF"),
+                            "back_color": lang_vars.get("back_color", "#00000000"),
+                            "back_width": int(lang_vars["back_width"]) if lang_vars.get("back_width") else 190,
+                            "back_radius": back_radius,
+                            "back_align": flag_align,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset + (len(clean_detected) - index - 1) * 61,
+                        })
 
     # 3. Common Sense Media Rating Badge
     if "commonsense" in rule_names:
@@ -2775,6 +2857,7 @@ def build_overlay_layers_for_item(
                     "back_width": 305,
                     "back_height": 105,
                     "back_radius": 12,
+                    "back_align": "center",
                     "horizontal_align": h_pos,
                     "horizontal_offset": int(ac_vars.get("horizontal_offset", 0)),
                     "vertical_align": v_pos,
@@ -5031,13 +5114,38 @@ async def _run_overlay_sync_task(
                                                         except Exception:
                                                             pass
 
+                                                    ep_aud = ep_elem.get("audienceRating") or ep_elem.get("rating")
+                                                    ep_multi = {}
+                                                    for r_node in ep_elem.findall(".//Rating"):
+                                                        img = str(r_node.get("image") or "").lower()
+                                                        val = r_node.get("value")
+                                                        if not val:
+                                                            continue
+                                                        try:
+                                                            val_f = float(val)
+                                                            if "imdb" in img:
+                                                                ep_multi["imdb"] = round(val_f, 1)
+                                                            elif "tmdb" in img or "themoviedb" in img:
+                                                                ep_multi["tmdb"] = round(val_f, 1)
+                                                            elif "rottentomatoes" in img or "tomato" in img:
+                                                                ep_multi["rt_audience"] = int(round(val_f * 10)) if val_f <= 10.0 else int(round(val_f))
+                                                        except (ValueError, TypeError):
+                                                            pass
+                                                    if not ep_multi and ep_aud is not None:
+                                                        try:
+                                                            aud_f = round(float(ep_aud), 1)
+                                                            ep_multi = {"imdb": aud_f, "tmdb": aud_f}
+                                                        except (ValueError, TypeError):
+                                                            pass
+
                                                     episodes_to_process.append({
                                                         "id": ep_rk,
                                                         "episode_number": ep_num,
                                                         "title": ep_title,
                                                         "runtime_mins": ep_dur_mins,
                                                         "resolution": ep_res,
-                                                        "audience_rating": ep_elem.get("audienceRating") or ep_elem.get("rating"),
+                                                        "audience_rating": ep_aud,
+                                                        "multi_ratings": ep_multi,
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
                                                         **ep_stream_metadata,
@@ -5102,13 +5210,23 @@ async def _run_overlay_sync_task(
                                                             if hdr:
                                                                 ep_has_hdr = True
 
+                                                    ep_aud = ep_obj.get("CommunityRating")
+                                                    ep_multi = {}
+                                                    if ep_aud is not None:
+                                                        try:
+                                                            aud_f = round(float(ep_aud), 1)
+                                                            ep_multi = {"imdb": aud_f, "tmdb": aud_f}
+                                                        except (ValueError, TypeError):
+                                                            pass
+
                                                     episodes_to_process.append({
                                                         "id": str(ep_rk),
                                                         "episode_number": ep_num,
                                                         "title": ep_title,
                                                         "runtime_mins": ep_dur_mins,
                                                         "resolution": ep_res,
-                                                        "audience_rating": ep_obj.get("CommunityRating"),
+                                                        "audience_rating": ep_aud,
+                                                        "multi_ratings": ep_multi,
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
                                                         **_extract_stream_overlay_metadata(ep_obj),
@@ -5142,6 +5260,7 @@ async def _run_overlay_sync_task(
                                                 "resolution": ep_data["resolution"],
                                                 "audience_rating": ep_data.get("audience_rating"),
                                                 "rating": ep_data.get("audience_rating"),
+                                                "multi_ratings": ep_data.get("multi_ratings") or {},
                                                 "audio_codec": ep_data["audio_codec"],
                                                 "audio_languages": ep_data["audio_languages"],
                                                 "subtitle_languages": ep_data.get("subtitle_languages", []),
@@ -5182,7 +5301,7 @@ async def _run_overlay_sync_task(
                                                 resolution=ep_data.get("resolution"),
                                                 content_rating=item.get("content_rating"),
                                                 network=item.get("network"),
-                                                multi_ratings=None,
+                                                multi_ratings=ep_meta.get("multi_ratings") or None,
                                                 audio_codec=ep_data.get("audio_codec"),
                                                 video_format=ep_data.get("video_format"),
                                                 has_hdr=ep_data.get("has_hdr"),

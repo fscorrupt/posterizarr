@@ -874,7 +874,7 @@ class DynamicOverlayCompositor:
                 back_color=layer.get("back_color"),
                 back_radius=layer.get("back_radius", 0),
                 back_padding=layer.get("back_padding", 0),
-                back_align=layer.get("back_align", "left"),
+                back_align=layer.get("back_align") or "center",
                 image_path=layer.get("image_path"),
                 layer_name=layer.get("name"),
                 debug_callback=debug_callback
