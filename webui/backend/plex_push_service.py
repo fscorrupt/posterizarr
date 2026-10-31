@@ -21,6 +21,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Union, Optional, Dict, List, Any, Tuple
 import urllib.parse
+import hashlib
 from xml.etree.ElementTree import fromstring
 import httpx
 
@@ -826,6 +827,42 @@ async def push_collection_artwork_to_plex(
         async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(upload_url, headers=headers, content=data)
             if response.status_code in [200, 201]:
+                # Select and lock the artwork in Plex so it becomes active and protected against agent overwrites
+                try:
+                    expected_hash = hashlib.sha1(data).hexdigest()
+                    endpoint = "arts" if asset_type == "background" else "posters"
+                    select_endpoint = "art" if endpoint == "arts" else "poster"
+                    lock_field = "art.locked" if endpoint == "arts" else "thumb.locked"
+
+                    gallery_url = f"{plex_url.rstrip('/')}/library/metadata/{safe_key}/{endpoint}"
+                    g_resp = await client.get(gallery_url, headers={"X-Plex-Token": plex_token, "Accept": "application/xml"})
+                    if g_resp.status_code == 200:
+                        g_root = fromstring(g_resp.content)
+                        uploaded = next((node for node in g_root
+                                         if str(node.get("ratingKey", "")).startswith("upload://")
+                                         and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+                        if uploaded is not None:
+                            try:
+                                await client.put(
+                                    f"{plex_url.rstrip('/')}/library/metadata/{safe_key}",
+                                    headers={"X-Plex-Token": plex_token},
+                                    params={lock_field: "0"}
+                                )
+                            except Exception:
+                                pass
+                            await client.put(
+                                f"{plex_url.rstrip('/')}/library/metadata/{safe_key}/{select_endpoint}",
+                                headers={"X-Plex-Token": plex_token},
+                                params={"url": uploaded.get("ratingKey")}
+                            )
+                    await client.put(
+                        f"{plex_url.rstrip('/')}/library/metadata/{safe_key}",
+                        headers={"X-Plex-Token": plex_token},
+                        params={lock_field: "1"}
+                    )
+                except Exception as sel_err:
+                    logger.warning(f"[push_collection_artwork_to_plex] Could not select/lock artwork for {safe_key}: {sel_err}")
+
                 # Update persistent cache on success
                 cache.record_push(
                     asset_path=str(local_image_path),

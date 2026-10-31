@@ -171,6 +171,14 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if uploaded is None:
         raise RuntimeError(f"Plex accepted the {artwork_type} upload but did not expose the uploaded image")
+    try:
+        await http_client.put(
+            f"{server_url}/library/metadata/{item_id}",
+            headers=headers,
+            params={"thumb.locked": "0"}
+        )
+    except Exception as unlock_err:
+        logger.debug(f"Could not temporarily unlock thumb for {artwork_type} {item_id}: {unlock_err}")
     response = await http_client.put(f"{server_url}/library/metadata/{item_id}/poster", headers=headers, params={"url": uploaded.get("ratingKey")})
     response.raise_for_status()
     response = await http_client.get(posters_url, headers=headers)
@@ -178,11 +186,27 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
     if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
                for node in fromstring(response.content)):
         raise RuntimeError(f"Plex did not select the uploaded {artwork_type}; cache was not marked synced")
+    try:
+        lock_resp = await http_client.put(
+            f"{server_url}/library/metadata/{item_id}",
+            headers=headers,
+            params={"thumb.locked": "1"}
+        )
+        lock_resp.raise_for_status()
+    except Exception as lock_err:
+        logger.warning(f"Could not lock thumb for {artwork_type} {item_id}: {lock_err}")
     if artwork_type == "poster":
-        matches, thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+        matches = False
+        thumb = None
+        for attempt in range(3):
+            matches, thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+            if matches:
+                break
+            if attempt < 2:
+                await asyncio.sleep(1.0)
         if not matches:
-            raise RuntimeError("Plex thumbnail does not match the uploaded poster; cache was not marked synced")
-        return json.dumps({"plex_thumb": thumb, "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
+            logger.warning(f"Plex thumbnail does not yet match uploaded poster for {item_id}; poster is selected and thumb locked")
+        return json.dumps({"plex_thumb": thumb or f"/library/metadata/{item_id}/thumb", "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
     response = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
     response.raise_for_status()
     episode = fromstring(response.content).find(".//Video")
@@ -191,6 +215,44 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
     if episode is None or not episode.get("thumb"):
         raise RuntimeError(f"Plex did not return a thumbnail for the confirmed {artwork_type}")
     return json.dumps({"plex_thumb": episode.get("thumb"), "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
+
+
+async def _confirm_plex_backdrop(http_client, server_url, item_id, token, content):
+    headers = {"X-Plex-Token": token, "Accept": "application/xml"}
+    arts_url = f"{server_url}/library/metadata/{item_id}/arts"
+    response = await http_client.get(arts_url, headers=headers)
+    response.raise_for_status()
+    expected_hash = hashlib.sha1(content).hexdigest()
+    uploaded = next((node for node in fromstring(response.content)
+                     if str(node.get("ratingKey", "")).startswith("upload://")
+                     and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+    if uploaded is None:
+        raise RuntimeError("Plex accepted the backdrop upload but did not expose the uploaded image")
+    try:
+        await http_client.put(
+            f"{server_url}/library/metadata/{item_id}",
+            headers=headers,
+            params={"art.locked": "0"}
+        )
+    except Exception as unlock_err:
+        logger.debug(f"Could not temporarily unlock art for backdrop {item_id}: {unlock_err}")
+    response = await http_client.put(f"{server_url}/library/metadata/{item_id}/art", headers=headers, params={"url": uploaded.get("ratingKey")})
+    response.raise_for_status()
+    response = await http_client.get(arts_url, headers=headers)
+    response.raise_for_status()
+    if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
+               for node in fromstring(response.content)):
+        raise RuntimeError("Plex did not select the uploaded backdrop; cache was not marked synced")
+    try:
+        lock_resp = await http_client.put(
+            f"{server_url}/library/metadata/{item_id}",
+            headers=headers,
+            params={"art.locked": "1"}
+        )
+        lock_resp.raise_for_status()
+    except Exception as lock_err:
+        logger.warning(f"Could not lock art for backdrop {item_id}: {lock_err}")
+    return json.dumps({"plex_art_key": uploaded.get("ratingKey")}, sort_keys=True)
 
 
 async def _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb, verify_thumbnail=False):
@@ -2118,7 +2180,7 @@ def build_overlay_layers_for_item(
     )
     rating_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating")]
     single_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "single_rating"]
-    resolution_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "resolution" and str((rule.get("template_variables") or {}).get("mode", "")).lower() in ("banner", "badge", "corner_badge")]
+    resolution_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "resolution"]
     streaming_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming"]
     native_rating_layers = []
     for rule in single_rules:
@@ -2196,6 +2258,8 @@ def build_overlay_layers_for_item(
                 "back_color": variables.get("back_color", "#00000099"), "back_radius": int(variables.get("back_radius", 15)),
                 "back_width": int(variables.get("back_width") or (260 if is_landscape else 245)),
                 "back_height": int(variables.get("back_height") or (85 if is_landscape else 95)),
+                "back_align": variables.get("back_align") or "center",
+                "back_padding": int(variables.get("back_padding", 0)),
                 "fit_to_box": True,
             })
     for rule in rating_rules:
@@ -2276,6 +2340,16 @@ def build_overlay_layers_for_item(
                                 font_file = str(fd / f_cand.name)
                                 break
                 if not font_file:
+                    try:
+                        from overlay_engine import get_candidate_font_dirs
+                        for cand_dir in get_candidate_font_dirs():
+                            cand_f = cand_dir / "Inter-Bold.ttf"
+                            if cand_f.exists():
+                                font_file = str(cand_f)
+                                break
+                    except Exception:
+                        pass
+                if not font_file:
                     for cand_f in [overlays_dir / "fonts" / "Inter-Bold.ttf", PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts" / "Inter-Bold.ttf"]:
                         if cand_f.exists():
                             font_file = str(cand_f)
@@ -2355,11 +2429,11 @@ def build_overlay_layers_for_item(
                     "name": f"audio_codec_{matched_codec}",
                     "type": "image",
                     "image_path": str(codec_image),
-                    "back_color": "#00000099",
-                    "back_width": 305,
-                    "back_height": 105,
-                    "back_radius": 12,
-                    "back_align": "center",
+                    "back_color": variables.get("back_color", "#00000099"),
+                    "back_width": int(variables.get("back_width", 305)),
+                    "back_height": int(variables.get("back_height", 105)),
+                    "back_radius": int(variables.get("back_radius", 15)),
+                    "back_align": variables.get("back_align", "center"),
                     "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position", "center"),
                     "horizontal_offset": int(variables.get("horizontal_offset", 0)),
                     "vertical_align": variables.get("vertical_align") or variables.get("vertical_position", "top"),
@@ -2853,11 +2927,11 @@ def build_overlay_layers_for_item(
                     "name": f"audio_codec_{matched_codec}",
                     "type": "image",
                     "image_path": str(codec_img),
-                    "back_color": "#00000099",
-                    "back_width": 305,
-                    "back_height": 105,
-                    "back_radius": 12,
-                    "back_align": "center",
+                    "back_color": ac_vars.get("back_color", "#00000099"),
+                    "back_width": int(ac_vars.get("back_width", 305)),
+                    "back_height": int(ac_vars.get("back_height", 105)),
+                    "back_radius": int(ac_vars.get("back_radius", 15)),
+                    "back_align": ac_vars.get("back_align", "center"),
                     "horizontal_align": h_pos,
                     "horizontal_offset": int(ac_vars.get("horizontal_offset", 0)),
                     "vertical_align": v_pos,
@@ -4715,6 +4789,13 @@ async def _run_overlay_sync_task(
                                 if _cancel_requested:
                                     return
                                 if b_upload_success:
+                                    backdrop_snapshot = build_attr_snapshot(item)
+                                    if s_type == "plex":
+                                        b_phase = "confirming selected Plex backdrop"
+                                        verified_art = await _confirm_plex_backdrop(
+                                            http_client, s_url, item_id, creds.get("token"), b_comp
+                                        )
+                                        backdrop_snapshot = json.dumps({**json.loads(backdrop_snapshot), **json.loads(verified_art)}, sort_keys=True)
                                     cache.record_push(
                                         server_type=s_type,
                                         server_url=s_url,
@@ -4738,7 +4819,7 @@ async def _run_overlay_sync_task(
                                         detected_audio_codec=item.get("audio_codec"),
                                         detected_video_format=item.get("video_format"),
                                         detected_resolution=item.get("resolution"),
-                                        attr_snapshot=build_attr_snapshot(item),
+                                        attr_snapshot=backdrop_snapshot,
                                         cache_map=cache_map,
                                         media_file_path=item.get("media_file_path"),
                                         detected_video_source=item.get("video_source")
@@ -5137,6 +5218,10 @@ async def _run_overlay_sync_task(
                                                             ep_multi = {"imdb": aud_f, "tmdb": aud_f}
                                                         except (ValueError, TypeError):
                                                             pass
+                                                    if not ep_multi and item.get("multi_ratings"):
+                                                        ep_multi = dict(item["multi_ratings"])
+                                                    if not ep_aud and item.get("audience_rating"):
+                                                        ep_aud = item["audience_rating"]
 
                                                     episodes_to_process.append({
                                                         "id": ep_rk,
@@ -5218,6 +5303,10 @@ async def _run_overlay_sync_task(
                                                             ep_multi = {"imdb": aud_f, "tmdb": aud_f}
                                                         except (ValueError, TypeError):
                                                             pass
+                                                    if not ep_multi and item.get("multi_ratings"):
+                                                        ep_multi = dict(item["multi_ratings"])
+                                                    if not ep_aud and item.get("audience_rating"):
+                                                        ep_aud = item["audience_rating"]
 
                                                     episodes_to_process.append({
                                                         "id": str(ep_rk),

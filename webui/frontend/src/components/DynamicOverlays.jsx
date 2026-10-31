@@ -5528,6 +5528,25 @@ export default function DynamicOverlays() {
 
                   {isResEnabled && (
                     <div className="pt-3 mt-2.5 border-t border-theme/50 space-y-2.5">
+                      {/* Target Scope / Builder Level */}
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-semibold text-theme-muted uppercase flex items-center justify-between">
+                          <span>Target Scope / Builder Level</span>
+                          <span className="text-[9px] text-theme-primary font-mono">{resBadge.level || (isTv ? "all" : "movie")}</span>
+                        </label>
+                        <select
+                          value={resBadge.level || (isTv ? "all" : "movie")}
+                          onChange={(e) => updateBadge("resolution", { level: e.target.value })}
+                          className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium"
+                        >
+                          <option value="all">All Library Items (all)</option>
+                          <option value="movie">Movie Posters & Backdrops (movie)</option>
+                          <option value="show">Show Main Posters (show)</option>
+                          <option value="season">Season Posters (season)</option>
+                          <option value="episode">Episode Titlecards & Backdrops (episode)</option>
+                        </select>
+                      </div>
+
                       {/* Mode Switch: Corner Badges vs Ribbon Banner */}
                       <div className="space-y-1">
                         <label className="text-[9px] font-semibold text-theme-muted uppercase">Overlay Display Style</label>
@@ -5773,6 +5792,25 @@ export default function DynamicOverlays() {
 
                   {isAudioEnabled && (
                     <div className="pt-3 mt-2.5 border-t border-theme/50 space-y-2.5">
+                      {/* Target Scope / Builder Level */}
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-semibold text-theme-muted uppercase flex items-center justify-between">
+                          <span>Target Scope / Builder Level</span>
+                          <span className="text-[9px] text-theme-primary font-mono">{audioBadge.level || (isTv ? "all" : "movie")}</span>
+                        </label>
+                        <select
+                          value={audioBadge.level || (isTv ? "all" : "movie")}
+                          onChange={(e) => updateBadge("audio_codec", { level: e.target.value })}
+                          className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium"
+                        >
+                          <option value="all">All Library Items (all)</option>
+                          <option value="movie">Movie Posters & Backdrops (movie)</option>
+                          <option value="show">Show Main Posters (show)</option>
+                          <option value="season">Season Posters (season)</option>
+                          <option value="episode">Episode Titlecards & Backdrops (episode)</option>
+                        </select>
+                      </div>
+
                       {/* Badge Style: Compact vs Standard */}
                       <div className="space-y-1">
                         <label className="text-[9px] font-semibold text-theme-muted uppercase">Badge Style</label>
@@ -5825,6 +5863,90 @@ export default function DynamicOverlays() {
                               value={audioBadge.offset_y ?? 70}
                               onChange={(e) => updateBadge("audio_codec", { offset_y: parseInt(e.target.value) || 0 })}
                               className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Contrast Background Pill Controls */}
+                      <div className="p-2.5 rounded-lg bg-theme-hover/40 border border-theme/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-semibold text-theme-text flex items-center gap-1.5">
+                            <Palette className="w-3 h-3 text-theme-primary" />
+                            <span>Contrast Pill Background</span>
+                          </label>
+                          <span className="text-[9px] font-mono text-theme-muted">
+                            {audioBadge.back_color || "#00000099"}
+                          </span>
+                        </div>
+
+                        {/* Preset Buttons */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1">
+                          {[
+                            { label: "Dark Glass", val: "#00000099" },
+                            { label: "Solid Dark", val: "#000000E6" },
+                            { label: "Light Glass", val: "#FFFFFF99" },
+                            { label: "Solid Light", val: "#FFFFFFAA" },
+                            { label: "Transparent", val: "#00000000" }
+                          ].map((preset) => {
+                            const isCurrent = (audioBadge.back_color || "#00000099").toLowerCase() === preset.val.toLowerCase();
+                            return (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => updateBadge("audio_codec", { back_color: preset.val })}
+                                className={`px-1.5 py-1 rounded text-[10px] font-semibold border transition-all truncate ${
+                                  isCurrent
+                                    ? "bg-theme-primary text-white border-theme-primary shadow-sm"
+                                    : "bg-theme-card border-theme text-theme-muted hover:text-theme-text"
+                                }`}
+                                title={preset.val}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Fine-tuning row: Hex, Radius, Width, Height */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-theme/30">
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Color Hex</label>
+                            <input
+                              type="text"
+                              value={audioBadge.back_color ?? "#00000099"}
+                              onChange={(e) => updateBadge("audio_codec", { back_color: e.target.value })}
+                              placeholder="#00000099"
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Radius (px)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="50"
+                              value={audioBadge.back_radius ?? 15}
+                              onChange={(e) => updateBadge("audio_codec", { back_radius: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Width (px)</label>
+                            <input
+                              type="number"
+                              value={audioBadge.back_width ?? 305}
+                              onChange={(e) => updateBadge("audio_codec", { back_width: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Height (px)</label>
+                            <input
+                              type="number"
+                              value={audioBadge.back_height ?? 105}
+                              onChange={(e) => updateBadge("audio_codec", { back_height: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
                         </div>
@@ -6227,7 +6349,7 @@ export default function DynamicOverlays() {
                           onChange={(p) => updateBadge("audio_languages", { position: p })}
                         />
                         <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={Boolean(badges.audio_languages?.show_labels)} onChange={event => updateBadge("audio_languages", { show_labels: event.target.checked })} />Show Language Codes</label>
-                        <div className="grid grid-cols-3 gap-1.5 flex-1">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 flex-1">
                           <div className="space-y-0.5">
                             <label className="text-[9px] font-semibold text-theme-muted uppercase">Offset X</label>
                             <input
@@ -6254,6 +6376,17 @@ export default function DynamicOverlays() {
                               max={10}
                               value={badges.audio_languages?.limit ?? 5}
                               onChange={(e) => updateBadge("audio_languages", { limit: parseInt(e.target.value) || 5 })}
+                              className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Radius (px)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={50}
+                              value={badges.audio_languages?.back_radius ?? 15}
+                              onChange={(e) => updateBadge("audio_languages", { back_radius: parseInt(e.target.value) || 0 })}
                               className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
@@ -6354,6 +6487,7 @@ export default function DynamicOverlays() {
                           onChange={(e) => updateBadge("runtime", { level: e.target.value })}
                           className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium"
                         >
+                          <option value="all">All Library Items (all)</option>
                           {isTv ? (
                             <>
                               <option value="episode">Episode Titlecards & Backdrops (16:9)</option>
@@ -6373,7 +6507,7 @@ export default function DynamicOverlays() {
                           value={badges.runtime?.position || "bottom-right"}
                           onChange={(p) => updateBadge("runtime", { position: p })}
                         />
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 flex-1">
+                        <div className="grid grid-cols-2 gap-1.5 flex-1">
                           <div className="space-y-0.5">
                             <label className="text-[9px] font-semibold text-theme-muted uppercase">Offset X</label>
                             <input
@@ -6392,22 +6526,88 @@ export default function DynamicOverlays() {
                               className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
+                        </div>
+                      </div>
+
+                      {/* Contrast Background Pill Controls */}
+                      <div className="p-2.5 rounded-lg bg-theme-hover/40 border border-theme/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-semibold text-theme-text flex items-center gap-1.5">
+                            <Palette className="w-3 h-3 text-theme-primary" />
+                            <span>Contrast Pill Background</span>
+                          </label>
+                          <span className="text-[9px] font-mono text-theme-muted">
+                            {badges.runtime?.back_color || "#00000000"}
+                          </span>
+                        </div>
+
+                        {/* Preset Buttons */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1">
+                          {[
+                            { label: "Transparent", val: "#00000000" },
+                            { label: "Dark Glass", val: "#00000099" },
+                            { label: "Solid Dark", val: "#000000E6" },
+                            { label: "Light Glass", val: "#FFFFFF99" },
+                            { label: "Solid Light", val: "#FFFFFFAA" }
+                          ].map((preset) => {
+                            const isCurrent = (badges.runtime?.back_color || "#00000000").toLowerCase() === preset.val.toLowerCase();
+                            return (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => updateBadge("runtime", { back_color: preset.val })}
+                                className={`px-1.5 py-1 rounded text-[10px] font-semibold border transition-all truncate ${
+                                  isCurrent
+                                    ? "bg-theme-primary text-white border-theme-primary shadow-sm"
+                                    : "bg-theme-card border-theme text-theme-muted hover:text-theme-text"
+                                }`}
+                                title={preset.val}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Fine-tuning row: Hex, Radius, Width, Height */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-theme/30">
                           <div className="space-y-0.5">
-                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Width</label>
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Color Hex</label>
                             <input
-                              type="number"
-                              value={badges.runtime?.back_width ?? 205}
-                              onChange={(e) => updateBadge("runtime", { back_width: parseInt(e.target.value) || 205 })}
-                              className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
+                              type="text"
+                              value={badges.runtime?.back_color ?? "#00000000"}
+                              onChange={(e) => updateBadge("runtime", { back_color: e.target.value })}
+                              placeholder="#00000000"
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
                           <div className="space-y-0.5">
-                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Height</label>
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Radius (px)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="50"
+                              value={badges.runtime?.back_radius ?? 15}
+                              onChange={(e) => updateBadge("runtime", { back_radius: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Width (px)</label>
+                            <input
+                              type="number"
+                              value={badges.runtime?.back_width ?? 205}
+                              onChange={(e) => updateBadge("runtime", { back_width: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Height (px)</label>
                             <input
                               type="number"
                               value={badges.runtime?.back_height ?? 80}
-                              onChange={(e) => updateBadge("runtime", { back_height: parseInt(e.target.value) || 80 })}
-                              className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
+                              onChange={(e) => updateBadge("runtime", { back_height: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
                         </div>
@@ -6539,6 +6739,24 @@ export default function DynamicOverlays() {
 
                   {isStatusEnabled && (
                     <div className="pt-3 mt-2.5 border-t border-theme/50 space-y-2.5">
+                      {/* Target Scope / Builder Level */}
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-semibold text-theme-muted uppercase flex items-center justify-between">
+                          <span>Target Scope / Builder Level</span>
+                          <span className="text-[9px] text-theme-primary font-mono">{badges.status?.level || "show"}</span>
+                        </label>
+                        <select
+                          value={badges.status?.level || "show"}
+                          onChange={(e) => updateBadge("status", { level: e.target.value })}
+                          className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium"
+                        >
+                          <option value="show">Show Main Posters (show)</option>
+                          <option value="season">Season Posters (season)</option>
+                          <option value="episode">Episode Titlecards & Backdrops (episode)</option>
+                          <option value="all">All Library Items (all)</option>
+                        </select>
+                      </div>
+
                       <div className="flex items-start gap-2.5">
                         <PositionPicker
                           value={badges.status?.position || "bottom-center"}
@@ -6570,6 +6788,90 @@ export default function DynamicOverlays() {
                               value={badges.status?.font_size ?? 80}
                               onChange={(e) => updateBadge("status", { font_size: parseInt(e.target.value) || 80 })}
                               className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Contrast Background Pill Controls */}
+                      <div className="p-2.5 rounded-lg bg-theme-hover/40 border border-theme/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-semibold text-theme-text flex items-center gap-1.5">
+                            <Palette className="w-3 h-3 text-theme-primary" />
+                            <span>Contrast Pill Background</span>
+                          </label>
+                          <span className="text-[9px] font-mono text-theme-muted">
+                            {badges.status?.back_color || "#00000000"}
+                          </span>
+                        </div>
+
+                        {/* Preset Buttons */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1">
+                          {[
+                            { label: "Transparent", val: "#00000000" },
+                            { label: "Dark Glass", val: "#00000099" },
+                            { label: "Solid Dark", val: "#000000E6" },
+                            { label: "Light Glass", val: "#FFFFFF99" },
+                            { label: "Solid Light", val: "#FFFFFFAA" }
+                          ].map((preset) => {
+                            const isCurrent = (badges.status?.back_color || "#00000000").toLowerCase() === preset.val.toLowerCase();
+                            return (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => updateBadge("status", { back_color: preset.val })}
+                                className={`px-1.5 py-1 rounded text-[10px] font-semibold border transition-all truncate ${
+                                  isCurrent
+                                    ? "bg-theme-primary text-white border-theme-primary shadow-sm"
+                                    : "bg-theme-card border-theme text-theme-muted hover:text-theme-text"
+                                }`}
+                                title={preset.val}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Fine-tuning row: Hex, Radius, Width, Height */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-theme/30">
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Color Hex</label>
+                            <input
+                              type="text"
+                              value={badges.status?.back_color ?? "#00000000"}
+                              onChange={(e) => updateBadge("status", { back_color: e.target.value })}
+                              placeholder="#00000000"
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Radius (px)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="50"
+                              value={badges.status?.back_radius ?? 15}
+                              onChange={(e) => updateBadge("status", { back_radius: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Width (px)</label>
+                            <input
+                              type="number"
+                              value={badges.status?.back_width ?? 965}
+                              onChange={(e) => updateBadge("status", { back_width: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Height (px)</label>
+                            <input
+                              type="number"
+                              value={badges.status?.back_height ?? 149}
+                              onChange={(e) => updateBadge("status", { back_height: parseInt(e.target.value) || 0 })}
+                              className="w-full bg-theme-card border border-theme rounded-md px-1.5 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
                         </div>

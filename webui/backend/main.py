@@ -18909,6 +18909,33 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
                 if response.status_code not in [200, 201]:
                     return {"success": False, "error": f"Plex returned status {response.status_code}"}
 
+                # Select and lock poster in Plex so it becomes active and stays locked
+                try:
+                    expected_hash = hashlib.sha1(data).hexdigest()
+                    gallery_resp = await client.get(
+                        f"{server_url}/library/metadata/{safe_rating_key}/posters",
+                        headers={"X-Plex-Token": request.server_token, "Accept": "application/xml"}
+                    )
+                    if gallery_resp.status_code == 200:
+                        from xml.etree.ElementTree import fromstring
+                        g_root = fromstring(gallery_resp.content)
+                        uploaded = next((node for node in g_root
+                                         if str(node.get("ratingKey", "")).startswith("upload://")
+                                         and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+                        if uploaded is not None:
+                            await client.put(
+                                f"{server_url}/library/metadata/{safe_rating_key}/poster",
+                                headers={"X-Plex-Token": request.server_token},
+                                params={"url": uploaded.get("ratingKey")}
+                            )
+                    await client.put(
+                        f"{server_url}/library/metadata/{safe_rating_key}",
+                        headers={"X-Plex-Token": request.server_token},
+                        params={"thumb.locked": "1"}
+                    )
+                except Exception as sel_err:
+                    logger.warning(f"Could not select/lock poster for {safe_rating_key}: {sel_err}")
+
                 # Update persistent cache so Collection Explorer recognizes it as in sync immediately
                 try:
                     from plex_push_service import PlexPushCache, scan_local_collection_assets, normalize_collection_name

@@ -25,14 +25,35 @@ function ImageCropModal({
   const [zoom, setZoom] = useState(1);
   const [cropPos, setCropPos] = useState({ x: 0, y: 0 }); // top-left in natural image coordinates
   const [isDragging, setIsDragging] = useState(false);
+  const [containerDimensions, setContainerDimensions] = useState({ width: 700, height: 420 });
 
   const containerRef = useRef(null);
   const dragRef = useRef(null);
   const hasMovedRef = useRef(false);
+  const zoomRef = useRef(zoom);
+
+  // Keep ref in sync
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   // Determine whether this is a backdrop being cropped to a poster
   const isPosterTarget = assetType === "poster" || assetType === "season" || assetType === "collection";
   const isBackdropSource = naturalSize.width > 0 && naturalSize.width > naturalSize.height;
+
+  // Base crop size (at zoom = 1)
+  const getBaseCropSize = useCallback(() => {
+    const { width: nw, height: nh } = naturalSize;
+    if (!nw || !nh) return { width: 0, height: 0 };
+    if (nw / nh >= targetRatio) {
+      return { width: nh * targetRatio, height: nh };
+    }
+    return { width: nw, height: nw / targetRatio };
+  }, [naturalSize, targetRatio]);
+
+  const baseCrop = getBaseCropSize();
+  const currentCropW = zoom > 0 ? baseCrop.width / zoom : baseCrop.width;
+  const currentCropH = zoom > 0 ? baseCrop.height / zoom : baseCrop.height;
 
   // Load natural image dimensions when imageSrc changes
   useEffect(() => {
@@ -69,23 +90,6 @@ function ImageCropModal({
     };
     img.src = imageSrc;
   }, [imageSrc, isOpen, targetRatio]);
-
-  // Base crop size (at zoom = 1)
-  const getBaseCropSize = useCallback(() => {
-    const { width: nw, height: nh } = naturalSize;
-    if (!nw || !nh) return { width: 0, height: 0 };
-    if (nw / nh >= targetRatio) {
-      return { width: nh * targetRatio, height: nh };
-    }
-    return { width: nw, height: nw / targetRatio };
-  }, [naturalSize, targetRatio]);
-
-  const baseCrop = getBaseCropSize();
-  const currentCropW = zoom > 0 ? baseCrop.width / zoom : baseCrop.width;
-  const currentCropH = zoom > 0 ? baseCrop.height / zoom : baseCrop.height;
-
-  // Display scale: scale to fit naturalSize into max viewport
-  const [containerDimensions, setContainerDimensions] = useState({ width: 700, height: 420 });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -138,12 +142,6 @@ function ImageCropModal({
     setZoom(clampedZoom);
     setCropPos({ x: nextX, y: nextY });
   }, [naturalSize, currentCropW, currentCropH, baseCrop, cropPos]);
-
-  // Keep a ref of zoom for touch gesture closures
-  const zoomRef = useRef(zoom);
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
 
   // Native touch pinch-to-zoom support for mobile/tablet screens
   useEffect(() => {

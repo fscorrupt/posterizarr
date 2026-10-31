@@ -69,12 +69,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   const [customImageUrl, setCustomImageUrl] = useState("");
   const [loadingUrl, setLoadingUrl] = useState(false);
 
-  // Always reset scroll to top when tab, provider, type, or language changes so first asset is visible
+  // Always reset scroll to top when tab, provider, type, language, or previews change so first asset is visible
   useEffect(() => {
     if (contentScrollRef.current) {
       contentScrollRef.current.scrollTop = 0;
     }
-  }, [activeTab, activeProviderTab, typeFilter, languageFilter]);
+  }, [activeTab, activeProviderTab, typeFilter, languageFilter, previews]);
 
   useEffect(() => {
     let active = true;
@@ -141,6 +141,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     seasonNumber: "", // For searching seasons
     episodeNumber: "", // For searching episodes
   });
+  const [manualSearch, setManualSearch] = useState(false);
+  const [searchTitle, setSearchTitle] = useState("");
+  const [searchYear, setSearchYear] = useState("");
 
   // Extract metadata from asset
   const extractMetadata = () => {
@@ -539,11 +542,6 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   useEffect(() => {
     setTypeFilter(metadata.asset_type === "background" ? "backdrop" : "poster");
   }, [metadata.asset_type]);
-
-  // Manual search state - initialize with detected metadata
-  const [manualSearch, setManualSearch] = useState(false);
-  const [searchTitle, setSearchTitle] = useState("");
-  const [searchYear, setSearchYear] = useState("");
 
   // Check if Posterizarr is running on component mount
   useEffect(() => {
@@ -1750,11 +1748,24 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       ? currentProviderPreviews.filter(p => p.type === "poster" || p.type === "season" || p.type === "season_poster")
       : currentProviderPreviews.filter(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background");
 
-  const availableLanguages = ["all", ...new Set(typeFilteredPreviews.map(p => (p.language || "xx").toLowerCase()))];
+  const configuredOrder = (
+    languageOrder[metadata.asset_type] ||
+    languageOrder.poster ||
+    []
+  ).map(l => (l || "").trim().toLowerCase()).filter(Boolean);
+
+  const rawAvailable = [...new Set(typeFilteredPreviews.map(p => (p.language || "xx").toLowerCase()))];
+  const allowedLanguages = configuredOrder.length > 0
+    ? rawAvailable.filter(l => configuredOrder.includes(l))
+    : rawAvailable;
+
+  const availableLanguages = ["all", ...allowedLanguages];
   const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
 
   const filteredPreviews = effectiveLanguageFilter === "all"
-    ? typeFilteredPreviews
+    ? (configuredOrder.length > 0
+        ? typeFilteredPreviews.filter(p => configuredOrder.includes((p.language || "xx").toLowerCase()))
+        : typeFilteredPreviews)
     : typeFilteredPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
 
   return (

@@ -2607,6 +2607,8 @@ class OverlayConfigEngine:
         applied_overlays: List[Dict[str, Any]] = []
         queue_overlays: Dict[str, List[Dict[str, Any]]] = {}
         all_queues: Dict[str, List[Dict[str, Any]]] = {}
+        queue_limits: Dict[str, Optional[int]] = {}
+        queue_lang_order: Dict[str, List[str]] = {}
 
         media_type = str(item_metadata.get("media_type", "movie")).lower()
         is_season = (item_metadata.get("season_number") is not None and media_type != "episode") or (media_type == "season")
@@ -2642,11 +2644,37 @@ class OverlayConfigEngine:
                 self._expanded_rules_cache[definitions_key] = {}
             expanded_definitions = self._expanded_rules_cache[definitions_key]
 
+            # Determine rule-level overlay_limit if configured
+            rule_limit = None
+            if file_vars.get("overlay_limit") is not None:
+                try:
+                    rule_limit = int(file_vars["overlay_limit"])
+                except (ValueError, TypeError):
+                    pass
+            elif rule_entry.get("template_variables", {}).get("overlay_limit") is not None:
+                try:
+                    rule_limit = int(rule_entry["template_variables"]["overlay_limit"])
+                except (ValueError, TypeError):
+                    pass
+
             # Resolve queues for this file
             for q_name, q_def in file_queues.items():
                 if isinstance(q_def, dict) and "settings" in q_def:
                     slots = self._resolve_queue_slots(q_def["settings"], file_vars)
-                    all_queues[queue_prefix + q_name] = slots
+                    full_q = queue_prefix + q_name
+                    all_queues[full_q] = slots
+                    q_limit = rule_limit
+                    if q_limit is None and q_def["settings"].get("overlay_limit") is not None:
+                        try:
+                            q_limit = int(q_def["settings"]["overlay_limit"])
+                        except (ValueError, TypeError):
+                            pass
+                    queue_limits[full_q] = q_limit
+                    if file_vars.get("languages"):
+                        raw_l = file_vars["languages"]
+                        if isinstance(raw_l, str):
+                            raw_l = [x.strip() for x in raw_l.split(",") if x.strip()]
+                        queue_lang_order[full_q] = [str(x).strip().lower() for x in raw_l]
 
             # Process each overlay in file
             for ov_key, ov_def in self._candidate_overlays_for_title(
@@ -2780,11 +2808,11 @@ class OverlayConfigEngine:
                     "stroke_color": _clean_val(ov_data.get("stroke_color")),
                     "stroke_width": _clean_int(ov_data.get("stroke_width"), 0),
                     # Do not blindly leak file_vars back_color to overlays (e.g. rating_high) that never requested it
-                    "back_color": _clean_val(ov_data.get("back_color")),
-                    "back_width": _clean_int(ov_data.get("back_width")),
-                    "back_height": _clean_int(ov_data.get("back_height")),
-                    "back_radius": _clean_int(ov_data.get("back_radius"), 0),
-                    "back_padding": _clean_int(ov_data.get("back_padding"), 0),
+                    "back_color": _clean_val(ov_data.get("back_color") if ov_data.get("back_color") is not None else file_vars.get("back_color")),
+                    "back_width": _clean_int(ov_data.get("back_width") if ov_data.get("back_width") is not None else file_vars.get("back_width")),
+                    "back_height": _clean_int(ov_data.get("back_height") if ov_data.get("back_height") is not None else file_vars.get("back_height")),
+                    "back_radius": _clean_int(ov_data.get("back_radius") if ov_data.get("back_radius") is not None else file_vars.get("back_radius"), 0),
+                    "back_padding": _clean_int(ov_data.get("back_padding") if ov_data.get("back_padding") is not None else file_vars.get("back_padding"), 0),
                     "back_align": _clean_val(ov_data.get("back_align") or file_vars.get("back_align"), "center"),
                     "addon_position": _clean_val(ov_data.get("addon_position") or file_vars.get("addon_position")),
                     "addon_offset": _clean_int(ov_data.get("addon_offset") or file_vars.get("addon_offset"), 0),
@@ -2811,7 +2839,22 @@ class OverlayConfigEngine:
 
         for q_name, q_items in queue_overlays.items():
             slots = all_queues.get(q_name, [])
-            sorted_q = sorted(q_items, key=lambda x: x.get("weight") or 0, reverse=True)
+            preferred_langs = queue_lang_order.get(q_name, [])
+            if preferred_langs:
+                def _q_sort_key(item):
+                    m_name = str(item.get("mapping_name") or item.get("name") or "").lower()
+                    for idx, lang in enumerate(preferred_langs):
+                        if lang == m_name or f"_{lang}" in m_name or f"{lang}_" in m_name or lang in m_name:
+                            return (0, idx, -(item.get("weight") or 0))
+                    return (1, 0, -(item.get("weight") or 0))
+                sorted_q = sorted(q_items, key=_q_sort_key)
+            else:
+                sorted_q = sorted(q_items, key=lambda x: x.get("weight") or 0, reverse=True)
+
+            q_limit = queue_limits.get(q_name)
+            if q_limit is not None and q_limit > 0:
+                sorted_q = sorted_q[:q_limit]
+
             for idx, item in enumerate(sorted_q):
                 if idx < len(slots):
                     slot = slots[idx]

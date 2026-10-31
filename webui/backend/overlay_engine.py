@@ -287,12 +287,13 @@ def _render_provider_score_layout(canvas_box, layer, font, image_element):
         vertical_align=layer.get("vertical_align", "top"), vertical_offset=layer.get("vertical_offset", 0),
     )
     on_left = layer.get("score_position") == "left"
+    logo_area_w = max(0, box_width - score_width - gap)
     if on_left:
         slot_x = origin_x
-        logo_x = origin_x + score_width + gap if score_width and logo_width else origin_x
+        logo_x = origin_x + score_width + gap + (max(0, logo_area_w - logo_width) // 2 if logo_width else 0)
     else:
-        logo_x = origin_x
-        slot_x = origin_x + logo_width + gap if logo_width else origin_x
+        slot_x = origin_x + box_width - score_width
+        logo_x = origin_x + (max(0, logo_area_w - logo_width) // 2 if logo_width else 0)
     alignment = layer.get("score_alignment", "left")
     free_width = max(0, score_width - number.width)
     number_x = slot_x if layer.get("score_size_mode") == "content" else slot_x + (free_width if alignment == "right" else free_width // 2 if alignment == "center" else 0)
