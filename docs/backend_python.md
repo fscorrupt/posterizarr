@@ -51,6 +51,13 @@ The backend handles the following core responsibilities:
 - **`studio_logos.py`**: Handles studio, network, and production company logo resolution, local caching, and transparent PNG delivery for collection designs and media badges.
 - **`migrate_runtime_data.py`**: A migration script used to upgrade database schemas or runtime data formats between versions.
 - **`support_bundle.py`**: Builds the diagnostic ZIP requested by `POST /api/admin/support-zip`, independently of application startup tasks.
+- **`animetafill_service.py`**: Integration service bridging AniMetaFill into Posterizarr's backend. Coordinates anime canon/filler classification tasks, library scans, and triggers overlay generation.
+- **`animetafill_core/`**: Core engine for anime episode classification:
+  - **`classifier.py`**: Evaluates episode data against SIMKL and AnimeFillerList providers.
+  - **`database.py`**: Local SQLite cache for anime episode classifications and sync states.
+  - **`media_scanner.py`**: Scans Plex, Jellyfin, and Emby servers for configured anime libraries.
+  - **`overlay_yaml.py`** (`OverlayYamlGenerator`): Generates and parses unified episode overlay YAML files (`anime_overlays.yml`).
+  - **`sonarr_client.py`**: Maps absolute episode numbers to season/episode numbers via Sonarr.
 
 ### Security Utilities (`main.py`)
 

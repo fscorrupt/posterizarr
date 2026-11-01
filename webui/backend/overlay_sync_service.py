@@ -45,6 +45,7 @@ from overlay_cache import compute_layers_recipe_hash as _compute_layers_recipe_h
 from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
 from ratings_service import resolve_media_ratings, build_multi_rating_layers, ratings_cache
 from dynamic_overlays_service import get_dynamic_overlays_settings
+from plex_push_service import get_asset_path_from_config
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -160,6 +161,50 @@ async def _plex_poster_thumbnail_status(http_client, server_url, item_id, token,
     return hashlib.sha1(response.content).hexdigest() == expected_hash, thumb
 
 
+async def _set_plex_field_lock(http_client, server_url, item_id, token, field_name="thumb.locked", lock_val="1"):
+    """
+    Lock or unlock an artwork or metadata field in Plex Media Server.
+    Plex requires PUT /library/sections/{section_id}/all?type={type_id}&id={item_id}&{field_name}={lock_val}
+    in order to persist locks in metadata_items.user_fields (preventing background tasks,
+    loudness analysis, and metadata agents from overwriting user-assigned artwork).
+    Also issues PUT /library/metadata/{item_id} as a fallback.
+    """
+    headers = {"X-Plex-Token": token, "Accept": "application/xml"}
+    # 1. Direct metadata endpoint (legacy fallback)
+    try:
+        await http_client.put(
+            f"{server_url}/library/metadata/{item_id}",
+            headers=headers,
+            params={field_name: str(lock_val)}
+        )
+    except Exception:
+        pass
+
+    # 2. Section endpoint (authoritative Plex endpoint for user_fields)
+    try:
+        meta_resp = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
+        if meta_resp.status_code == 200:
+            root = fromstring(meta_resp.content)
+            item_node = next((node for node in root if node.tag in ("Video", "Directory")), None)
+            section_id = (item_node.get("librarySectionID") if item_node is not None else None) or root.get("librarySectionID")
+            item_type = (item_node.get("type") if item_node is not None else None) or root.get("viewGroup") or "movie"
+            type_map = {"movie": 1, "show": 2, "season": 3, "episode": 4, "collection": 18}
+            type_id = type_map.get(str(item_type).lower(), 1)
+            if section_id:
+                sec_put_url = f"{server_url}/library/sections/{section_id}/all"
+                await http_client.put(
+                    sec_put_url,
+                    headers=headers,
+                    params={
+                        "type": type_id,
+                        "id": str(item_id),
+                        field_name: str(lock_val)
+                    }
+                )
+    except Exception as e:
+        logger.debug(f"Could not set {field_name}={lock_val} on Plex section for item {item_id}: {e}")
+
+
 async def _confirm_plex_titlecard(http_client, server_url, item_id, token, content, artwork_type="titlecard"):
     headers = {"X-Plex-Token": token, "Accept": "application/xml"}
     posters_url = f"{server_url}/library/metadata/{item_id}/posters"
@@ -171,14 +216,10 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if uploaded is None:
         raise RuntimeError(f"Plex accepted the {artwork_type} upload but did not expose the uploaded image")
-    try:
-        await http_client.put(
-            f"{server_url}/library/metadata/{item_id}",
-            headers=headers,
-            params={"thumb.locked": "0"}
-        )
-    except Exception as unlock_err:
-        logger.debug(f"Could not temporarily unlock thumb for {artwork_type} {item_id}: {unlock_err}")
+
+    # Temporarily unlock thumb so Plex allows switching artwork
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="thumb.locked", lock_val="0")
+
     response = await http_client.put(f"{server_url}/library/metadata/{item_id}/poster", headers=headers, params={"url": uploaded.get("ratingKey")})
     response.raise_for_status()
     response = await http_client.get(posters_url, headers=headers)
@@ -186,15 +227,10 @@ async def _confirm_plex_titlecard(http_client, server_url, item_id, token, conte
     if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
                for node in fromstring(response.content)):
         raise RuntimeError(f"Plex did not select the uploaded {artwork_type}; cache was not marked synced")
-    try:
-        lock_resp = await http_client.put(
-            f"{server_url}/library/metadata/{item_id}",
-            headers=headers,
-            params={"thumb.locked": "1"}
-        )
-        lock_resp.raise_for_status()
-    except Exception as lock_err:
-        logger.warning(f"Could not lock thumb for {artwork_type} {item_id}: {lock_err}")
+
+    # Authoritatively lock thumb in Plex database (user_fields) to protect against loudness analysis / agent overwrites
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="thumb.locked", lock_val="1")
+
     if artwork_type == "poster":
         matches = False
         thumb = None
@@ -228,14 +264,10 @@ async def _confirm_plex_backdrop(http_client, server_url, item_id, token, conten
                      and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
     if uploaded is None:
         raise RuntimeError("Plex accepted the backdrop upload but did not expose the uploaded image")
-    try:
-        await http_client.put(
-            f"{server_url}/library/metadata/{item_id}",
-            headers=headers,
-            params={"art.locked": "0"}
-        )
-    except Exception as unlock_err:
-        logger.debug(f"Could not temporarily unlock art for backdrop {item_id}: {unlock_err}")
+
+    # Temporarily unlock art so Plex allows switching backdrop
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="art.locked", lock_val="0")
+
     response = await http_client.put(f"{server_url}/library/metadata/{item_id}/art", headers=headers, params={"url": uploaded.get("ratingKey")})
     response.raise_for_status()
     response = await http_client.get(arts_url, headers=headers)
@@ -243,15 +275,10 @@ async def _confirm_plex_backdrop(http_client, server_url, item_id, token, conten
     if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
                for node in fromstring(response.content)):
         raise RuntimeError("Plex did not select the uploaded backdrop; cache was not marked synced")
-    try:
-        lock_resp = await http_client.put(
-            f"{server_url}/library/metadata/{item_id}",
-            headers=headers,
-            params={"art.locked": "1"}
-        )
-        lock_resp.raise_for_status()
-    except Exception as lock_err:
-        logger.warning(f"Could not lock art for backdrop {item_id}: {lock_err}")
+
+    # Authoritatively lock art in Plex database (user_fields)
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="art.locked", lock_val="1")
+
     return json.dumps({"plex_art_key": uploaded.get("ratingKey")}, sort_keys=True)
 
 
@@ -5197,27 +5224,70 @@ async def _run_overlay_sync_task(
 
                                                     ep_aud = ep_elem.get("audienceRating") or ep_elem.get("rating")
                                                     ep_multi = {}
+
+                                                    # 1. Parse structured <Rating> tags under episode element
                                                     for r_node in ep_elem.findall(".//Rating"):
                                                         img = str(r_node.get("image") or "").lower()
                                                         val = r_node.get("value")
+                                                        rtype = str(r_node.get("type") or "").lower()
                                                         if not val:
                                                             continue
                                                         try:
-                                                            val_f = float(val)
+                                                            clean_v = str(val).replace("%", "").strip()
+                                                            val_f = float(clean_v)
                                                             if "imdb" in img:
                                                                 ep_multi["imdb"] = round(val_f, 1)
-                                                            elif "tmdb" in img or "themoviedb" in img:
+                                                            elif "themoviedb" in img or "tmdb" in img:
                                                                 ep_multi["tmdb"] = round(val_f, 1)
                                                             elif "rottentomatoes" in img or "tomato" in img:
-                                                                ep_multi["rt_audience"] = int(round(val_f * 10)) if val_f <= 10.0 else int(round(val_f))
+                                                                pct = int(round(val_f * 10)) if val_f <= 10.0 else int(round(val_f))
+                                                                is_critic = (
+                                                                    rtype == "critic"
+                                                                    or "critic" in img
+                                                                    or "ripe" in img
+                                                                    or "certified" in img
+                                                                    or ".rotten" in img
+                                                                    or "/rotten" in img
+                                                                    or img.endswith("rotten")
+                                                                    or "fresh" in img
+                                                                )
+                                                                is_audience = (
+                                                                    rtype == "audience"
+                                                                    or "audience" in img
+                                                                    or "upright" in img
+                                                                    or "spilled" in img
+                                                                    or "popcorn" in img
+                                                                )
+                                                                if is_critic and not is_audience:
+                                                                    ep_multi["rt_critic"] = pct
+                                                                elif is_audience:
+                                                                    ep_multi["rt_audience"] = pct
+                                                                elif "rt_critic" not in ep_multi:
+                                                                    ep_multi["rt_critic"] = pct
+                                                                else:
+                                                                    ep_multi["rt_audience"] = pct
                                                         except (ValueError, TypeError):
                                                             pass
-                                                    if not ep_multi and ep_aud is not None:
-                                                        try:
-                                                            aud_f = round(float(ep_aud), 1)
-                                                            ep_multi = {"imdb": aud_f, "tmdb": aud_f}
-                                                        except (ValueError, TypeError):
-                                                            pass
+
+                                                    # 2. Check attribute-level ratings (rating, audienceRating) with corresponding image attributes
+                                                    for attr_k, img_k in (("audienceRating", "audienceRatingImage"), ("rating", "ratingImage")):
+                                                        attr_val = ep_elem.get(attr_k)
+                                                        img_val = str(ep_elem.get(img_k) or "").lower()
+                                                        if attr_val:
+                                                            try:
+                                                                val_f = float(str(attr_val).replace("%", "").strip())
+                                                                if "imdb" in img_val:
+                                                                    ep_multi.setdefault("imdb", round(val_f, 1))
+                                                                elif "themoviedb" in img_val or "tmdb" in img_val:
+                                                                    ep_multi.setdefault("tmdb", round(val_f, 1))
+                                                                elif "rottentomatoes" in img_val:
+                                                                    pct = int(round(val_f * 10)) if val_f <= 10.0 else int(round(val_f))
+                                                                    key = "rt_audience" if attr_k == "audienceRating" else "rt_critic"
+                                                                    ep_multi.setdefault(key, pct)
+                                                            except (ValueError, TypeError):
+                                                                pass
+
+                                                    # 3. Fall back to show multi-ratings only if episode has no specific provider ratings
                                                     if not ep_multi and item.get("multi_ratings"):
                                                         ep_multi = dict(item["multi_ratings"])
                                                     if not ep_aud and item.get("audience_rating"):
@@ -5297,12 +5367,6 @@ async def _run_overlay_sync_task(
 
                                                     ep_aud = ep_obj.get("CommunityRating")
                                                     ep_multi = {}
-                                                    if ep_aud is not None:
-                                                        try:
-                                                            aud_f = round(float(ep_aud), 1)
-                                                            ep_multi = {"imdb": aud_f, "tmdb": aud_f}
-                                                        except (ValueError, TypeError):
-                                                            pass
                                                     if not ep_multi and item.get("multi_ratings"):
                                                         ep_multi = dict(item["multi_ratings"])
                                                     if not ep_aud and item.get("audience_rating"):

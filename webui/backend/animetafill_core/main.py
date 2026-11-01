@@ -13,7 +13,7 @@ from animetafill_core.providers import AnimeFillerListProvider, SimklProvider, E
 from animetafill_core.classifier import EpisodeClassifierService
 from animetafill_core.plex_client import PlexScanner
 from animetafill_core.sonarr_client import SonarrTranslator
-from animetafill_core.kometa import KometaYamlGenerator
+from animetafill_core.overlay_yaml import OverlayYamlGenerator
 from animetafill_core.logger import logger
 
 def load_config():
@@ -34,10 +34,10 @@ def run_sync(scheduler=None, custom_config=None, force=False):
 
     This function handles the end-to-end synchronization process:
     1. Reads Plex libraries to find shows.
-    2. Imports manual overrides from existing Kometa YAML (Reverse Sync).
+    2. Imports manual overrides from existing Overlay YAML (Reverse Sync).
     3. Queries Sonarr/Plex to establish episode maps.
     4. Researches missing filler data via SIMKL and AFL.
-    5. Generates optimized Kometa Overlay YAMLs.
+    5. Generates optimized Overlay YAMLs.
     """
     start_time = time.time()
     logger.system(f"Starting Sync Task: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -65,11 +65,11 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     sonarr_conf = config.get('sonarr', {})
     sonarr = SonarrTranslator(sonarr_conf.get('url'), sonarr_conf.get('api_key'))
 
-    kometa_conf = config.get('overlays') or config.get('overlay') or config.get('kometa', {})
-    kometa_out = kometa_conf.get('output_dir', '/data/kometa_overlays')
+    overlay_conf = config.get('overlays') or config.get('overlay') or config.get('kometa', {})
+    overlay_out = overlay_conf.get('output_dir', '/data/anime_overlays')
 
-    kometa_gen = KometaYamlGenerator(kometa_out, kometa_config=kometa_conf)
-    kometa_gen.migrate_legacy_files("anime_overlays.yml")
+    overlay_gen = OverlayYamlGenerator(overlay_out, overlay_config=overlay_conf)
+    overlay_gen.migrate_legacy_files("anime_overlays.yml")
 
     # 2. Fetch shows from Media Server (Plex, Jellyfin, Emby)
     target_libraries = server_conf.get('libraries') or config.get('target_libraries') or config.get('plex', {}).get('libraries') or []
@@ -82,7 +82,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
 
     # -- REVERSE SYNC PHASE: Import manual edits from YAML --
     logger.system("Checking for manual edits in existing YAML...")
-    existing_overlays = kometa_gen.get_existing_overlays("anime_overlays.yml")
+    existing_overlays = overlay_gen.get_existing_overlays("anime_overlays.yml")
 
     # Group by title (case-insensitive) to avoid redundant Sonarr lookups
     grouped_edits = {}
@@ -214,11 +214,11 @@ def run_sync(scheduler=None, custom_config=None, force=False):
                     log_skip("No filler data found in any sync tier", title)
                     continue
 
-            # E. Stage Kometa Overlays
+            # E. Stage Overlays
             if any(db_mapping.values()):
                 # Use 2-tier mapping (Numeric + Title)
                 sonarr_map, title_map = sonarr.get_absolute_to_season_map(series_info['id']) if series_info else (sonarr_map, {})
-                kometa_gen.add_show_overlays(title, db_mapping, sonarr_map, title_map=title_map)
+                overlay_gen.add_show_overlays(title, db_mapping, sonarr_map, title_map=title_map)
                 successful_count += 1
                 logger.success(f"Show mapped with {db_count} filler/canon markers.")
             else:
@@ -230,7 +230,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
             continue
 
     # 4. Finalize Exports
-    kometa_gen.save_unified_file("anime_overlays.yml")
+    overlay_gen.save_unified_file("anime_overlays.yml")
     db.export_to_json(json_export_path)
 
     # Export Unmapped Shows report

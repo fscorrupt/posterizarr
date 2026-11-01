@@ -763,6 +763,57 @@ async def get_plex_collection_diffs(
 # 5. PLEX ARTWORK UPLOAD
 # ==============================================================================
 
+async def set_plex_field_lock(
+    client: httpx.AsyncClient,
+    plex_url: str,
+    rating_key: Union[int, str],
+    plex_token: str,
+    field_name: str = "thumb.locked",
+    lock_val: str = "1"
+) -> None:
+    """
+    Lock or unlock an artwork or metadata field in Plex Media Server.
+    Plex requires PUT /library/sections/{section_id}/all?type={type_id}&id={rating_key}&{field_name}={lock_val}
+    in order to persist locks in metadata_items.user_fields (preventing background tasks,
+    loudness analysis, and metadata agents from overwriting user-assigned artwork).
+    Also issues PUT /library/metadata/{rating_key} as a fallback.
+    """
+    headers = {"X-Plex-Token": plex_token, "Accept": "application/xml"}
+    safe_key = urllib.parse.quote(str(rating_key), safe="")
+    # 1. Direct metadata endpoint (legacy fallback)
+    try:
+        await client.put(
+            f"{plex_url.rstrip('/')}/library/metadata/{safe_key}",
+            headers=headers,
+            params={field_name: str(lock_val)}
+        )
+    except Exception:
+        pass
+
+    # 2. Section endpoint (authoritative Plex endpoint for user_fields)
+    try:
+        meta_resp = await client.get(f"{plex_url.rstrip('/')}/library/metadata/{safe_key}", headers=headers)
+        if meta_resp.status_code == 200:
+            root = fromstring(meta_resp.content)
+            item_node = next((node for node in root if node.tag in ("Video", "Directory")), None)
+            section_id = (item_node.get("librarySectionID") if item_node is not None else None) or root.get("librarySectionID")
+            item_type = (item_node.get("type") if item_node is not None else None) or root.get("viewGroup") or "movie"
+            type_map = {"movie": 1, "show": 2, "season": 3, "episode": 4, "collection": 18}
+            type_id = type_map.get(str(item_type).lower(), 1)
+            if section_id:
+                await client.put(
+                    f"{plex_url.rstrip('/')}/library/sections/{section_id}/all",
+                    headers=headers,
+                    params={
+                        "type": type_id,
+                        "id": str(rating_key),
+                        field_name: str(lock_val)
+                    }
+                )
+    except Exception as e:
+        logger.debug(f"[set_plex_field_lock] Could not set {field_name}={lock_val} on Plex section for {rating_key}: {e}")
+
+
 async def push_collection_artwork_to_plex(
     plex_url: str,
     plex_token: str,
@@ -842,24 +893,13 @@ async def push_collection_artwork_to_plex(
                                          if str(node.get("ratingKey", "")).startswith("upload://")
                                          and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
                         if uploaded is not None:
-                            try:
-                                await client.put(
-                                    f"{plex_url.rstrip('/')}/library/metadata/{safe_key}",
-                                    headers={"X-Plex-Token": plex_token},
-                                    params={lock_field: "0"}
-                                )
-                            except Exception:
-                                pass
+                            await set_plex_field_lock(client, plex_url, safe_key, plex_token, field_name=lock_field, lock_val="0")
                             await client.put(
                                 f"{plex_url.rstrip('/')}/library/metadata/{safe_key}/{select_endpoint}",
                                 headers={"X-Plex-Token": plex_token},
                                 params={"url": uploaded.get("ratingKey")}
                             )
-                    await client.put(
-                        f"{plex_url.rstrip('/')}/library/metadata/{safe_key}",
-                        headers={"X-Plex-Token": plex_token},
-                        params={lock_field: "1"}
-                    )
+                    await set_plex_field_lock(client, plex_url, safe_key, plex_token, field_name=lock_field, lock_val="1")
                 except Exception as sel_err:
                     logger.warning(f"[push_collection_artwork_to_plex] Could not select/lock artwork for {safe_key}: {sel_err}")
 
@@ -1164,417 +1204,417 @@ async def run_plex_sync_task(
         write_log("=" * 60)
         write_log("STARTING SCHEDULED PLEX SYNC TASK")
 
-    plex_url, plex_token = get_plex_credentials_from_config(config_path)
-    if not plex_url or not plex_token:
-        err = "Plex URL or Plex Token is not configured. Aborting sync."
-        write_log(f"ERROR: {err}")
-        write_log("=" * 60)
-        return {"success": False, "error": err}
+        plex_url, plex_token = get_plex_credentials_from_config(config_path)
+        if not plex_url or not plex_token:
+            err = "Plex URL or Plex Token is not configured. Aborting sync."
+            write_log(f"ERROR: {err}")
+            write_log("=" * 60)
+            return {"success": False, "error": err}
 
-    if not is_safe_url(plex_url, allow_private=True):
-        err = f"Configured Plex URL '{plex_url}' is not safe (SSRF blocked). Aborting sync."
-        write_log(f"ERROR: {err}")
-        write_log("=" * 60)
-        return {"success": False, "error": err}
+        if not is_safe_url(plex_url, allow_private=True):
+            err = f"Configured Plex URL '{plex_url}' is not safe (SSRF blocked). Aborting sync."
+            write_log(f"ERROR: {err}")
+            write_log("=" * 60)
+            return {"success": False, "error": err}
 
-    raw_target = str(schedule_config.get("library", "all")).strip()
-    if ".." in raw_target or "/" in raw_target or "\\" in raw_target or "\x00" in raw_target:
-        target_lib = "all"
-    else:
-        target_lib = raw_target
+        raw_target = str(schedule_config.get("library", "all")).strip()
+        if ".." in raw_target or "/" in raw_target or "\\" in raw_target or "\x00" in raw_target:
+            target_lib = "all"
+        else:
+            target_lib = raw_target
 
-    raw_asset_types = schedule_config.get("asset_types", ["collection", "poster", "season", "titlecard", "background"])
-    if isinstance(raw_asset_types, str):
-        raw_asset_types = [raw_asset_types] if raw_asset_types != "all" else ["collection", "poster", "season", "titlecard", "background"]
-    allowed_types = {"collection", "poster", "season", "titlecard", "background"}
-    asset_types = [str(t).lower().strip() for t in raw_asset_types if str(t).lower().strip() in allowed_types]
-    if not asset_types:
-        asset_types = ["collection", "poster", "season", "titlecard", "background"]
+        raw_asset_types = schedule_config.get("asset_types", ["collection", "poster", "season", "titlecard", "background"])
+        if isinstance(raw_asset_types, str):
+            raw_asset_types = [raw_asset_types] if raw_asset_types != "all" else ["collection", "poster", "season", "titlecard", "background"]
+        allowed_types = {"collection", "poster", "season", "titlecard", "background"}
+        asset_types = [str(t).lower().strip() for t in raw_asset_types if str(t).lower().strip() in allowed_types]
+        if not asset_types:
+            asset_types = ["collection", "poster", "season", "titlecard", "background"]
 
-    # Retrieve exclusions from config.json and server_libraries.db
-    excluded_libraries = get_effective_plex_exclusions(config_path, base_dir / "database" / "server_libraries.db")
+        # Retrieve exclusions from config.json and server_libraries.db
+        excluded_libraries = get_effective_plex_exclusions(config_path, base_dir / "database" / "server_libraries.db")
 
-    # Resolve real assets_dir from config if not supplied or invalid/empty default
-    cfg_assets = get_asset_path_from_config(config_path, base_dir)
-    if cfg_assets and cfg_assets.exists():
-        assets_dir = cfg_assets
-    elif not assets_dir or not assets_dir.exists():
-        assets_dir = cfg_assets
+        # Resolve real assets_dir from config if not supplied or invalid/empty default
+        cfg_assets = get_asset_path_from_config(config_path, base_dir)
+        if cfg_assets and cfg_assets.exists():
+            assets_dir = cfg_assets
+        elif not assets_dir or not assets_dir.exists():
+            assets_dir = cfg_assets
 
-    write_log(f"Assets Directory: {assets_dir}")
-    write_log(f"Target Library: {target_lib}")
-    if target_lib == "all" and excluded_libraries:
-        write_log(f"Config Excluded Libraries ({len(excluded_libraries)}): {', '.join(excluded_libraries)}")
-    write_log(f"Target Asset Types: {', '.join(asset_types)}")
+        write_log(f"Assets Directory: {assets_dir}")
+        write_log(f"Target Library: {target_lib}")
+        if target_lib == "all" and excluded_libraries:
+            write_log(f"Config Excluded Libraries ({len(excluded_libraries)}): {', '.join(excluded_libraries)}")
+        write_log(f"Target Asset Types: {', '.join(asset_types)}")
 
-    cache_db_path = base_dir / "database" / "plex_push_cache.db"
-    cache = PlexPushCache(cache_db_path)
+        cache_db_path = base_dir / "database" / "plex_push_cache.db"
+        cache = PlexPushCache(cache_db_path)
 
-    total_checked = 0
-    total_pushed = 0
-    total_skipped = 0
-    total_failed = 0
-    no_local_count = 0
+        total_checked = 0
+        total_pushed = 0
+        total_skipped = 0
+        total_failed = 0
+        no_local_count = 0
 
-    # 1. Sync Collections if enabled
-    if "collection" in asset_types:
-        write_log("--- Syncing Collections ---")
-        try:
-            diffs = await get_plex_collection_diffs(
-                plex_url=plex_url,
-                plex_token=plex_token,
-                library_id=None if target_lib == "all" else target_lib,
-                assets_dir=assets_dir,
-                cache=cache,
-                excluded_libraries=excluded_libraries if target_lib == "all" else None
-            )
-            write_log(f"Discovered {len(diffs)} Plex collection(s) in included libraries.")
-
-            to_push = [d for d in diffs if d.get("syncStatus") in ["update_available", "missing_server"] and d.get("hasLocalAsset")]
-            in_sync_count = len([d for d in diffs if d.get("syncStatus") == "synced"])
-            no_local_count = len([d for d in diffs if not d.get("hasLocalAsset")])
-            write_log(f"Found {len(to_push)} collection(s) needing artwork push ({in_sync_count} in-sync, {no_local_count} without local asset).")
-
-            for item in to_push:
-                total_checked += 1
-                title = item.get("title")
-                lib_name = item.get("libraryName", "")
-                rating_key = "".join(c for c in str(item.get("ratingKey", "")) if c.isdigit())
-                if not rating_key:
-                    continue
-
-                full_path = None
-                if item.get("localFullPath"):
-                    try:
-                        cand_full = Path(item["localFullPath"]).resolve()
-                        if cand_full.is_relative_to(assets_dir.resolve()) and cand_full.exists() and cand_full.is_file():
-                            full_path = cand_full
-                    except Exception:
-                        pass
-
-                if not full_path:
-                    local_rel = str(item.get("localAssetPath", "")).lstrip("/\\")
-                    full_path = safe_resolve_asset_path(assets_dir, local_rel, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
-
-                if not full_path or not full_path.exists() or not full_path.is_file():
-                    write_log(f"  [!] Artwork file missing on disk or blocked for '{title}' (RatingKey: {rating_key})")
-                    continue
-
-                res = await push_collection_artwork_to_plex(
+        # 1. Sync Collections if enabled
+        if "collection" in asset_types:
+            write_log("--- Syncing Collections ---")
+            try:
+                diffs = await get_plex_collection_diffs(
                     plex_url=plex_url,
                     plex_token=plex_token,
-                    rating_key=rating_key,
-                    local_image_path=full_path,
+                    library_id=None if target_lib == "all" else target_lib,
+                    assets_dir=assets_dir,
                     cache=cache,
-                    asset_type="collection",
-                    library_name=lib_name,
-                    item_title=title,
-                    allowed_base_dir=assets_dir
+                    excluded_libraries=excluded_libraries if target_lib == "all" else None
                 )
-                if res.get("success"):
-                    total_pushed += 1
-                    write_log(f"  [+] Pushed collection poster for '{title}' in '{lib_name}' (RatingKey: {rating_key})")
-                else:
-                    total_failed += 1
-                    write_log(f"  [-] Failed collection poster for '{title}' in '{lib_name}': {res.get('error')}")
+                write_log(f"Discovered {len(diffs)} Plex collection(s) in included libraries.")
 
-            total_skipped += in_sync_count
-        except Exception as e:
-            write_log(f"Error during collection sync: {e}")
+                to_push = [d for d in diffs if d.get("syncStatus") in ["update_available", "missing_server"] and d.get("hasLocalAsset")]
+                in_sync_count = len([d for d in diffs if d.get("syncStatus") == "synced"])
+                no_local_count = len([d for d in diffs if not d.get("hasLocalAsset")])
+                write_log(f"Found {len(to_push)} collection(s) needing artwork push ({in_sync_count} in-sync, {no_local_count} without local asset).")
 
-    # 2. Sync Media Items (posters, backgrounds, seasons, titlecards)
-    media_types_requested = set(asset_types) - {"collection"}
-    if media_types_requested:
-        write_log(f"--- Syncing Media Items: {', '.join(sorted(media_types_requested))} ---")
-        export_db_path = base_dir / "database" / "media_export.db"
-        media_items = []
-        if export_db_path.exists():
-            try:
-                conn = sqlite3.connect(export_db_path, timeout=10)
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-
-                query = "SELECT rating_key, root_foldername, library_name, title, season_rating_keys, library_type FROM plex_library_export"
-                params = []
-                if target_lib != "all":
-                    query += " WHERE library_name = ?"
-                    params.append(target_lib)
-                elif excluded_libraries:
-                    placeholders = ",".join("?" for _ in excluded_libraries)
-                    query += f" WHERE library_name NOT IN ({placeholders})"
-                    params.extend(excluded_libraries)
-
-                cursor.execute(query, params)
-                media_items = [dict(r) for r in cursor.fetchall()]
-                conn.close()
-            except Exception as e:
-                write_log(f"Notice: media_export.db note: {e}")
-
-        async with httpx.AsyncClient(timeout=30.0) as http_client:
-            # Fallback to direct Plex sections query if media_export.db is empty
-            if not media_items:
-                write_log("Notice: media_export.db is unpopulated. Discovering items directly from Plex API...")
-                try:
-                    sec_resp = await http_client.get(
-                        f"{plex_url.rstrip('/')}/library/sections",
-                        headers={"X-Plex-Token": plex_token, "Accept": "application/xml"}
-                    )
-                    if sec_resp.status_code == 200:
-                        sec_root = fromstring(sec_resp.content)
-                        for d_sec in sec_root.findall(".//Directory"):
-                            s_name = d_sec.get("title", "")
-                            s_type = d_sec.get("type", "")
-                            s_id = d_sec.get("key", "")
-                            if s_type not in ["movie", "show"]:
-                                continue
-                            if target_lib != "all" and s_name != target_lib and s_id != target_lib:
-                                continue
-                            if target_lib == "all" and s_name in excluded_libraries:
-                                continue
-
-                            try:
-                                items_resp = await http_client.get(
-                                    f"{plex_url.rstrip('/')}/library/sections/{s_id}/all",
-                                    headers={"X-Plex-Token": plex_token, "Accept": "application/xml"}
-                                )
-                                if items_resp.status_code == 200:
-                                    items_root = fromstring(items_resp.content)
-                                    tag = ".//Directory" if s_type == "show" else ".//Video"
-                                    for it in items_root.findall(tag):
-                                        rk = it.get("ratingKey")
-                                        t = it.get("title", "")
-                                        rf = None
-                                        part = it.find(".//Part")
-                                        if part is not None and part.get("file"):
-                                            rf = Path(part.get("file")).parent.name
-                                        loc = it.find(".//Location")
-                                        if not rf and loc is not None and loc.get("path"):
-                                            rf = Path(loc.get("path")).name
-                                        if not rf:
-                                            rf = t
-
-                                        if rk:
-                                            media_items.append({
-                                                "rating_key": rk,
-                                                "title": t,
-                                                "library_name": s_name,
-                                                "library_type": s_type,
-                                                "root_foldername": rf,
-                                                "season_rating_keys": None
-                                            })
-                            except Exception as sec_err:
-                                write_log(f"Error reading section {s_name}: {sec_err}")
-                except Exception as e:
-                    write_log(f"Error querying Plex sections: {e}")
-
-            write_log(f"Found {len(media_items)} media item(s) to evaluate across included libraries.")
-
-            # Cache library folder listings to avoid repeated filesystem walks
-            folder_lookups: Dict[str, Dict[str, Path]] = {}
-
-            for row in media_items:
-                r_key = "".join(c for c in str(row.get("rating_key") or "") if c.isdigit())
-                r_folder = str(row.get("root_foldername") or "").strip().replace("\\", "/")
-                lib_name = str(row.get("library_name") or "").strip().replace("\\", "/")
-
-                # Strip Windows drive letters and leading slashes
-                r_folder = re.sub(r'^[a-zA-Z]:', '', r_folder).lstrip("/")
-                lib_name = re.sub(r'^[a-zA-Z]:', '', lib_name).lstrip("/")
-
-                title = row.get("title") or r_folder
-                lib_type = row.get("library_type") or ("show" if row.get("season_rating_keys") else "movie")
-
-                if not r_key or ".." in r_folder or ".." in lib_name or "\x00" in r_folder or "\x00" in lib_name:
-                    continue
-
-                try:
-                    lib_asset_dir = (assets_dir / lib_name).resolve()
-                    if not lib_asset_dir.is_relative_to(assets_dir.resolve()) or not lib_asset_dir.exists():
+                for item in to_push:
+                    total_checked += 1
+                    title = item.get("title")
+                    lib_name = item.get("libraryName", "")
+                    rating_key = "".join(c for c in str(item.get("ratingKey", "")) if c.isdigit())
+                    if not rating_key:
                         continue
-                except Exception:
-                    continue
 
-                if lib_name not in folder_lookups:
-                    folder_lookups[lib_name] = {}
+                    full_path = None
+                    if item.get("localFullPath"):
+                        try:
+                            cand_full = Path(item["localFullPath"]).resolve()
+                            if cand_full.is_relative_to(assets_dir.resolve()) and cand_full.exists() and cand_full.is_file():
+                                full_path = cand_full
+                        except Exception:
+                            pass
+
+                    if not full_path:
+                        local_rel = str(item.get("localAssetPath", "")).lstrip("/\\")
+                        full_path = safe_resolve_asset_path(assets_dir, local_rel, allowed_extensions={".jpg", ".jpeg", ".png", ".webp"})
+
+                    if not full_path or not full_path.exists() or not full_path.is_file():
+                        write_log(f"  [!] Artwork file missing on disk or blocked for '{title}' (RatingKey: {rating_key})")
+                        continue
+
+                    res = await push_collection_artwork_to_plex(
+                        plex_url=plex_url,
+                        plex_token=plex_token,
+                        rating_key=rating_key,
+                        local_image_path=full_path,
+                        cache=cache,
+                        asset_type="collection",
+                        library_name=lib_name,
+                        item_title=title,
+                        allowed_base_dir=assets_dir
+                    )
+                    if res.get("success"):
+                        total_pushed += 1
+                        write_log(f"  [+] Pushed collection poster for '{title}' in '{lib_name}' (RatingKey: {rating_key})")
+                    else:
+                        total_failed += 1
+                        write_log(f"  [-] Failed collection poster for '{title}' in '{lib_name}': {res.get('error')}")
+
+                total_skipped += in_sync_count
+            except Exception as e:
+                write_log(f"Error during collection sync: {e}")
+
+        # 2. Sync Media Items (posters, backgrounds, seasons, titlecards)
+        media_types_requested = set(asset_types) - {"collection"}
+        if media_types_requested:
+            write_log(f"--- Syncing Media Items: {', '.join(sorted(media_types_requested))} ---")
+            export_db_path = base_dir / "database" / "media_export.db"
+            media_items = []
+            if export_db_path.exists():
+                try:
+                    conn = sqlite3.connect(export_db_path, timeout=10)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+
+                    query = "SELECT rating_key, root_foldername, library_name, title, season_rating_keys, library_type FROM plex_library_export"
+                    params = []
+                    if target_lib != "all":
+                        query += " WHERE library_name = ?"
+                        params.append(target_lib)
+                    elif excluded_libraries:
+                        placeholders = ",".join("?" for _ in excluded_libraries)
+                        query += f" WHERE library_name NOT IN ({placeholders})"
+                        params.extend(excluded_libraries)
+
+                    cursor.execute(query, params)
+                    media_items = [dict(r) for r in cursor.fetchall()]
+                    conn.close()
+                except Exception as e:
+                    write_log(f"Notice: media_export.db note: {e}")
+
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                # Fallback to direct Plex sections query if media_export.db is empty
+                if not media_items:
+                    write_log("Notice: media_export.db is unpopulated. Discovering items directly from Plex API...")
                     try:
-                        for entry in lib_asset_dir.iterdir():
-                            if entry.is_dir():
-                                folder_lookups[lib_name][entry.name.lower()] = entry
-                                norm = normalize_collection_name(entry.name)
-                                if norm:
-                                    folder_lookups[lib_name][norm] = entry
-                                cond = re.sub(r'[\W_]+', '', entry.name.lower())
-                                if cond:
-                                    folder_lookups[lib_name][cond] = entry
-                    except Exception:
-                        pass
-
-                lookup = folder_lookups[lib_name]
-                item_dir = None
-                # 1. Exact r_folder
-                if r_folder and (lib_asset_dir / r_folder).exists():
-                    item_dir = (lib_asset_dir / r_folder).resolve()
-                # 2. Lookup by folder name lowercase/condensed
-                if not item_dir and r_folder:
-                    cand = lookup.get(r_folder.lower()) or lookup.get(re.sub(r'[\W_]+', '', r_folder.lower()))
-                    if cand and cand.exists():
-                        item_dir = cand
-                # 3. Lookup by title
-                if not item_dir and title:
-                    cand = lookup.get(title.lower()) or lookup.get(normalize_collection_name(title)) or lookup.get(re.sub(r'[\W_]+', '', title.lower()))
-                    if cand and cand.exists():
-                        item_dir = cand
-
-                if item_dir:
-                    try:
-                        item_dir = item_dir.resolve()
-                        if not item_dir.is_relative_to(lib_asset_dir) or not item_dir.is_relative_to(assets_dir.resolve()):
-                            item_dir = None
-                    except Exception:
-                        item_dir = None
-
-                if not item_dir or not item_dir.exists() or not item_dir.is_dir():
-                    continue
-
-                # 1. Check Movie/Show Poster
-                if "poster" in media_types_requested:
-                    for ext in [".jpg", ".png", ".webp", ".jpeg"]:
-                        for stem in ["poster", "cover", "folder", f"{item_dir.name}_poster"]:
-                            try:
-                                p_file = (item_dir / f"{stem}{ext}").resolve()
-                                if not p_file.is_relative_to(assets_dir.resolve()):
+                        sec_resp = await http_client.get(
+                            f"{plex_url.rstrip('/')}/library/sections",
+                            headers={"X-Plex-Token": plex_token, "Accept": "application/xml"}
+                        )
+                        if sec_resp.status_code == 200:
+                            sec_root = fromstring(sec_resp.content)
+                            for d_sec in sec_root.findall(".//Directory"):
+                                s_name = d_sec.get("title", "")
+                                s_type = d_sec.get("type", "")
+                                s_id = d_sec.get("key", "")
+                                if s_type not in ["movie", "show"]:
                                     continue
-                            except Exception:
-                                continue
-
-                            if p_file.exists() and p_file.is_file():
-                                total_checked += 1
-                                if not cache.is_asset_in_sync(p_file):
-                                    res = await push_collection_artwork_to_plex(
-                                        plex_url=plex_url, plex_token=plex_token,
-                                        rating_key=r_key, local_image_path=p_file,
-                                        cache=cache, asset_type="poster", library_name=lib_name, item_title=title,
-                                        allowed_base_dir=assets_dir
-                                    )
-                                    if res.get("success"):
-                                        total_pushed += 1
-                                        write_log(f"  [+] Pushed poster: '{title}' ({lib_name})")
-                                    else:
-                                        total_failed += 1
-                                        write_log(f"  [-] Failed poster for '{title}': {res.get('error')}")
-                                else:
-                                    total_skipped += 1
-                                break
-                        else:
-                            continue
-                        break
-
-                # 2. Check Background / Art
-                if "background" in media_types_requested:
-                    for ext in [".jpg", ".png", ".webp", ".jpeg"]:
-                        for stem in ["background", "fanart", "backdrop", "art", f"{item_dir.name}_background"]:
-                            try:
-                                b_file = (item_dir / f"{stem}{ext}").resolve()
-                                if not b_file.is_relative_to(assets_dir.resolve()):
+                                if target_lib != "all" and s_name != target_lib and s_id != target_lib:
                                     continue
-                            except Exception:
-                                continue
+                                if target_lib == "all" and s_name in excluded_libraries:
+                                    continue
 
-                            if b_file.exists() and b_file.is_file():
-                                total_checked += 1
-                                if not cache.is_asset_in_sync(b_file):
-                                    res = await push_collection_artwork_to_plex(
-                                        plex_url=plex_url, plex_token=plex_token,
-                                        rating_key=r_key, local_image_path=b_file,
-                                        cache=cache, asset_type="background", library_name=lib_name, item_title=title,
-                                        is_backdrop=True,
-                                        allowed_base_dir=assets_dir
-                                    )
-                                    if res.get("success"):
-                                        total_pushed += 1
-                                        write_log(f"  [+] Pushed background: '{title}' ({lib_name})")
-                                    else:
-                                        total_failed += 1
-                                        write_log(f"  [-] Failed background for '{title}': {res.get('error')}")
-                                else:
-                                    total_skipped += 1
-                                break
-                        else:
-                            continue
-                        break
-
-                # 3. Check Seasons & Episode Titlecards (for TV shows)
-                if ("season" in media_types_requested or "titlecard" in media_types_requested) and lib_type == "show":
-                    seasons = await fetch_plex_seasons(plex_url, plex_token, r_key, http_client)
-                    for s in seasons:
-                        s_rk = s["ratingKey"]
-                        s_num = s["seasonNumber"]
-
-                        # Season Poster
-                        if "season" in media_types_requested:
-                            s_file = find_season_poster(item_dir, s_num, item_dir.name)
-                            if s_file:
                                 try:
-                                    if not s_file.resolve().is_relative_to(assets_dir.resolve()):
-                                        s_file = None
-                                except Exception:
-                                    s_file = None
-
-                            if s_file:
-                                total_checked += 1
-                                if not cache.is_asset_in_sync(s_file):
-                                    res = await push_collection_artwork_to_plex(
-                                        plex_url=plex_url, plex_token=plex_token,
-                                        rating_key=s_rk, local_image_path=s_file,
-                                        cache=cache, asset_type="season", library_name=lib_name,
-                                        item_title=f"{title} - Season {s_num}",
-                                        allowed_base_dir=assets_dir
+                                    items_resp = await http_client.get(
+                                        f"{plex_url.rstrip('/')}/library/sections/{s_id}/all",
+                                        headers={"X-Plex-Token": plex_token, "Accept": "application/xml"}
                                     )
-                                    if res.get("success"):
-                                        total_pushed += 1
-                                        write_log(f"  [+] Pushed season poster: '{title}' Season {s_num}")
-                                    else:
-                                        total_failed += 1
-                                        write_log(f"  [-] Failed season poster for '{title}' Season {s_num}: {res.get('error')}")
-                                else:
-                                    total_skipped += 1
+                                    if items_resp.status_code == 200:
+                                        items_root = fromstring(items_resp.content)
+                                        tag = ".//Directory" if s_type == "show" else ".//Video"
+                                        for it in items_root.findall(tag):
+                                            rk = it.get("ratingKey")
+                                            t = it.get("title", "")
+                                            rf = None
+                                            part = it.find(".//Part")
+                                            if part is not None and part.get("file"):
+                                                rf = Path(part.get("file")).parent.name
+                                            loc = it.find(".//Location")
+                                            if not rf and loc is not None and loc.get("path"):
+                                                rf = Path(loc.get("path")).name
+                                            if not rf:
+                                                rf = t
 
-                        # Episode Titlecards
-                        if "titlecard" in media_types_requested:
-                            episodes = await fetch_plex_episodes(plex_url, plex_token, s_rk, http_client)
-                            for ep in episodes:
-                                ep_rk = ep["ratingKey"]
-                                ep_num = ep["episodeNumber"]
-                                ep_file = find_episode_titlecard(item_dir, s_num, ep_num, item_dir.name)
-                                if ep_file:
-                                    try:
-                                        if not ep_file.resolve().is_relative_to(assets_dir.resolve()):
-                                            ep_file = None
-                                    except Exception:
-                                        ep_file = None
+                                            if rk:
+                                                media_items.append({
+                                                    "rating_key": rk,
+                                                    "title": t,
+                                                    "library_name": s_name,
+                                                    "library_type": s_type,
+                                                    "root_foldername": rf,
+                                                    "season_rating_keys": None
+                                                })
+                                except Exception as sec_err:
+                                    write_log(f"Error reading section {s_name}: {sec_err}")
+                    except Exception as e:
+                        write_log(f"Error querying Plex sections: {e}")
 
-                                if ep_file:
+                write_log(f"Found {len(media_items)} media item(s) to evaluate across included libraries.")
+
+                # Cache library folder listings to avoid repeated filesystem walks
+                folder_lookups: Dict[str, Dict[str, Path]] = {}
+
+                for row in media_items:
+                    r_key = "".join(c for c in str(row.get("rating_key") or "") if c.isdigit())
+                    r_folder = str(row.get("root_foldername") or "").strip().replace("\\", "/")
+                    lib_name = str(row.get("library_name") or "").strip().replace("\\", "/")
+
+                    # Strip Windows drive letters and leading slashes
+                    r_folder = re.sub(r'^[a-zA-Z]:', '', r_folder).lstrip("/")
+                    lib_name = re.sub(r'^[a-zA-Z]:', '', lib_name).lstrip("/")
+
+                    title = row.get("title") or r_folder
+                    lib_type = row.get("library_type") or ("show" if row.get("season_rating_keys") else "movie")
+
+                    if not r_key or ".." in r_folder or ".." in lib_name or "\x00" in r_folder or "\x00" in lib_name:
+                        continue
+
+                    try:
+                        lib_asset_dir = (assets_dir / lib_name).resolve()
+                        if not lib_asset_dir.is_relative_to(assets_dir.resolve()) or not lib_asset_dir.exists():
+                            continue
+                    except Exception:
+                        continue
+
+                    if lib_name not in folder_lookups:
+                        folder_lookups[lib_name] = {}
+                        try:
+                            for entry in lib_asset_dir.iterdir():
+                                if entry.is_dir():
+                                    folder_lookups[lib_name][entry.name.lower()] = entry
+                                    norm = normalize_collection_name(entry.name)
+                                    if norm:
+                                        folder_lookups[lib_name][norm] = entry
+                                    cond = re.sub(r'[\W_]+', '', entry.name.lower())
+                                    if cond:
+                                        folder_lookups[lib_name][cond] = entry
+                        except Exception:
+                            pass
+
+                    lookup = folder_lookups[lib_name]
+                    item_dir = None
+                    # 1. Exact r_folder
+                    if r_folder and (lib_asset_dir / r_folder).exists():
+                        item_dir = (lib_asset_dir / r_folder).resolve()
+                    # 2. Lookup by folder name lowercase/condensed
+                    if not item_dir and r_folder:
+                        cand = lookup.get(r_folder.lower()) or lookup.get(re.sub(r'[\W_]+', '', r_folder.lower()))
+                        if cand and cand.exists():
+                            item_dir = cand
+                    # 3. Lookup by title
+                    if not item_dir and title:
+                        cand = lookup.get(title.lower()) or lookup.get(normalize_collection_name(title)) or lookup.get(re.sub(r'[\W_]+', '', title.lower()))
+                        if cand and cand.exists():
+                            item_dir = cand
+
+                    if item_dir:
+                        try:
+                            item_dir = item_dir.resolve()
+                            if not item_dir.is_relative_to(lib_asset_dir) or not item_dir.is_relative_to(assets_dir.resolve()):
+                                item_dir = None
+                        except Exception:
+                            item_dir = None
+
+                    if not item_dir or not item_dir.exists() or not item_dir.is_dir():
+                        continue
+
+                    # 1. Check Movie/Show Poster
+                    if "poster" in media_types_requested:
+                        for ext in [".jpg", ".png", ".webp", ".jpeg"]:
+                            for stem in ["poster", "cover", "folder", f"{item_dir.name}_poster"]:
+                                try:
+                                    p_file = (item_dir / f"{stem}{ext}").resolve()
+                                    if not p_file.is_relative_to(assets_dir.resolve()):
+                                        continue
+                                except Exception:
+                                    continue
+
+                                if p_file.exists() and p_file.is_file():
                                     total_checked += 1
-                                    if not cache.is_asset_in_sync(ep_file):
+                                    if not cache.is_asset_in_sync(p_file):
                                         res = await push_collection_artwork_to_plex(
                                             plex_url=plex_url, plex_token=plex_token,
-                                            rating_key=ep_rk, local_image_path=ep_file,
-                                            cache=cache, asset_type="titlecard", library_name=lib_name,
-                                            item_title=f"{title} - S{s_num:02d}E{ep_num:02d}",
+                                            rating_key=r_key, local_image_path=p_file,
+                                            cache=cache, asset_type="poster", library_name=lib_name, item_title=title,
                                             allowed_base_dir=assets_dir
                                         )
                                         if res.get("success"):
                                             total_pushed += 1
-                                            write_log(f"  [+] Pushed episode titlecard: '{title}' S{s_num:02d}E{ep_num:02d}")
+                                            write_log(f"  [+] Pushed poster: '{title}' ({lib_name})")
                                         else:
                                             total_failed += 1
-                                            write_log(f"  [-] Failed episode titlecard for '{title}' S{s_num:02d}E{ep_num:02d}: {res.get('error')}")
+                                            write_log(f"  [-] Failed poster for '{title}': {res.get('error')}")
+                                    else:
+                                        total_skipped += 1
+                                    break
+                            else:
+                                continue
+                            break
+
+                    # 2. Check Background / Art
+                    if "background" in media_types_requested:
+                        for ext in [".jpg", ".png", ".webp", ".jpeg"]:
+                            for stem in ["background", "fanart", "backdrop", "art", f"{item_dir.name}_background"]:
+                                try:
+                                    b_file = (item_dir / f"{stem}{ext}").resolve()
+                                    if not b_file.is_relative_to(assets_dir.resolve()):
+                                        continue
+                                except Exception:
+                                    continue
+
+                                if b_file.exists() and b_file.is_file():
+                                    total_checked += 1
+                                    if not cache.is_asset_in_sync(b_file):
+                                        res = await push_collection_artwork_to_plex(
+                                            plex_url=plex_url, plex_token=plex_token,
+                                            rating_key=r_key, local_image_path=b_file,
+                                            cache=cache, asset_type="background", library_name=lib_name, item_title=title,
+                                            is_backdrop=True,
+                                            allowed_base_dir=assets_dir
+                                        )
+                                        if res.get("success"):
+                                            total_pushed += 1
+                                            write_log(f"  [+] Pushed background: '{title}' ({lib_name})")
+                                        else:
+                                            total_failed += 1
+                                            write_log(f"  [-] Failed background for '{title}': {res.get('error')}")
+                                    else:
+                                        total_skipped += 1
+                                    break
+                            else:
+                                continue
+                            break
+
+                    # 3. Check Seasons & Episode Titlecards (for TV shows)
+                    if ("season" in media_types_requested or "titlecard" in media_types_requested) and lib_type == "show":
+                        seasons = await fetch_plex_seasons(plex_url, plex_token, r_key, http_client)
+                        for s in seasons:
+                            s_rk = s["ratingKey"]
+                            s_num = s["seasonNumber"]
+
+                            # Season Poster
+                            if "season" in media_types_requested:
+                                s_file = find_season_poster(item_dir, s_num, item_dir.name)
+                                if s_file:
+                                    try:
+                                        if not s_file.resolve().is_relative_to(assets_dir.resolve()):
+                                            s_file = None
+                                    except Exception:
+                                        s_file = None
+
+                                if s_file:
+                                    total_checked += 1
+                                    if not cache.is_asset_in_sync(s_file):
+                                        res = await push_collection_artwork_to_plex(
+                                            plex_url=plex_url, plex_token=plex_token,
+                                            rating_key=s_rk, local_image_path=s_file,
+                                            cache=cache, asset_type="season", library_name=lib_name,
+                                            item_title=f"{title} - Season {s_num}",
+                                            allowed_base_dir=assets_dir
+                                        )
+                                        if res.get("success"):
+                                            total_pushed += 1
+                                            write_log(f"  [+] Pushed season poster: '{title}' Season {s_num}")
+                                        else:
+                                            total_failed += 1
+                                            write_log(f"  [-] Failed season poster for '{title}' Season {s_num}: {res.get('error')}")
                                     else:
                                         total_skipped += 1
 
-    write_log(f"SYNC SUMMARY: Checked: {total_checked}, Pushed: {total_pushed}, Skipped (In-Sync): {total_skipped}, No Local Asset: {no_local_count}, Failed: {total_failed}")
-    write_log("PLEX SYNC TASK COMPLETED")
-    write_log("=" * 60)
+                            # Episode Titlecards
+                            if "titlecard" in media_types_requested:
+                                episodes = await fetch_plex_episodes(plex_url, plex_token, s_rk, http_client)
+                                for ep in episodes:
+                                    ep_rk = ep["ratingKey"]
+                                    ep_num = ep["episodeNumber"]
+                                    ep_file = find_episode_titlecard(item_dir, s_num, ep_num, item_dir.name)
+                                    if ep_file:
+                                        try:
+                                            if not ep_file.resolve().is_relative_to(assets_dir.resolve()):
+                                                ep_file = None
+                                        except Exception:
+                                            ep_file = None
+
+                                    if ep_file:
+                                        total_checked += 1
+                                        if not cache.is_asset_in_sync(ep_file):
+                                            res = await push_collection_artwork_to_plex(
+                                                plex_url=plex_url, plex_token=plex_token,
+                                                rating_key=ep_rk, local_image_path=ep_file,
+                                                cache=cache, asset_type="titlecard", library_name=lib_name,
+                                                item_title=f"{title} - S{s_num:02d}E{ep_num:02d}",
+                                                allowed_base_dir=assets_dir
+                                            )
+                                            if res.get("success"):
+                                                total_pushed += 1
+                                                write_log(f"  [+] Pushed episode titlecard: '{title}' S{s_num:02d}E{ep_num:02d}")
+                                            else:
+                                                total_failed += 1
+                                                write_log(f"  [-] Failed episode titlecard for '{title}' S{s_num:02d}E{ep_num:02d}: {res.get('error')}")
+                                        else:
+                                            total_skipped += 1
+
+        write_log(f"SYNC SUMMARY: Checked: {total_checked}, Pushed: {total_pushed}, Skipped (In-Sync): {total_skipped}, No Local Asset: {no_local_count}, Failed: {total_failed}")
+        write_log("PLEX SYNC TASK COMPLETED")
+        write_log("=" * 60)
 
         return {
             "success": True,

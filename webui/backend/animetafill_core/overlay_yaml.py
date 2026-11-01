@@ -4,11 +4,12 @@ import sys
 import re
 import shutil
 import glob
-from typing import Dict, Listfrom animetafill_core.logger import logger
+from typing import Dict, List
+from animetafill_core.logger import logger
 
-class KometaYamlGenerator:
+class OverlayYamlGenerator:
     """
-    Generates Kometa-compliant YAML files containing surgical episode-level overlays.
+    Generates YAML files containing surgical episode-level overlays.
     Uses 'filepath.regex' to target episodes without bloating Plex metadata.
     """
     def get_existing_overlays(self, filename: str = "anime_overlays.yml") -> List[dict]:
@@ -52,9 +53,9 @@ class KometaYamlGenerator:
 
         return results
 
-    def __init__(self, output_dir: str, kometa_config: dict = None):
+    def __init__(self, output_dir: str, overlay_config: dict = None, kometa_config: dict = None):
         self.output_dir = output_dir
-        self.config = kometa_config or {}
+        self.config = overlay_config or kometa_config or {}
 
         # Load sub-configs with defaults
         self.labels = self.config.get('labels', {
@@ -86,8 +87,8 @@ class KometaYamlGenerator:
         try:
             os.makedirs(self.output_dir, exist_ok=True)
         except PermissionError:
-            logger.error(f"No permission to create or write to the Kometa output directory: '{self.output_dir}'")
-            raise PermissionError(f"No permission to create or write to the Kometa output directory: '{self.output_dir}'")
+            logger.error(f"No permission to create or write to the overlay output directory: '{self.output_dir}'")
+            raise PermissionError(f"No permission to create or write to the overlay output directory: '{self.output_dir}'")
 
     def _get_templates(self) -> dict:
         """Defines the highly-configurable Premium Aesthetic templates."""
@@ -183,7 +184,7 @@ class KometaYamlGenerator:
     def save_unified_file(self, filename: str = "anime_overlays.yml"):
         """
         Saves the finalized unified overlay file atomically using a temporary file
-        and os.replace. This prevents Kometa from reading a partially-written
+        and os.replace. This prevents external tools from reading a partially-written
         file during active runs.
         """
         if not self.overlays: return None
@@ -197,3 +198,7 @@ class KometaYamlGenerator:
         except Exception:
             if os.path.exists(tmp_path): os.remove(tmp_path)
             return None
+
+
+# Backward compatibility alias
+KometaYamlGenerator = OverlayYamlGenerator

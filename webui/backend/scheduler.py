@@ -333,7 +333,8 @@ class PosterizarrScheduler:
             if mode.lower() in ("dynamicoverlays", "dynamic_overlays", "overlay_sync", "overlaysync"):
                 logger.info(f"Executing scheduled Dynamic Overlays Sync: {schedule_config}")
                 try:
-                    from overlay_sync_service import run_overlay_sync_task, get_asset_path_from_config
+                    from overlay_sync_service import run_overlay_sync_task
+                    from plex_push_service import get_asset_path_from_config
                     config_path = self.base_dir / "config.json"
                     assets_dir = get_asset_path_from_config(config_path, self.base_dir)
 

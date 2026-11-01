@@ -96,7 +96,9 @@ PosterizarrUI_dev/
 │   │   ├── scheduler.py       # Cron / interval scheduling engine for automated Posterizarr runs
 │   │   ├── server_libraries_database.py # Caching layer for media server library structures
 │   │   ├── studio_logos.py    # Scraper, local cache, and delivery engine for production company logos
-│   │   └── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
+│   │   ├── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
+│   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
+│   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
 │   └── frontend/              # Vite + React 18 single-page application
 │       ├── src/
 │       │   ├── App.jsx        # Root routing table, theme provider, and top-level modals

@@ -18928,10 +18928,10 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
                                 headers={"X-Plex-Token": request.server_token},
                                 params={"url": uploaded.get("ratingKey")}
                             )
-                    await client.put(
-                        f"{server_url}/library/metadata/{safe_rating_key}",
-                        headers={"X-Plex-Token": request.server_token},
-                        params={"thumb.locked": "1"}
+                    from plex_push_service import set_plex_field_lock
+                    await set_plex_field_lock(
+                        client, server_url, safe_rating_key, request.server_token,
+                        field_name="thumb.locked", lock_val="1"
                     )
                 except Exception as sel_err:
                     logger.warning(f"Could not select/lock poster for {safe_rating_key}: {sel_err}")
