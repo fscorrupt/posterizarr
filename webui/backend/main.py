@@ -20865,6 +20865,7 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     season_rating_libraries: Optional[List[str]] = None
     rating_cache_ttl_days: Optional[int] = None
     ratings_auto_refresh_enabled: Optional[bool] = None
+    ratings_auto_refresh_interval_hours: Optional[int] = Field(default=None, ge=1, le=8760)
     change_detection_enabled: Optional[bool] = None
     change_detection_interval_minutes: Optional[int] = None
     auto_resync_on_change: Optional[bool] = None

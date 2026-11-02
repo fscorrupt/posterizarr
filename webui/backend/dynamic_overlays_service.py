@@ -311,6 +311,7 @@ def get_dynamic_overlays_settings() -> Dict[str, Any]:
         "season_rating_libraries": [],
         "rating_cache_ttl_days": 7,      # Cache TTL
         "ratings_auto_refresh_enabled": True,
+        "ratings_auto_refresh_interval_hours": 1,
         "debug_logging": False,          # Switchable debug pixel log for overlay positioning
         "concurrency": 4,                # Number of parallel items processed concurrently
         "change_detection_enabled": True,# Fast bulk change detection for languages, cuts, runtime, status

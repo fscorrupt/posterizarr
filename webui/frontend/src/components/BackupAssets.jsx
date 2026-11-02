@@ -142,7 +142,7 @@ function BackupAssets() {
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [assetToRestore, setAssetToRestore] = useState(null);
-  
+
   const [advancedRestoreOpen, setAdvancedRestoreOpen] = useState(false);
   const [initialRestoreLibrary, setInitialRestoreLibrary] = useState("");
   const [initialRestoreItem, setInitialRestoreItem] = useState("");
@@ -302,7 +302,7 @@ function BackupAssets() {
     let library = null;
     let item = null;
     let type = null;
-    
+
     const parts = assetPath.split(/[\/\\]/);
     if (parts.length >= 3) {
       library = parts[0];
@@ -310,7 +310,7 @@ function BackupAssets() {
     } else if (parts.length === 2) {
       item = parts[0];
     }
-    
+
     if (assetName.toLowerCase().includes('poster')) type = 'poster';
     if (assetName.toLowerCase().includes('background')) type = 'background';
     if (assetName.toLowerCase().includes('season')) type = 'season';
@@ -535,7 +535,7 @@ function BackupAssets() {
   return (
     <div className="space-y-6">
       <ScrollToButtons />
-      
+
       {/* Restore Modal */}
       <RestoreModeModal
         isOpen={advancedRestoreOpen}
@@ -1447,7 +1447,7 @@ function BackupAssets() {
           </div>
         </div>
       )}
-      
+
       {/* Restore Mode Modal */}
       <RestoreModeModal
         show={advancedRestoreOpen}

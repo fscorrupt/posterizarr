@@ -562,6 +562,8 @@ export default function DynamicOverlays() {
     simkl_client_id: "",
     season_rating_libraries: [],
     rating_cache_ttl_days: 7,
+    ratings_auto_refresh_enabled: true,
+    ratings_auto_refresh_interval_hours: 1,
     change_detection_dry_run: true
   });
   const isChangeDetectionDryRun = featureSettings?.change_detection_dry_run !== false;
@@ -13857,12 +13859,31 @@ export default function DynamicOverlays() {
             {/* Filter Toolbar */}
             <div className="p-4 border-b border-theme space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-xs text-theme-text">
-                  <input type="checkbox" checked={featureSettings?.ratings_auto_refresh_enabled !== false}
-                    disabled={isUpdatingFeatureSettings}
-                    onChange={(event) => handleUpdateDynamicSettings({ ratings_auto_refresh_enabled: event.target.checked })} />
-                  Automatic Refresh (Hourly)
-                </label>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 text-xs text-theme-text">
+                    <input type="checkbox" checked={featureSettings?.ratings_auto_refresh_enabled !== false}
+                      disabled={isUpdatingFeatureSettings}
+                      onChange={(event) => handleUpdateDynamicSettings({ ratings_auto_refresh_enabled: event.target.checked })} />
+                    {t("dynamicOverlays.ratingsAutomaticRefresh")}
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-theme-text">
+                    <span>{t("dynamicOverlays.ratingsRefreshEvery")}</span>
+                    <input type="number" min="1" max="8760" step="1"
+                      aria-label={t("dynamicOverlays.ratingsRefreshIntervalHours")}
+                      value={featureSettings?.ratings_auto_refresh_interval_hours ?? 1}
+                      disabled={isUpdatingFeatureSettings || featureSettings?.ratings_auto_refresh_enabled === false}
+                      onChange={(event) => setFeatureSettings(previous => ({ ...previous, ratings_auto_refresh_interval_hours: event.target.value }))}
+                      onBlur={() => {
+                        const interval = Math.min(8760, Math.max(1, Number(featureSettings?.ratings_auto_refresh_interval_hours) || 1));
+                        handleUpdateDynamicSettings({ ratings_auto_refresh_interval_hours: interval });
+                      }}
+                      className="w-20 rounded-lg border border-theme bg-theme-card px-2 py-1.5 text-xs text-theme-text disabled:opacity-50" />
+                    <span>{t("dynamicOverlays.ratingsRefreshIntervalHours")}</span>
+                  </label>
+                  <p className="basis-full text-[11px] text-theme-muted">
+                    {t("dynamicOverlays.ratingsRefreshScheduleHelp")}
+                  </p>
+                </div>
                 <div className="flex items-center gap-2">
                   {ratingsRefreshJob?.running && (
                     <button type="button" onClick={handleCancelRatingsRefresh} disabled={ratingsRefreshSubmitting}

@@ -5,7 +5,7 @@ import hashlib
 from logging.handlers import RotatingFileHandler
 import threading
 from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from xml.etree.ElementTree import fromstring
@@ -54,6 +54,7 @@ class RatingsRefreshService:
     def _connection(self):
         connection = self.cache._get_connection()
         connection.execute("CREATE TABLE IF NOT EXISTS ratings_refresh_job (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL)")
+        connection.execute("CREATE TABLE IF NOT EXISTS ratings_refresh_schedule (id INTEGER PRIMARY KEY CHECK (id = 1), last_attempt REAL NOT NULL)")
         connection.execute("CREATE TABLE IF NOT EXISTS ratings_refresh_retry (server_type TEXT NOT NULL, item_id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (server_type, item_id))")
         connection.commit()
         return connection
@@ -62,6 +63,22 @@ class RatingsRefreshService:
         with closing(self._connection()) as connection:
             with connection:
                 connection.execute("INSERT OR REPLACE INTO ratings_refresh_job (id, state) VALUES (1, ?)", (json.dumps(state),))
+
+    def _schedule_now(self):
+        return datetime.now(timezone.utc).timestamp()
+
+    def _get_automatic_refresh_last_attempt(self):
+        with closing(self._connection()) as connection:
+            row = connection.execute("SELECT last_attempt FROM ratings_refresh_schedule WHERE id = 1").fetchone()
+        return row[0] if row else None
+
+    def _set_automatic_refresh_last_attempt(self, timestamp):
+        with closing(self._connection()) as connection:
+            with connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO ratings_refresh_schedule (id, last_attempt) VALUES (1, ?)",
+                    (timestamp,),
+                )
 
     def status(self):
         with closing(self._connection()) as connection:
@@ -456,16 +473,29 @@ class RatingsRefreshService:
     async def _periodic(self, config_path):
         from dynamic_overlays_service import get_dynamic_overlays_settings
         from overlay_sync_service import get_server_credentials
-        last_attempt = None
+        startup_checked = False
         while True:
             try:
                 settings = await asyncio.to_thread(get_dynamic_overlays_settings)
-                now = asyncio.get_running_loop().time()
-                if settings.get("enabled") and settings.get("ratings_auto_refresh_enabled", True) and (last_attempt is None or now - last_attempt >= 3600):
-                    credentials = await asyncio.to_thread(get_server_credentials, config_path)
-                    result = await self.start(credentials, settings, trigger="automatic")
-                    if result["success"]:
-                        last_attempt = now
+                if settings.get("enabled") and settings.get("ratings_auto_refresh_enabled", True):
+                    try:
+                        interval_hours = int(settings.get("ratings_auto_refresh_interval_hours", 1))
+                    except (TypeError, ValueError):
+                        interval_hours = 1
+                    interval_seconds = min(max(interval_hours, 1), 8760) * 3600
+                    now = self._schedule_now()
+                    last_attempt = await asyncio.to_thread(self._get_automatic_refresh_last_attempt)
+                    if last_attempt is None:
+                        await asyncio.to_thread(self._set_automatic_refresh_last_attempt, now)
+                        logger.info("[RatingsRefresh] Automatic refresh scheduled in %s hours", interval_seconds // 3600)
+                    elif now - last_attempt >= interval_seconds:
+                        await asyncio.to_thread(self._set_automatic_refresh_last_attempt, now)
+                        if startup_checked:
+                            credentials = await asyncio.to_thread(get_server_credentials, config_path)
+                            await self.start(credentials, settings, trigger="automatic")
+                        else:
+                            logger.info("[RatingsRefresh] Skipping overdue refresh during backend startup; next run in %s hours", interval_seconds // 3600)
+                    startup_checked = True
             except asyncio.CancelledError:
                 raise
             except Exception as error:
