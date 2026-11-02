@@ -694,13 +694,21 @@ export default function DynamicOverlays() {
   const [ratingsCacheLimit, setRatingsCacheLimit] = useState(25);
   const [ratingsCacheTotal, setRatingsCacheTotal] = useState(0);
   const [ratingsCacheTotalPages, setRatingsCacheTotalPages] = useState(1);
-  const [ratingsCacheStatsSummary, setRatingsCacheStatsSummary] = useState({ total: 0, valid: 0, expired: 0 });
+  const [ratingsCacheStatsSummary, setRatingsCacheStatsSummary] = useState({ total: 0, valid: 0, expired: 0, show_status_counts: {} });
   const [actionRatingCacheId, setActionRatingCacheId] = useState(null);
   const [ratingsRefreshJob, setRatingsRefreshJob] = useState(null);
   const [ratingsRefreshSubmitting, setRatingsRefreshSubmitting] = useState(false);
   const [isRatingsRefreshConfirmOpen, setIsRatingsRefreshConfirmOpen] = useState(false);
   const [ratingsRefreshError, setRatingsRefreshError] = useState("");
   const [seasonRatingMapping, setSeasonRatingMapping] = useState(null);
+  const ratingsCacheAvailableShowStatuses = Object.entries(ratingsCacheStatsSummary.show_status_counts || {})
+    .filter(([, count]) => count > 0)
+    .map(([id, count]) => ({
+      id,
+      count,
+      label: ({ ended: "Ended", returning: "Returning", canceled: "Canceled", cancelled: "Canceled", airing: "Airing" })[id]
+        || id.replace(/\b\w/g, character => character.toUpperCase()),
+    }));
 
   // High-Speed Change Detection State
   const [isDetectingChanges, setIsDetectingChanges] = useState(false);
@@ -14066,43 +14074,28 @@ export default function DynamicOverlays() {
                 ))}
               </div>
 
-              {/* Series Status Filter */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-semibold text-theme-muted uppercase tracking-wider mr-1">Show Status:</span>
-                {[
-                  { id: "all", label: "All" },
-                  { id: "ended", label: "Ended" },
-                  { id: "returning", label: "Returning" },
-                  { id: "canceled", label: "Canceled" },
-                  { id: "airing", label: "Airing" }
-                ].map((st) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => {
-                      setRatingsCacheShowStatus(st.id);
-                      setRatingsCachePage(1);
-                    }}
-                    className={`px-2 py-1 rounded-lg text-xs font-semibold border transition-all ${
-                      ratingsCacheShowStatus === st.id
-                        ? "bg-theme-primary text-white border-theme-primary shadow-sm"
-                        : "bg-theme-card border-theme text-theme-muted hover:text-theme-text hover:bg-theme-hover"
-                    }`}
-                  >
-                    {st.label}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={() => fetchRatingsCacheItems(ratingsCachePage)}
-                  disabled={ratingsCacheLoading}
-                  className="p-1.5 rounded-lg bg-theme-card border border-theme hover:bg-theme-hover text-theme-muted hover:text-theme-text transition-all ml-1 disabled:opacity-50 shadow-sm"
-                  title="Refresh list"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${ratingsCacheLoading ? "animate-spin" : ""}`} />
-                </button>
-              </div>
+              {ratingsCacheAvailableShowStatuses.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-semibold text-theme-muted uppercase tracking-wider mr-1">Show Status:</span>
+                  {[{ id: "all", label: "All" }, ...ratingsCacheAvailableShowStatuses].map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => {
+                        setRatingsCacheShowStatus(st.id);
+                        setRatingsCachePage(1);
+                      }}
+                      className={`px-2 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                        ratingsCacheShowStatus === st.id
+                          ? "bg-theme-primary text-white border-theme-primary shadow-sm"
+                          : "bg-theme-card border-theme text-theme-muted hover:text-theme-text hover:bg-theme-hover"
+                      }`}
+                    >
+                      {st.label}{st.count ? ` (${st.count})` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Table Content */}

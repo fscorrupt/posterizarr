@@ -705,6 +705,12 @@ class RatingsCacheManager:
                 all_total = cur.fetchone()[0]
                 cur.execute("SELECT COUNT(*) FROM media_ratings_cache WHERE expires_at > ?", (now_iso,))
                 valid_count = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT LOWER(TRIM(show_status)), COUNT(*) FROM media_ratings_cache "
+                    "WHERE show_status IS NOT NULL AND TRIM(show_status) != '' "
+                    "GROUP BY LOWER(TRIM(show_status))"
+                )
+                show_status_counts = {row[0]: row[1] for row in cur.fetchall()}
 
                 conn.close()
 
@@ -719,7 +725,8 @@ class RatingsCacheManager:
                     "stats": {
                         "total": all_total,
                         "valid": valid_count,
-                        "expired": all_total - valid_count
+                        "expired": all_total - valid_count,
+                        "show_status_counts": show_status_counts,
                     }
                 }
             except Exception as e:
