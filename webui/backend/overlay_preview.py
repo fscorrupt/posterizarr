@@ -210,6 +210,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         "multi_ratings": {
             "imdb": imdb_sample, "tomatoes": "93", "tomatoesaudience": "88", "tmdb": "8.1",
             "trakt": "85", "letterboxd": "4.1", "metacritic": "78",
+            "simkl": "8.3", "mal": "8.6",
         } if options.get("rating") else None,
         "runtime_mins": runtime_mins, "status": status,
         "resolution": options.get("resolution"),

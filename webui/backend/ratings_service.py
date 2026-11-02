@@ -27,6 +27,7 @@ from xml.etree.ElementTree import fromstring
 from PIL import Image, ImageDraw, ImageFont
 
 import httpx
+from urllib.parse import urlparse
 
 logger = logging.getLogger("ratings_service")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -137,6 +138,9 @@ class RatingsCacheManager:
                         )
                     """)
                     for col_sql in [
+                        "ALTER TABLE media_ratings_cache ADD COLUMN simkl_rating REAL;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN mal_rating REAL;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN simkl_url TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN show_status TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN network TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN content_rating TEXT;",
@@ -220,6 +224,9 @@ class RatingsCacheManager:
                     data["metacritic"] = data["metacritic_rating"]
                 if data.get("letterboxd_rating") is not None:
                     data["letterboxd"] = data["letterboxd_rating"]
+                for source in ("simkl", "mal"):
+                    if data.get(f"{source}_rating") is not None:
+                        data[source] = data[f"{source}_rating"]
 
                 return data
             except Exception as e:
@@ -271,9 +278,9 @@ class RatingsCacheManager:
                             server_type, item_id, media_type, title, year,
                             imdb_id, tmdb_id, imdb_rating, tmdb_rating,
                             rt_critic_rating, rt_audience_rating, trakt_rating,
-                            metacritic_rating, letterboxd_rating, source,
+                            metacritic_rating, letterboxd_rating, simkl_rating, mal_rating, simkl_url, source,
                             cached_at, expires_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
                             title = excluded.title,
                             media_type = excluded.media_type,
@@ -287,6 +294,9 @@ class RatingsCacheManager:
                             trakt_rating = COALESCE(excluded.trakt_rating, media_ratings_cache.trakt_rating),
                             metacritic_rating = COALESCE(excluded.metacritic_rating, media_ratings_cache.metacritic_rating),
                             letterboxd_rating = COALESCE(excluded.letterboxd_rating, media_ratings_cache.letterboxd_rating),
+                            simkl_rating = COALESCE(excluded.simkl_rating, media_ratings_cache.simkl_rating),
+                            mal_rating = COALESCE(excluded.mal_rating, media_ratings_cache.mal_rating),
+                            simkl_url = COALESCE(excluded.simkl_url, media_ratings_cache.simkl_url),
                             source = excluded.source,
                             cached_at = excluded.cached_at,
                             expires_at = excluded.expires_at;
@@ -306,6 +316,9 @@ class RatingsCacheManager:
                             ratings.get("trakt"),
                             ratings.get("metacritic"),
                             ratings.get("letterboxd"),
+                            ratings.get("simkl"),
+                            ratings.get("mal"),
+                            ratings.get("_simkl_url"),
                             source,
                             now.isoformat(),
                             expires_at.isoformat()
@@ -834,6 +847,57 @@ async def fetch_mdblist_ratings(
     return ratings
 
 
+async def fetch_simkl_ratings(imdb_id, tmdb_id, client_id, client, media_type="movie", outcomes=None, tvdb_id=None):
+    outcomes = outcomes if outcomes is not None else {}
+    if not client_id or media_type not in ("movie", "show") or not (imdb_id or tmdb_id or tvdb_id):
+        return {}
+    try:
+        version = (PROJECT_ROOT / "Release.txt").read_text(encoding="utf-8").splitlines()[0].strip()
+    except (OSError, IndexError):
+        version = "unknown"
+    params = {"client_id": str(client_id).strip(), "app-name": "posterizarr", "app-version": version}
+    headers = {"User-Agent": f"Posterizarr/{version}"}
+    identifiers = {key: value for key, value in (("imdb", imdb_id), ("tmdb", tmdb_id), ("tvdb", tvdb_id)) if value}
+    try:
+        response = await client.get(
+            "https://api.simkl.com/redirect", params={**params, **identifiers, "type": "movie" if media_type == "movie" else "tv", "to": "simkl"},
+            headers=headers, follow_redirects=False, timeout=6.0,
+        )
+        if response.status_code not in (301, 302):
+            outcomes["simkl"] = {"status": "failed", "message": f"ID resolution HTTP {response.status_code}"}
+            return {}
+        destination = urlparse(response.headers.get("Location", ""))
+        parts = destination.path.strip("/").split("/")
+        if destination.scheme != "https" or destination.netloc != "simkl.com" or len(parts) < 2 or parts[0] not in ("movies", "tv", "anime") or not parts[1].isdigit():
+            outcomes["simkl"] = {"status": "no_scores", "message": "No matching catalog item"}
+            return {}
+        if (media_type == "movie" and parts[0] == "tv") or (media_type == "show" and parts[0] == "movies"):
+            outcomes["simkl"] = {"status": "no_scores", "message": "Catalog item type mismatch"}
+            return {}
+        data = await _fetch_rating_json(client, "simkl", f"https://api.simkl.com/{parts[0]}/{parts[1]}", outcomes,
+                                        params=params, headers=headers, follow_redirects=False, timeout=6.0)
+        if not data:
+            return {}
+        scores = {}
+        for source in ("imdb", "simkl", "mal"):
+            rating = (data.get("ratings") or {}).get(source)
+            if not isinstance(rating, dict):
+                continue
+            try:
+                value = float(rating.get("rating"))
+                if 0 < value <= 10:
+                    scores[source] = round(value, 1)
+            except (TypeError, ValueError):
+                pass
+        if scores:
+            scores["_simkl_url"] = f"https://simkl.com/{'/'.join(parts[:3])}"
+            outcomes["simkl"] = {"status": "success", "scores": sorted(key for key in scores if not key.startswith("_"))}
+        return scores
+    except Exception as error:
+        outcomes["simkl"] = {"status": "failed", "message": f"Request failed ({type(error).__name__})"}
+        return {}
+
+
 async def fetch_omdb_ratings(
     imdb_id: str,
     api_key: str,
@@ -906,7 +970,9 @@ async def resolve_media_ratings(
     server_community_rating: Optional[float] = None,
     server_critic_rating: Optional[float] = None,
     season_number: Optional[int] = None,
-    episode_number: Optional[int] = None
+    episode_number: Optional[int] = None,
+    simkl_client_id: Optional[str] = None,
+    tvdb_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Unified ratings resolver with multi-source fallback and SQLite caching.
@@ -915,7 +981,10 @@ async def resolve_media_ratings(
     # 1. Cache lookup
     if not force_refresh:
         cached = ratings_cache.get_cached_ratings(server_type, item_id)
-        if cached:
+        missing_simkl_selection = cached and simkl_client_id and media_type != "episode" and any(
+            source in (enabled_sources or []) and cached.get(f"{source}_rating") is None for source in ("simkl", "mal")
+        )
+        if cached and not missing_simkl_selection:
             return {
                 "imdb": cached.get("imdb_rating"),
                 "tmdb": cached.get("tmdb_rating"),
@@ -924,6 +993,9 @@ async def resolve_media_ratings(
                 "trakt": cached.get("trakt_rating"),
                 "metacritic": cached.get("metacritic_rating"),
                 "letterboxd": cached.get("letterboxd_rating"),
+                "simkl": cached.get("simkl_rating"),
+                "mal": cached.get("mal_rating"),
+                "_simkl_url": cached.get("simkl_url"),
                 "_source": cached.get("source"),
                 "_cached": True
             }
@@ -980,7 +1052,8 @@ async def resolve_media_ratings(
 
         # 4. If MDBList API key is provided and needed ratings are still missing (or Trakt/Letterboxd requested)
         source_aliases = {"tomatoes": "rt_critic", "tomatoesaudience": "rt_audience"}
-        needs_external = any(resolved.get(source_aliases.get(source, source)) is None for source in enabled_sources)
+        mdblist_sources = {"imdb", "tmdb", "tomatoes", "tomatoesaudience", "trakt", "letterboxd", "metacritic"}
+        needs_external = any(source in mdblist_sources and resolved.get(source_aliases.get(source, source)) is None for source in enabled_sources)
         provider_tmdb_id = None if media_type == "episode" else tmdb_id
         if media_type != "episode" and mdblist_api_key and needs_external and (imdb_id or provider_tmdb_id):
             mdb_res = await fetch_mdblist_ratings(imdb_id, provider_tmdb_id, mdblist_api_key, local_client, media_type, outcomes=outcomes)
@@ -990,8 +1063,18 @@ async def resolve_media_ratings(
             if mdb_res:
                 primary_source = "mdblist"
 
-        # 5. If OMDb API key is provided and IMDb or RT are still missing
-        if omdb_api_key and (resolved.get("imdb") is None or resolved.get("rt_critic") is None) and imdb_id:
+        if simkl_client_id and media_type != "episode" and any(source in enabled_sources and resolved.get(source) is None for source in ("imdb", "simkl", "mal")):
+            simkl_result = await fetch_simkl_ratings(imdb_id, tmdb_id, simkl_client_id, local_client, media_type, outcomes, tvdb_id)
+            for source, value in simkl_result.items():
+                if resolved.get(source) is None:
+                    resolved[source] = value
+            if simkl_result:
+                primary_source = "simkl"
+
+        # 5. Query OMDb only for selected scores that it can supply.
+        omdb_sources = {"imdb": "imdb", "tomatoes": "rt_critic", "metacritic": "metacritic"}
+        needs_omdb = any(source in enabled_sources and resolved.get(key) is None for source, key in omdb_sources.items())
+        if omdb_api_key and needs_omdb and imdb_id:
             omdb_res = await fetch_omdb_ratings(imdb_id, omdb_api_key, local_client, outcomes=outcomes)
             for k, v in omdb_res.items():
                 if v is not None and resolved.get(k) is None:
@@ -1058,7 +1141,10 @@ async def resolve_media_ratings(
             ("imdb", "imdb_rating"), ("tmdb", "tmdb_rating"), ("rt_critic", "rt_critic_rating"),
             ("rt_audience", "rt_audience_rating"), ("trakt", "trakt_rating"),
             ("metacritic", "metacritic_rating"), ("letterboxd", "letterboxd_rating"),
+            ("simkl", "simkl_rating"), ("mal", "mal_rating"),
         ) if stale.get(column) is not None}
+        if stale.get("simkl_url"):
+            resolved["_simkl_url"] = stale["simkl_url"]
         resolved["_stale"] = bool(resolved)
 
     resolved["_source"] = primary_source

@@ -88,6 +88,8 @@ const RATING_PROVIDER_OPTIONS = [
   { id: "trakt", label: "Trakt" },
   { id: "metacritic", label: "Metacritic" },
   { id: "letterboxd", label: "Letterboxd" },
+  { id: "simkl", label: "SIMKL" },
+  { id: "mal", label: "MyAnimeList" },
 ];
 
 const RatingScoreLayoutControls = ({ options, onChange }) => {
@@ -557,6 +559,7 @@ export default function DynamicOverlays() {
     rating_contrast_box: true,
     mdblist_api_key: "",
     omdb_api_key: "",
+    simkl_client_id: "",
     rating_cache_ttl_days: 7,
     change_detection_dry_run: true
   });
@@ -565,10 +568,11 @@ export default function DynamicOverlays() {
   const [ratingsCacheStats, setRatingsCacheStats] = useState(null);
   const [isClearingRatingsCache, setIsClearingRatingsCache] = useState(false);
   const [isBackdropPanelOpen, setIsBackdropPanelOpen] = useState(true);
-  const [testingApiKey, setTestingApiKey] = useState({ mdblist: false, omdb: false });
-  const [apiKeyTestResult, setApiKeyTestResult] = useState({ mdblist: null, omdb: null });
+  const [testingApiKey, setTestingApiKey] = useState({ mdblist: false, omdb: false, simkl: false });
+  const [apiKeyTestResult, setApiKeyTestResult] = useState({ mdblist: null, omdb: null, simkl: null });
   const [showMdblistKey, setShowMdblistKey] = useState(false);
   const [showOmdbKey, setShowOmdbKey] = useState(false);
+  const [showRatingsSimklKey, setShowRatingsSimklKey] = useState(false);
 
   // Visual Studio / YAML Translator state
   const [visualConfig, setVisualConfig] = useState({ libraries: {} });
@@ -1921,7 +1925,8 @@ export default function DynamicOverlays() {
   };
 
   const handleTestApiKey = async (provider) => {
-    const key = (provider === "mdblist" ? featureSettings?.mdblist_api_key : featureSettings?.omdb_api_key) || "";
+    const settingName = { mdblist: "mdblist_api_key", omdb: "omdb_api_key", simkl: "simkl_client_id" }[provider];
+    const key = featureSettings?.[settingName] || "";
     if (!key.trim()) {
       showError(`Please enter an API key for ${provider.toUpperCase()} before testing.`);
       return;
@@ -1939,11 +1944,7 @@ export default function DynamicOverlays() {
         setApiKeyTestResult(prev => ({ ...prev, [provider]: { success: true, message: data.message } }));
         showSuccess(data.message || `${provider.toUpperCase()} key verified!`);
         // If successful and settings aren't saved yet, auto-persist the verified key
-        if (provider === "mdblist") {
-          handleUpdateDynamicSettings({ mdblist_api_key: key.trim() });
-        } else if (provider === "omdb") {
-          handleUpdateDynamicSettings({ omdb_api_key: key.trim() });
-        }
+        handleUpdateDynamicSettings({ [settingName]: key.trim() });
       } else {
         setApiKeyTestResult(prev => ({ ...prev, [provider]: { success: false, error: data.error || "Verification failed." } }));
         showError(data.error || `Invalid ${provider.toUpperCase()} key.`);
@@ -7379,7 +7380,7 @@ export default function DynamicOverlays() {
                           </span>
                         </div>
                         <p className="text-xs text-theme-muted mt-0.5">
-                          Configure parallel RAM workers, debug pixel log, API keys (MDBList, OMDb), and auto-refresh schedule.
+                          Configure parallel RAM workers, debug pixel log, API keys (MDBList, OMDb, SIMKL), and auto-refresh schedule.
                         </p>
                       </div>
                     </div>
@@ -7541,6 +7542,45 @@ export default function DynamicOverlays() {
                             </div>
                           )}
                         </div>
+                      </div>
+
+                      <div className="space-y-2 p-3 rounded-lg bg-theme-hover/20 border border-theme">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <label htmlFor="ratings-simkl-client-id" className="text-xs font-semibold text-theme-text flex items-center gap-1.5">
+                            <Key className="w-3.5 h-3.5 text-theme-primary" />
+                            SIMKL Client ID <span className="text-theme-muted font-normal">(Optional)</span>
+                          </label>
+                          <a href="https://simkl.com/settings/developer/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-theme-primary hover:underline">
+                            Create Client ID <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="relative flex-1 min-w-0">
+                            <input
+                              id="ratings-simkl-client-id"
+                              type={showRatingsSimklKey ? "text" : "password"}
+                              autoComplete="off"
+                              value={featureSettings?.simkl_client_id || ""}
+                              onChange={event => {
+                                setFeatureSettings(previous => ({ ...previous, simkl_client_id: event.target.value }));
+                                setApiKeyTestResult(previous => ({ ...previous, simkl: null }));
+                              }}
+                              onBlur={() => handleUpdateDynamicSettings({ simkl_client_id: (featureSettings?.simkl_client_id || "").trim() })}
+                              className="w-full bg-theme-hover border border-theme rounded-lg px-3 py-2 pr-9 text-xs text-theme-text font-mono"
+                            />
+                            <button type="button" onClick={() => setShowRatingsSimklKey(previous => !previous)} title={showRatingsSimklKey ? "Hide SIMKL Client ID" : "Show SIMKL Client ID"} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text">
+                              {showRatingsSimklKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <button type="button" onClick={() => handleTestApiKey("simkl")} disabled={testingApiKey.simkl || !featureSettings?.simkl_client_id?.trim()} title="Test SIMKL Client ID" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-theme-hover border border-theme text-xs font-semibold text-theme-text disabled:opacity-40">
+                            {testingApiKey.simkl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Test
+                          </button>
+                        </div>
+                        {apiKeyTestResult.simkl && (
+                          <p role="status" className={`text-xs break-words ${apiKeyTestResult.simkl.success ? "text-emerald-400" : "text-red-400"}`}>
+                            {apiKeyTestResult.simkl.message || apiKeyTestResult.simkl.error}
+                          </p>
+                        )}
                       </div>
 
                       {/* Tiered TTL Summary & Clear Ratings Cache */}
@@ -13990,7 +14030,7 @@ export default function DynamicOverlays() {
                         entry.rt_audience_rating !== null ||
                         entry.trakt_rating !== null ||
                         entry.metacritic_rating !== null ||
-                        entry.letterboxd_rating !== null;
+                        entry.letterboxd_rating != null || entry.simkl_rating != null || entry.mal_rating != null;
 
                       return (
                         <tr key={entry.id} className="hover:bg-theme-hover/30 transition-colors">
@@ -14017,6 +14057,12 @@ export default function DynamicOverlays() {
                                 >
                                   {entry.imdb_id}
                                   <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
+                                </a>
+                              )}
+                              {entry.simkl_url?.startsWith("https://simkl.com/") && (
+                                <a href={entry.simkl_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-theme-primary text-[11px] hover:underline">
+                                  <img src="https://us.simkl.in/img_favicon/v2/favicon-192x192.png" alt="" width="12" height="12" loading="lazy" referrerPolicy="no-referrer" />
+                                  Source: SIMKL <ExternalLink className="w-3 h-3" />
                                 </a>
                               )}
                               {entry.tmdb_id && (
@@ -14107,6 +14153,11 @@ export default function DynamicOverlays() {
                                     {Number(entry.letterboxd_rating).toFixed(1)}
                                   </span>
                                 )}
+                                {[{ key: "simkl", label: "SIMKL" }, { key: "mal", label: "MAL" }].map(provider => entry[`${provider.key}_rating`] != null && (
+                                  <span key={provider.key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-theme-hover text-theme-text border border-theme text-[11px] font-bold">
+                                    {provider.label} {Number(entry[`${provider.key}_rating`]).toFixed(1)}
+                                  </span>
+                                ))}
                               </div>
                             ) : (
                               <span className="text-theme-muted italic text-[11px]">No scores recorded</span>

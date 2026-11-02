@@ -68,10 +68,11 @@ one; its values define the overlay's behavior.
 
 Provider badges support IMDb (`imdb`), Rotten Tomatoes critics (`tomatoes`),
 Rotten Tomatoes audience (`tomatoesaudience`), TMDb (`tmdb`), Trakt (`trakt`),
-Metacritic (`metacritic`), and Letterboxd (`letterboxd`). Choose providers in
+Metacritic (`metacritic`), Letterboxd (`letterboxd`), SIMKL (`simkl`), and
+MyAnimeList (`mal`). Choose providers in
 **Visual Badges** or **Live Preview**. The initial IMDb/RT Critics/TMDb selection
 is a default, not a three-provider limit. Cached ratings are independent of this
-selection; having seven cached values does not automatically enable seven badges.
+selection; cached values do not automatically enable their badges.
 Live Preview uses sample values, not the selected item's cached ratings.
 When provider ratings are available, the built-in provider layout suppresses the
 legacy `rating_high` / `user_rating` audience badges from imported overlay files,
@@ -86,12 +87,49 @@ Provider score controls are saved with the library and artwork-format layout:
 | Fit score content (`score_size_mode: content`) | Fit the backdrop to the current score while keeping the logo anchored. |
 | Number side (`score_position`) | Place the number to the `left` or `right` of its provider logo. |
 | Number alignment (`score_alignment`) | Align the number `left`, `center`, or `right` within automatic/custom fixed slots. Not used in content mode. |
+| Automatic logo size | Provider logos grow proportionally with `font_size`. Standard font sizes retain their existing logo proportions. Increasing pill width or padding alone does not enlarge the logo. |
+| Fixed logo height (`scale_height`) | An explicit value in the rating rule's `template_variables` fixes the logo height in reference-canvas pixels. Remove this override to restore automatic sizing with the font. |
 
 Widths scale from the portrait 1000 x 1500 or landscape 1920 x 1080 reference
 canvas to the output artwork. These controls affect multi-provider badges, not
 the compact single-score badge. Previewing and saving do not upload artwork;
 existing configurations without the new fields retain their legacy rendering.
 DynamicOverlaysSync.log.oldDynamicOverlaysSync.log.old
+### SIMKL Catalog Ratings
+
+Open **Visual Badges > Overlay Engine, Concurrency & Provider Settings** and
+enter the optional **SIMKL Client ID** beside the MDBList/OMDb credentials.
+Use **Test** to verify it. This setting is independent of AniMetaFill: no
+AniMetaFill setup, user login, or OAuth token is required for these public
+catalog lookups. The same Client ID used in AniMetaFill can be entered here,
+but it is not copied automatically and entering it does not enable AniMetaFill.
+Create a Client ID at [SIMKL developer settings](https://simkl.com/settings/developer/).
+
+The resolver reads existing server ratings and TMDb/MDBList first, then uses
+SIMKL for missing selected IMDb/SIMKL/MAL values before the OMDb fallback.
+OMDb is queried only for selected missing scores it can supply. External IMDb,
+TMDb, or TVDb IDs are resolved through SIMKL's `/redirect` without following
+the HTML redirect, then the matching movie/TV/anime detail endpoint is read.
+SIMKL does not replace valid scores already resolved in the same lookup.
+
+Select **SIMKL** or **MyAnimeList** in the provider selectors to display those
+distinct scores. A newly selected missing SIMKL/MAL value can be fetched even
+when other scores are already cached. Scores and their SIMKL source link are
+saved in the existing ratings cache; expired cached SIMKL/MAL sources are also
+refreshed by the ratings-refresh job. Missing optional logo images use explicit
+`SIMKL`/`MAL` text labels; custom image overrides remain available.
+
+SIMKL title ratings are never used as episode ratings. The documented TV/anime
+episode-list responses do not contain rating fields. Missing title/provider
+scores remain absent; zero or invalid scores are ignored. The cache browser
+links to the specific SIMKL title for attribution. API calls identify Posterizarr
+and do not log the Client ID or request URLs. Existing cache TTLs still apply;
+refreshing cached scores does not itself upload artwork.
+
+See [SIMKL ratings](https://api.simkl.org/api-reference/ratings.md),
+[rate limits](https://api.simkl.org/resources/rate-limits.md), and
+[API rules](https://api.simkl.org/api-rules.md).
+
 ### Rule Artwork Targets
 
 In the rule's **Visual Settings**, use **Artwork Type** to choose **Both**,
@@ -288,7 +326,7 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 - **Single movie/show sync:** in **Sync & Cache**, choose **Select Movie / Show**, select a server/library, search by title, and select the matching result by year, library, and server ID. **Scan Selected Item** fetches that exact item directly instead of crawling the library, reevaluates configured overlays, and skips unchanged artwork. A show includes its configured season posters and episode titlecards, not other shows. **Force Reapply** explicitly reapplies the selected item's artwork. The usual sync queue, progress, logs, stop controls, and clean-asset requirements still apply. Search is server-backed (not cache-only), bounded to 30 results, and respects configured/excluded libraries.
 - **Ratings Cache & Refresh:** use **Refresh Missing & Expired** to refresh expired movie/show/episode ratings and backfill missing ratings for posters and episode titlecards already in the overlay cache. Episodes with missing selected IMDb/TMDb scores are retried even when another provider's cached score is still valid. The action applies across all servers, independently of the table filters and overlay rules. A row's **Refresh ratings now** action forces just that entry. Both run in the background without rendering, uploading, or selecting artwork; overlay artwork is updated by the next appropriate overlay sync. The cache browser includes an **Episodes** type filter.
 - **Automatic ratings refresh:** while Dynamic Overlays is enabled, **Automatic Refresh (Hourly)** checks expired movie/show/episode ratings independently of the overlay scheduler and rule configuration. It also picks up uncached episode titlecards already in the overlay cache and retries missing selected IMDb/TMDb episode scores. Complete, unexpired episode ratings are skipped. Missing movie/show poster entries still require the manual bulk action. Episode metadata supplies the episode IMDb ID and season/episode numbers; the parent show's TMDb ID is used only to address the episode endpoint, never to substitute the show's score. Refreshes are sequential, with parent metadata reused within each refresh job to limit provider traffic. The hourly refresh is enabled by default and can be disabled in the cache browser; it does not itself render or upload artwork. Only one ratings refresh job runs at a time. Cancel stops further processing; completed items remain saved.
-- **Refresh results:** the cache browser shows job progress, trigger, completion time, success/partial/failure counts, and the latest 20 issues. Each rating row stores its last attempt time, status, and sanitized per-provider results. These diagnostics survive backend restarts; interrupted jobs are marked interrupted. `BackendServer.log` includes `[Ratings]` item outcomes and `[RatingsRefresh]` job summaries at INFO level, without request URLs or API keys.
+- **Refresh results:** the cache browser shows job progress, trigger, completion time, success/partial/failure counts, and the latest 20 issues. Each rating row stores its last attempt time, status, and sanitized per-provider results. These diagnostics survive backend restarts; interrupted jobs are marked interrupted. **Logs > RatingsRefresh.log** contains `[Ratings]` provider outcomes and `[RatingsRefresh]` job summaries. The file is stored at `UILogs/RatingsRefresh.log` (normally `/config/UILogs/RatingsRefresh.log` in Docker), appends across backend restarts, and rotates at 10 MiB with one backup, `RatingsRefresh.log.1`. It records INFO-level ratings diagnostics independently of the global backend log level, without request URLs or API keys. The usual `BackendServer.log` output is retained at the configured global level.
 - **Expiry is not provider health:** a successful refresh means fresh scores were saved, not that every score changed. Partial means some fresh scores were saved but another attempted provider failed or returned no scores. Failed lookups preserve existing scores, `cached_at`, and expiry, allowing stale scores to remain usable. A valid TTL alone does not prove every configured provider succeeded. The table's **Refresh list** button only reloads records; **Mark expired** does not immediately fetch them. Custom Plex audience-rating overlays still read Plex metadata directly; rendering them does not by itself populate the multi-source cache.
 - Repeated uploads can leave old alternatives in Plex's metadata directory. The separate [scheduled Plex Image Cleanup](plex_image_cleanup.md) task can report, quarantine, or remove old unselected uploads. It is never invoked automatically by overlay sync or preview.
 - View cached items in `database/overlay_cache.db` (`media_ratings_cache` table and fingerprint tables).

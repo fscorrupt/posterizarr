@@ -319,15 +319,13 @@ queue_manager = QueueManager(QUEUE_DB_PATH)
 # Global lock for process management
 process_lock = threading.RLock()
 
-# Clear ephemeral UILogs on startup - preserve task logs like PlexImageCleanup.log
+# Clear UILogs on startup - remove all log files
 import glob
-
-PRESERVED_STARTUP_UI_LOGS = {"PlexImageCleanup.log"}
 
 for log_file in glob.glob(str(UI_LOGS_DIR / "*.log")):
     try:
-        if Path(log_file).name not in PRESERVED_STARTUP_UI_LOGS:
-            os.remove(log_file)
+        os.remove(log_file)
+        pass  # Silent - no console output
     except Exception as e:
         pass  # Silent - no console output
 
@@ -453,6 +451,9 @@ file_handler.setFormatter(
 # Configure root logger - ONLY file handler, no console
 logging.root.setLevel(LOG_LEVEL)
 logging.root.addHandler(file_handler)
+
+from ratings_refresh import configure_ratings_logging
+configure_ratings_logging(UI_LOGS_DIR)
 
 # Set httpx to WARNING to reduce noise, but keep our app at DEBUG
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -8961,6 +8962,7 @@ KNOWN_LOG_FILES: Dict[str, Path] = {
     "PlexSync.log": UI_LOGS_DIR / "PlexSync.log",
     "KometaDefaults.log": UI_LOGS_DIR / "KometaDefaults.log",
     "DynamicOverlaysSync.log": UI_LOGS_DIR / "DynamicOverlaysSync.log",
+    "RatingsRefresh.log": UI_LOGS_DIR / "RatingsRefresh.log",
     "PlexImageCleanup.log": UI_LOGS_DIR / "PlexImageCleanup.log",
     "AniMetaFill.log": UI_LOGS_DIR / "AniMetaFill.log",
 }
@@ -20839,6 +20841,7 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     rating_contrast_box: Optional[bool] = None
     mdblist_api_key: Optional[str] = None
     omdb_api_key: Optional[str] = None
+    simkl_client_id: Optional[str] = None
     rating_cache_ttl_days: Optional[int] = None
     ratings_auto_refresh_enabled: Optional[bool] = None
     change_detection_enabled: Optional[bool] = None
@@ -21053,7 +21056,7 @@ class DynamicOverlaysTestApiKeyRequest(BaseModel):
 
 @app.post("/api/dynamic-overlays/test-api-key")
 async def test_dynamic_overlays_api_key_endpoint(req: DynamicOverlaysTestApiKeyRequest):
-    """Test external API key for MDBList or OMDb against a benchmark title."""
+    """Test an external ratings service against a benchmark title."""
     provider = req.provider.lower().strip()
     api_key = req.api_key.strip()
     if not api_key:
@@ -21099,6 +21102,13 @@ async def test_dynamic_overlays_api_key_endpoint(req: DynamicOverlaysTestApiKeyR
                     return {"success": False, "valid": False, "error": "Invalid or unauthorized OMDb API key."}
                 else:
                     return {"success": False, "valid": False, "error": f"OMDb returned status {resp.status_code}"}
+            elif provider == "simkl":
+                from ratings_service import fetch_simkl_ratings
+                outcomes = {}
+                ratings = await fetch_simkl_ratings("tt1375666", None, api_key, client, outcomes=outcomes)
+                if ratings:
+                    return {"success": True, "valid": True, "message": "SIMKL Client ID verified; catalog ratings are available."}
+                return {"success": False, "valid": False, "error": (outcomes.get("simkl") or {}).get("message", "No catalog ratings returned by SIMKL.")}
             else:
                 return {"success": False, "error": f"Unsupported provider: {provider}"}
     except Exception as e:

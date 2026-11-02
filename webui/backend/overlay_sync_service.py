@@ -1959,7 +1959,10 @@ def build_multi_rating_layers(
 
     is_land = canvas_type == "landscape"
     font_size = int(dyn_settings.get("font_size", 28 if is_land else 44))
-    scale_h = int(dyn_settings.get("scale_height", 36 if is_land else 52))
+    configured_logo_height = dyn_settings.get("scale_height")
+    scale_h = int(configured_logo_height) if configured_logo_height is not None else max(
+        1, round(font_size * (36 / 28 if is_land else 52 / 44))
+    )
     has_badge_background = theme in ("brand", "score") or contrast_box
     effective_back_padding = back_padding if has_badge_background else 0
     measure_font = None
@@ -2084,6 +2087,10 @@ def build_multi_rating_layers(
             logo_file = assets_dir / "Metacritic.png"
             if num is not None:
                 score_text = f"{int(round(num))}"
+        elif src in ("simkl", "mal"):
+            logo_file = assets_dir / ("SIMKL.png" if src == "simkl" else "MyAnimeList.png")
+            if num is not None:
+                score_text = f"{num:.1f}"
         else:
             cand = assets_dir / f"{src.capitalize()}.png"
             logo_file = cand if cand.exists() else None
@@ -2092,6 +2099,9 @@ def build_multi_rating_layers(
         if selected_asset:
             asset_path = Path(str(selected_asset))
             logo_file = asset_path if asset_path.is_absolute() else assets_dir.parent / asset_path
+
+        if src in ("simkl", "mal") and not selected_asset and not logo_file.exists():
+            score_text = f"{src.upper()} {score_text}"
 
         logo_width = 0
         logo_height = 0
@@ -2116,6 +2126,8 @@ def build_multi_rating_layers(
             score_width = 3 * digit_width + 4
         else:
             score_width = 3 * digit_width + dot_width + 4
+        if src in ("simkl", "mal") and not logo_file.exists():
+            score_width = max(score_width, text_width)
         if score_size_mode == "fixed" and requested_score_width:
             score_width = max(16, requested_score_width)
         content_width = (score_width if custom_score_layout else max(text_width, score_width)) + logo_width + (8 if logo_width else 0)
@@ -2186,6 +2198,8 @@ def build_multi_rating_layers(
 
 
 RATING_BRAND_COLORS = {
+    "simkl": ("#161616E6", "#00C79F"),
+    "mal": ("#2E51A2E6", "#FFFFFF"),
     "imdb": ("#F5C518E6", "#000000"),
     "tmdb": ("#0D253FE6", "#90CEA1"),
     "trakt": ("#ED1C24E6", "#FFFFFF"),
@@ -2200,7 +2214,7 @@ def _rating_theme_colors(theme: str, source: str, score: Optional[float]) -> Tup
     """Return (back_color, font_color) for themed rating pills; score is the normalized display value."""
     percent = None
     if score is not None:
-        percent = score * 10 if source in ("imdb", "tmdb") else (score * 20 if source == "letterboxd" else score)
+        percent = score * 10 if source in ("imdb", "tmdb", "simkl", "mal") else (score * 20 if source == "letterboxd" else score)
     if theme == "brand" and source in RATING_BRAND_COLORS:
         return RATING_BRAND_COLORS[source]
     if theme == "brand" and source in ("tomatoes", "tomatoesaudience"):
@@ -4133,6 +4147,13 @@ async def _run_overlay_sync_task(
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
                     needs_parent_stream_aggregation = _parent_stream_aggregation_requested(lib_rules) and not episode_only_targets
+                    provider_rules = [rule for rule in lib_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("rating", "ratings")]
+                    library_rating_sources = list(dict.fromkeys(
+                        source for rule in provider_rules for source in (
+                            (rule.get("template_variables") or {}).get("sources")
+                            if (rule.get("template_variables") or {}).get("sources") is not None else rating_sources
+                        )
+                    )) if provider_rules else rating_sources
 
                     # Fast in-memory cache lookup for poster & backdrop paths
                     cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None
@@ -4493,7 +4514,9 @@ async def _run_overlay_sync_task(
                             tmdb_api_key=creds.get("tmdb_token"),
                             mdblist_api_key=mdblist_key,
                             omdb_api_key=omdb_key,
-                            enabled_sources=rating_sources,
+                            simkl_client_id=dyn_settings.get("simkl_client_id"),
+                            tvdb_id=item.get("tvdb_id"),
+                            enabled_sources=library_rating_sources,
                             client=http_client,
                             force_refresh=(scope == "full" and needs_ratings),
                             server_community_rating=item.get("rating"),

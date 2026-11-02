@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import threading
 from contextlib import closing
 from datetime import datetime
@@ -11,6 +12,31 @@ from xml.etree.ElementTree import fromstring
 from ratings_service import ratings_cache, resolve_media_ratings
 
 logger = logging.getLogger("ratings_refresh")
+
+
+def configure_ratings_logging(log_directory):
+    log_directory.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        log_directory / "RatingsRefresh.log", maxBytes=10 * 1024 * 1024,
+        backupCount=1, encoding="utf-8",
+    )
+    handler.set_name("ratings_file")
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    previous_handlers = set()
+    for name in ("ratings_service", "ratings_refresh"):
+        ratings_logger = logging.getLogger(name)
+        for previous in list(ratings_logger.handlers):
+            if previous.get_name() == "ratings_file":
+                ratings_logger.removeHandler(previous)
+                previous_handlers.add(previous)
+        ratings_logger.addHandler(handler)
+        ratings_logger.setLevel(logging.INFO)
+    for previous in previous_handlers:
+        previous.close()
+    return handler
 
 
 class RatingsRefreshService:
@@ -152,6 +178,8 @@ class RatingsRefreshService:
                     item["imdb_id"] = value[7:]
                 elif value.startswith("tmdb://") and item["media_type"] != "episode":
                     item["tmdb_id"] = value[7:]
+                elif value.startswith("tvdb://"):
+                    item["tvdb_id"] = value[7:]
         else:
             response = await client.get(f"{server_config['url']}/Items/{item['item_id']}",
                                         headers={"X-Emby-Token": server_config.get("api_key") or ""})
@@ -159,6 +187,7 @@ class RatingsRefreshService:
                 raise ValueError(f"Media server metadata HTTP {response.status_code}")
             data = response.json()
             ids = data.get("ProviderIds") or {}
+            item["tvdb_id"] = ids.get("Tvdb")
             item.update(title=data.get("Name") or item.get("title"), year=data.get("ProductionYear") or item.get("year"),
                         imdb_id=ids.get("Imdb") or item.get("imdb_id"), tmdb_id=ids.get("Tmdb") or item.get("tmdb_id"),
                         media_type={"Movie": "movie", "Series": "show", "Episode": "episode"}.get(data.get("Type"), item["media_type"]))
@@ -174,13 +203,20 @@ class RatingsRefreshService:
             season_number = episode_number = None
         if item["media_type"] == "episode" and parent_id and credentials.get("tmdb_token") and season_number is not None and episode_number is not None:
             item["tmdb_id"] = await self._episode_parent_tmdb_id(server, parent_id, server_config, client)
+        enabled_sources = settings.get("rating_sources")
+        if item["media_type"] != "episode" and settings.get("simkl_client_id"):
+            enabled_sources = list(enabled_sources) if enabled_sources is not None else ["imdb", "tmdb", "tomatoes", "tomatoesaudience"]
+            for source in ("simkl", "mal"):
+                if item.get(f"{source}_rating") is not None and source not in enabled_sources:
+                    enabled_sources.append(source)
         return await resolve_media_ratings(
             server, item["item_id"], item.get("title") or item["item_id"], item.get("year"), item["media_type"],
             item.get("imdb_id"), item.get("tmdb_id"), plex_xml_bytes=xml_bytes,
             tmdb_api_key=credentials.get("tmdb_token"), mdblist_api_key=settings.get("mdblist_api_key"),
-            omdb_api_key=settings.get("omdb_api_key"), enabled_sources=settings.get("rating_sources"),
+            omdb_api_key=settings.get("omdb_api_key"), enabled_sources=enabled_sources,
             client=client, force_refresh=True, server_community_rating=community_rating, server_critic_rating=critic_rating,
             season_number=season_number, episode_number=episode_number,
+            simkl_client_id=settings.get("simkl_client_id"), tvdb_id=item.get("tvdb_id"),
         )
 
     async def _run(self, credentials, settings, entry_id, state):
@@ -204,6 +240,8 @@ class RatingsRefreshService:
                         message = str(error) if isinstance(error, ValueError) and str(error).startswith(("Plex metadata HTTP", "Media server metadata HTTP", "Media server is disabled", "No movie")) else f"Metadata request failed ({type(error).__name__})"
                         details = {"message": message}
                     state["current_title"] = item.get("title") or item["item_id"]
+                    logger.info("[RatingsRefresh] %s %s '%s': %s; %s", item["server_type"], item["item_id"],
+                                state["current_title"], outcome, json.dumps({"message": message, **details}, sort_keys=True))
                     if outcome == "failed":
                         with closing(self.cache._get_connection()) as connection:
                             exists = connection.execute("SELECT 1 FROM media_ratings_cache WHERE server_type = ? AND item_id = ?", (item["server_type"], item["item_id"])).fetchone()
