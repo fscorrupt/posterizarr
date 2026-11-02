@@ -91,7 +91,7 @@ Widths scale from the portrait 1000 x 1500 or landscape 1920 x 1080 reference
 canvas to the output artwork. These controls affect multi-provider badges, not
 the compact single-score badge. Previewing and saving do not upload artwork;
 existing configurations without the new fields retain their legacy rendering.
-
+DynamicOverlaysSync.log.oldDynamicOverlaysSync.log.old
 ### Rule Artwork Targets
 
 In the rule's **Visual Settings**, use **Artwork Type** to choose **Both**,
@@ -283,6 +283,8 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
   - When ratings change during scheduled syncs, updated backdrops are automatically re-rendered and pushed to media servers.
 
 ### 5. Cache & Sync
+- **Automatic newly created artwork:** automatic targets retain their artwork scope. A new episode titlecard such as `S38E05` selects only that episode, not the show's poster, backgrounds, season posters, or other titlecards. Batched events process the union of their explicit artwork targets. A newly created season poster selects only that season poster; a newly created background selects only the background. Manual movie/show scans retain the broader behavior described below.
+- **Sync log rotation:** output is written to `UILogs/DynamicOverlaysSync.log`. When the previous active log exceeds 10 MiB, it is moved to `DynamicOverlaysSync.log.old` before opening the new active writer. The `.old` file is the previous log, not the current run's output.
 - **Single movie/show sync:** in **Sync & Cache**, choose **Select Movie / Show**, select a server/library, search by title, and select the matching result by year, library, and server ID. **Scan Selected Item** fetches that exact item directly instead of crawling the library, reevaluates configured overlays, and skips unchanged artwork. A show includes its configured season posters and episode titlecards, not other shows. **Force Reapply** explicitly reapplies the selected item's artwork. The usual sync queue, progress, logs, stop controls, and clean-asset requirements still apply. Search is server-backed (not cache-only), bounded to 30 results, and respects configured/excluded libraries.
 - **Ratings Cache & Refresh:** use **Refresh Missing & Expired** to refresh expired movie/show ratings and backfill missing ratings for movie/show posters already in the overlay cache. The action applies across all servers, independently of the table filters and overlay rules. A row's **Refresh ratings now** action forces just that entry. Both run in the background without rendering, uploading, or selecting artwork; overlay artwork is updated by the next appropriate overlay sync.
 - **Automatic ratings refresh:** while Dynamic Overlays is enabled, **Automatic Refresh (Hourly)** checks expired ratings independently of the overlay scheduler and rule configuration. It is enabled by default and can be disabled in the cache browser. Automatic checks do not backfill missing entries; use the manual bulk action for those. Refreshes are sequential to limit provider traffic, and only one ratings refresh job runs at a time. Cancel stops further processing; completed items remain saved.

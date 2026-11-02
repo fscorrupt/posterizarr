@@ -3521,6 +3521,48 @@ def _matches_overlay_target(item, target):
     return bool(expected_title and expected_title == str(item.get("title") or "").strip().casefold())
 
 
+def _overlay_target_includes(item, targets, asset_type, season_number=None, episode_number=None):
+    if not targets:
+        return True
+    for target in targets:
+        if not _matches_overlay_target(item, target):
+            continue
+        target_type = str(target.get("asset_type") or target.get("Type") or "").strip().lower()
+        target_season = target.get("season_number")
+        target_episode = target.get("episode_number")
+        title = str(target.get("Title") or target.get("title") or "")
+        if target_type in ("episode", "titlecard"):
+            coordinates = re.search(r"\bS(\d+)E(\d+)\b", title, re.IGNORECASE)
+            if coordinates:
+                target_season = int(coordinates.group(1))
+                target_episode = int(coordinates.group(2))
+            try:
+                if asset_type == "titlecard" and int(target_season) == season_number and (
+                    episode_number is None or int(target_episode) == episode_number
+                ):
+                    return True
+            except (TypeError, ValueError):
+                pass
+        elif target_type == "season":
+            coordinates = re.search(r"\bSeason\s*(\d+)\b", title, re.IGNORECASE)
+            if coordinates:
+                target_season = int(coordinates.group(1))
+            try:
+                if asset_type == "season" and int(target_season) == season_number:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        elif target_type in ("background", "backdrop"):
+            if asset_type == "background":
+                return True
+        elif target_type in ("movie", "show", "poster"):
+            if asset_type == "poster":
+                return True
+        elif not target_type:
+            return True
+    return False
+
+
 async def _fetch_overlay_target_items(
     http_client, server_type, server_url, credentials, targets, library,
     excluded_libraries, library_rules_map, write_log,
@@ -3574,6 +3616,16 @@ async def _fetch_overlay_target_items(
         except Exception as error:
             write_log(f"  [-] Target '{item_id}' ({library_name}): {format_sync_error(error, phase='fetching targeted metadata')}")
     return items
+
+
+def _open_overlay_sync_log(log_file_path: Path):
+    log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    if log_file_path.exists() and log_file_path.stat().st_size > 10 * 1024 * 1024:
+        try:
+            log_file_path.replace(log_file_path.with_name(log_file_path.name + ".old"))
+        except OSError as error:
+            logger.warning("[OverlaySync] Could not rotate sync log (%s); appending to the active log", type(error).__name__)
+    return log_file_path.open("a", encoding="utf-8", buffering=1)
 
 
 async def run_overlay_sync_task(
@@ -3649,13 +3701,11 @@ async def _run_overlay_sync_task(
     if not log_file_path:
         log_file_path = base_dir / "UILogs" / "DynamicOverlaysSync.log"
 
-    log_file_path.parent.mkdir(parents=True, exist_ok=True)
-
     log_file_handle = None
     try:
-        log_file_handle = open(log_file_path, "a", encoding="utf-8", buffering=1)
-    except Exception:
-        pass
+        log_file_handle = _open_overlay_sync_log(log_file_path)
+    except OSError as error:
+        logger.error("[OverlaySync] Could not open active sync log (%s)", type(error).__name__)
 
     def write_log(msg: str):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -3719,17 +3769,6 @@ async def _run_overlay_sync_task(
         elif Path("/app/Overlayfiles/dynamic_overlays").exists():
             overlays_dir = Path("/app/Overlayfiles/dynamic_overlays")
     cache = await asyncio.to_thread(OverlayCache, base_dir / "database" / "overlay_cache.db")
-
-    # Rotate log if exceeds 10MB
-    if log_file_path.exists():
-        try:
-            if log_file_path.stat().st_size > 10 * 1024 * 1024:
-                old_log = log_file_path.with_name("DynamicOverlaysSync.log.old")
-                if old_log.exists():
-                    old_log.unlink()
-                log_file_path.rename(old_log)
-        except Exception:
-            pass
 
     try:
         write_log("=" * 70)
@@ -4066,6 +4105,20 @@ async def _run_overlay_sync_task(
                         write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> No library overlay rules configured")
                         return
 
+                    item_targets = [
+                        target for target in target_items
+                        if str(target.get("server_type") or s_type).lower() == s_type
+                        and _matches_overlay_target(item, target)
+                    ] if is_target_mode else None
+                    if is_target_mode and not item_targets:
+                        return
+                    process_poster = _overlay_target_includes(item, item_targets, "poster")
+                    process_background = _overlay_target_includes(item, item_targets, "background")
+                    episode_only_targets = bool(item_targets) and all(
+                        str(target.get("asset_type") or target.get("Type") or "").lower() in ("episode", "titlecard")
+                        for target in item_targets
+                    )
+
                     # Inspect active rules to identify what metadata domains are actually required
                     rules_str = json.dumps([r for r in lib_rules if isinstance(r, dict)]).lower()
                     needs_languages = any(k in rules_str for k in ["language", "flag", "lang_"])
@@ -4079,7 +4132,7 @@ async def _run_overlay_sync_task(
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
-                    needs_parent_stream_aggregation = _parent_stream_aggregation_requested(lib_rules)
+                    needs_parent_stream_aggregation = _parent_stream_aggregation_requested(lib_rules) and not episode_only_targets
 
                     # Fast in-memory cache lookup for poster & backdrop paths
                     cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None
@@ -4486,7 +4539,9 @@ async def _run_overlay_sync_task(
                     # -------------------------------------------------------------
                     # 2A. PROCESS POSTER OVERLAYS
                     # -------------------------------------------------------------
-                    if clean_asset:
+                    is_current = False
+                    meta_hash = None
+                    if clean_asset and process_poster:
                         mtime, size, clean_asset_hash = compute_file_fingerprint(clean_asset)
                         overlay_layers = build_overlay_layers_for_item(item, lib_rules, overlays_dir, is_landscape=False)
                         recipe_hash = compute_layers_recipe_hash(overlay_layers)
@@ -4743,7 +4798,7 @@ async def _run_overlay_sync_task(
                     # -------------------------------------------------------------
                     # 2B. PROCESS BACKDROP OVERLAYS (16:9 Landscape)
                     # -------------------------------------------------------------
-                    if clean_backdrop:
+                    if clean_backdrop and process_background:
                         bmtime, bsize, bclean_hash = compute_file_fingerprint(clean_backdrop)
                         b_item_meta = {**item, "is_backdrop": True, "canvas_type": "landscape"}
                         b_layers = build_overlay_layers_for_item(b_item_meta, lib_rules, overlays_dir, is_landscape=True)
@@ -4756,7 +4811,7 @@ async def _run_overlay_sync_task(
                             asset_type="background",
                             clean_asset_hash=bclean_hash,
                             overlay_recipe_hash=b_recipe_hash,
-                            metadata_hash=meta_hash if clean_asset else compute_metadata_hash(
+                            metadata_hash=meta_hash if meta_hash is not None else compute_metadata_hash(
                                 languages=item.get("audio_languages"),
                                 runtime_mins=item.get("runtime_mins"),
                                 edition=item.get("edition"),
@@ -4884,7 +4939,7 @@ async def _run_overlay_sync_task(
                                         runtime_mins=item.get("runtime_mins"),
                                         edition=item.get("edition"),
                                         show_status=item.get("status"),
-                                        metadata_hash=meta_hash if clean_asset else None,
+                                        metadata_hash=meta_hash,
                                         detected_audio_codec=item.get("audio_codec"),
                                         detected_video_format=item.get("video_format"),
                                         detected_resolution=item.get("resolution"),
@@ -5010,7 +5065,11 @@ async def _run_overlay_sync_task(
                                     return
                                 s_rk = s_info["id"]
                                 s_num = s_info["season_number"]
-                                clean_season = find_season_poster(show_parent, s_num, root_f, dir_cache=dir_cache) if has_season_posters else None
+                                process_season = _overlay_target_includes(item, item_targets, "season", s_num)
+                                process_titlecards = _overlay_target_includes(item, item_targets, "titlecard", s_num)
+                                if not process_season and not process_titlecards:
+                                    continue
+                                clean_season = find_season_poster(show_parent, s_num, root_f, dir_cache=dir_cache) if has_season_posters and process_season else None
                                 if clean_season:
                                     smtime, ssize, sclean_hash = compute_file_fingerprint(clean_season)
                                     s_resolution = (item.get("season_resolutions") or {}).get(str(s_num)) or item.get("resolution")
@@ -5166,7 +5225,7 @@ async def _run_overlay_sync_task(
                                             cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}", "season", item.get("server_updated_at"), cache_map=cache_map)
 
                                 # 8. Discover and sync Titlecards (Episodes) for this Season
-                                if has_titlecards:
+                                if has_titlecards and process_titlecards:
                                     try:
                                         episodes_to_process = []
                                         if s_type == "plex":
@@ -5184,6 +5243,8 @@ async def _run_overlay_sync_task(
                                                     if not ep_rk or not ep_idx or not ep_idx.isdigit():
                                                         continue
                                                     ep_num = int(ep_idx)
+                                                    if not _overlay_target_includes(item, item_targets, "titlecard", s_num, ep_num):
+                                                        continue
                                                     clean_tc = find_titlecard(show_parent, s_num, ep_num, dir_cache=dir_cache)
                                                     if not clean_tc:
                                                         continue
@@ -5366,6 +5427,8 @@ async def _run_overlay_sync_task(
                                                     try:
                                                         ep_num = int(ep_idx)
                                                     except (ValueError, TypeError):
+                                                        continue
+                                                    if not _overlay_target_includes(item, item_targets, "titlecard", s_num, ep_num):
                                                         continue
                                                     clean_tc = find_titlecard(show_parent, s_num, ep_num, dir_cache=dir_cache)
                                                     if not clean_tc:
