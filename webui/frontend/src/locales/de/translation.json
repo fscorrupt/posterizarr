@@ -21,6 +21,7 @@
     "ratingsRefreshEvery": "Alle",
     "ratingsRefreshIntervalHours": "Stunden",
     "ratingsRefreshScheduleHelp": "1 Stunde = stündlich; 24 = täglich; 168 = wöchentlich; 720 = alle 30 Tage. Der erste Lauf erfolgt erst nach dem gewählten Intervall ab dem Start.",
+    "episodeRatingProviderNote": "Episodenwertungen verwenden Episodendaten und die ausgewählten Anbieter. SIMKL/MAL liefern hier Serien- oder Staffelwertungen, keine Einzel-Episodenwertungen; Serienwertungen werden nie auf Episoden übertragen.",
     "title": "Dynamische Overlays",
     "navigation": {
       "configure": "Einrichten",

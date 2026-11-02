@@ -10,7 +10,13 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from xml.etree.ElementTree import fromstring
 
-from ratings_service import ratings_cache, resolve_media_ratings, resolve_season_ratings, RatingsProviderRunState
+from ratings_service import (
+    EPISODE_RATING_SOURCE_COLUMNS,
+    ratings_cache,
+    resolve_media_ratings,
+    resolve_season_ratings,
+    RatingsProviderRunState,
+)
 
 logger = logging.getLogger("ratings_refresh")
 
@@ -109,7 +115,7 @@ class RatingsRefreshService:
 
     def _retry_fingerprint(self, item, settings, credentials, mapping=None):
         provider_names = ("simkl_client_id",) if item.get("media_type") == "season" else (
-            ("rating_sources", "omdb_api_key") if item.get("media_type") == "episode" else
+            ("rating_sources", "omdb_api_key", "mdblist_api_key") if item.get("media_type") == "episode" else
             ("rating_sources", "simkl_client_id", "omdb_api_key", "mdblist_api_key")
         )
         provider_settings = {name: settings.get(name) for name in provider_names}
@@ -148,7 +154,7 @@ class RatingsRefreshService:
             stored = self._enrich_candidate(dict(row), self._overlay_context(connection, dict(row)))
             mapping = self.cache.get_season_mapping(item["server_type"], item["item_id"]) if stored["media_type"] == "season" else None
             selected = settings.get("rating_sources") if settings.get("rating_sources") is not None else ["imdb", "tmdb"]
-            missing = any(source in selected and stored.get(f"{source}_rating") is None for source in ("imdb", "tmdb")) if stored["media_type"] == "episode" else (
+            missing = any(source in selected and stored.get(column) is None for source, column in EPISODE_RATING_SOURCE_COLUMNS.items()) if stored["media_type"] == "episode" else (
                 stored.get("simkl_rating") is None or stored.get("mal_rating") is None
             ) if stored["media_type"] == "season" else False
             if outcome != "failed" and not missing:
@@ -175,8 +181,9 @@ class RatingsRefreshService:
             logger.info("[RatingsRefresh] Retry %s %s: %s; next=%s", item["server_type"], item["item_id"], kind, next_label)
 
     def candidates(self, entry_id=None, include_missing=True, enabled_sources=None, include_seasons=False, settings=None, automatic=False, credentials=None):
-        episode_columns = {"imdb": "imdb_rating", "tmdb": "tmdb_rating"}
         sources = enabled_sources if enabled_sources is not None else ["imdb", "tmdb"]
+        episode_sources = sources if include_missing else [source for source in ("imdb", "tmdb") if source in sources]
+        episode_columns = {source: EPISODE_RATING_SOURCE_COLUMNS[source] for source in episode_sources}
         missing_episode_scores = " OR ".join(f"{column} IS NULL" for source, column in episode_columns.items() if source in sources) or "0"
         with closing(self.cache._get_connection()) as connection:
             if entry_id is not None:

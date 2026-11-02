@@ -21,6 +21,7 @@
     "ratingsRefreshEvery": "Every",
     "ratingsRefreshIntervalHours": "hours",
     "ratingsRefreshScheduleHelp": "1 hour = hourly; 24 = daily; 168 = weekly; 720 = every 30 days. The first run waits for the selected interval after startup.",
+    "episodeRatingProviderNote": "Episode ratings use episode-level data and selected providers. SIMKL/MAL are used for series or season ratings, not individual episodes; show scores are never copied to episodes.",
     "title": "Dynamic Overlays",
     "navigation": {
       "configure": "Configure",

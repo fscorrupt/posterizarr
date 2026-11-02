@@ -21,6 +21,7 @@
     "ratingsRefreshEvery": "Ogni",
     "ratingsRefreshIntervalHours": "ore",
     "ratingsRefreshScheduleHelp": "1 ora = ogni ora; 24 = ogni giorno; 168 = ogni settimana; 720 = ogni 30 giorni. Il primo aggiornamento attende l'intervallo scelto dopo l'avvio.",
+    "episodeRatingProviderNote": "Le valutazioni degli episodi usano dati dell'episodio e i provider selezionati. SIMKL/MAL si usano per serie o stagioni, non per singoli episodi; la valutazione della serie non viene mai copiata sugli episodi.",
     "title": "Overlay dinamici",
     "navigation": {
       "configure": "Configura",

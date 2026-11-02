@@ -21,6 +21,7 @@
     "ratingsRefreshEvery": "Toutes les",
     "ratingsRefreshIntervalHours": "heures",
     "ratingsRefreshScheduleHelp": "1 heure = toutes les heures ; 24 = chaque jour ; 168 = chaque semaine ; 720 = tous les 30 jours. La première exécution attend l'intervalle choisi après le démarrage.",
+    "episodeRatingProviderNote": "Les notes des épisodes utilisent les données de l'épisode et les fournisseurs sélectionnés. SIMKL/MAL concernent les séries ou les saisons, pas les épisodes individuels ; la note de la série n'est jamais copiée sur ses épisodes.",
     "title": "Superpositions dynamiques",
     "navigation": {
       "configure": "Configurer",

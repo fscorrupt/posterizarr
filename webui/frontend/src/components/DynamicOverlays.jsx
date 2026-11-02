@@ -13513,6 +13513,12 @@ export default function DynamicOverlays() {
               </div>
             </div>
 
+            {ratingsCacheMediaType === "episode" && (
+              <p className="px-4 py-2 text-[11px] text-theme-muted border-b border-theme">
+                {t("dynamicOverlays.episodeRatingProviderNote")}
+              </p>
+            )}
+
             {/* Table Content */}
             <div className="flex-1 overflow-auto bg-theme-bg/20">
               {overlayCacheLoading ? (
@@ -14108,6 +14114,9 @@ export default function DynamicOverlays() {
                           : "bg-blue-500/15 text-blue-400 border-blue-500/30";
 
                       const isActing = actionRatingCacheId === entry.id;
+                      const displayTitle = entry.media_type === "episode"
+                        ? entry.overlay_title || entry.title || `Item ${entry.item_id}`
+                        : entry.title || `Item ${entry.item_id}`;
 
                       const hasAnyRating =
                         entry.imdb_rating !== null ||
@@ -14123,7 +14132,7 @@ export default function DynamicOverlays() {
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-semibold text-theme-text text-xs">
-                                {entry.title || `Item ${entry.item_id}`}
+                                {displayTitle}
                               </span>
                               {entry.year && (
                                 <span className="text-theme-muted text-xs font-normal">({entry.year})</span>
@@ -14134,6 +14143,11 @@ export default function DynamicOverlays() {
                                 {entry.server_type}
                               </span>
                               <span className="font-mono text-theme-muted text-[10px]">ID: {entry.item_id}</span>
+                              {entry.media_type === "episode" && entry.library_name && (
+                                <span className="px-1.5 py-0.2 rounded bg-theme-bg border border-theme text-theme-muted text-[10px]" title="Library">
+                                  {entry.library_name}
+                                </span>
+                              )}
                               {entry.imdb_id && (
                                 <a
                                   href={`https://www.imdb.com/title/${entry.imdb_id}/`}

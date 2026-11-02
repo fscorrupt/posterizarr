@@ -67,6 +67,15 @@ if not DB_PATH.exists() and _old_backend_db.exists():
 TTL_NEW_MEDIA_DAYS = 3      # Released in the last 180 days
 TTL_RECENT_MEDIA_DAYS = 14  # Released 180 days - 2 years ago
 TTL_CLASSIC_MEDIA_DAYS = 30 # Released > 2 years ago
+EPISODE_RATING_SOURCE_COLUMNS = {
+    "imdb": "imdb_rating",
+    "tmdb": "tmdb_rating",
+    "tomatoes": "rt_critic_rating",
+    "tomatoesaudience": "rt_audience_rating",
+    "trakt": "trakt_rating",
+    "metacritic": "metacritic_rating",
+    "letterboxd": "letterboxd_rating",
+}
 
 
 class RatingsCacheManager:
@@ -611,9 +620,34 @@ class RatingsCacheManager:
                 cur.execute(query_sql, tuple(params + [limit, offset]))
                 rows = cur.fetchall()
 
+                episode_context = {}
+                episode_keys = [(row["server_type"], str(row["item_id"])) for row in rows if row["media_type"] == "episode"]
+                if episode_keys:
+                    overlay_table = cur.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dynamic_overlay_cache'"
+                    ).fetchone()
+                    if overlay_table:
+                        overlay_columns = {row[1] for row in cur.execute("PRAGMA table_info(dynamic_overlay_cache)")}
+                        required_columns = {"server_type", "item_id", "asset_type"}
+                        if required_columns.issubset(overlay_columns):
+                            title_column = "item_title" if "item_title" in overlay_columns else "NULL"
+                            library_column = "library_name" if "library_name" in overlay_columns else "NULL"
+                            media_clause = "AND media_type = 'episode'" if "media_type" in overlay_columns else ""
+                            key_clause = " OR ".join("(server_type = ? AND item_id = ?)" for _ in episode_keys)
+                            overlay_rows = cur.execute(
+                                f"SELECT server_type, item_id, {title_column} AS overlay_title, {library_column} AS library_name "
+                                f"FROM dynamic_overlay_cache WHERE asset_type = 'titlecard' {media_clause} AND ({key_clause})",
+                                tuple(value for key in episode_keys for value in key),
+                            ).fetchall()
+                            episode_context = {
+                                (row["server_type"], str(row["item_id"])): dict(row) for row in overlay_rows
+                            }
+
                 entries = []
                 for r in rows:
                     item = dict(r)
+                    if item.get("media_type") == "episode":
+                        item.update(episode_context.get((item["server_type"], str(item["item_id"])), {}))
                     exp_str = item.get("expires_at")
                     is_expired = False
                     if exp_str:
@@ -870,7 +904,7 @@ async def fetch_mdblist_ratings(
     if not api_key or (not imdb_id and not tmdb_id):
         return {}
 
-    m_type = "show" if media_type in ["show", "tv"] else "movie"
+    m_type = "show" if media_type in ["show", "tv", "episode"] else "movie"
     params = {"apikey": api_key.strip(), "m": m_type}
     if imdb_id:
         params["i"] = imdb_id.strip()
@@ -1272,7 +1306,12 @@ async def resolve_media_ratings(
         missing_simkl_selection = cached and simkl_client_id and media_type != "episode" and any(
             source in (enabled_sources or []) and cached.get(f"{source}_rating") is None for source in ("simkl", "mal")
         )
-        if cached and not missing_simkl_selection:
+        requested_episode_sources = enabled_sources or ["imdb", "tmdb", "tomatoes", "tomatoesaudience"]
+        missing_episode_selection = cached and media_type == "episode" and any(
+            source in requested_episode_sources and cached.get(column) is None
+            for source, column in EPISODE_RATING_SOURCE_COLUMNS.items()
+        )
+        if cached and not missing_simkl_selection and not missing_episode_selection:
             return {
                 "imdb": cached.get("imdb_rating"),
                 "tmdb": cached.get("tmdb_rating"),
@@ -1343,7 +1382,7 @@ async def resolve_media_ratings(
         mdblist_sources = {"imdb", "tmdb", "tomatoes", "tomatoesaudience", "trakt", "letterboxd", "metacritic"}
         needs_external = any(source in mdblist_sources and resolved.get(source_aliases.get(source, source)) is None for source in enabled_sources)
         provider_tmdb_id = None if media_type == "episode" else tmdb_id
-        if media_type != "episode" and mdblist_api_key and needs_external and (imdb_id or provider_tmdb_id):
+        if mdblist_api_key and needs_external and (imdb_id or provider_tmdb_id):
             mdb_res = await fetch_mdblist_ratings(imdb_id, provider_tmdb_id, mdblist_api_key, local_client, media_type, outcomes=outcomes)
             for k, v in mdb_res.items():
                 if v is not None and resolved.get(k) is None:
