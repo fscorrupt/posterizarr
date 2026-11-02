@@ -770,7 +770,10 @@ export default function DynamicOverlays() {
   const [previewVideoFormat, setPreviewVideoFormat] = useState("REMUX");
   const [isQuickStarting, setIsQuickStarting] = useState(false);
   const [previewTimestamp, setPreviewTimestamp] = useState(Date.now());
+  const [sampleImageRevision, setSampleImageRevision] = useState(0);
+  const [previewRecipeRevision, setPreviewRecipeRevision] = useState(0);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [renderedPreviewUrl, setRenderedPreviewUrl] = useState("");
   const [previewSprites, setPreviewSprites] = useState(null);
   const [spriteLoading, setSpriteLoading] = useState(false);
   const [spriteError, setSpriteError] = useState("");
@@ -1469,6 +1472,7 @@ export default function DynamicOverlays() {
       if (res.ok) {
         const data = await res.json();
         setServerConfig(data.config || {});
+        setPreviewRecipeRevision(previous => previous + 1);
       }
     } catch (_) {}
   };
@@ -4581,15 +4585,43 @@ export default function DynamicOverlays() {
     ? "show" : "movie";
   const assetOverlayQuery = `&asset_overlay=${applyAssetOverlay}&media_type=${assetMediaType}`;
   const compositorPreviewUrl = `${previewUrl}&language_limit=${previewLanguageLimit}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
+  const spritePreviewUrl = (() => {
+    const [path, query = ""] = compositorPreviewUrl.split("?");
+    const params = new URLSearchParams(query);
+    [
+      "t", "supplemental_layout",
+      "rating_x", "rating_y", "rating_align", "rating_valign",
+      "runtime_x", "runtime_y", "runtime_align", "runtime_valign",
+      "status_x", "status_y", "status_align", "status_valign",
+      "res_x", "res_y", "res_align", "res_valign",
+      "anime_x", "anime_y", "anime_align", "anime_valign",
+      "lang_x", "lang_y", "lang_align", "lang_valign",
+      "network_x", "network_y", "network_align", "network_valign",
+      "age_rating_x", "age_rating_y", "age_rating_align", "age_rating_valign",
+      "audio_codec_x", "audio_codec_y", "audio_codec_align", "audio_codec_valign",
+      "video_format_x", "video_format_y", "video_format_align", "video_format_valign",
+    ].forEach((key) => params.delete(key));
+    params.set("preview_recipe_revision", String(previewRecipeRevision));
+    return `${path}?${params.toString()}`;
+  })();
 
   useEffect(() => {
-    if (activeTab !== "preview" || !featureSettings?.enabled || draggingItem) return;
+    if (previewMode !== "rendered") return;
+    const timer = setTimeout(() => setRenderedPreviewUrl(compositorPreviewUrl), 350);
+    return () => clearTimeout(timer);
+  }, [compositorPreviewUrl, previewMode]);
+
+  useEffect(() => {
+    if (activeTab !== "preview" || !featureSettings?.enabled || draggingItem || previewMode !== "interactive") {
+      setSpriteLoading(false);
+      return;
+    }
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setSpriteLoading(true);
       setSpriteError("");
       try {
-        const response = await fetch(`${compositorPreviewUrl}&output=sprites`, { signal: controller.signal });
+        const response = await fetch(`${spritePreviewUrl}&output=sprites`, { signal: controller.signal });
         if (!response.ok) throw new Error("Could not render badges. Check the library recipe, overlay assets, and fonts.");
         const data = await response.json();
         if (!Array.isArray(data.sprites)) throw new Error("The overlay renderer returned an invalid preview.");
@@ -4602,12 +4634,12 @@ export default function DynamicOverlays() {
       } finally {
         if (!controller.signal.aborted) setSpriteLoading(false);
       }
-    }, 180);
+    }, 350);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [compositorPreviewUrl, activeTab, featureSettings?.enabled, draggingItem]);
+  }, [spritePreviewUrl, activeTab, featureSettings?.enabled, draggingItem, previewMode]);
 
   const renderGuidelinesOverlay = (isLandscape) => {
     if (guideMode === "off") return null;
@@ -9469,7 +9501,7 @@ export default function DynamicOverlays() {
                   Asset boundaries
                 </label>
                 {showAssetGuides && (
-                  <button type="button" onClick={() => { fetchServerConfig(); setPreviewTimestamp(Date.now()); }} title="Reload asset boundaries and overlay from saved configuration" aria-label="Reload asset boundaries" className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text">
+                  <button type="button" onClick={async () => { await fetchServerConfig(); setSampleImageRevision(Date.now()); setPreviewTimestamp(Date.now()); }} title="Reload asset boundaries and overlay from saved configuration" aria-label="Reload asset boundaries" className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text">
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                 )}
@@ -9703,7 +9735,7 @@ export default function DynamicOverlays() {
                     {/* Realistic Sample Artwork Backdrop or Custom Uploaded Image */}
                     {(() => {
                       const curCustom = customImages[previewTemplate];
-                      const serverSrc = `/api/dynamic-overlays/sample-image?template_type=${previewTemplate}${curCustom?.previewImageId ? `&custom_image_id=${encodeURIComponent(curCustom.previewImageId)}` : ""}${assetOverlayQuery}&resolution=${encodeURIComponent(previewResolution || "")}&t=${previewTimestamp}`;
+                      const serverSrc = `/api/dynamic-overlays/sample-image?template_type=${previewTemplate}${curCustom?.previewImageId ? `&custom_image_id=${encodeURIComponent(curCustom.previewImageId)}` : ""}${assetOverlayQuery}&resolution=${encodeURIComponent(previewResolution || "")}&revision=${sampleImageRevision}`;
                       const imgSrc = curCustom?.dataUrl && (!applyAssetOverlay || !curCustom.previewImageId) ? curCustom.dataUrl : serverSrc;
                       return (
                         <img
@@ -9812,7 +9844,7 @@ export default function DynamicOverlays() {
                   >
                     <div className="relative inline-block leading-none rounded-xl overflow-hidden">
                       <img
-                        src={compositorPreviewUrl}
+                        src={renderedPreviewUrl || undefined}
                         alt="Dynamic Overlay Preview"
                         onLoad={() => setPreviewLoading(false)}
                         className={`max-h-[540px] w-auto block object-contain transition-opacity duration-300 ${
