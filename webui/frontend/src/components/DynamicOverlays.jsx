@@ -10604,7 +10604,7 @@ export default function DynamicOverlays() {
                     fetchRatingsCacheItems(1);
                   }}
                   className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-semibold transition-all shadow-sm"
-                  title="Browse, search, and inspect individual cached movie/show ratings"
+                  title="Browse, search, and inspect cached movie, show, and episode ratings"
                 >
                   <Eye className="w-4 h-4" />
                   Browse Ratings
@@ -13641,7 +13641,7 @@ export default function DynamicOverlays() {
         onClose={() => setIsRatingsRefreshConfirmOpen(false)}
         onConfirm={() => handleRefreshRatings(null, true)}
         title="Refresh Ratings?"
-        message="Refresh missing and expired movie/show ratings across all configured servers?"
+        message="Refresh missing and expired movie, show, and episode ratings across all configured servers?"
         confirmText="Refresh Ratings"
         cancelText="Cancel"
         type="warning"
@@ -13769,7 +13769,7 @@ export default function DynamicOverlays() {
                     </button>
                   )}
                   <button type="button" onClick={() => handleRefreshRatings()} disabled={ratingsRefreshSubmitting || ratingsRefreshJob?.running}
-                    title="Refresh missing and expired movie/show ratings across all servers without changing artwork"
+                    title="Refresh missing and expired movie, show, and episode ratings across all servers without changing artwork"
                     className="flex items-center gap-2 px-3 py-2 border border-theme rounded-lg text-xs text-theme-text hover:bg-theme-hover disabled:opacity-50">
                     <RefreshCw className={`w-4 h-4 shrink-0 ${ratingsRefreshJob?.running ? "animate-spin" : ""}`} />
                     <span>Refresh Missing &amp; Expired</span>
@@ -13880,7 +13880,8 @@ export default function DynamicOverlays() {
                 {[
                   { id: "all", label: "All" },
                   { id: "movie", label: "Movies" },
-                  { id: "show", label: "Shows" }
+                  { id: "show", label: "Shows" },
+                  { id: "episode", label: "Episodes" }
                 ].map((mt) => (
                   <button
                     key={mt.id}
