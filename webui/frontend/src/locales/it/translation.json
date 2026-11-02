@@ -4,11 +4,19 @@
     "message": "Il tuo contributo aiuta a mantenere lo sviluppo."
   },
   "sidebar": {
+    "scheduler": "Pianificazione",
     "openNavigation": "Apri navigazione",
     "closeNavigation": "Chiudi navigazione",
     "logs": "Log"
   },
   "dynamicOverlays": {
+    "errorLoad": "Impossibile caricare lo stato delle sovrapposizioni dinamiche",
+    "scanSuccess": "Scansione completata con successo",
+    "scanFailed": "Scansione non riuscita",
+    "scanError": "Errore di connessione al server",
+    "assetFetched": "Pronto: {{name}}",
+    "batchSuccess": "{{count}} risorse scaricate o create!",
+    "yamlSaved": "YAML salvato con successo",
     "title": "Overlay dinamici",
     "navigation": {
       "configure": "Configura",
@@ -511,6 +519,7 @@
     "noReleases": "Nessun rilascio trovato"
   },
   "overlayAssets": {
+    "title": "Risorse delle sovrapposizioni",
     "tabs": {
       "design": "Design",
       "layers": "Livelli"
@@ -711,6 +720,7 @@
     "loaded": "Caricati {{count}} asset manuali da {{libraries}} libreria/e"
   },
   "nav": {
+    "testGallery": "Galleria di test",
     "dashboard": "Pannello di controllo",
     "runModes": "Modalità di esecuzione",
     "runtimeHistory": "Approfondimenti",
@@ -753,6 +763,16 @@
     "currentVersion": "✓ Versione corrente installata"
   },
   "topNavbar": {
+    "activeTasks": "Attività in corso",
+    "viewTaskLog": "Visualizza il registro in tempo reale di {{name}}",
+    "tasks": {
+      "imageDownload": "Download immagini",
+      "imageCleanup": "Pulizia immagini",
+      "overlaySync": "Sincr. sovrapposizioni",
+      "plexSync": "Sincronizzazione Plex",
+      "metadataRefresh": "Aggiornamento metadati",
+      "ratingsRefresh": "Aggiornamento valutazioni"
+    },
     "views": {
       "dashboard": "Dashboard",
       "insights": "Statistiche",
@@ -1595,6 +1615,8 @@
     }
   },
   "testGallery": {
+    "title": "Galleria di test",
+    "useFileExplorer": "Usa l'esplora risorse manuali per visualizzare l'immagine",
     "success": {
       "filesLoaded": "Caricati {{count}} file di test",
       "testModeStarted": "Modalità di test avviata con successo!",
@@ -1914,6 +1936,7 @@
     "toastRevokeError": "Errore durante la revoca della chiave"
   },
   "assetsStats": {
+    "loading": "Caricamento delle statistiche...",
     "title": "Panoramica asset",
     "fetchError": "Recupero statistiche asset non riuscito",
     "apiError": "Connessione all'API non riuscita",
@@ -1932,6 +1955,7 @@
     "filesCount": "{{count}} file"
   },
   "assetReplacer": {
+    "browseLogosTooltip": "Sfoglia loghi/ClearArt",
     "title": "Sostituisci asset",
     "addedToQueue": "Asset aggiunto alla coda.",
     "uploadTab": "Caricamento",
@@ -2049,6 +2073,21 @@
     "autoQueueLoadError": "Impossibile caricare l'impostazione di Auto-Queue; l'accodamento automatico è disattivato."
   },
   "assetOverview": {
+    "viewInMediaServer": "Visualizza nel server multimediale",
+    "library": "Libreria",
+    "refreshMetadataTooltip": "Aggiorna i metadati dal server multimediale",
+    "refreshMetadata": "Aggiorna metadati",
+    "skipTitle": "Ignora risorsa",
+    "skipMessage": "Vuoi davvero ignorare \"{{title}}\"? Verrà ignorata nelle prossime esecuzioni di Posterizarr.",
+    "skipConfirm": "Ignora",
+    "unskipTitle": "Ripristina risorsa ignorata",
+    "unskipMessage": "Vuoi ripristinare \"{{title}}\"? Verrà ripristinata alla prossima esecuzione di Posterizarr.",
+    "unskipConfirm": "Ripristina",
+    "refreshMetadataStarted": "Aggiornamento dei metadati avviato in background",
+    "refreshMetadataFailed": "Impossibile avviare l'aggiornamento dei metadati",
+    "refreshMetadataError": "Errore: {{error}}",
+    "refreshAllMetadataStarted": "Aggiornamento di tutti i metadati avviato in background",
+    "refreshAllMetadata": "Aggiorna tutti i metadati",
     "title": "Centro azioni",
     "description": "Panoramica di tutti gli asset con categorizzazione dettagliata",
     "loading": "Caricamento panoramica asset...",
@@ -2153,6 +2192,10 @@
     "skippedInfoDesc": "Questa vista mostra tutti gli asset che hanno l'etichetta 'skip_posterizarr' applicata nel tuo media server, oltre agli elementi ignorati manualmente tramite l'interfaccia utente di Posterizarr. Gli elementi elencati qui verranno ignorati da Posterizarr durante le sincronizzazioni in background."
   },
   "common": {
+    "stop": "Interrompi",
+    "preview": "Anteprima",
+    "actions": "Azioni",
+    "clear": "Svuota",
     "all": "Tutti",
     "dontShowAgain": "Non mostrare più",
     "view": "Visualizza",
@@ -2776,6 +2819,7 @@
     }
   },
   "plexExport": {
+    "searchPlaceholder": "Cerca in tutte le colonne...",
     "updated": "Aggiornato",
     "pageTitle": "Cronologia esportazioni Plex",
     "description": "Traccia e interroga le esportazioni della tua libreria Plex nel tempo",
@@ -2831,6 +2875,7 @@
     "actionStarted": "Invio comando..."
   },
   "mediaServerExport": {
+    "loading": "Caricamento della cronologia delle esportazioni...",
     "pageTitle": "Cronologia esportazioni server multimediale",
     "description": "Traccia e interroga le esportazioni della tua libreria del server multimediale nel tempo",
     "plex": "Plex",
@@ -3141,6 +3186,10 @@
     }
   },
   "blueprints": {
+    "loadInBuilder": "Carica nell'editor",
+    "importConfirmTitle": "Conferma importazione blueprint",
+    "importConfirmDesc": "Le seguenti impostazioni saranno modificate da questo blueprint. Vuoi continuare?",
+    "importConfirmBtn": "Conferma importazione",
     "pageTitle": "Blueprint di Configurazione",
     "pageDescription": "Applica rapidamente configurazioni predefinite per ottenere stili visivi specifici. L'applicazione di un blueprint aggiornerà istantaneamente le tue impostazioni.",
     "export": "Esporta",
@@ -3211,6 +3260,7 @@
       }
     },
     "builder": {
+      "savePreset": "Salva come preimpostazione",
       "tabPresets": "Preimpostazioni",
       "tabBuilder": "Costruttore",
       "tabBuilderDesc": "Crea il tuo blueprint personalizzato combinando overlay specifici.",

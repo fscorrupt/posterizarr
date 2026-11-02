@@ -6266,6 +6266,14 @@ async def get_status():
 
         metadata_refresh_active = bool(globals().get("metadata_refresh_running", False))
 
+        ratings_refresh_active = False
+        try:
+            from ratings_refresh import ratings_refresh_service
+            task = ratings_refresh_service.task
+            ratings_refresh_active = task is not None and not task.done()
+        except Exception:
+            pass
+
         import_images_active = False
         try:
             from overlay_resolver import is_images_import_running
@@ -6311,7 +6319,7 @@ async def get_status():
                 "stop_endpoint": "/api/dynamic-overlays/sync/stop",
                 "color": "blue",
             })
-        elif plex_sync_active:
+        if plex_sync_active:
             active_tasks.append({
                 "id": "plex_sync",
                 "name": "Plex Sync",
@@ -6339,7 +6347,18 @@ async def get_status():
                 "color": "amber",
             })
 
-        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active or import_images_active or image_cleanup_active)
+        if ratings_refresh_active:
+            active_tasks.append({
+                "id": "ratings_refresh",
+                "name": "Ratings Refresh",
+                "label": "RATINGS REFRESH",
+                "type": "ratings_refresh",
+                "stop_endpoint": "/api/dynamic-overlays/ratings-cache/refresh/cancel",
+                "log_file": "RatingsRefresh.log",
+                "color": "amber",
+            })
+
+        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active or import_images_active or image_cleanup_active or ratings_refresh_active)
 
         return {
             "running": is_running,
@@ -6360,6 +6379,7 @@ async def get_status():
             "plex_sync_running": plex_sync_active,
             "animetafill_running": animetafill_active,
             "metadata_refresh_running": metadata_refresh_active,
+            "ratings_refresh_running": ratings_refresh_active,
             "any_running": any_running,
             "active_tasks": active_tasks,
         }

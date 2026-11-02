@@ -220,6 +220,13 @@ deleting them.
 
 ### Automatic Retry Schedule
 
+While a ratings-refresh job is active, the desktop navbar shows **RATINGS REFRESH**.
+Click the badge to open `RatingsRefresh.log`, or use its **Stop** action to cancel
+only that refresh job. The badge disappears after completion or cancellation.
+This status is independent of the main Posterizarr script and does not change
+startup scheduling. The existing navbar polling checks every 15 seconds when
+idle and every 5 seconds while a task is active.
+
 The hourly ratings-refresh job selects candidates locally before querying media
 servers or external providers. It does not retry every unavailable score on every
 run:

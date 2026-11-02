@@ -1076,6 +1076,7 @@ const AssetOverview = () => {
       isOpen: true,
       title: t("assetOverview.skipTitle", { defaultValue: "Skip Asset" }),
       message: t("assetOverview.skipMessage", {
+        title: asset.Title,
         defaultValue: `Are you sure you want to skip "${asset.Title}"? It will be ignored in future Posterizarr runs.`,
       }),
       confirmText: t("assetOverview.skipConfirm", { defaultValue: "Skip" }),
@@ -1112,6 +1113,7 @@ const AssetOverview = () => {
       isOpen: true,
       title: t("assetOverview.unskipTitle", { defaultValue: "Unskip Asset" }),
       message: t("assetOverview.unskipMessage", {
+        title: asset.Title,
         defaultValue: `Are you sure you want to unskip "${asset.Title}"? It will be restored in Posterizarr on the next run.`,
       }),
       confirmText: t("assetOverview.unskipConfirm", { defaultValue: "Unskip" }),
@@ -1363,7 +1365,7 @@ const AssetOverview = () => {
         showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
       }
     } catch (error) {
-      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+      showError(t("assetOverview.refreshMetadataError", { error: error.message }));
     } finally {
       setIsBulkProcessing(false);
     }
@@ -1384,7 +1386,7 @@ const AssetOverview = () => {
         showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
       }
     } catch (error) {
-      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+      showError(t("assetOverview.refreshMetadataError", { error: error.message }));
     } finally {
       setIsBulkProcessing(false);
     }

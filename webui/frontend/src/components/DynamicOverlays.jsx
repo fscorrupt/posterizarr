@@ -2622,7 +2622,7 @@ export default function DynamicOverlays() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast(t("dynamicOverlays.assetFetched", `Ready: ${asset.name}`), "success");
+        showToast(t("dynamicOverlays.assetFetched", { name: asset.name }), "success");
         handleScan();
       } else {
         showToast(data.error || `Failed fetching ${asset.name}`, "error");
@@ -2644,7 +2644,7 @@ export default function DynamicOverlays() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast(t("dynamicOverlays.batchSuccess", `Downloaded / seeded ${data.downloaded_count || 0} assets!`), "success");
+        showToast(t("dynamicOverlays.batchSuccess", { count: data.downloaded_count || 0 }), "success");
         await fetchAllData();
       } else {
         showToast(data.error || "Batch fetch failed", "error");

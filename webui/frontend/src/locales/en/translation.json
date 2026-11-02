@@ -4,11 +4,19 @@
     "message": "Your support helps keep development going."
   },
   "sidebar": {
+    "scheduler": "Scheduler",
     "openNavigation": "Open navigation",
     "closeNavigation": "Close navigation",
     "logs": "Logs"
   },
   "dynamicOverlays": {
+    "errorLoad": "Failed to load dynamic overlays status",
+    "scanSuccess": "Scan completed successfully",
+    "scanFailed": "Scan failed",
+    "scanError": "Error connecting to server",
+    "assetFetched": "Ready: {{name}}",
+    "batchSuccess": "Downloaded or seeded {{count}} assets!",
+    "yamlSaved": "YAML saved successfully",
     "title": "Dynamic Overlays",
     "navigation": {
       "configure": "Configure",
@@ -511,6 +519,7 @@
     "noReleases": "No releases found"
   },
   "overlayAssets": {
+    "title": "Overlay Assets",
     "tabs": {
       "design": "Design",
       "layers": "Layers"
@@ -711,6 +720,7 @@
     "loaded": "Loaded {{count}} manual asset(s) from {{libraries}} library(ies)"
   },
   "nav": {
+    "testGallery": "Test Gallery",
     "dashboard": "Dashboard",
     "runModes": "Run Modes",
     "runtimeHistory": "Insights",
@@ -753,6 +763,16 @@
     "currentVersion": "✓ Current version installed"
   },
   "topNavbar": {
+    "activeTasks": "Active tasks",
+    "viewTaskLog": "View {{name}} live log",
+    "tasks": {
+      "imageDownload": "Image Download",
+      "imageCleanup": "Image Cleanup",
+      "overlaySync": "Overlay Sync",
+      "plexSync": "Plex Sync",
+      "metadataRefresh": "Metadata Refresh",
+      "ratingsRefresh": "Ratings Refresh"
+    },
     "views": {
       "dashboard": "Dashboard",
       "insights": "Insights",
@@ -1595,6 +1615,8 @@
     }
   },
   "testGallery": {
+    "title": "Test Gallery",
+    "useFileExplorer": "Use manual assets explorer to view image",
     "success": {
       "filesLoaded": "Loaded {{count}} test files",
       "testModeStarted": "Test Mode started successfully!",
@@ -1914,6 +1936,7 @@
     "toastRevokeError": "Error revoking key"
   },
   "assetsStats": {
+    "loading": "Loading statistics...",
     "title": "Assets Overview",
     "fetchError": "Failed to fetch assets stats",
     "apiError": "Failed to connect to API",
@@ -1932,6 +1955,7 @@
     "filesCount": "{{count}} files"
   },
   "assetReplacer": {
+    "browseLogosTooltip": "Browse for Logos/ClearArt",
     "title": "Replace Asset",
     "addedToQueue": "Asset added to queue.",
     "uploadTab": "Upload",
@@ -2049,6 +2073,21 @@
     "autoQueueLoadError": "Could not load Auto-Queue setting; automatic queueing is off."
   },
   "assetOverview": {
+    "viewInMediaServer": "View in media server",
+    "library": "Library",
+    "refreshMetadataTooltip": "Refresh metadata from the media server",
+    "refreshMetadata": "Refresh Metadata",
+    "skipTitle": "Skip Asset",
+    "skipMessage": "Are you sure you want to skip \"{{title}}\"? It will be ignored in future Posterizarr runs.",
+    "skipConfirm": "Skip",
+    "unskipTitle": "Unskip Asset",
+    "unskipMessage": "Are you sure you want to unskip \"{{title}}\"? It will be restored in Posterizarr on the next run.",
+    "unskipConfirm": "Unskip",
+    "refreshMetadataStarted": "Metadata refresh started in background",
+    "refreshMetadataFailed": "Failed to start metadata refresh",
+    "refreshMetadataError": "Error: {{error}}",
+    "refreshAllMetadataStarted": "Refresh of all metadata started in background",
+    "refreshAllMetadata": "Refresh All Metadata",
     "title": "Action Center",
     "description": "Overview of all assets with detailed categorization",
     "loading": "Loading asset overview...",
@@ -2153,6 +2192,10 @@
     "skippedInfoDesc": "This view shows all assets that have the 'skip_posterizarr' label applied in your media server, as well as items manually skipped via the Posterizarr UI. Items listed here will be ignored by Posterizarr during background syncs."
   },
   "common": {
+    "stop": "Stop",
+    "preview": "Preview",
+    "actions": "Actions",
+    "clear": "Clear",
     "all": "All",
     "dontShowAgain": "Don't show this again",
     "view": "View",
@@ -2770,6 +2813,7 @@
     }
   },
   "plexExport": {
+    "searchPlaceholder": "Search all columns...",
     "updated": "Updated",
     "pageTitle": "Plex Export History",
     "description": "Track and query your Plex library exports over time",
@@ -2825,6 +2869,7 @@
     "actionStarted": "Sending command..."
   },
   "mediaServerExport": {
+    "loading": "Loading export history...",
     "pageTitle": "Media Server Export History",
     "description": "Track and query your media server library exports over time",
     "plex": "Plex",
@@ -3135,6 +3180,10 @@
     }
   },
   "blueprints": {
+    "loadInBuilder": "Load in Builder",
+    "importConfirmTitle": "Confirm Blueprint Import",
+    "importConfirmDesc": "The following settings will be modified by this blueprint. Do you want to proceed?",
+    "importConfirmBtn": "Confirm Import",
     "pageTitle": "Config Blueprints",
     "pageDescription": "Quickly apply pre-defined configurations to achieve specific visual styles. Applying a blueprint will instantly update your settings.",
     "export": "Export",
@@ -3205,6 +3254,7 @@
       }
     },
     "builder": {
+      "savePreset": "Save as Preset",
       "tabPresets": "Presets",
       "tabBuilder": "Builder",
       "tabBuilderDesc": "Create your own custom blueprint by mixing and matching specific overlays.",

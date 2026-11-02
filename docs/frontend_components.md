@@ -30,7 +30,7 @@ The frontend follows a component-based architecture located entirely within `web
 - **`App.jsx`**: The root component. Handles routing (React Router) and wraps the application in Context providers.
 - **View loading:** Dashboard and navigation stay eager. Other route views and onboarding use `React.lazy` with a `Suspense` loading state; routed content reuses `ErrorBoundary` for recovery without removing navigation. Blueprints remains shared/eager because replacement-modal controls import it. Build chunks are split by actual route imports instead of manually grouping page modules with Dashboard.
 - **`Sidebar.jsx`**: The main side navigation menu.
-- **`TopNavbar.jsx`**: The top bar, housing breadcrumbs, user profile, and version badges.
+- **`TopNavbar.jsx`**: The top bar, housing breadcrumbs, user profile, and version badges. Main Posterizarr runs (including scheduled and recently-added triggers) and independent background jobs appear together, each with its own stop action where supported. Multiple jobs use compact, localized labels and icon stop buttons; the task strip scrolls horizontally when needed without covering the language, theme, or user controls. Ratings Refresh links directly to its live log. The existing top bar remains desktop/tablet-only.
 - **`Dashboard.jsx`**: The primary landing page. Aggregates statistics, recent assets, and quick-action buttons.
 
 ### Configuration & Settings

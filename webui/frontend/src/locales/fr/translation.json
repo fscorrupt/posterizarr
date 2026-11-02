@@ -4,11 +4,19 @@
     "message": "Votre soutien aide à poursuivre le développement."
   },
   "sidebar": {
+    "scheduler": "Planificateur",
     "openNavigation": "Ouvrir la navigation",
     "closeNavigation": "Fermer la navigation",
     "logs": "Journaux"
   },
   "dynamicOverlays": {
+    "errorLoad": "Impossible de charger l'état des superpositions dynamiques",
+    "scanSuccess": "Analyse terminée avec succès",
+    "scanFailed": "Échec de l'analyse",
+    "scanError": "Erreur de connexion au serveur",
+    "assetFetched": "Prêt : {{name}}",
+    "batchSuccess": "{{count}} ressources téléchargées ou créées !",
+    "yamlSaved": "YAML enregistré avec succès",
     "title": "Superpositions dynamiques",
     "navigation": {
       "configure": "Configurer",
@@ -511,6 +519,7 @@
     "noReleases": "Aucune version trouvée"
   },
   "overlayAssets": {
+    "title": "Ressources de superposition",
     "tabs": {
       "design": "Design",
       "layers": "Calques"
@@ -711,6 +720,7 @@
     "loaded": "{{count}} ressource(s) manuelle(s) chargée(s) depuis {{libraries}} bibliothèque(s)"
   },
   "nav": {
+    "testGallery": "Galerie de test",
     "dashboard": "Tableau de bord",
     "runModes": "Modes d'exécution",
     "runtimeHistory": "Aperçus",
@@ -753,6 +763,16 @@
     "currentVersion": "✓ Version actuelle installée"
   },
   "topNavbar": {
+    "activeTasks": "Tâches actives",
+    "viewTaskLog": "Voir le journal en direct de {{name}}",
+    "tasks": {
+      "imageDownload": "Téléchargement d'images",
+      "imageCleanup": "Nettoyage d'images",
+      "overlaySync": "Synchro des superpositions",
+      "plexSync": "Synchro Plex",
+      "metadataRefresh": "Actualisation des métadonnées",
+      "ratingsRefresh": "Actualisation des notes"
+    },
     "views": {
       "dashboard": "Tableau de bord",
       "insights": "Statistiques",
@@ -1595,6 +1615,8 @@
     }
   },
   "testGallery": {
+    "title": "Galerie de test",
+    "useFileExplorer": "Utilisez l'explorateur des ressources manuelles pour voir l'image",
     "success": {
       "filesLoaded": "Chargé {{count}} fichiers de test",
       "testModeStarted": "Mode Test démarré avec succès !",
@@ -1914,6 +1936,7 @@
     "toastRevokeError": "Erreur lors de la révocation de la clé"
   },
   "assetsStats": {
+    "loading": "Chargement des statistiques...",
     "title": "Aperçu des ressources",
     "fetchError": "Échec de la récupération des statistiques des ressources",
     "apiError": "Échec de la connexion à l'API",
@@ -1932,6 +1955,7 @@
     "filesCount": "{{count}} fichiers"
   },
   "assetReplacer": {
+    "browseLogosTooltip": "Parcourir les logos/ClearArt",
     "title": "Remplacer la ressource",
     "addedToQueue": "Ressource ajoutée à la file d'attente.",
     "uploadTab": "Téléversement",
@@ -2050,6 +2074,21 @@
     "autoQueueLoadError": "Impossible de charger le paramètre de file automatique ; la mise en file automatique est désactivée."
   },
   "assetOverview": {
+    "viewInMediaServer": "Voir dans le serveur multimédia",
+    "library": "Bibliothèque",
+    "refreshMetadataTooltip": "Actualiser les métadonnées depuis le serveur multimédia",
+    "refreshMetadata": "Actualiser les métadonnées",
+    "skipTitle": "Ignorer la ressource",
+    "skipMessage": "Voulez-vous vraiment ignorer \"{{title}}\" ? Cette ressource sera ignorée lors des prochaines exécutions de Posterizarr.",
+    "skipConfirm": "Ignorer",
+    "unskipTitle": "Ne plus ignorer la ressource",
+    "unskipMessage": "Voulez-vous ne plus ignorer \"{{title}}\" ? Cette ressource sera restaurée lors de la prochaine exécution de Posterizarr.",
+    "unskipConfirm": "Ne plus ignorer",
+    "refreshMetadataStarted": "Actualisation des métadonnées démarrée en arrière-plan",
+    "refreshMetadataFailed": "Impossible de démarrer l'actualisation des métadonnées",
+    "refreshMetadataError": "Erreur : {{error}}",
+    "refreshAllMetadataStarted": "Actualisation de toutes les métadonnées démarrée en arrière-plan",
+    "refreshAllMetadata": "Actualiser toutes les métadonnées",
     "title": "Centre d'actions",
     "description": "Aperçu de toutes les ressources avec une catégorisation détaillée",
     "loading": "Chargement de l'aperçu des ressources...",
@@ -2154,6 +2193,10 @@
     "skippedInfoDesc": "Cette vue montre tous les actifs qui ont l'étiquette 'skip_posterizarr' appliquée dans votre serveur multimédia, ainsi que les éléments ignorés manuellement via l'interface utilisateur de Posterizarr. Les éléments listés ici seront ignorés par Posterizarr lors des synchronisations en arrière-plan."
   },
   "common": {
+    "stop": "Arrêter",
+    "preview": "Aperçu",
+    "actions": "Actions",
+    "clear": "Effacer",
     "all": "Tous",
     "dontShowAgain": "Ne plus afficher",
     "view": "Voir",
@@ -2777,6 +2820,7 @@
     }
   },
   "plexExport": {
+    "searchPlaceholder": "Rechercher dans toutes les colonnes...",
     "updated": "Mis à jour",
     "pageTitle": "Historique d'export Plex",
     "description": "Suivre et interroger vos exports de bibliothèque Plex au fil du temps",
@@ -2832,6 +2876,7 @@
     "actionStarted": "Envoi de la commande..."
   },
   "mediaServerExport": {
+    "loading": "Chargement de l'historique des exportations...",
     "pageTitle": "Historique d'exportation du serveur multimédia",
     "description": "Suivre et interroger vos exports de bibliothèque de serveur multimédia au fil du temps",
     "plex": "Plex",
@@ -3142,6 +3187,10 @@
     }
   },
   "blueprints": {
+    "loadInBuilder": "Charger dans l'éditeur",
+    "importConfirmTitle": "Confirmer l'importation du blueprint",
+    "importConfirmDesc": "Les paramètres suivants seront modifiés par ce blueprint. Voulez-vous continuer ?",
+    "importConfirmBtn": "Confirmer l'importation",
     "pageTitle": "Blueprints de Configuration",
     "pageDescription": "Appliquez rapidement des configurations prédéfinies pour obtenir des styles visuels spécifiques. L'application d'un blueprint mettra immédiatement à jour vos paramètres.",
     "export": "Exporter",
@@ -3212,6 +3261,7 @@
       }
     },
     "builder": {
+      "savePreset": "Enregistrer comme préréglage",
       "tabPresets": "Préréglages",
       "tabBuilder": "Constructeur",
       "tabBuilderDesc": "Créez votre propre blueprint personnalisé en combinant des overlays spécifiques.",

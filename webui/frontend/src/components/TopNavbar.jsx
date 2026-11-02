@@ -8,6 +8,15 @@ import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
 import ConfirmDialog from "./ConfirmDialog";
 
+const taskNameKeys = {
+  import_images: "topNavbar.tasks.imageDownload",
+  plex_image_cleanup: "topNavbar.tasks.imageCleanup",
+  overlay_sync: "topNavbar.tasks.overlaySync",
+  plex_sync: "topNavbar.tasks.plexSync",
+  metadata_refresh: "topNavbar.tasks.metadataRefresh",
+  ratings_refresh: "topNavbar.tasks.ratingsRefresh",
+};
+
 const TopNavbar = () => {
   const { t } = useTranslation();
   const { theme, setTheme, themes } = useTheme();
@@ -129,20 +138,24 @@ const TopNavbar = () => {
     id, name: config.name, color: config.variables["--theme-primary"],
   }));
 
+  const compactTasks = systemStatus.activeTasks.length > 1;
+  const getTaskName = (task) => taskNameKeys[task.id] ? t(taskNameKeys[task.id]) : task.name || task.label;
+
   return (
     <div className={`app-topbar hidden md:block fixed top-0 left-0 right-0 z-40 h-16 transition-all duration-300 ${isCollapsed ? "md:pl-20" : "md:pl-64"}`}>
-      <div className="flex items-center justify-between gap-4 h-full px-6 lg:px-8">
-        <nav aria-label="Current view" className="hidden lg:flex min-w-0 items-center gap-2 text-xs text-theme-muted">
+      <div className="flex items-center justify-between gap-4 h-full px-4 lg:px-6">
+        <nav aria-label="Current view" className={`${compactTasks ? "hidden 2xl:flex" : "hidden lg:flex"} min-w-0 max-w-48 items-center gap-2 text-xs text-theme-muted`}>
           <Link to="/" className="shrink-0 hover:text-theme-text">Posterizarr</Link>
           <ChevronRight size={13} className="shrink-0" />
           <span aria-current="page" className="truncate capitalize text-theme-text">{viewName}</span>
         </nav>
 
         {/* Right Side: Tools & Status */}
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-3">
 
            {/* System Status Indicators */}
            {/* 1. Active Running Tasks (Posterizarr, Overlay Sync, AniMetaFill, Metadata Refresh) */}
+            <div role="group" aria-label={t("topNavbar.activeTasks")} tabIndex={systemStatus.activeTasks.length ? 0 : -1} className="flex min-w-0 items-center gap-2 overflow-x-auto py-1">
            {systemStatus.activeTasks?.map((task) => {
              const colorMap = {
                green: {
@@ -167,37 +180,41 @@ const TopNavbar = () => {
                },
              };
              const themeColor = colorMap[task.color] || colorMap.green;
+             const taskName = getTaskName(task);
              const TaskBadge = task.log_file ? Link : "div";
-             const taskLinkProps = task.log_file ? { to: "/logs", state: { logFile: task.log_file }, title: `View ${task.name} live log` } : {};
+             const taskLinkProps = task.log_file ? { to: "/logs", state: { logFile: task.log_file }, title: t("topNavbar.viewTaskLog", { name: taskName }) } : {};
 
              return (
-               <div key={task.id} className="flex items-center gap-2 animate-in slide-in-from-left-5 duration-300 mr-1">
-                 <TaskBadge {...taskLinkProps} className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-full ${themeColor.badge}`}>
-                   <span className="relative flex h-2 w-2">
+               <div key={task.id} className="flex shrink-0 items-center gap-1.5 animate-in slide-in-from-left-5 duration-300">
+                 <TaskBadge {...taskLinkProps} className={`flex items-center gap-2 ${compactTasks ? "px-2" : "px-3.5"} py-1.5 border rounded-full ${themeColor.badge}`}>
+                   <span className={`relative ${compactTasks ? "hidden" : "flex"} h-2 w-2`}>
                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${themeColor.ping}`}></span>
                      <span className={`relative inline-flex rounded-full h-2 w-2 ${themeColor.dot}`}></span>
                    </span>
-                   <span className="text-xs font-bold uppercase tracking-widest whitespace-nowrap">
-                     {task.label || task.name}
+                   <span className="text-xs font-bold uppercase whitespace-nowrap">
+                     {taskNameKeys[task.id] ? taskName : task.label || taskName}
                    </span>
                  </TaskBadge>
 
                  {task.stop_endpoint && (
                    <button
+                     type="button"
                      onClick={() => {
                        setTaskToStop(task);
                        setShowStopConfirm(true);
                      }}
-                     className="group flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-500 transition-all shadow-sm"
-                     title={t("topNavbar.actions.stopTask", { name: task.name })}
+                     className={`group flex shrink-0 items-center justify-center gap-1.5 ${compactTasks ? "w-8 h-8" : "px-3 py-1.5"} rounded-full bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-500 transition-all shadow-sm`}
+                     title={t("topNavbar.actions.stopTask", { name: taskName })}
+                     aria-label={t("topNavbar.actions.stopTask", { name: taskName })}
                    >
                      <Square className="w-3.5 h-3.5 fill-current" />
-                     <span className="text-xs font-semibold">{t("topNavbar.actions.stop")}</span>
+                     {!compactTasks && <span className="text-xs font-semibold">{t("topNavbar.actions.stop")}</span>}
                    </button>
                  )}
                </div>
              );
            })}
+           </div>
 
            {/* Fallback for legacy running state if activeTasks is empty */}
            {(!systemStatus.activeTasks || systemStatus.activeTasks.length === 0) && systemStatus.running && (
@@ -248,14 +265,14 @@ const TopNavbar = () => {
            )}
 
           {/* Language Switcher */}
-          <div className="bg-theme-hover/30 rounded-xl p-1">
+          <div className="shrink-0 bg-theme-hover/30 rounded-xl p-1">
              <LanguageSwitcher compact={true} />
           </div>
 
-          <div className="h-6 w-px bg-theme-border"></div>
+          <div className="shrink-0 h-6 w-px bg-theme-border"></div>
 
           {/* Theme Switcher */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)}
               className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-theme-hover transition-colors text-theme-muted hover:text-theme-text group"
@@ -295,7 +312,7 @@ const TopNavbar = () => {
 
           {/* User Menu */}
           {isAuthEnabled && (
-            <div className="relative">
+            <div className="relative shrink-0">
               <button
                 onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
                 className="flex items-center justify-center w-10 h-10 rounded-xl bg-theme-hover/50 hover:bg-theme-hover transition-colors text-theme-text border border-theme"
@@ -345,9 +362,9 @@ const TopNavbar = () => {
           setTaskToStop(null);
         }}
         onConfirm={handleStopSystem}
-        title={taskToStop ? t("topNavbar.actions.stopTask", { name: taskToStop.name }) : t("topNavbar.stopSystem")}
-        message={taskToStop ? t("topNavbar.confirmStopTask", { name: taskToStop.name }) : t("topNavbar.confirmStop")}
-        confirmText={t("common.stop")}
+        title={taskToStop ? t("topNavbar.actions.stopTask", { name: getTaskName(taskToStop) }) : t("topNavbar.stopSystem")}
+        message={taskToStop ? t("topNavbar.confirmStopTask", { name: getTaskName(taskToStop) }) : t("topNavbar.confirmStop")}
+        confirmText={t("topNavbar.actions.stop")}
         type="danger"
       />
 

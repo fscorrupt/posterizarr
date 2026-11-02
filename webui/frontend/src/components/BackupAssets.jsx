@@ -39,6 +39,13 @@ import RestoreModeModal from "./modals/RestoreModeModal";
 
 const API_URL = "/api";
 
+const sortLabelKeys = {
+  name_asc: "common.sorting.nameAsc",
+  name_desc: "common.sorting.nameDesc",
+  date_newest: "common.sorting.dateNewest",
+  date_oldest: "common.sorting.dateOldest",
+};
+
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // ++ PAGINATION COMPONENT
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -733,7 +740,7 @@ function BackupAssets() {
                             : "text-theme-text hover:bg-theme-hover"
                         }`}
                       >
-                        {t(`common.sorting.${opt.replace("_", "")}`) || opt}
+                        {t(sortLabelKeys[opt])}
                       </button>
                     ))}
                   </div>
@@ -1075,7 +1082,7 @@ function BackupAssets() {
                             : "text-theme-text hover:bg-theme-hover"
                         }`}
                       >
-                        {t(`common.sorting.${opt.replace("_", "")}`) || opt}
+                        {t(sortLabelKeys[opt])}
                       </button>
                     ))}
                   </div>
