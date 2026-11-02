@@ -157,6 +157,11 @@ class RatingsRefreshService:
             missing = any(source in selected and stored.get(column) is None for source, column in EPISODE_RATING_SOURCE_COLUMNS.items()) if stored["media_type"] == "episode" else (
                 stored.get("simkl_rating") is None or stored.get("mal_rating") is None
             ) if stored["media_type"] == "season" else False
+            if stored["media_type"] in ("movie", "show"):
+                missing = not any(stored.get(column) is not None for column in (
+                    "imdb_rating", "tmdb_rating", "rt_critic_rating", "rt_audience_rating", "trakt_rating",
+                    "metacritic_rating", "letterboxd_rating", "mdblist_rating", "simkl_rating", "mal_rating",
+                ))
             if outcome != "failed" and not missing:
                 with connection:
                     connection.execute("DELETE FROM ratings_refresh_retry WHERE server_type = ? AND item_id = ?", (item["server_type"], str(item["item_id"])))
@@ -169,8 +174,13 @@ class RatingsRefreshService:
             except ValueError:
                 pass
             metadata_missing = str(message or "").endswith("HTTP 404") or "No native ratings or IMDb/TMDb IDs" in str(message or "")
+            provider_limited = any(
+                outcome.get("error_code") in ("quota", "rate_limit", "run_suppressed", "server_error")
+                or outcome.get("http_status") == 429
+                for outcome in (result.get("_providers") or {}).values()
+            )
             mapping_status = (mapping or {}).get("status")
-            kind = "wait_for_change" if mapping_status == "ambiguous" else "hourly" if recent_episode and not metadata_missing else "daily"
+            kind = "wait_for_change" if mapping_status == "ambiguous" else "hourly" if recent_episode and not metadata_missing and not provider_limited else "daily"
             payload = {"kind": kind, "reason": message or "Missing selected provider scores", "attempted_at": now.isoformat(),
                        "next_attempt_at": (now + timedelta(days=1)).isoformat() if kind == "daily" else None,
                        "fingerprint": self._retry_fingerprint(stored, settings, credentials, mapping)}
@@ -193,7 +203,11 @@ class RatingsRefreshService:
             rows = connection.execute(
                 "SELECT * FROM media_ratings_cache WHERE (media_type IN ('movie', 'show', 'episode') OR (? AND media_type = 'season')) AND "
                 f"(expires_at <= ? OR (media_type = 'episode' AND ({missing_episode_scores})) OR "
-                "(media_type = 'season' AND (simkl_rating IS NULL OR mal_rating IS NULL))) ORDER BY id",
+                "(media_type = 'season' AND (simkl_rating IS NULL OR mal_rating IS NULL)) OR "
+                "(media_type IN ('movie', 'show') AND imdb_rating IS NULL AND tmdb_rating IS NULL AND "
+                "rt_critic_rating IS NULL AND rt_audience_rating IS NULL AND trakt_rating IS NULL AND "
+                "metacritic_rating IS NULL AND letterboxd_rating IS NULL AND mdblist_rating IS NULL AND "
+                "simkl_rating IS NULL AND mal_rating IS NULL)) ORDER BY id",
                 (include_seasons, datetime.utcnow().isoformat())
             ).fetchall()
             candidates = {(row["server_type"], row["item_id"]): dict(row) for row in rows}
@@ -426,6 +440,7 @@ class RatingsRefreshService:
                 for item in items:
                     state["current_title"] = item.get("title") or item["item_id"]
                     result = {}
+                    server_item_missing = False
                     try:
                         result = await self._refresh_item(item, credentials, settings, client)
                         outcome = result["_refresh_status"]
@@ -437,10 +452,16 @@ class RatingsRefreshService:
                         outcome = "failed"
                         message = str(error) if isinstance(error, ValueError) and str(error).startswith(("Plex metadata HTTP", "Media server metadata HTTP", "Media server is disabled", "No movie", "Season library")) else f"Metadata request failed ({type(error).__name__})"
                         details = {"message": message}
+                        if message.startswith(("Plex metadata HTTP 404", "Media server metadata HTTP 404")):
+                            server_item_missing = True
+                            await asyncio.to_thread(self.cache.delete_item, item["server_type"], item["item_id"])
+                            message = "Media server returned HTTP 404; stale ratings cache entry removed"
+                            details["message"] = message
+                            details["cache_entry_removed"] = True
                     state["current_title"] = item.get("title") or item["item_id"]
                     logger.info("[RatingsRefresh] %s %s '%s': %s; %s", item["server_type"], item["item_id"],
                                 state["current_title"], outcome, json.dumps({"message": message, **details}, sort_keys=True))
-                    if outcome == "failed":
+                    if outcome == "failed" and not server_item_missing:
                         with closing(self.cache._get_connection()) as connection:
                             exists = connection.execute("SELECT 1 FROM media_ratings_cache WHERE server_type = ? AND item_id = ?", (item["server_type"], item["item_id"])).fetchone()
                         if not exists:
@@ -453,7 +474,8 @@ class RatingsRefreshService:
                                 "UPDATE media_ratings_cache SET title = ?, media_type = ? WHERE server_type = ? AND item_id = ?",
                                 (item.get("title"), item["media_type"], item["server_type"], item["item_id"]),
                             )
-                    await asyncio.to_thread(self._record_retry_policy, item, settings, credentials, outcome, message, result)
+                    if not server_item_missing:
+                        await asyncio.to_thread(self._record_retry_policy, item, settings, credentials, outcome, message, result)
                     state[outcome] += 1
                     state["completed"] += 1
                     if message:
@@ -468,8 +490,11 @@ class RatingsRefreshService:
         finally:
             state.update(running=False, finished_at=datetime.utcnow().isoformat(), current_title=None)
             if self.provider_run_state is not None:
-                state["omdb"] = self.provider_run_state.snapshot()
+                provider_snapshot = self.provider_run_state.snapshot()
+                state["omdb"] = {key: value for key, value in provider_snapshot.items() if key != "mdblist"}
+                state["mdblist"] = provider_snapshot["mdblist"]
                 logger.info("[RatingsRefresh] OMDb run summary: %s", json.dumps(state["omdb"], sort_keys=True))
+                logger.info("[RatingsRefresh] MDBList run summary: %s", json.dumps(state["mdblist"], sort_keys=True))
             self._save(state)
             logger.info("[RatingsRefresh] %s: %s/%s completed; success=%s partial=%s failed=%s", state["status"], state["completed"], state["total"], state["success"], state["partial"], state["failed"])
 

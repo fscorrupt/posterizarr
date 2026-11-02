@@ -2116,6 +2116,9 @@ def build_multi_rating_layers(
                 if num > 10:
                     num /= 10.0
                 score_text = f"{num:.1f}"
+        elif src == "mdblist_episode":
+            if num is not None:
+                score_text = f"MDB {num:.1f}"
         elif src == "trakt":
             logo_file = assets_dir / "Trakt.png"
             if num is not None:
@@ -2244,6 +2247,7 @@ def build_multi_rating_layers(
 
 
 RATING_BRAND_COLORS = {
+    "mdblist_episode": ("#28445AE6", "#FFFFFF"),
     "simkl": ("#161616E6", "#00C79F"),
     "mal": ("#2E51A2E6", "#FFFFFF"),
     "imdb": ("#F5C518E6", "#000000"),
@@ -2260,7 +2264,7 @@ def _rating_theme_colors(theme: str, source: str, score: Optional[float]) -> Tup
     """Return (back_color, font_color) for themed rating pills; score is the normalized display value."""
     percent = None
     if score is not None:
-        percent = score * 10 if source in ("imdb", "tmdb", "simkl", "mal") else (score * 20 if source == "letterboxd" else score)
+        percent = score * 10 if source in ("imdb", "tmdb", "simkl", "mal", "mdblist_episode") else (score * 20 if source == "letterboxd" else score)
     if theme == "brand" and source in RATING_BRAND_COLORS:
         return RATING_BRAND_COLORS[source]
     if theme == "brand" and source in ("tomatoes", "tomatoesaudience"):
@@ -5928,7 +5932,9 @@ async def _run_overlay_sync_task(
 
         write_log("=" * 70)
         write_log(f"DYNAMIC OVERLAYS SYNC COMPLETE")
-        write_log(f"OMDb run summary: {json.dumps(provider_run_state.snapshot(), sort_keys=True)}")
+        provider_summary = provider_run_state.snapshot()
+        write_log(f"OMDb run summary: {json.dumps({key: value for key, value in provider_summary.items() if key != 'mdblist'}, sort_keys=True)}")
+        write_log(f"MDBList run summary: {json.dumps(provider_summary['mdblist'], sort_keys=True)}")
         write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed | Runtime: {runtime_text}")
         write_log("=" * 70)
 

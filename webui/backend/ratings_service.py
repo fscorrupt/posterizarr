@@ -18,6 +18,7 @@ import sqlite3
 import logging
 import asyncio
 import threading
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
@@ -31,6 +32,9 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger("ratings_service")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_MDBLIST_REQUEST_INTERVAL_SECONDS = 0.5
+_MDBLIST_PACE_LOCK = threading.Lock()
+_MDBLIST_NEXT_REQUEST_AT = 0.0
 
 
 def get_database_dir() -> Path:
@@ -75,6 +79,7 @@ EPISODE_RATING_SOURCE_COLUMNS = {
     "trakt": "trakt_rating",
     "metacritic": "metacritic_rating",
     "letterboxd": "letterboxd_rating",
+    "mdblist_episode": "mdblist_rating",
 }
 
 
@@ -116,6 +121,7 @@ class RatingsCacheManager:
                             trakt_rating REAL,
                             metacritic_rating INTEGER,
                             letterboxd_rating REAL,
+                            mdblist_rating REAL,
 
                             -- Metadata & Expiration
                             source TEXT DEFAULT 'plex',
@@ -155,6 +161,14 @@ class RatingsCacheManager:
                             PRIMARY KEY (server_type, item_id)
                         )
                     """)
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS mdblist_episode_ratings_cache (
+                            tmdb_id TEXT PRIMARY KEY,
+                            payload TEXT NOT NULL,
+                            fetched_at TEXT NOT NULL,
+                            expires_at TEXT NOT NULL
+                        )
+                    """)
                     for col_sql in [
                         "ALTER TABLE media_ratings_cache ADD COLUMN simkl_rating REAL;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN mal_rating REAL;",
@@ -164,7 +178,8 @@ class RatingsCacheManager:
                         "ALTER TABLE media_ratings_cache ADD COLUMN content_rating TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_at TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_status TEXT;",
-                        "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_details TEXT;"
+                        "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_details TEXT;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN mdblist_rating REAL;"
                     ]:
                         try:
                             conn.execute(col_sql)
@@ -332,9 +347,9 @@ class RatingsCacheManager:
                             server_type, item_id, media_type, title, year,
                             imdb_id, tmdb_id, imdb_rating, tmdb_rating,
                             rt_critic_rating, rt_audience_rating, trakt_rating,
-                            metacritic_rating, letterboxd_rating, simkl_rating, mal_rating, simkl_url, source,
+                            metacritic_rating, letterboxd_rating, mdblist_rating, simkl_rating, mal_rating, simkl_url, source,
                             cached_at, expires_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
                             title = excluded.title,
                             media_type = excluded.media_type,
@@ -348,6 +363,7 @@ class RatingsCacheManager:
                             trakt_rating = COALESCE(excluded.trakt_rating, media_ratings_cache.trakt_rating),
                             metacritic_rating = COALESCE(excluded.metacritic_rating, media_ratings_cache.metacritic_rating),
                             letterboxd_rating = COALESCE(excluded.letterboxd_rating, media_ratings_cache.letterboxd_rating),
+                            mdblist_rating = COALESCE(excluded.mdblist_rating, media_ratings_cache.mdblist_rating),
                             simkl_rating = COALESCE(excluded.simkl_rating, media_ratings_cache.simkl_rating),
                             mal_rating = COALESCE(excluded.mal_rating, media_ratings_cache.mal_rating),
                             simkl_url = COALESCE(excluded.simkl_url, media_ratings_cache.simkl_url),
@@ -370,6 +386,7 @@ class RatingsCacheManager:
                             ratings.get("trakt"),
                             ratings.get("metacritic"),
                             ratings.get("letterboxd"),
+                            ratings.get("mdblist_episode"),
                             ratings.get("simkl"),
                             ratings.get("mal"),
                             ratings.get("_simkl_url"),
@@ -384,6 +401,25 @@ class RatingsCacheManager:
                 logger.error(f"[RatingsCache] Error saving ratings for {title}: {e}")
                 return False
 
+    def get_cached_mdblist_episode_ratings(self, tmdb_id: int):
+        now = datetime.utcnow().isoformat()
+        with self.lock, closing(self._get_connection()) as connection:
+            row = connection.execute(
+                "SELECT payload FROM mdblist_episode_ratings_cache WHERE tmdb_id = ? AND expires_at > ?",
+                (str(tmdb_id), now),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_mdblist_episode_ratings(self, tmdb_id: int, payload: Dict[str, Any], ttl_days: int = 1):
+        now = datetime.utcnow()
+        with self.lock, closing(self._get_connection()) as connection:
+            with connection:
+                connection.execute(
+                    "INSERT INTO mdblist_episode_ratings_cache (tmdb_id, payload, fetched_at, expires_at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(tmdb_id) DO UPDATE SET payload=excluded.payload, fetched_at=excluded.fetched_at, expires_at=excluded.expires_at",
+                    (str(tmdb_id), json.dumps(payload), now.isoformat(), (now + timedelta(days=ttl_days)).isoformat()),
+                )
+
     def clear_all(self):
         """Purge all cached ratings."""
         with self.lock:
@@ -391,6 +427,7 @@ class RatingsCacheManager:
                 conn = self._get_connection()
                 with conn:
                     conn.execute("DELETE FROM media_ratings_cache;")
+                    conn.execute("DELETE FROM mdblist_episode_ratings_cache;")
                 conn.close()
             except Exception as e:
                 logger.error(f"[RatingsCache] Error clearing cache: {e}")
@@ -620,9 +657,13 @@ class RatingsCacheManager:
                 cur.execute(query_sql, tuple(params + [limit, offset]))
                 rows = cur.fetchall()
 
-                episode_context = {}
-                episode_keys = [(row["server_type"], str(row["item_id"])) for row in rows if row["media_type"] == "episode"]
-                if episode_keys:
+                overlay_context = {}
+                media_assets = {"episode": "titlecard", "season": "season", "movie": "poster", "show": "poster"}
+                overlay_keys = [
+                    (row["server_type"], str(row["item_id"]), media_assets.get(row["media_type"], "poster"))
+                    for row in rows
+                ]
+                if overlay_keys:
                     overlay_table = cur.execute(
                         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dynamic_overlay_cache'"
                     ).fetchone()
@@ -632,22 +673,23 @@ class RatingsCacheManager:
                         if required_columns.issubset(overlay_columns):
                             title_column = "item_title" if "item_title" in overlay_columns else "NULL"
                             library_column = "library_name" if "library_name" in overlay_columns else "NULL"
-                            media_clause = "AND media_type = 'episode'" if "media_type" in overlay_columns else ""
-                            key_clause = " OR ".join("(server_type = ? AND item_id = ?)" for _ in episode_keys)
+                            order_clause = "ORDER BY id DESC" if "id" in overlay_columns else ""
+                            key_clause = " OR ".join("(server_type = ? AND item_id = ? AND asset_type = ?)" for _ in overlay_keys)
                             overlay_rows = cur.execute(
-                                f"SELECT server_type, item_id, {title_column} AS overlay_title, {library_column} AS library_name "
-                                f"FROM dynamic_overlay_cache WHERE asset_type = 'titlecard' {media_clause} AND ({key_clause})",
-                                tuple(value for key in episode_keys for value in key),
+                                f"SELECT server_type, item_id, asset_type, {title_column} AS overlay_title, {library_column} AS library_name "
+                                f"FROM dynamic_overlay_cache WHERE ({key_clause}) {order_clause}",
+                                tuple(value for key in overlay_keys for value in key),
                             ).fetchall()
-                            episode_context = {
-                                (row["server_type"], str(row["item_id"])): dict(row) for row in overlay_rows
-                            }
+                            for row in overlay_rows:
+                                overlay_context.setdefault(
+                                    (row["server_type"], str(row["item_id"]), row["asset_type"]), dict(row)
+                                )
 
                 entries = []
                 for r in rows:
                     item = dict(r)
-                    if item.get("media_type") == "episode":
-                        item.update(episode_context.get((item["server_type"], str(item["item_id"])), {}))
+                    asset_type = media_assets.get(item.get("media_type"), "poster")
+                    item.update(overlay_context.get((item["server_type"], str(item["item_id"]), asset_type), {}))
                     exp_str = item.get("expires_at")
                     is_expired = False
                     if exp_str:
@@ -690,12 +732,48 @@ class RatingsCacheManager:
             try:
                 conn = self._get_connection()
                 with conn:
+                    row = conn.execute(
+                        "SELECT server_type, item_id FROM media_ratings_cache WHERE id = ?", (int(entry_id),)
+                    ).fetchone()
                     cur = conn.execute("DELETE FROM media_ratings_cache WHERE id = ?", (int(entry_id),))
                     deleted = cur.rowcount > 0
+                    if deleted and row:
+                        retry_table = conn.execute(
+                            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ratings_refresh_retry'"
+                        ).fetchone()
+                        if retry_table:
+                            conn.execute(
+                                "DELETE FROM ratings_refresh_retry WHERE server_type = ? AND item_id = ?",
+                                (row["server_type"], row["item_id"]),
+                            )
                 conn.close()
                 return deleted
             except Exception as e:
                 logger.error(f"[RatingsCache] Error deleting entry {entry_id}: {e}")
+                return False
+
+    def delete_item(self, server_type: str, item_id: str) -> bool:
+        """Delete a missing media item and its persisted rating retry state."""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                with conn:
+                    cur = conn.execute(
+                        "DELETE FROM media_ratings_cache WHERE server_type = ? AND item_id = ?",
+                        (server_type.lower(), str(item_id)),
+                    )
+                    retry_table = conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ratings_refresh_retry'"
+                    ).fetchone()
+                    if retry_table:
+                        conn.execute(
+                            "DELETE FROM ratings_refresh_retry WHERE server_type = ? AND item_id = ?",
+                            (server_type.lower(), str(item_id)),
+                        )
+                conn.close()
+                return cur.rowcount > 0
+            except Exception as e:
+                logger.error(f"[RatingsCache] Error deleting missing item ({server_type}, {item_id}): {e}")
                 return False
 
     def expire_entry(self, entry_id: int) -> bool:
@@ -828,7 +906,15 @@ async def _fetch_rating_json(client, provider, url, outcomes, **kwargs):
     try:
         response = await client.get(url, **kwargs)
         if response.status_code != 200:
-            outcomes[provider] = {"status": "failed", "message": f"HTTP {response.status_code}"}
+            outcomes[provider] = {"status": "failed", "message": f"HTTP {response.status_code}",
+                                 "http_status": response.status_code}
+            if provider == "mdblist":
+                if response.status_code == 429:
+                    outcomes[provider]["error_code"] = "rate_limit"
+                    if response.headers.get("Retry-After", "").isdigit():
+                        outcomes[provider]["retry_after"] = int(response.headers["Retry-After"])
+                elif response.status_code >= 500:
+                    outcomes[provider]["error_code"] = "server_error"
             if provider == "omdb":
                 try:
                     error_code, message = _rating_error_details(response.json())
@@ -844,6 +930,8 @@ async def _fetch_rating_json(client, provider, url, outcomes, **kwargs):
         if not isinstance(data, dict) or data.get("error") or data.get("Response") == "False":
             error_code, message = _rating_error_details(data)
             outcomes[provider] = {"status": "failed", "message": message}
+            if provider == "mdblist":
+                outcomes[provider]["error_code"] = error_code
             if provider == "omdb":
                 outcomes[provider].update(error_code=error_code, http_status=response.status_code)
             return None
@@ -888,6 +976,17 @@ async def fetch_tmdb_rating(
     return None
 
 
+async def _pace_mdblist_request():
+    global _MDBLIST_NEXT_REQUEST_AT
+    with _MDBLIST_PACE_LOCK:
+        now = time.monotonic()
+        request_at = max(now, _MDBLIST_NEXT_REQUEST_AT)
+        _MDBLIST_NEXT_REQUEST_AT = request_at + _MDBLIST_REQUEST_INTERVAL_SECONDS
+    delay = request_at - now
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+
 
 async def fetch_mdblist_ratings(
     imdb_id: Optional[str],
@@ -895,7 +994,8 @@ async def fetch_mdblist_ratings(
     api_key: str,
     client: httpx.AsyncClient,
     media_type: str = "movie",
-    outcomes: Optional[Dict[str, Any]] = None
+    outcomes: Optional[Dict[str, Any]] = None,
+    provider_run_state: Optional["RatingsProviderRunState"] = None,
 ) -> Dict[str, Any]:
     """
     Fetch comprehensive ratings from MDBList API (IMDb, RT, TMDb, Trakt, Letterboxd, Metacritic).
@@ -914,7 +1014,13 @@ async def fetch_mdblist_ratings(
     url = "https://mdblist.com/api/"
     ratings = {}
     outcomes = outcomes if outcomes is not None else {}
+    if provider_run_state is not None:
+        reason = provider_run_state.begin_mdblist_request()
+        if reason:
+            outcomes["mdblist"] = {"status": "skipped", "error_code": "run_suppressed", "message": reason}
+            return {}
     try:
+        await _pace_mdblist_request()
         data = await _fetch_rating_json(client, "mdblist", url, outcomes, params=params, timeout=8.0)
         if data:
             # MDBList provides a list of ratings
@@ -944,7 +1050,70 @@ async def fetch_mdblist_ratings(
     if ratings:
         outcomes["mdblist"] = {"status": "success", "scores": sorted(ratings)}
 
+    if provider_run_state is not None:
+        provider_run_state.observe_mdblist(outcomes.get("mdblist") or {})
+
     return ratings
+
+
+async def fetch_mdblist_episode_rating(tmdb_id, season_number, episode_number, api_key, client,
+                                       cache=None, outcomes=None, provider_run_state=None):
+    """Fetch one episode score from MDBList's supporter-only show episode matrix."""
+    cache = cache if cache is not None else ratings_cache
+    outcomes = outcomes if outcomes is not None else {}
+    if not api_key or tmdb_id is None or season_number is None or episode_number is None:
+        outcomes["mdblist"] = {"status": "no_scores", "message": "Episode lookup requires a TMDb show ID and coordinates"}
+        return None
+
+    async def load_matrix():
+        if provider_run_state is not None:
+            reason = provider_run_state.begin_mdblist_request()
+            if reason:
+                outcomes["mdblist"] = {"status": "skipped", "error_code": "run_suppressed", "message": reason}
+                return None
+        await _pace_mdblist_request()
+        details = await _fetch_rating_json(
+            client, "mdblist", f"https://api.mdblist.com/tmdb/show/{tmdb_id}", outcomes,
+            params={"apikey": api_key.strip(), "append_to_response": "episode_ratings"}, timeout=8.0,
+        )
+        outcome = outcomes.get("mdblist") or {}
+        if provider_run_state is not None:
+            provider_run_state.observe_mdblist(outcome)
+        if not details:
+            return None
+        matrix = details.get("episode_ratings") or {}
+        cache.save_mdblist_episode_ratings(tmdb_id, matrix, ttl_days=1)
+        return matrix
+
+    matrix = cache.get_cached_mdblist_episode_ratings(tmdb_id)
+    if matrix is None and provider_run_state is not None:
+        async with provider_run_state.mdblist_matrix_lock(tmdb_id):
+            matrix = cache.get_cached_mdblist_episode_ratings(tmdb_id)
+            if matrix is None:
+                matrix = await load_matrix()
+    elif matrix is None:
+        matrix = await load_matrix()
+    if matrix is None:
+        return None
+
+    seasons = matrix.get("seasons") if isinstance(matrix, dict) else None
+    if not seasons:
+        outcomes["mdblist"] = {"status": "no_scores", "message": "MDBList episode ratings are unavailable for this account or show"}
+        return None
+    season = next((entry for entry in seasons if str(entry.get("season_number")) == str(season_number)), None)
+    episode = next((entry for entry in (season or {}).get("episodes", [])
+                    if str(entry.get("episode_number")) == str(episode_number)), None)
+    try:
+        score = float((episode or {}).get("rating"))
+        if score > 10 and score <= 100:
+            score /= 10
+        if not 0 < score <= 10:
+            raise ValueError
+    except (TypeError, ValueError):
+        outcomes["mdblist"] = {"status": "no_scores", "message": "MDBList has no rating for this episode"}
+        return None
+    outcomes["mdblist"] = {"status": "success", "scores": ["mdblist_episode"], "cached_matrix": True}
+    return round(score, 1)
 
 
 def select_simkl_season_candidate(candidates, season_number, episode_numbers):
@@ -1172,10 +1341,52 @@ class RatingsProviderRunState:
     def __init__(self, failure_threshold=3):
         self.failure_threshold = max(1, int(failure_threshold))
         self._lock = threading.Lock()
+        self._mdblist_reason = None
+        self._mdblist_failures = 0
+        self._mdblist_requests = 0
+        self._mdblist_skipped = 0
         self._reason = None
         self._failures = 0
         self._requests = 0
         self._skipped = 0
+
+    def begin_mdblist_request(self):
+        with self._lock:
+            if self._mdblist_reason:
+                self._mdblist_skipped += 1
+                return self._mdblist_reason
+            self._mdblist_requests += 1
+        return None
+
+    def mdblist_matrix_lock(self, tmdb_id):
+        with self._lock:
+            if not hasattr(self, "_mdblist_matrix_locks"):
+                self._mdblist_matrix_locks = {}
+            key = str(tmdb_id)
+            if key not in self._mdblist_matrix_locks:
+                self._mdblist_matrix_locks[key] = asyncio.Lock()
+            return self._mdblist_matrix_locks[key]
+
+    def observe_mdblist(self, outcome):
+        blocked_reason = None
+        with self._lock:
+            if self._mdblist_reason:
+                return
+            error_code = outcome.get("error_code")
+            if error_code in ("quota", "rate_limit") or outcome.get("http_status") == 429:
+                blocked_reason = outcome.get("message") or "MDBList request limit reached"
+            elif outcome.get("status") == "failed" and (
+                error_code == "server_error" or int(outcome.get("http_status") or 0) >= 500
+            ):
+                self._mdblist_failures += 1
+                if self._mdblist_failures >= self.failure_threshold:
+                    blocked_reason = f"{self._mdblist_failures} consecutive MDBList server errors"
+            elif outcome.get("status") != "skipped":
+                self._mdblist_failures = 0
+            if blocked_reason:
+                self._mdblist_reason = blocked_reason
+        if blocked_reason:
+            logger.warning("[Ratings] MDBList disabled for the remainder of this run: %s", blocked_reason)
 
     def begin_omdb_request(self):
         with self._lock:
@@ -1207,7 +1418,11 @@ class RatingsProviderRunState:
     def snapshot(self):
         with self._lock:
             return {"suppressed": bool(self._reason), "reason": self._reason,
-                    "requests": self._requests, "skipped": self._skipped, "consecutive_failures": self._failures}
+                    "requests": self._requests, "skipped": self._skipped,
+                    "consecutive_failures": self._failures,
+                    "mdblist": {"suppressed": bool(self._mdblist_reason), "reason": self._mdblist_reason,
+                                "requests": self._mdblist_requests, "skipped": self._mdblist_skipped,
+                                "consecutive_failures": self._mdblist_failures}}
 
 
 async def fetch_omdb_ratings(
@@ -1320,6 +1535,7 @@ async def resolve_media_ratings(
                 "trakt": cached.get("trakt_rating"),
                 "metacritic": cached.get("metacritic_rating"),
                 "letterboxd": cached.get("letterboxd_rating"),
+                "mdblist_episode": cached.get("mdblist_rating"),
                 "simkl": cached.get("simkl_rating"),
                 "mal": cached.get("mal_rating"),
                 "_simkl_url": cached.get("simkl_url"),
@@ -1350,7 +1566,8 @@ async def resolve_media_ratings(
     try:
         if media_type == "episode" and tmdb_id and tmdb_api_key and season_number is not None and episode_number is not None:
             needs_episode_details = ("tmdb" in enabled_sources and resolved.get("tmdb") is None) or (
-                not imdb_id and (mdblist_api_key or omdb_api_key) and any(source != "tmdb" for source in enabled_sources)
+                not imdb_id and (mdblist_api_key or omdb_api_key)
+                and any(source not in ("tmdb", "mdblist_episode") for source in enabled_sources)
             )
             if needs_episode_details:
                 token = str(tmdb_api_key).strip()
@@ -1382,8 +1599,20 @@ async def resolve_media_ratings(
         mdblist_sources = {"imdb", "tmdb", "tomatoes", "tomatoesaudience", "trakt", "letterboxd", "metacritic"}
         needs_external = any(source in mdblist_sources and resolved.get(source_aliases.get(source, source)) is None for source in enabled_sources)
         provider_tmdb_id = None if media_type == "episode" else tmdb_id
-        if mdblist_api_key and needs_external and (imdb_id or provider_tmdb_id):
-            mdb_res = await fetch_mdblist_ratings(imdb_id, provider_tmdb_id, mdblist_api_key, local_client, media_type, outcomes=outcomes)
+        if media_type == "episode" and "mdblist_episode" in enabled_sources and mdblist_api_key:
+            mdblist_episode = await fetch_mdblist_episode_rating(
+                tmdb_id, season_number, episode_number, mdblist_api_key, local_client,
+                outcomes=outcomes, provider_run_state=provider_run_state,
+            )
+            if mdblist_episode is not None:
+                resolved["mdblist_episode"] = mdblist_episode
+                primary_source = "mdblist"
+
+        if media_type != "episode" and mdblist_api_key and needs_external and (imdb_id or provider_tmdb_id):
+            mdb_res = await fetch_mdblist_ratings(
+                imdb_id, provider_tmdb_id, mdblist_api_key, local_client, media_type,
+                outcomes=outcomes, provider_run_state=provider_run_state,
+            )
             for k, v in mdb_res.items():
                 if v is not None and resolved.get(k) is None:
                     resolved[k] = v

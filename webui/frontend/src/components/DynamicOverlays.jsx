@@ -88,6 +88,7 @@ const RATING_PROVIDER_OPTIONS = [
   { id: "trakt", label: "Trakt" },
   { id: "metacritic", label: "Metacritic" },
   { id: "letterboxd", label: "Letterboxd" },
+  { id: "mdblist_episode", label: "MDBList Episodes" },
   { id: "simkl", label: "SIMKL" },
   { id: "mal", label: "MyAnimeList" },
 ];
@@ -14146,9 +14147,7 @@ export default function DynamicOverlays() {
                           : "bg-blue-500/15 text-blue-400 border-blue-500/30";
 
                       const isActing = actionRatingCacheId === entry.id;
-                      const displayTitle = entry.media_type === "episode"
-                        ? entry.overlay_title || entry.title || `Item ${entry.item_id}`
-                        : entry.title || `Item ${entry.item_id}`;
+                      const displayTitle = entry.overlay_title || entry.title || `Item ${entry.item_id}`;
 
                       const hasAnyRating =
                         entry.imdb_rating !== null ||
@@ -14157,7 +14156,8 @@ export default function DynamicOverlays() {
                         entry.rt_audience_rating !== null ||
                         entry.trakt_rating !== null ||
                         entry.metacritic_rating !== null ||
-                        entry.letterboxd_rating != null || entry.simkl_rating != null || entry.mal_rating != null;
+                        entry.letterboxd_rating != null || entry.simkl_rating != null || entry.mal_rating != null ||
+                        entry.mdblist_rating != null;
 
                       return (
                         <tr key={entry.id} className="hover:bg-theme-hover/30 transition-colors">
@@ -14175,7 +14175,7 @@ export default function DynamicOverlays() {
                                 {entry.server_type}
                               </span>
                               <span className="font-mono text-theme-muted text-[10px]">ID: {entry.item_id}</span>
-                              {entry.media_type === "episode" && entry.library_name && (
+                              {entry.library_name && (
                                 <span className="px-1.5 py-0.2 rounded bg-theme-bg border border-theme text-theme-muted text-[10px]" title="Library">
                                   {entry.library_name}
                                 </span>
@@ -14290,6 +14290,11 @@ export default function DynamicOverlays() {
                                     {provider.label} {Number(entry[`${provider.key}_rating`]).toFixed(1)}
                                   </span>
                                 ))}
+                                {entry.mdblist_rating != null && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/30 text-[11px] font-bold" title="MDBList episode rating">
+                                    MDB {Number(entry.mdblist_rating).toFixed(1)}
+                                  </span>
+                                )}
                               </div>
                             ) : (
                               <span className="text-theme-muted italic text-[11px]">{entry.media_type === "season" ? "No season scores; show fallback" : "No scores recorded"}</span>
