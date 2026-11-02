@@ -81,7 +81,12 @@ def quarantine_availability(base_dir, config_path=None):
         root = _quarantine_root(base)
         if root.exists():
             result["has_history"] = any(QUARANTINE_RUN_ID.fullmatch(path.name) and not _is_link(path) and path.is_dir() for path in root.iterdir())
-        reports = (base / "UILogs" / "last_image_cleanup_report.json", base / "UILogs" / "PlexImageCleanup.log")
+        reports = (
+            base / "UILogs" / "last_image_cleanup_report.json",
+            base / "UILogs" / "PlexImageCleanup.log",
+            base / "Logs" / "last_image_cleanup_report.json",
+            base / "Logs" / "PlexImageCleanup.log"
+        )
         result["has_history"] = result["has_history"] or any(path.is_file() and not _is_link(path) and path.stat().st_size > 0 for path in reports)
     except (OSError, ValueError):
         pass

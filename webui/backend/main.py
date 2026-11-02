@@ -319,13 +319,15 @@ queue_manager = QueueManager(QUEUE_DB_PATH)
 # Global lock for process management
 process_lock = threading.RLock()
 
-# Clear UILogs on startup - remove all log files
+# Clear ephemeral UILogs on startup - preserve task logs like PlexImageCleanup.log
 import glob
+
+PRESERVED_STARTUP_UI_LOGS = {"PlexImageCleanup.log"}
 
 for log_file in glob.glob(str(UI_LOGS_DIR / "*.log")):
     try:
-        os.remove(log_file)
-        pass  # Silent - no console output
+        if Path(log_file).name not in PRESERVED_STARTUP_UI_LOGS:
+            os.remove(log_file)
     except Exception as e:
         pass  # Silent - no console output
 
