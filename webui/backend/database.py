@@ -714,6 +714,28 @@ class ImageChoicesDB:
                     conn.close()
                 return False
 
+    def delete_skipped_items_for_media(self, server_type: str, media_item_id: str) -> int:
+        """Delete skipped-item records for a media item removed from its server."""
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.execute(
+                    "DELETE FROM skipped_items WHERE LOWER(server_type) = ? AND item_id = ?",
+                    (server_type.lower(), str(media_item_id)),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return deleted
+            except sqlite3.Error as e:
+                logger.error("Error deleting skipped records for %s item %s: %s", server_type, media_item_id, e)
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+
     def update_skipped_item_metadata(self, item_id: int, poster_path: str, year: str, overview: str, media_url: str, asset_type: str) -> bool:
         """Update metadata for a skipped item"""
         with self.lock:

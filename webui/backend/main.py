@@ -2323,6 +2323,14 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Could not start dynamic overlays change detector: {e}")
 
     from ratings_refresh import ratings_refresh_service
+
+    def cleanup_deleted_media_item(server_type, item_id):
+        if db is not None:
+            db.delete_skipped_items_for_media(server_type, item_id)
+        if dynamic_overlay_cache is not None:
+            dynamic_overlay_cache.prune_recipe_snapshots()
+
+    ratings_refresh_service.set_deleted_item_cleanup(cleanup_deleted_media_item)
     ratings_refresh_service.start_periodic(CONFIG_PATH)
 
     yield

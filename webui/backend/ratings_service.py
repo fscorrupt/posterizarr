@@ -753,25 +753,36 @@ class RatingsCacheManager:
                 return False
 
     def delete_item(self, server_type: str, item_id: str) -> bool:
-        """Delete a missing media item and its persisted rating retry state."""
+        """Delete cached state for a media item confirmed missing by its server."""
         with self.lock:
             try:
                 conn = self._get_connection()
                 with conn:
+                    server_type = server_type.lower()
+                    item_id = str(item_id)
                     cur = conn.execute(
                         "DELETE FROM media_ratings_cache WHERE server_type = ? AND item_id = ?",
-                        (server_type.lower(), str(item_id)),
+                        (server_type, item_id),
                     )
-                    retry_table = conn.execute(
-                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ratings_refresh_retry'"
-                    ).fetchone()
-                    if retry_table:
+                    deleted = cur.rowcount > 0
+                    tables = {row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )}
+                    for table in ("ratings_refresh_retry", "season_rating_mappings", "dynamic_overlay_cache"):
+                        if table in tables:
+                            cur = conn.execute(
+                                f"DELETE FROM {table} WHERE server_type = ? AND item_id = ?",
+                                (server_type, item_id),
+                            )
+                            deleted = deleted or cur.rowcount > 0
+                    if "dynamic_overlay_cache" in tables and "overlay_layer_snapshots" in tables:
                         conn.execute(
-                            "DELETE FROM ratings_refresh_retry WHERE server_type = ? AND item_id = ?",
-                            (server_type.lower(), str(item_id)),
+                            "DELETE FROM overlay_layer_snapshots WHERE digest NOT IN ("
+                            "SELECT json_extract(attr_snapshot, '$._overlay_layers_ref') FROM dynamic_overlay_cache "
+                            "WHERE json_valid(attr_snapshot) AND json_type(attr_snapshot, '$._overlay_layers_ref') = 'text')"
                         )
                 conn.close()
-                return cur.rowcount > 0
+                return deleted
             except Exception as e:
                 logger.error(f"[RatingsCache] Error deleting missing item ({server_type}, {item_id}): {e}")
                 return False

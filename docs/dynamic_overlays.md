@@ -255,6 +255,12 @@ saved retry decision can be checked once after upgrading before their hold is
 recorded. Normal overlay-sync provider lookups are separate; an explicitly forced
 sync can still query providers.
 
+When the media server itself returns metadata HTTP 404, Posterizarr removes that
+server/item's ratings, retry and season-mapping records, all cached overlay assets,
+orphaned layer snapshots, and skipped-item record across `overlay_cache.db` and
+`imagechoices.db`. Provider-side 404 responses do not trigger this cleanup.
+Media-export history and provider caches keyed by shared TMDb IDs are retained.
+
 ### Rule Artwork Targets
 
 In the rule's **Visual Settings**, use **Artwork Type** to choose **Both**,

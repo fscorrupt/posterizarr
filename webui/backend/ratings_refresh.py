@@ -56,6 +56,19 @@ class RatingsRefreshService:
         self.episode_parent_ids = {}
         self.season_parent_metadata = {}
         self.season_catalog_cache = {}
+        self.deleted_item_cleanup = None
+
+    def set_deleted_item_cleanup(self, callback):
+        self.deleted_item_cleanup = callback
+
+    def _delete_missing_item(self, server_type, item_id):
+        self.cache.delete_item(server_type, item_id)
+        if self.deleted_item_cleanup is not None:
+            try:
+                self.deleted_item_cleanup(server_type, item_id)
+            except Exception as error:
+                logger.error("[RatingsRefresh] Secondary cleanup failed for %s/%s (%s)",
+                             server_type, item_id, type(error).__name__)
 
     def _connection(self):
         connection = self.cache._get_connection()
@@ -454,8 +467,8 @@ class RatingsRefreshService:
                         details = {"message": message}
                         if message.startswith(("Plex metadata HTTP 404", "Media server metadata HTTP 404")):
                             server_item_missing = True
-                            await asyncio.to_thread(self.cache.delete_item, item["server_type"], item["item_id"])
-                            message = "Media server returned HTTP 404; stale ratings cache entry removed"
+                            await asyncio.to_thread(self._delete_missing_item, item["server_type"], item["item_id"])
+                            message = "Media server returned HTTP 404; stale media cache entries removed"
                             details["message"] = message
                             details["cache_entry_removed"] = True
                     state["current_title"] = item.get("title") or item["item_id"]
