@@ -29,6 +29,12 @@ import httpx
 logger = logging.getLogger("overlay_resolver")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
+def matches_artwork_type(rule: Dict[str, Any], metadata: Dict[str, Any]) -> bool:
+    variables = rule.get("template_variables") or rule.get("variables") or {}
+    target = str(rule.get("artwork_type") or variables.get("artwork_type") or "both").strip().lower()
+    return target == "both" or target == ("backdrop" if metadata.get("is_backdrop") else "poster")
+
+
 ALLOWED_CONFIG_EXTS = {".yml", ".yaml"}
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_FONT_EXTS = {".ttf", ".otf"}
@@ -2272,27 +2278,20 @@ def _kometa_evaluate_conditionals(
                 else:
                     target_k = clean_k
                     val = variables.get(target_k, defaults.get(target_k, resolved.get(target_k)))
-                    exp_list = None
                     if isinstance(clean_exp, list):
-                        exp_list = clean_exp
-                    elif isinstance(clean_exp, str) and ("," in clean_exp or (clean_exp.startswith("[") and clean_exp.endswith("]"))):
-                        inner = clean_exp.strip("[]")
-                        exp_list = [x.strip().strip("'\"") for x in inner.split(",") if x.strip()]
-
-                    if exp_list is not None:
                         if isinstance(val, list):
-                            if not any(x in exp_list or str(x).lower() in [str(e).lower() for e in exp_list] for x in val):
+                            if not any(x in clean_exp for x in val):
                                 passed = False
                                 break
-                        elif val not in exp_list and str(val).lower() not in [str(x).lower() for x in exp_list]:
+                        elif val not in clean_exp and str(val) not in [str(x) for x in clean_exp]:
                             passed = False
                             break
                     else:
                         if isinstance(val, list):
-                            if clean_exp not in val and str(clean_exp).lower() not in [str(x).lower() for x in val]:
+                            if clean_exp not in val and str(clean_exp) not in [str(x) for x in val]:
                                 passed = False
                                 break
-                        elif str(val).lower() != str(clean_exp).lower():
+                        elif str(val) != str(clean_exp):
                             passed = False
                             break
             if passed:
@@ -2304,177 +2303,6 @@ def _kometa_evaluate_conditionals(
             def_val = con_def["default"]
             resolved[con_key] = _kometa_replace_var(def_val, [variables, defaults, resolved])
     return resolved
-
-
-# Comprehensive language and country code normalization maps
-LANGUAGE_MAP: Dict[str, str] = {
-    # 3-letter ISO-639-2 codes to 2-letter
-    "deu": "de", "ger": "de",
-    "eng": "en",
-    "jpn": "ja",
-    "zho": "zh", "chi": "zh",
-    "kor": "ko",
-    "fra": "fr", "fre": "fr",
-    "spa": "es",
-    "ita": "it",
-    "rus": "ru",
-    "por": "pt",
-    "pol": "pl",
-    "nld": "nl", "dut": "nl",
-    "dan": "da",
-    "swe": "sv",
-    "nor": "no",
-    "fin": "fi",
-    "ukr": "uk",
-    "tur": "tr",
-    "ara": "ar",
-    "hin": "hi",
-    "ell": "el", "gre": "el",
-    "ces": "cs", "cze": "cs",
-    "hun": "hu",
-    "ron": "ro", "rum": "ro",
-    "vie": "vi",
-    "tha": "th",
-    "ind": "id",
-    "heb": "he",
-    # Full English / native language names
-    "german": "de", "deutsch": "de",
-    "english": "en",
-    "japanese": "ja",
-    "chinese": "zh",
-    "korean": "ko",
-    "french": "fr", "français": "fr",
-    "spanish": "es", "español": "es",
-    "italian": "it", "italiano": "it",
-    "russian": "ru",
-    "portuguese": "pt",
-    "polish": "pl",
-    "dutch": "nl",
-    "danish": "da",
-    "swedish": "sv",
-    "norwegian": "no",
-    "finnish": "fi",
-    "ukrainian": "uk",
-    "turkish": "tr",
-    "arabic": "ar",
-    "hindi": "hi",
-    "greek": "el",
-    "czech": "cs",
-    "hungarian": "hu",
-    "romanian": "ro",
-    "vietnamese": "vi",
-    "telugu": "te",
-    "farsi": "fa",
-    "persian": "fa",
-    "icelandic": "is",
-    "hebrew": "he",
-    "indonesian": "id",
-    "thai": "th",
-    "croatian": "hr",
-    "serbian": "sr",
-    "slovak": "sk",
-    "bulgarian": "bg",
-    "catalan": "ca",
-    "tagalog": "tl",
-    "filipino": "fil",
-    "malay": "ms",
-    "bengali": "bn",
-    "tamil": "ta",
-    "marathi": "mr",
-    "urdu": "ur",
-    "gujarati": "gu",
-    "kannada": "kn",
-    "malayalam": "ml",
-    "punjabi": "pa",
-    "estonian": "et",
-    "latvian": "lv",
-    "lithuanian": "lt",
-    "slovenian": "sl",
-}
-
-COUNTRY_TO_LANG_MAP: Dict[str, str] = {
-    "us": "en", "gb": "en", "uk": "en", "au": "en", "ca": "en", "nz": "en",
-    "de": "de", "at": "de", "ch": "de",
-    "jp": "ja",
-    "fr": "fr",
-    "es": "es", "mx": "es",
-    "it": "it",
-    "kr": "ko",
-    "cn": "zh", "tw": "zh", "hk": "zh",
-    "ru": "ru",
-    "br": "pt", "pt": "pt",
-    "nl": "nl",
-    "se": "sv",
-    "dk": "da",
-    "no": "no",
-    "fi": "fi",
-    "pl": "pl",
-    "cz": "cs",
-    "ua": "uk",
-    "tr": "tr",
-    "eg": "ar", "sa": "ar",
-    "in": "hi",
-    "ir": "fa",
-}
-
-
-def _resolve_item_language(item: Dict[str, Any]) -> Optional[str]:
-    """Extracts and normalizes the 2-letter language code of an overlay item."""
-    # 1. Direct lang_key if present (from variables.key e.g. "de", "en", "ja")
-    lk = item.get("lang_key")
-    if lk:
-        c = str(lk).strip().lower()
-        if c in LANGUAGE_MAP:
-            return LANGUAGE_MAP[c]
-        if len(c) == 2:
-            return c
-
-    # 2. Check overlay_key or mapping_name (e.g. "german", "subtitle_languages_german", "english")
-    for key_cand in (item.get("overlay_key"), item.get("mapping_name")):
-        if not key_cand:
-            continue
-        c = str(key_cand).strip().lower()
-        for prefix in ("subtitle_languages_", "languages_", "audio_languages_", "subtitle_", "audio_"):
-            if c.startswith(prefix):
-                c = c[len(prefix):]
-        if c in LANGUAGE_MAP:
-            return LANGUAGE_MAP[c]
-        if len(c) == 2:
-            return c
-
-    # 3. Check default or file path (e.g. "flag/square/de", "flag/round/us")
-    path_cand = str(item.get("default") or item.get("file") or "").strip().lower()
-    if path_cand:
-        token = path_cand.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-        if token in LANGUAGE_MAP:
-            return LANGUAGE_MAP[token]
-        if token in COUNTRY_TO_LANG_MAP:
-            return COUNTRY_TO_LANG_MAP[token]
-        if len(token) == 2:
-            return token
-
-    # 4. Check country_code if present
-    cc = item.get("country_code")
-    if cc:
-        c = str(cc).strip().lower()
-        if c in COUNTRY_TO_LANG_MAP:
-            return COUNTRY_TO_LANG_MAP[c]
-        if c in LANGUAGE_MAP:
-            return LANGUAGE_MAP[c]
-        if len(c) == 2:
-            return c
-
-    # 5. Check name if text(CODE) e.g. text(DE)
-    name = str(item.get("name") or "").strip()
-    m = re.search(r'text\(\s*([a-zA-Z]{2,3})\s*\)', name, re.IGNORECASE)
-    if m:
-        c = m.group(1).lower()
-        if c in LANGUAGE_MAP:
-            return LANGUAGE_MAP[c]
-        if len(c) == 2:
-            return c
-
-    return None
 
 
 class OverlayConfigEngine:
@@ -2802,7 +2630,7 @@ class OverlayConfigEngine:
         )
 
         for rule_entry in library_rules:
-            if not isinstance(rule_entry, dict):
+            if not isinstance(rule_entry, dict) or not matches_artwork_type(rule_entry, item_metadata):
                 continue
             # When custom ribbon banner is active, ignore any orphan default: resolution rules
             if has_custom_banner and rule_entry.get("default") == "resolution":
@@ -2848,30 +2676,11 @@ class OverlayConfigEngine:
                         except (ValueError, TypeError):
                             pass
                     queue_limits[full_q] = q_limit
-                    lang_conf = (
-                        file_vars.get("subtitle_languages")
-                        if subtitle_rule
-                        else (file_vars.get("audio_languages") or file_vars.get("languages"))
-                    )
-                    if not lang_conf and file_vars.get("languages"):
-                        lang_conf = file_vars["languages"]
-                    if not lang_conf and isinstance(rule_entry.get("template_variables"), dict):
-                        lang_conf = (
-                            rule_entry["template_variables"].get("subtitle_languages")
-                            if subtitle_rule
-                            else (rule_entry["template_variables"].get("audio_languages") or rule_entry["template_variables"].get("languages"))
-                        )
-
-                    if lang_conf:
-                        if isinstance(lang_conf, str):
-                            raw_l = [x.strip() for x in lang_conf.split(",") if x.strip()]
-                        elif isinstance(lang_conf, list):
-                            raw_l = [str(x).strip() for x in lang_conf if str(x).strip()]
-                        else:
-                            raw_l = [str(lang_conf).strip()]
-                        queue_lang_order[full_q] = [x.lower() for x in raw_l]
-                        if not subtitle_rule:
-                            queue_lang_order["flags"] = [x.lower() for x in raw_l]
+                    if file_vars.get("languages"):
+                        raw_l = file_vars["languages"]
+                        if isinstance(raw_l, str):
+                            raw_l = [x.strip() for x in raw_l.split(",") if x.strip()]
+                        queue_lang_order[full_q] = [str(x).strip().lower() for x in raw_l]
 
             # Process each overlay in file
             for ov_key, ov_def in self._candidate_overlays_for_title(
@@ -2888,6 +2697,8 @@ class OverlayConfigEngine:
                         b_levels = [str(x).strip().lower() for x in str(b_level).split(",") if str(x).strip()]
 
                     if "all" in b_levels:
+                        pass
+                    elif "backdrop" in b_levels and item_metadata.get("is_backdrop"):
                         pass
                     elif is_episode and "episode" not in b_levels:
                         continue
@@ -2912,6 +2723,8 @@ class OverlayConfigEngine:
                     )
                 expanded_ov = expanded_definitions[definition_key]
                 if not expanded_ov:
+                    continue
+                if not matches_artwork_type(expanded_ov, item_metadata):
                     continue
 
                 # Check run_definition if present (Kometa default: run_this / allowed_libraries)
@@ -2987,17 +2800,6 @@ class OverlayConfigEngine:
                 mapping_name = f"{ov_key}"
                 resolved_ov = {
                     "mapping_name": mapping_name,
-                    "overlay_key": str(ov_key),
-                    "lang_key": _clean_val(
-                        expanded_ov.get("_lang_key")
-                        or (expanded_ov.get("variables") or {}).get("key")
-                        or (ov_def.get("variables") or {}).get("key")
-                    ),
-                    "country_code": _clean_val(
-                        expanded_ov.get("_country_code")
-                        or (expanded_ov.get("variables") or {}).get("country")
-                        or (ov_def.get("variables") or {}).get("country")
-                    ),
                     "name": _clean_val(ov_data.get("name"), ov_key),
                     "default": _clean_val(ov_data.get("default")),
                     "file": _clean_val(ov_data.get("file")),
@@ -3047,28 +2849,14 @@ class OverlayConfigEngine:
 
         for q_name, q_items in queue_overlays.items():
             slots = all_queues.get(q_name, [])
-            preferred_langs = queue_lang_order.get(q_name) or (queue_lang_order.get("flags") if "flag" in q_name else None) or []
+            preferred_langs = queue_lang_order.get(q_name, [])
             if preferred_langs:
-                norm_preferred: List[str] = []
-                for p in preferred_langs:
-                    p_str = str(p).strip().lower()
-                    norm_p = LANGUAGE_MAP.get(p_str, COUNTRY_TO_LANG_MAP.get(p_str, p_str))
-                    if norm_p and norm_p not in norm_preferred:
-                        norm_preferred.append(norm_p)
-
                 def _q_sort_key(item):
-                    item_lang = _resolve_item_language(item)
-                    if item_lang and item_lang in norm_preferred:
-                        return (0, norm_preferred.index(item_lang), -(item.get("weight") or 0))
-
                     m_name = str(item.get("mapping_name") or item.get("name") or "").lower()
                     for idx, lang in enumerate(preferred_langs):
-                        l_clean = str(lang).strip().lower()
-                        if l_clean and (l_clean == m_name or f"_{l_clean}" in m_name or f"{l_clean}_" in m_name or l_clean in m_name):
+                        if lang == m_name or f"_{lang}" in m_name or f"{lang}_" in m_name or lang in m_name:
                             return (0, idx, -(item.get("weight") or 0))
-
                     return (1, 0, -(item.get("weight") or 0))
-
                 sorted_q = sorted(q_items, key=_q_sort_key)
             else:
                 sorted_q = sorted(q_items, key=lambda x: x.get("weight") or 0, reverse=True)
@@ -3261,11 +3049,6 @@ class OverlayConfigEngine:
                                 merged_def["overlay"].update(mv)
                             elif mk not in merged_def:
                                 merged_def[mk] = mv
-
-        if "key" in ov_vars:
-            merged_def["_lang_key"] = ov_vars["key"]
-        if "country" in ov_vars:
-            merged_def["_country_code"] = ov_vars["country"]
 
         final_def = _kometa_substitute_vars_deep(merged_def, [ov_vars, file_vars])
         return final_def

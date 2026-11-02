@@ -691,7 +691,7 @@ def parse_plex_xml_ratings(xml_content: bytes) -> Dict[str, Any]:
                 ratings["tmdb"] = round(val_float, 1)
 
         # 2. Check main rating / audienceRating attributes as fallbacks
-        video = root.find(".//Video")
+        video = root if root.tag in ("Video", "Directory") else root.find(".//Video")
         if video is None:
             video = root.find(".//Directory")
         if video is not None:
@@ -904,7 +904,9 @@ async def resolve_media_ratings(
     client: Optional[httpx.AsyncClient] = None,
     force_refresh: bool = False,
     server_community_rating: Optional[float] = None,
-    server_critic_rating: Optional[float] = None
+    server_critic_rating: Optional[float] = None,
+    season_number: Optional[int] = None,
+    episode_number: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Unified ratings resolver with multi-source fallback and SQLite caching.
@@ -947,7 +949,30 @@ async def resolve_media_ratings(
     should_close_client = client is None
 
     try:
-        if "tmdb" in enabled_sources and resolved.get("tmdb") is None and tmdb_id and tmdb_api_key:
+        if media_type == "episode" and tmdb_id and tmdb_api_key and season_number is not None and episode_number is not None:
+            needs_episode_details = ("tmdb" in enabled_sources and resolved.get("tmdb") is None) or (
+                not imdb_id and (mdblist_api_key or omdb_api_key) and any(source != "tmdb" for source in enabled_sources)
+            )
+            if needs_episode_details:
+                token = str(tmdb_api_key).strip()
+                bearer = token.startswith("ey") or len(token) > 40
+                details = await _fetch_rating_json(
+                    local_client, "tmdb", f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_number}/episode/{episode_number}",
+                    outcomes, headers={"Authorization": f"Bearer {token}"} if bearer else {},
+                    params={"append_to_response": "external_ids", **({} if bearer else {"api_key": token})}, timeout=6.0
+                )
+                if details:
+                    imdb_id = imdb_id or (details.get("external_ids") or {}).get("imdb_id")
+                    try:
+                        score = float(details.get("vote_average"))
+                        if "tmdb" in enabled_sources and 0 < score <= 10 and resolved.get("tmdb") is None:
+                            resolved["tmdb"] = round(score, 1)
+                            primary_source = "tmdb"
+                    except (TypeError, ValueError):
+                        pass
+                    if imdb_id or resolved.get("tmdb") is not None:
+                        outcomes["tmdb"] = {"status": "success", "message": "Episode metadata resolved"}
+        elif media_type != "episode" and "tmdb" in enabled_sources and resolved.get("tmdb") is None and tmdb_id and tmdb_api_key:
             tmdb_score = await fetch_tmdb_rating(tmdb_id, tmdb_api_key, local_client, media_type, outcomes=outcomes)
             if tmdb_score is not None:
                 resolved["tmdb"] = tmdb_score
@@ -956,8 +981,9 @@ async def resolve_media_ratings(
         # 4. If MDBList API key is provided and needed ratings are still missing (or Trakt/Letterboxd requested)
         source_aliases = {"tomatoes": "rt_critic", "tomatoesaudience": "rt_audience"}
         needs_external = any(resolved.get(source_aliases.get(source, source)) is None for source in enabled_sources)
-        if mdblist_api_key and needs_external and (imdb_id or tmdb_id):
-            mdb_res = await fetch_mdblist_ratings(imdb_id, tmdb_id, mdblist_api_key, local_client, media_type, outcomes=outcomes)
+        provider_tmdb_id = None if media_type == "episode" else tmdb_id
+        if media_type != "episode" and mdblist_api_key and needs_external and (imdb_id or provider_tmdb_id):
+            mdb_res = await fetch_mdblist_ratings(imdb_id, provider_tmdb_id, mdblist_api_key, local_client, media_type, outcomes=outcomes)
             for k, v in mdb_res.items():
                 if v is not None and resolved.get(k) is None:
                     resolved[k] = v
@@ -974,7 +1000,7 @@ async def resolve_media_ratings(
                 primary_source = "omdb"
 
         # 6. Fallback to server's native community/critic ratings (Emby/Jellyfin/Plex) if available and still missing
-        if server_community_rating is not None:
+        if server_community_rating is not None and media_type != "episode":
             try:
                 c_val = float(server_community_rating)
                 if c_val > 0:
@@ -989,7 +1015,7 @@ async def resolve_media_ratings(
             except Exception:
                 pass
 
-        if server_critic_rating is not None:
+        if server_critic_rating is not None and media_type != "episode":
             try:
                 cr_val = float(server_critic_rating)
                 if cr_val > 0 and resolved.get("rt_critic") is None:

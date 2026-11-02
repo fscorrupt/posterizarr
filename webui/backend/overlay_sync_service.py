@@ -36,7 +36,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple, Union, Callable
 import urllib.parse
-from xml.etree.ElementTree import fromstring
+from xml.etree.ElementTree import ParseError, fromstring, tostring
 from PIL import Image, ImageFont
 import httpx
 
@@ -72,6 +72,45 @@ def extract_edition(*candidates: Optional[str]) -> Optional[str]:
             if re.search(pat, cand_str):
                 return canonical
     return None
+
+async def resolve_episode_overlay_ratings(
+    server_type, episode, parent_metadata, season_number, credentials, client,
+    enabled_sources, mdblist_api_key=None, omdb_api_key=None, force_refresh=False
+):
+    episode_id = str(episode["id"])
+    xml_bytes = episode.get("rating_xml")
+    imdb_id = (episode.get("provider_ids") or {}).get("Imdb")
+    cached = None if force_refresh else ratings_cache.get_cached_ratings(server_type, episode_id)
+    if server_type == "plex" and not cached:
+        try:
+            response = await client.get(
+                f"{credentials['url'].rstrip('/')}/library/metadata/{episode_id}",
+                headers={"X-Plex-Token": credentials.get("token") or "", "Accept": "application/xml"},
+                params={"includeGuids": "1"}
+            )
+            if response.status_code == 200:
+                root = fromstring(response.content)
+                video = root if root.tag == "Video" else root.find(".//Video")
+                if video is not None and video.get("type") == "episode" and str(video.get("ratingKey")) == episode_id:
+                    xml_bytes = tostring(video)
+        except (httpx.HTTPError, ValueError, ParseError) as error:
+            logger.debug("[OverlaySync] Episode metadata unavailable for %s (%s)", episode_id, type(error).__name__)
+    if server_type == "plex" and xml_bytes:
+        root = fromstring(xml_bytes)
+        for guid in root.findall(".//Guid"):
+            identifier = str(guid.get("id") or "")
+            if identifier.startswith("imdb://"):
+                imdb_id = identifier.removeprefix("imdb://").split("?")[0]
+                break
+    return await resolve_media_ratings(
+        server_type=server_type, item_id=episode_id, title=episode["title"], year=None,
+        media_type="episode", imdb_id=imdb_id, tmdb_id=parent_metadata.get("tmdb_id"),
+        plex_xml_bytes=xml_bytes, tmdb_api_key=credentials.get("tmdb_token"),
+        mdblist_api_key=mdblist_api_key, omdb_api_key=omdb_api_key,
+        enabled_sources=enabled_sources, client=client, force_refresh=force_refresh,
+        season_number=season_number, episode_number=episode["episode_number"],
+    )
+
 
 def format_sync_error(err: Exception, phase: Optional[str] = None) -> str:
     """
@@ -432,12 +471,10 @@ def _configured_language_order(rules):
     for rule in rules:
         if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "languages":
             continue
-        variables = rule.get("template_variables") or rule.get("variables") or {}
-        languages = variables.get("languages") or variables.get("audio_languages")
+        variables = rule.get("template_variables") or {}
+        languages = variables.get("languages")
         if isinstance(languages, list):
             return [str(code).strip().lower() for code in languages if str(code).strip()]
-        elif isinstance(languages, str):
-            return [str(code).strip().lower() for code in languages.split(",") if str(code).strip()]
     return ["de", "en", "ja", "zh", "ko"]
 
 def _parent_stream_aggregation_requested(rules):
@@ -2197,6 +2234,9 @@ def build_overlay_layers_for_item(
         "truehd_atmos": "TrueHD Atmos", "plus_atmos": "EAC3 Atmos", "dolby_atmos": "Dolby Atmos",
         "dtsx": "DTS:X", "ma": "DTS-HD MA", "hra": "DTS-HD HRA", "plus": "EAC3", "digital": "AC3"
     }
+    from overlay_resolver import matches_artwork_type
+
+    library_rules = [rule for rule in library_rules if isinstance(rule, dict) and matches_artwork_type(rule, item_metadata)]
     codec_key = str(item_metadata.get("audio_codec") or "").strip().lower()
     if codec_key in codec_titles and not item_metadata.get("audio_track_title"):
         item_metadata = {**item_metadata, "audio_track_title": codec_titles[codec_key]}
@@ -3138,28 +3178,6 @@ def _plex_season_resolutions(videos) -> Dict[str, str]:
     return best
 
 
-def _emby_season_resolutions(episodes: list) -> Dict[str, str]:
-    """Highest resolution per season (keyed by season index string) across all Jellyfin/Emby episodes."""
-    best: Dict[str, str] = {}
-    for ep in episodes:
-        s_num = ep.get("ParentIndexNumber")
-        if s_num is None:
-            s_num = ep.get("SeasonNumber")
-        if s_num is None:
-            continue
-        s_str = str(s_num)
-        ep_res = "1080p"
-        for s in ep.get("MediaStreams") or []:
-            if s.get("Type") == "Video":
-                w = s.get("Width") or 0
-                if w >= 3800:
-                    ep_res = "4K"
-                    break
-        if _resolution_rank(ep_res) > _resolution_rank(best.get(s_str)):
-            best[s_str] = ep_res
-    return best
-
-
 @functools.lru_cache(maxsize=64)
 def _overlay_file_text(path_str: str, mtime: float) -> str:
     try:
@@ -4057,7 +4075,7 @@ async def _run_overlay_sync_task(
                         (isinstance(r, dict) and str(r.get("default", "")).lower() in ("ratings", "rating"))
                         or "rating" in str(r).lower()
                         for r in lib_rules
-                    )
+                    ) or _rule_files_mention(overlays_dir, lib_rules, "rating")
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
@@ -4304,16 +4322,23 @@ async def _run_overlay_sync_task(
                             except Exception as m_err:
                                 logger.debug(f"Metadata stream query error for {title}: {m_err}")
 
-                    # TV show resolution inheritance from episodes
+                    # Plex show/season nodes carry no <Media>; derive resolution from the episodes instead
                     season_res_changed = False
-                    if m_type == "show" and needs_resolution:
+                    if s_type == "plex" and m_type == "show" and needs_resolution:
                         try:
                             res_snap = json.loads((cached_entry or {}).get("attr_snapshot") or "{}")
                         except (TypeError, ValueError):
                             res_snap = {}
                         cached_seasons = res_snap.get("season_resolutions") if isinstance(res_snap, dict) else None
                         season_res = None
-                        if s_type == "plex":
+                        if (
+                            scope in ("incremental", "changed")
+                            and isinstance(cached_seasons, dict)
+                            and str(res_snap.get("leaf_count")) == str(item.get("leaf_count"))
+                            and str(cached_entry.get("server_updated_at") or "") == str(item.get("server_updated_at") or "")
+                        ):
+                            season_res = cached_seasons
+                        else:
                             try:
                                 leaves_resp = await http_client.get(
                                     f"{s_url}/library/metadata/{item_id}/allLeaves",
@@ -4325,19 +4350,6 @@ async def _run_overlay_sync_task(
                                     write_log(f"  [!] {w_tag}'{title}': episode resolution lookup returned HTTP {leaves_resp.status_code}; keeping '{item.get('resolution')}'.")
                             except Exception as leaves_err:
                                 write_log(f"  [!] {w_tag}'{title}': episode resolution lookup failed ({type(leaves_err).__name__}); keeping '{item.get('resolution')}'.")
-                        elif s_type in ("jellyfin", "emby"):
-                            try:
-                                em_ep_resp = await http_client.get(
-                                    f"{s_url}/Shows/{item_id}/Episodes?Fields=MediaStreams",
-                                    headers=headers
-                                )
-                                if em_ep_resp.status_code == 200:
-                                    season_res = _emby_season_resolutions(em_ep_resp.json().get("Items", []))
-                            except Exception as leaves_err:
-                                logger.debug(f"Emby/Jellyfin show episode lookup failed for '{title}': {leaves_err}")
-
-                        if not season_res and isinstance(cached_seasons, dict):
-                            season_res = cached_seasons
                         if season_res:
                             season_res_changed = season_res != cached_seasons
                             item["season_resolutions"] = season_res
@@ -5192,10 +5204,6 @@ async def _run_overlay_sync_task(
                                                         if med.get("audioCodec"):
                                                             ep_audio_c = med.get("audioCodec")
                                                     ep_res = ep_res or "1080p"
-                                                    if _resolution_rank(ep_res) > _resolution_rank((item.get("season_resolutions") or {}).get(str(s_num), "1080p")):
-                                                        item.setdefault("season_resolutions", {})[str(s_num)] = ep_res
-                                                        if _resolution_rank(ep_res) > _resolution_rank(item.get("resolution", "1080p")):
-                                                            item["resolution"] = ep_res
 
                                                     ep_langs = []
                                                     for st_node in ep_elem.findall(".//Stream"):
@@ -5212,7 +5220,6 @@ async def _run_overlay_sync_task(
                                                             if st_node.get("colorPrimaries") == "bt2020":
                                                                 ep_has_hdr = True
 
-                                                    ep_det_root = None
                                                     part_elem = ep_elem.find(".//Part")
                                                     ep_filepath = part_elem.get("file") if part_elem is not None else None
                                                     episode_cache_entry = cache_map.get((s_type.lower(), str(ep_rk), "titlecard"))
@@ -5229,7 +5236,7 @@ async def _run_overlay_sync_task(
                                                         ep_has_dv = previous_streams["has_dolby_vision"]
                                                         ep_filepath = previous_streams["filepath"]
                                                         ep_stream_metadata = {key: previous_streams[key] for key in ("subtitle_languages", "aspect_ratio")}
-                                                    elif needs_languages or needs_audio or needs_hdr_dv or (needs_ratings and not (ep_elem.get("rating") or ep_elem.get("audienceRating"))) or not ep_filepath:
+                                                    elif needs_languages or needs_audio or needs_hdr_dv or not ep_filepath:
                                                         try:
                                                             ep_det_resp = await http_client.get(
                                                                 f"{s_url}/library/metadata/{ep_rk}",
@@ -5258,18 +5265,10 @@ async def _run_overlay_sync_task(
                                                             pass
 
                                                     ep_aud = ep_elem.get("audienceRating") or ep_elem.get("rating")
-                                                    if not ep_aud and ep_det_root is not None:
-                                                        det_video = ep_det_root.find(".//Video")
-                                                        if det_video is not None:
-                                                            ep_aud = det_video.get("audienceRating") or det_video.get("rating")
                                                     ep_multi = {}
 
-                                                    # 1. Parse structured <Rating> tags under episode element (and detail XML if fetched)
-                                                    rating_nodes = list(ep_elem.findall(".//Rating"))
-                                                    if ep_det_root is not None:
-                                                        rating_nodes.extend(ep_det_root.findall(".//Rating"))
-
-                                                    for r_node in rating_nodes:
+                                                    # 1. Parse structured <Rating> tags under episode element
+                                                    for r_node in ep_elem.findall(".//Rating"):
                                                         img = str(r_node.get("image") or "").lower()
                                                         val = r_node.get("value")
                                                         rtype = str(r_node.get("type") or "").lower()
@@ -5316,11 +5315,6 @@ async def _run_overlay_sync_task(
                                                     for attr_k, img_k in (("audienceRating", "audienceRatingImage"), ("rating", "ratingImage")):
                                                         attr_val = ep_elem.get(attr_k)
                                                         img_val = str(ep_elem.get(img_k) or "").lower()
-                                                        if not attr_val and ep_det_root is not None:
-                                                            det_v = ep_det_root.find(".//Video")
-                                                            if det_v is not None:
-                                                                attr_val = det_v.get(attr_k)
-                                                                img_val = str(det_v.get(img_k) or "").lower()
                                                         if attr_val:
                                                             try:
                                                                 val_f = float(str(attr_val).replace("%", "").strip())
@@ -5332,33 +5326,8 @@ async def _run_overlay_sync_task(
                                                                     pct = int(round(val_f * 10)) if val_f <= 10.0 else int(round(val_f))
                                                                     key = "rt_audience" if attr_k == "audienceRating" else "rt_critic"
                                                                     ep_multi.setdefault(key, pct)
-                                                                elif not img_val:
-                                                                    # Plex episode has rating/audienceRating attribute but no ratingImage specified
-                                                                    # Attribute to IMDb and TMDb so episode rating badges (builder_level: episode) can display it
-                                                                    show_multi = item.get("multi_ratings") or {}
-                                                                    if "imdb" in show_multi and "tmdb" not in show_multi:
-                                                                        ep_multi.setdefault("imdb", round(val_f, 1))
-                                                                    elif "tmdb" in show_multi and "imdb" not in show_multi:
-                                                                        ep_multi.setdefault("tmdb", round(val_f, 1))
-                                                                    else:
-                                                                        ep_multi.setdefault("imdb", round(val_f, 1))
-                                                                        ep_multi.setdefault("tmdb", round(val_f, 1))
                                                             except (ValueError, TypeError):
                                                                 pass
-
-                                                    # Format ep_aud as numeric float if present
-                                                    if ep_aud is not None:
-                                                        try:
-                                                            ep_aud = round(float(str(ep_aud).replace("%", "").strip()), 1)
-                                                        except (ValueError, TypeError):
-                                                            ep_aud = None
-                                                    elif ep_multi.get("imdb"):
-                                                        ep_aud = ep_multi["imdb"]
-                                                    elif ep_multi.get("tmdb"):
-                                                        ep_aud = ep_multi["tmdb"]
-
-                                                    # NOTE: Do NOT fall back to show multi-ratings on episodes.
-                                                    # Episode titlecards must only display the episode's own rating.
 
                                                     episodes_to_process.append({
                                                         "id": ep_rk,
@@ -5368,6 +5337,7 @@ async def _run_overlay_sync_task(
                                                         "resolution": ep_res,
                                                         "audience_rating": ep_aud,
                                                         "multi_ratings": ep_multi,
+                                                        "rating_xml": tostring(ep_elem),
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
                                                         **ep_stream_metadata,
@@ -5432,24 +5402,8 @@ async def _run_overlay_sync_task(
                                                             if hdr:
                                                                 ep_has_hdr = True
 
-                                                    if _resolution_rank(ep_res) > _resolution_rank((item.get("season_resolutions") or {}).get(str(s_num), "1080p")):
-                                                        item.setdefault("season_resolutions", {})[str(s_num)] = ep_res
-                                                        if _resolution_rank(ep_res) > _resolution_rank(item.get("resolution", "1080p")):
-                                                            item["resolution"] = ep_res
-
                                                     ep_aud = ep_obj.get("CommunityRating")
                                                     ep_multi = {}
-                                                    if ep_aud is not None:
-                                                        try:
-                                                            val_f = round(float(ep_aud), 1)
-                                                            ep_multi.setdefault("imdb", val_f)
-                                                            ep_multi.setdefault("tmdb", val_f)
-                                                            ep_aud = val_f
-                                                        except (ValueError, TypeError):
-                                                            ep_aud = None
-
-                                                    # NOTE: Do NOT fall back to show multi-ratings on episodes.
-                                                    # Episode titlecards must only display the episode's own rating.
 
                                                     episodes_to_process.append({
                                                         "id": str(ep_rk),
@@ -5459,6 +5413,7 @@ async def _run_overlay_sync_task(
                                                         "resolution": ep_res,
                                                         "audience_rating": ep_aud,
                                                         "multi_ratings": ep_multi,
+                                                        "provider_ids": ep_obj.get("ProviderIds") or {},
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
                                                         **_extract_stream_overlay_metadata(ep_obj),
@@ -5479,6 +5434,23 @@ async def _run_overlay_sync_task(
                                             clean_tc = ep_data.get("clean_tc") or find_titlecard(show_parent, s_num, ep_num, dir_cache=dir_cache)
                                             if not clean_tc:
                                                 continue
+
+                                            episode_rating_rules = [
+                                                rule for rule in lib_rules if isinstance(rule, dict)
+                                                and str(rule.get("default", "")).lower() in ("ratings", "rating", "single_rating")
+                                                and str((rule.get("template_variables") or {}).get("builder_level", "all")).lower() in ("all", "episode")
+                                                and str((rule.get("template_variables") or {}).get("artwork_type", "both")).lower() != "backdrop"
+                                            ]
+                                            if episode_rating_rules or (needs_ratings and any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules)):
+                                                episode_sources = list(dict.fromkeys(
+                                                    source for rule in episode_rating_rules
+                                                    for source in (rule.get("template_variables") or {}).get("sources", rating_sources)
+                                                )) if episode_rating_rules else rating_sources
+                                                ep_data["multi_ratings"] = await resolve_episode_overlay_ratings(
+                                                    s_type, ep_data, item, s_num, {**creds, "url": s_url}, http_client,
+                                                    episode_sources, mdblist_key, omdb_key, force_refresh=scope == "full"
+                                                )
+                                                ep_data["audience_rating"] = ep_data.get("audience_rating") or _audience_rating_from_scores(ep_data["multi_ratings"])
 
                                             tc_mtime, tc_size, tc_clean_hash = compute_file_fingerprint(clean_tc)
                                             ep_meta = {
@@ -5849,8 +5821,6 @@ async def detect_media_changes(
         "editions": 0,
         "runtimes": 0,
         "status": 0,
-        "resolution": 0,
-        "server_updated": 0,
         "new": 0,
         "asset_modified": 0
     }
@@ -6053,17 +6023,6 @@ async def detect_media_changes(
                                                         status_val = v_node.get("status")
 
                                                 if sec_type == "movie":
-                                                    cur_res = None
-                                                    for m in m_root.findall(".//Media"):
-                                                        m_res = _plex_media_resolution(m)
-                                                        if m_res and _resolution_rank(m_res) > _resolution_rank(cur_res):
-                                                            cur_res = m_res
-                                                    cached_res = cached.get("detected_resolution")
-                                                    if cur_res and cached_res and cur_res != cached_res:
-                                                        item_changes.append("resolution")
-                                                        detail_notes.append(f"Resolution: '{cached_res}' -> '{cur_res}'")
-                                                        summary["resolution"] += 1
-
                                                     cached_langs = sorted([l.strip().lower() for l in (cached.get("detected_languages") or "").split(",") if l.strip()])
                                                     cur_langs = sorted(cur_langs)
                                                     if cur_langs != cached_langs:
@@ -6088,11 +6047,6 @@ async def detect_media_changes(
                                                     item_changes.append("status")
                                                     detail_notes.append(f"Status: '{cached_st}' -> '{status_val}'")
                                                     summary["status"] += 1
-
-                                                if sec_type == "show" and not item_changes:
-                                                    item_changes.append("server_updated")
-                                                    detail_notes.append(f"Show updated on server ({cached_up} -> {s_up_at})")
-                                                    summary["server_updated"] += 1
                                         except Exception as m_e:
                                             logger.debug(f"[DetectChanges] Plex item {rk} detail query error: {m_e}")
 

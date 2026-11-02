@@ -1784,6 +1784,7 @@ export default function DynamicOverlays() {
   const [editVariablesTab, setEditVariablesTab] = useState("visual"); // "visual" or "json"
   const [editVariablesJson, setEditVariablesJson] = useState("{}");
   const [visualLevel, setVisualLevel] = useState("");
+  const [visualArtworkType, setVisualArtworkType] = useState("both");
   const [visualHAlign, setVisualHAlign] = useState("center");
   const [visualVAlign, setVisualVAlign] = useState("bottom");
   const [visualHOffset, setVisualHOffset] = useState("0");
@@ -3220,6 +3221,7 @@ export default function DynamicOverlays() {
     const vars = ov.variables || {};
     setEditVariablesJson(JSON.stringify(vars, null, 2));
     setVisualLevel(vars.builder_level || "");
+    setVisualArtworkType(vars.artwork_type || "both");
     setVisualHAlign(vars.horizontal_align || vars.horizontal_position || "center");
     setVisualVAlign(vars.vertical_align || vars.vertical_position || "bottom");
     setVisualHOffset(vars.horizontal_offset !== undefined ? String(vars.horizontal_offset) : "0");
@@ -3247,6 +3249,8 @@ export default function DynamicOverlays() {
         }
         if (visualLevel) finalVariables.builder_level = visualLevel;
         else delete finalVariables.builder_level;
+        if (visualArtworkType !== "both") finalVariables.artwork_type = visualArtworkType;
+        else delete finalVariables.artwork_type;
         finalVariables.horizontal_align = visualHAlign;
         finalVariables.vertical_align = visualVAlign;
         if (visualHOffset !== "") finalVariables.horizontal_offset = Number(visualHOffset) || 0;
@@ -12279,6 +12283,22 @@ export default function DynamicOverlays() {
                     <option value="episode">Episode Titlecards (e.g. for Languages, Runtime, Anime)</option>
                     <option value="movie">Movie Posters (e.g. for 4K banners, Ratings)</option>
                     <option value="show">Show Posters (e.g. for Status banners)</option>
+                    <option value="backdrop">Backgrounds Only (Legacy)</option>
+                    <option value="all">All Item Levels</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="rule-artwork-type" className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Artwork Type</label>
+                  <select
+                    id="rule-artwork-type"
+                    value={visualArtworkType}
+                    onChange={(e) => setVisualArtworkType(e.target.value)}
+                    className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
+                  >
+                    <option value="both">Both</option>
+                    <option value="poster">Posters / Titlecards Only</option>
+                    <option value="backdrop">Backgrounds Only</option>
                   </select>
                 </div>
 

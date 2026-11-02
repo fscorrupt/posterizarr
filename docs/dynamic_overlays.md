@@ -92,6 +92,46 @@ canvas to the output artwork. These controls affect multi-provider badges, not
 the compact single-score badge. Previewing and saving do not upload artwork;
 existing configurations without the new fields retain their legacy rendering.
 
+### Rule Artwork Targets
+
+In the rule's **Visual Settings**, use **Artwork Type** to choose **Both**,
+**Posters / Titlecards Only**, or **Backgrounds Only**. This applies to native
+`default:` rules and custom `file:` rules. In YAML, set `artwork_type` in
+`template_variables`:
+
+```yaml
+overlay_files:
+   - file: config/network_logos.yml
+      template_variables:
+         builder_level: show
+         artwork_type: backdrop
+   - file: config/format_badges.yml
+      template_variables:
+         builder_level: show
+         artwork_type: poster
+```
+
+Allowed values are `both` (the default), `poster`, and `backdrop`.
+`builder_level` still selects the media item level independently; `poster`
+includes episode titlecards when the builder level is `episode`. Legacy
+`builder_level: backdrop` also works for background-only custom file rules.
+The global background-overlays switch must still be enabled to sync backgrounds.
+
+### Episode Ratings
+
+Episode rules use episode ratings, never the parent show's scores. Plex sync
+reads episode-detail metadata for provider-labeled ratings and episode IMDb IDs.
+TMDb lookup uses the show's TMDb ID plus the episode's season and episode
+numbers, not the show's rating. When an IMDb ID is missing, TMDb episode external
+IDs can resolve it for OMDb lookup. OMDb requires its configured API key.
+Jellyfin and Emby use the episode's own provider IDs for external lookup.
+
+The current MDBList adapter supports movie/show lookup only and is not used for
+episodes. An unavailable episode/provider score is omitted instead of substituting
+a show score or labeling an unidentifiable server score as IMDb. Consequently,
+not every episode has every selected provider badge. After updating, run a full
+overlay sync for the affected show to replace previously rendered titlecards.
+
 ## Folder Layout
 
 The canonical location is `Overlayfiles/dynamic_overlays/` under the writable application data directory. In Docker this is normally `/config/Overlayfiles/dynamic_overlays/`; local installations use the application data/project root.
