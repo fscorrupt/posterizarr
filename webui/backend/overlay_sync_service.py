@@ -44,7 +44,7 @@ from overlay_cache import OverlayCache, compute_metadata_hash, snapshot_overlay_
 from overlay_cache import compute_layers_recipe_hash as _compute_layers_recipe_hash
 from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
 from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
-from dynamic_overlays_service import get_dynamic_overlays_settings
+from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
 from plex_push_service import get_asset_path_from_config
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -374,7 +374,7 @@ AUDIO_CODEC_PATTERNS = [
     ("plus_atmos", re.compile(r'(?i)^(?=.*\b((dd[p+])|(dolby[ ._-]digital[ ._-]plus)|(e[ ._-]?ac3)\b))(?=.*\batmos(\b|\d))')),
     ("dolby_atmos", re.compile(r'(?i)\batmos(\b|\d)')),
     ("truehd", re.compile(r'(?i)\btrue[ ._-]?hd(\b|\d)')),
-    ("ma", re.compile(r'(?i)\bdts[ ._-]?(hd[ ._-])?(ma|xll|hd)(\b|\d)(?![ ._-]hra)')),
+    ("ma", re.compile(r'(?i)\b(?:dts|dca)[ ._-]?(hd[ ._-])?(ma|xll|hd)(\b|\d)(?![ ._-]hra)')),
     ("flac", re.compile(r'(?i)\bflac(\b|\d)')),
     ("pcm", re.compile(r'(?i)\bl?pcm(\b|\d)')),
     ("hra", re.compile(r'(?i)\bdts[ ._-]?(hd[ ._-])?(hr|hra|hi|ra)(\b|\d)')),
@@ -414,6 +414,8 @@ def cached_episode_streams(entry, server_updated_at, filepath):
     required = {"audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio", "has_hdr", "has_dolby_vision", "filepath"}
     if not isinstance(streams, dict) or streams.get("version") != 1 or not required.issubset(streams) or not streams.get("filepath"):
         return None
+    if str(streams.get("audio_codec") or "").lower() in ("dts", "dca") and not {"audio_profile", "audio_track_title"}.issubset(streams):
+        return None
     if filepath and str(filepath) != str(streams["filepath"]):
         return None
     return streams
@@ -425,6 +427,7 @@ def aggregate_episode_streams(episodes, language_order=None):
     language_first_seen = {}
     subtitle_first_seen = {}
     codec_first_seen = {}
+    codec_details = {}
     language_priority = {str(code).strip().lower(): index for index, code in enumerate(language_order or [])}
 
     for episode in episodes:
@@ -446,9 +449,15 @@ def aggregate_episode_streams(episodes, language_order=None):
 
         codec = str(episode.get("audio_codec") or "").strip().lower()
         if codec:
-            if codec not in codec_first_seen:
-                codec_first_seen[codec] = len(codec_first_seen)
-            codec_counts[codec] += 1
+            profile = str(episode.get("audio_profile") or "")
+            track_title = str(episode.get("audio_track_title") or episode.get("audio_title") or "")
+            signature = " ".join((codec, profile, track_title))
+            provider_codec = next((name for name, pattern in AUDIO_CODEC_PATTERNS if pattern.search(signature)), codec)
+            codec_key = (codec, provider_codec)
+            if codec_key not in codec_first_seen:
+                codec_first_seen[codec_key] = len(codec_first_seen)
+                codec_details[codec_key] = {"audio_profile": profile or None, "audio_track_title": track_title or None, "audio_title": track_title or None}
+            codec_counts[codec_key] += 1
 
     def ranked(counts, first_seen, use_language_priority=False):
         return sorted(
@@ -462,10 +471,12 @@ def aggregate_episode_streams(episodes, language_order=None):
         )
 
     ranked_languages = ranked(language_counts, language_first_seen, use_language_priority=True)
+    selected_codec = ranked(codec_counts, codec_first_seen)[0] if codec_counts else None
     return {
         "audio_languages": ranked_languages,
         "subtitle_languages": ranked(subtitle_counts, subtitle_first_seen, use_language_priority=True),
-        "audio_codec": ranked(codec_counts, codec_first_seen)[0] if codec_counts else None,
+        "audio_codec": selected_codec[0] if selected_codec else None,
+        **(codec_details[selected_codec] if selected_codec else {"audio_profile": None, "audio_track_title": None, "audio_title": None}),
     }
 
 def _configured_language_order(rules):
@@ -511,6 +522,12 @@ def _plex_episode_stream_summary(item):
     for media in item.findall(".//Media"):
         if media.get("audioCodec"):
             audio_codec = str(media.get("audioCodec")).strip().lower()
+    audio_streams = [stream for stream in item.findall(".//Stream") if stream.get("streamType") == "2"]
+    primary_audio = next((stream for stream in audio_streams if stream.get("selected") == "1" or stream.get("default") == "1"), audio_streams[0] if audio_streams else None)
+    audio_profile = primary_audio.get("profile") if primary_audio is not None else None
+    audio_track_title = (primary_audio.get("title") or primary_audio.get("displayTitle")) if primary_audio is not None else None
+    if primary_audio is not None and primary_audio.get("codec"):
+        audio_codec = str(primary_audio.get("codec")).strip().lower()
     for stream in item.findall(".//Stream"):
         stream_type = stream.get("streamType")
         if stream_type == "2":
@@ -525,6 +542,8 @@ def _plex_episode_stream_summary(item):
     return {
         "audio_languages": languages,
         "audio_codec": audio_codec,
+        "audio_profile": audio_profile,
+        "audio_track_title": audio_track_title,
         "subtitle_languages": streams.get("subtitle_languages", []),
         "aspect_ratio": streams.get("aspect_ratio"),
         "has_hdr": has_hdr,
@@ -537,6 +556,8 @@ def _emby_episode_stream_summary(item):
     audio_codec = None
     has_hdr = False
     has_dolby_vision = False
+    audio_streams = [stream for stream in item.get("MediaStreams") or [] if stream.get("Type") == "Audio"]
+    primary_audio = next((stream for stream in audio_streams if stream.get("IsDefault") is True), audio_streams[0] if audio_streams else {})
     for stream in item.get("MediaStreams") or []:
         stream_type = stream.get("Type")
         if stream_type == "Audio":
@@ -553,7 +574,9 @@ def _emby_episode_stream_summary(item):
     streams = _extract_stream_overlay_metadata(item)
     return {
         "audio_languages": languages,
-        "audio_codec": audio_codec,
+        "audio_codec": str(primary_audio.get("Codec") or audio_codec or "").strip().lower() or None,
+        "audio_profile": primary_audio.get("Profile"),
+        "audio_track_title": primary_audio.get("Title") or primary_audio.get("DisplayTitle"),
         "subtitle_languages": streams.get("subtitle_languages", []),
         "aspect_ratio": streams.get("aspect_ratio"),
         "has_hdr": has_hdr,
@@ -606,7 +629,7 @@ async def fetch_show_episode_stream_data(http_client, server_type, server_url, i
                 if cached:
                     summary = {key: cached.get(key) for key in (
                         "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
-                        "has_hdr", "has_dolby_vision", "filepath",
+                        "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title",
                     )}
                     summary["streams_verified"] = True
                 else:
@@ -681,7 +704,7 @@ def titlecard_attr_snapshot(episode, snapshot):
         values["_episode_streams"] = {
             key: episode.get(key) for key in (
                 "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
-                "has_hdr", "has_dolby_vision", "filepath"
+                "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title"
             )
         }
         values["_episode_streams"]["version"] = 1
@@ -757,11 +780,17 @@ def _extract_stream_overlay_metadata(item):
     subtitles = []
     aspect = None
     width = height = 0
+    audio_profile = None
+    audio_track_title = None
     if isinstance(item, dict):
         streams = list(item.get("MediaStreams") or [])
         if not streams:
             for source in item.get("MediaSources") or []:
                 streams.extend(source.get("MediaStreams") or [])
+            audio_streams = [stream for stream in streams if stream.get("Type") == "Audio"]
+            primary_audio = next((stream for stream in audio_streams if stream.get("IsDefault") is True), audio_streams[0] if audio_streams else {})
+            audio_profile = primary_audio.get("Profile")
+            audio_track_title = primary_audio.get("Title") or primary_audio.get("DisplayTitle")
         for stream in streams:
             if stream.get("Type") == "Subtitle":
                 language = stream.get("Language") or stream.get("DisplayLanguage")
@@ -774,6 +803,11 @@ def _extract_stream_overlay_metadata(item):
                 aspect = stream.get("AspectRatio")
                 width, height = stream.get("Width") or 0, stream.get("Height") or 0
     else:
+        audio_streams = [stream for stream in item.findall(".//Stream") if stream.get("streamType") == "2"]
+        primary_audio = next((stream for stream in audio_streams if stream.get("selected") == "1" or stream.get("default") == "1"), audio_streams[0] if audio_streams else None)
+        if primary_audio is not None:
+            audio_profile = primary_audio.get("profile")
+            audio_track_title = primary_audio.get("title") or primary_audio.get("displayTitle")
         media = item.find(".//Media")
         if media is not None:
             aspect = media.get("aspectRatio")
@@ -796,7 +830,7 @@ def _extract_stream_overlay_metadata(item):
             ratio = None
     except (ValueError, TypeError, ZeroDivisionError):
         ratio = None
-    return {"subtitle_languages": subtitles, "aspect_ratio": ratio}
+    return {"subtitle_languages": subtitles, "aspect_ratio": ratio, "audio_profile": audio_profile, "audio_track_title": audio_track_title}
 
 # ==============================================================================
 # DYNAMIC OVERLAY SYNC ENGINE:
@@ -2244,6 +2278,18 @@ def _rating_theme_colors(theme: str, source: str, score: Optional[float]) -> Tup
 # OVERLAY RECIPE BUILDER
 # ==============================================================================
 
+def _get_overlay_config_engine(overlays_dir):
+    from overlay_resolver import OverlayConfigEngine
+    global _CACHED_CONFIG_ENGINE, _CACHED_CONFIG_ENGINE_ROOT
+    project_root = overlays_dir.parent.parent
+    if not (project_root / "Overlayfiles" / "dynamic_overlays").exists() and not (project_root / "defaults").exists():
+        project_root = PROJECT_ROOT
+    if "_CACHED_CONFIG_ENGINE" not in globals() or _CACHED_CONFIG_ENGINE is None or _CACHED_CONFIG_ENGINE_ROOT != project_root:
+        _CACHED_CONFIG_ENGINE = OverlayConfigEngine(project_root)
+        _CACHED_CONFIG_ENGINE_ROOT = project_root
+    return _CACHED_CONFIG_ENGINE
+
+
 def build_overlay_layers_for_item(
     item_metadata: Dict[str, Any],
     library_rules: List[Dict[str, Any]],
@@ -2500,10 +2546,11 @@ def build_overlay_layers_for_item(
             if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "audio_codec":
                 continue
             variables = rule.get("template_variables") or {}
-            target = str(variables.get("builder_level", "all")).lower()
+            raw_target = variables.get("builder_level", "all")
+            targets = [str(value).strip().lower() for value in (raw_target if isinstance(raw_target, list) else str(raw_target).split(","))]
             target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
             parent_opt_in = variables.get("aggregate_parent_streams") is True
-            if target not in ("all", target_level) and not (target == "episode" and parent_opt_in):
+            if not any(target in ("all", target_level) for target in targets) and not ("episode" in targets and parent_opt_in):
                 continue
             candidates = [
                 str(item_metadata.get(key) or "")
@@ -2513,13 +2560,15 @@ def build_overlay_layers_for_item(
             if not matched_codec:
                 continue
             style = str(variables.get("style", "compact")).lower()
-            codec_dir = flag_assets_dir / "audio_codec" / style
-            if not codec_dir.exists():
-                codec_dir = flag_assets_dir / "audio_codec" / "compact"
-            codec_image = codec_dir / f"{matched_codec}.png"
-            if not codec_image.exists():
-                codec_image = flag_assets_dir / "audio_codec" / "standard" / f"{matched_codec}.png"
-            if codec_image.exists():
+            engine = _get_overlay_config_engine(overlays_dir)
+            selected_asset = variables.get(f"file_{matched_codec}")
+            if selected_asset:
+                codec_image = engine.resolve_image_path(str(selected_asset))
+            else:
+                codec_image = engine.resolve_image_path(f"audio_codec/{style}/{matched_codec}.png")
+                if codec_image is None:
+                    codec_image = engine.resolve_image_path(f"audio_codec/standard/{matched_codec}.png")
+            if codec_image is not None and codec_image.exists():
                 native_parent_stream_layers.append({
                     "name": f"audio_codec_{matched_codec}",
                     "type": "image",
@@ -2545,15 +2594,7 @@ def build_overlay_layers_for_item(
             continue
         engine_rules.append(rule)
     try:
-        from overlay_resolver import OverlayConfigEngine
-        global _CACHED_CONFIG_ENGINE, _CACHED_CONFIG_ENGINE_ROOT
-        project_root = overlays_dir.parent.parent
-        if not (project_root / "Overlayfiles" / "dynamic_overlays").exists() and not (project_root / "defaults").exists():
-            project_root = PROJECT_ROOT
-        if "_CACHED_CONFIG_ENGINE" not in globals() or _CACHED_CONFIG_ENGINE is None or _CACHED_CONFIG_ENGINE_ROOT != project_root:
-            _CACHED_CONFIG_ENGINE = OverlayConfigEngine(project_root)
-            _CACHED_CONFIG_ENGINE_ROOT = project_root
-        engine = _CACHED_CONFIG_ENGINE
+        engine = _get_overlay_config_engine(overlays_dir)
         layers = engine.evaluate_item(item_metadata, engine_rules)
         if rating_rules and item_metadata.get("multi_ratings"):
             layers = [
@@ -5045,7 +5086,7 @@ async def _run_overlay_sync_task(
                                 return
 
                             # FAST-PATH: If show itself is up-to-date, server timestamp unchanged, and no clean artwork in show directory was modified since last sync:
-                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards) and not (needs_ratings and dyn_settings.get("simkl_client_id")):
+                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards) and not (needs_ratings and season_ratings_enabled_for_library(dyn_settings, lib_name)):
                                 c_up = cached_entry.get("server_updated_at")
                                 s_up = item.get("server_updated_at")
                                 if c_up and s_up and str(c_up) == str(s_up):
@@ -5131,7 +5172,7 @@ async def _run_overlay_sync_task(
                                     season_rating_rules = [rule for rule in lib_rules if isinstance(rule, dict)
                                         and str(rule.get("default", "")).lower() in ("rating", "ratings")
                                         and str((rule.get("template_variables") or {}).get("builder_level", "all")).lower() in ("all", "season")]
-                                    if dyn_settings.get("simkl_client_id") and (season_rating_rules or (needs_ratings and any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules))):
+                                    if season_ratings_enabled_for_library(dyn_settings, lib_name) and (season_rating_rules or (needs_ratings and any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules))):
                                         if s_type == "plex":
                                             season_episode_nodes = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
                                             if season_episode_nodes is None:
@@ -5358,7 +5399,7 @@ async def _run_overlay_sync_task(
                                                         ep_has_hdr = previous_streams["has_hdr"]
                                                         ep_has_dv = previous_streams["has_dolby_vision"]
                                                         ep_filepath = previous_streams["filepath"]
-                                                        ep_stream_metadata = {key: previous_streams[key] for key in ("subtitle_languages", "aspect_ratio")}
+                                                        ep_stream_metadata = {key: previous_streams.get(key) for key in ("subtitle_languages", "aspect_ratio", "audio_profile", "audio_track_title")}
                                                     elif needs_languages or needs_audio or needs_hdr_dv or not ep_filepath:
                                                         try:
                                                             ep_det_resp = await http_client.get(
@@ -5591,6 +5632,8 @@ async def _run_overlay_sync_task(
                                                 "rating": ep_data.get("audience_rating"),
                                                 "multi_ratings": ep_data.get("multi_ratings") or {},
                                                 "audio_codec": ep_data["audio_codec"],
+                                                "audio_profile": ep_data.get("audio_profile"),
+                                                "audio_track_title": ep_data.get("audio_track_title"),
                                                 "audio_languages": ep_data["audio_languages"],
                                                 "subtitle_languages": ep_data.get("subtitle_languages", []),
                                                 "streaming_providers": item.get("streaming_providers", {}),

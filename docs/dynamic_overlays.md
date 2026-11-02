@@ -168,6 +168,17 @@ key. Raw provider error messages and API keys are not written to these diagnosti
 Season rules can display real SIMKL/MAL ratings for the corresponding native
 anime entry. They do not synthesize a season average. For example:
 
+First select the allowed libraries under **Visual Badges > Overlay Engine,
+Concurrency & Provider Settings > Libraries for Anime Season Ratings**, next
+to the SIMKL Client ID. This is a multi-selection and defaults to empty.
+Entering a SIMKL Client ID alone does not enable season mapping. Names match
+exactly, ignoring case and surrounding whitespace; selecting `Anime` does not
+select `Anime Shows`. The same selected library name applies across configured
+servers. Saved names remain visible so an old or renamed selection can be removed.
+Show/episode ratings and inherited show-score fallbacks are independent of this
+opt-in. Running jobs use their settings snapshot; selection changes apply to
+subsequent jobs.
+
 ```yaml
 - default: ratings
    template_variables:
@@ -199,13 +210,43 @@ ratings-refresh job is active. The next appropriate overlay sync applies the
 updated values to artwork; saving the mapping itself does not upload images.
 
 Mappings and selected SIMKL/MAL IDs survive restarts, separately from the ratings
-cache. With a configured SIMKL Client ID, hourly ratings refresh includes expired
-season entries, missing season entries already represented in the overlay cache,
+cache. With a configured SIMKL Client ID and an explicitly selected library,
+hourly ratings refresh includes expired season entries, missing season entries already represented in the overlay cache,
 and season entries with incomplete SIMKL/MAL scores. Related-title catalog data is
 reused within a run. Discovery is limited to 32 anime entries; an unfinished lookup
 requires manual selection rather than guessing. A provider outage preserves any
 previously confirmed season scores and their expiry instead of renewing or
 deleting them.
+
+### Automatic Retry Schedule
+
+The hourly ratings-refresh job selects candidates locally before querying media
+servers or external providers. It does not retry every unavailable score on every
+run:
+
+| Situation | Automatic retry |
+|---|---|
+| Episode aired within the last 14 days, with missing selected IMDb/TMDb scores | Next hourly run, when the server reports its release date. |
+| Older episode, unknown release date, unavailable scores, missing title/IDs, or metadata HTTP 404 | No sooner than 24 hours after the attempt. |
+| Missing/incomplete/unavailable anime season mapping | No sooner than 24 hours after the attempt, and only in opted-in libraries. |
+| Ambiguous season/cour mapping | Wait for manual selection or relevant locally recorded metadata/mapping changes. |
+| Complete, unexpired scores | Existing score-cache expiry rules apply. |
+
+The retry schedule is stored separately from scores in `ratings_refresh_retry`
+and survives backend restarts without renewing score timestamps or expiry.
+Relevant locally cached metadata changes, mapping-choice changes, or credentials
+for providers used by that media type can release a hold. Selecting another anime
+library does not restart unrelated episode retries. Provider credentials are
+represented only by a hash in retry fingerprints, never stored in the retry record.
+Automatic jobs report a **Deferred** count and log retry decisions.
+
+Explicit manual refreshes, including **Refresh ratings now** and the manual bulk
+action, bypass retry holds; **Mark expired** also clears the item's hold. Library
+opt-in is still required for manual season refresh/mapping changes. Refreshing or
+changing a mapping does not itself upload artwork. Old failed entries without a
+saved retry decision can be checked once after upgrading before their hold is
+recorded. Normal overlay-sync provider lookups are separate; an explicitly forced
+sync can still query providers.
 
 ### Rule Artwork Targets
 
@@ -290,7 +331,7 @@ The rendering adaptations are attributed under the MIT License below. Upstream t
 | **Audio Languages** | Movies & Titlecards | Audio streams present in media item | Square badges or flags for audio languages (e.g. `de`, `en`, `ja`). |
 | **Subtitle Languages** | Movies & Titlecards | Subtitle streams reported by the media server | Reuses the audio-language flag images, with independent placement and language selection. |
 | **Aspect Ratio** | Movies & Titlecards | Video display aspect ratio, or video width/height as a fallback | Kometa aspect badges such as `1.78` and `2.35`; unknown ratios do not receive a badge. |
-| **Audio Codec** | Movies & Titlecards | Audio codec, track title, and filename | Dolby Atmos, TrueHD, DTS:X, AAC, and other codec badges. |
+| **Audio Codec** | Movies & Titlecards; Shows & Seasons with parent stream aggregation | Audio codec, stream profile, track title, and filename | Dolby Atmos, TrueHD, DTS-HD MA, DTS:X, AAC, and other codec badges. |
 | **Video Source** | Movies & Titlecards | Media filename/path | WEB-DL/WEBRip, Blu-ray, Remux, HDTV, DVD, and similar source labels. This is separate from resolution and HDR. |
 | **Studio Logos** | Movies & Shows | Studio metadata reported by the media server | Studio branding using `default: studio`. |
 | **Streaming Services** | Movies & Shows; optionally Seasons & Titlecards | Regional TMDb / JustWatch availability | Multiple service logos, separate from studios and networks. Subscription availability is the default. |
@@ -405,6 +446,7 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 - **Automatic ratings refresh:** while Dynamic Overlays is enabled, **Automatic Refresh (Hourly)** checks expired movie/show/episode ratings independently of the overlay scheduler and rule configuration. It also picks up uncached episode titlecards already in the overlay cache and retries missing selected IMDb/TMDb episode scores. Complete, unexpired episode ratings are skipped. Missing movie/show poster entries still require the manual bulk action. Episode metadata supplies the episode IMDb ID and season/episode numbers; the parent show's TMDb ID is used only to address the episode endpoint, never to substitute the show's score. Refreshes are sequential, with parent metadata reused within each refresh job to limit provider traffic. The hourly refresh is enabled by default and can be disabled in the cache browser; it does not itself render or upload artwork. Only one ratings refresh job runs at a time. Cancel stops further processing; completed items remain saved.
 - **Refresh results:** the cache browser shows job progress, trigger, completion time, success/partial/failure counts, and the latest 20 issues. Each rating row stores its last attempt time, status, and sanitized per-provider results. These diagnostics survive backend restarts; interrupted jobs are marked interrupted. **Logs > RatingsRefresh.log** contains `[Ratings]` provider outcomes and `[RatingsRefresh]` job summaries. The file is stored at `UILogs/RatingsRefresh.log` (normally `/config/UILogs/RatingsRefresh.log` in Docker), appends across backend restarts, and rotates at 10 MiB with one backup, `RatingsRefresh.log.1`. It records INFO-level ratings diagnostics independently of the global backend log level, without request URLs or API keys. The usual `BackendServer.log` output is retained at the configured global level.
 - **Expiry is not provider health:** a successful refresh means fresh scores were saved, not that every score changed. Partial means some fresh scores were saved but another attempted provider failed or returned no scores. Failed lookups preserve existing scores, `cached_at`, and expiry, allowing stale scores to remain usable. A valid TTL alone does not prove every configured provider succeeded. The table's **Refresh list** button only reloads records; **Mark expired** does not immediately fetch them. Custom Plex audience-rating overlays still read Plex metadata directly; rendering them does not by itself populate the multi-source cache.
+- **Provider cache fallback during full sync:** fresh scores take priority, but provider values already cached for the same item remain available to artwork rendering when that provider cannot refresh, including a partial forced/full refresh where another provider succeeds. For example, a fresh TMDb score does not hide a cached IMDb show badge after an OMDb quota failure. The refresh status still reflects the actual provider failures; cached values are not reported as freshly fetched. No episode-to-show score substitution is performed, and missing values without a cache entry are not invented. Keep the existing ratings cache when updating for this behavior.
 - Repeated uploads can leave old alternatives in Plex's metadata directory. The separate [scheduled Plex Image Cleanup](plex_image_cleanup.md) task can report, quarantine, or remove old unselected uploads. It is never invoked automatically by overlay sync or preview.
 - View cached items in `database/overlay_cache.db` (`media_ratings_cache` table and fingerprint tables).
 - Movie and episode cache rows store the server-reported video file in `media_file_path`; `clean_asset_path` remains the original poster/titlecard image path. Filename-derived `detected_video_source` stores labels such as `WEB`, `BLU-RAY`, and `REMUX`, independently of `detected_resolution`. The legacy `detected_video_format` field retains the server-provided codec profile when available; it is not the video source.
@@ -416,6 +458,8 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 - Metadata-only refreshes preserve the saved layer reference and verified artwork identity, so an up-to-date poster check does not erase the previous recipe diagnostics. Incremental Plex movie/show poster processing also compares rendered bytes with the selected upload before uploading; an identical selected image refreshes fingerprints without another upload. Full/forced sync continues to upload explicitly requested artwork.
 - Plex movie/show poster cache hits verify the actual item thumbnail bytes, not just the recipe hash or the poster list's `selected` flag. This also applies when the thumbnail URL is unchanged, including separate library entries for the same movie. If the displayed poster already matches the rendered bytes, fingerprints are refreshed without uploading. Successful poster uploads always issue an explicit selection request for the target item, then verify its displayed thumbnail before the cache is marked synced. Pre-upload verification failures leave server artwork untouched; an upload whose selection cannot be confirmed is not marked synced.
 - Verified Plex episode stream metadata is reused on incremental runs only when the episode timestamp and media path still match. The first run builds this metadata cache; full/targeted runs and changed or incomplete metadata still perform fresh detail queries. Artwork-selection verification and overlay-rule evaluation remain active.
+- Show/season audio-codec badges use the same image resolver as other artwork, including imported `defaults/images/audio_codec/...` files and explicit `file_dts` / `file_ma` image overrides. They are not limited to `assets/audio_codec/...`. Parent audio-codec rules also accept `builder_level: [show, season]` or `builder_level: "show, season"` as well as a single level. An existing image in the defaults directory does not need to be downloaded or copied again.
+- Parent audio-codec aggregation retains the selected/default episode audio stream's profile and track title. This distinguishes a `dts`/`dca` base codec with a DTS-HD MA profile from plain DTS on show and season posters. Codec/profile variants are counted separately when selecting the common format, and stale parent track-title aliases are cleared when the aggregate is applied. Existing DTS/DCA stream-cache entries without profile fields are reread once; unrelated verified codec entries remain reusable. No cache clear is required. The audio-codec rule must target `show`, `season`, or `all`, or explicitly opt into `aggregate_parent_streams`; the matching badge image must be available.
 - Incremental sync still enumerates media-server items, checks clean source files, evaluates recipes, and verifies artwork where required; an `Up-to-date` result is not just a database lookup. A bounded candidate cache excludes overlay rules restricted to other show titles, while retaining per-episode filters and queue/group processing. Candidate keys include expanded rule inputs and title, so template, variable, and YAML changes invalidate them. This optimization does not change recipe hashes or require a cache reset.
 - Explicit font requests never silently substitute another font family. Font directories created after engine initialization are discovered on subsequent evaluations; a missing required custom font fails rendering instead of uploading a differently styled image. Existing images previously rendered with a substitute font may require one corrective sync to the configured font.
 - Missing or corrupt official fonts are repaired with size-limited downloads that Pillow validates before atomic replacement. Concurrent render workers share a repair lock, and failed repairs have a short retry cooldown; HTML/error responses are never installed as fonts. Invalid custom fonts require a valid replacement from the user. Legacy cache migration runs in bounded batches, with cache initialization offloaded from the async event loop.

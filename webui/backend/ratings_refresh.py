@@ -1,10 +1,11 @@
 import asyncio
 import json
 import logging
+import hashlib
 from logging.handlers import RotatingFileHandler
 import threading
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from xml.etree.ElementTree import fromstring
@@ -53,6 +54,7 @@ class RatingsRefreshService:
     def _connection(self):
         connection = self.cache._get_connection()
         connection.execute("CREATE TABLE IF NOT EXISTS ratings_refresh_job (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL)")
+        connection.execute("CREATE TABLE IF NOT EXISTS ratings_refresh_retry (server_type TEXT NOT NULL, item_id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (server_type, item_id))")
         connection.commit()
         return connection
 
@@ -70,14 +72,100 @@ class RatingsRefreshService:
             self._save(state)
         return state
 
-    def candidates(self, entry_id=None, include_missing=True, enabled_sources=None, include_seasons=False):
+    def _overlay_context(self, connection, item=None):
+        available = {row[1] for row in connection.execute("PRAGMA table_info(dynamic_overlay_cache)")}
+        if not {"server_type", "item_id", "asset_type"}.issubset(available):
+            return {}
+        columns = [name for name in ("server_type", "item_id", "asset_type", "library_name", "server_updated_at", "metadata_hash", "media_file_path") if name in available]
+        query = f"SELECT {', '.join(columns)} FROM dynamic_overlay_cache WHERE asset_type IN ('poster', 'season', 'titlecard')"
+        params = ()
+        if item is not None:
+            query += " AND server_type = ? AND item_id = ?"
+            params = (item["server_type"], item["item_id"])
+        return {(row["server_type"].lower(), str(row["item_id"]), row["asset_type"]): dict(row) for row in connection.execute(query, params)}
+
+    def _enrich_candidate(self, item, context):
+        asset = "season" if item.get("media_type") == "season" else "titlecard" if item.get("media_type") == "episode" else "poster"
+        item["_overlay"] = context.get((item["server_type"].lower(), str(item["item_id"]), asset), {})
+        item["library_name"] = item["_overlay"].get("library_name")
+        return item
+
+    def _retry_fingerprint(self, item, settings, credentials, mapping=None):
+        provider_names = ("simkl_client_id",) if item.get("media_type") == "season" else (
+            ("rating_sources", "omdb_api_key") if item.get("media_type") == "episode" else
+            ("rating_sources", "simkl_client_id", "omdb_api_key", "mdblist_api_key")
+        )
+        provider_settings = {name: settings.get(name) for name in provider_names}
+        provider_settings["server"] = credentials.get(item["server_type"])
+        if item.get("media_type") != "season":
+            provider_settings["tmdb_token"] = credentials.get("tmdb_token")
+        digest = hashlib.sha256(json.dumps(provider_settings, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+        payload = {"type": item.get("media_type"), "imdb": item.get("imdb_id"), "tmdb": item.get("tmdb_id"),
+                   "overlay": item.get("_overlay") or {}, "provider_context": digest,
+                   "mapping": {key: (mapping or {}).get(key) for key in ("mode", "simkl_id", "mal_id", "tvdb_id", "episode_numbers")}}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+    def _apply_retry_policy(self, items, settings, credentials):
+        now = datetime.utcnow().isoformat()
+        with closing(self._connection()) as connection:
+            retries = {(row["server_type"], row["item_id"]): json.loads(row["payload"]) for row in connection.execute("SELECT * FROM ratings_refresh_retry")}
+            mappings = {}
+            for row in connection.execute("SELECT server_type, item_id, payload FROM season_rating_mappings"):
+                data = json.loads(row["payload"])
+                mappings[(row["server_type"], row["item_id"])] = {key: data.get(key) for key in ("mode", "simkl_id", "mal_id", "tvdb_id", "episode_numbers")}
+        eligible = []
+        for item in items:
+            key = (item["server_type"], str(item["item_id"]))
+            retry = retries.get(key)
+            if not retry or retry.get("fingerprint") != self._retry_fingerprint(item, settings, credentials, mappings.get(key)):
+                eligible.append(item)
+            elif retry.get("kind") == "hourly" or (retry.get("next_attempt_at") and retry["next_attempt_at"] <= now):
+                eligible.append(item)
+        return eligible
+
+    def _record_retry_policy(self, item, settings, credentials, outcome, message, result):
+        with closing(self._connection()) as connection:
+            row = connection.execute("SELECT * FROM media_ratings_cache WHERE server_type = ? AND item_id = ?", (item["server_type"], str(item["item_id"]))).fetchone()
+            if row is None:
+                return
+            stored = self._enrich_candidate(dict(row), self._overlay_context(connection, dict(row)))
+            mapping = self.cache.get_season_mapping(item["server_type"], item["item_id"]) if stored["media_type"] == "season" else None
+            selected = settings.get("rating_sources") if settings.get("rating_sources") is not None else ["imdb", "tmdb"]
+            missing = any(source in selected and stored.get(f"{source}_rating") is None for source in ("imdb", "tmdb")) if stored["media_type"] == "episode" else (
+                stored.get("simkl_rating") is None or stored.get("mal_rating") is None
+            ) if stored["media_type"] == "season" else False
+            if outcome != "failed" and not missing:
+                with connection:
+                    connection.execute("DELETE FROM ratings_refresh_retry WHERE server_type = ? AND item_id = ?", (item["server_type"], str(item["item_id"])))
+                return
+            now = datetime.utcnow()
+            recent_episode = False
+            try:
+                age = now - datetime.fromisoformat(str(item.get("released_at") or "")[:10])
+                recent_episode = stored["media_type"] == "episode" and timedelta(0) <= age <= timedelta(days=14)
+            except ValueError:
+                pass
+            metadata_missing = str(message or "").endswith("HTTP 404") or "No native ratings or IMDb/TMDb IDs" in str(message or "")
+            mapping_status = (mapping or {}).get("status")
+            kind = "wait_for_change" if mapping_status == "ambiguous" else "hourly" if recent_episode and not metadata_missing else "daily"
+            payload = {"kind": kind, "reason": message or "Missing selected provider scores", "attempted_at": now.isoformat(),
+                       "next_attempt_at": (now + timedelta(days=1)).isoformat() if kind == "daily" else None,
+                       "fingerprint": self._retry_fingerprint(stored, settings, credentials, mapping)}
+            with connection:
+                connection.execute("INSERT INTO ratings_refresh_retry VALUES (?, ?, ?) ON CONFLICT(server_type, item_id) DO UPDATE SET payload = excluded.payload",
+                                   (item["server_type"], str(item["item_id"]), json.dumps(payload)))
+            next_label = payload["next_attempt_at"] or ("next hourly run" if kind == "hourly" else "metadata/manual mapping change")
+            logger.info("[RatingsRefresh] Retry %s %s: %s; next=%s", item["server_type"], item["item_id"], kind, next_label)
+
+    def candidates(self, entry_id=None, include_missing=True, enabled_sources=None, include_seasons=False, settings=None, automatic=False, credentials=None):
         episode_columns = {"imdb": "imdb_rating", "tmdb": "tmdb_rating"}
         sources = enabled_sources if enabled_sources is not None else ["imdb", "tmdb"]
         missing_episode_scores = " OR ".join(f"{column} IS NULL" for source, column in episode_columns.items() if source in sources) or "0"
         with closing(self.cache._get_connection()) as connection:
             if entry_id is not None:
                 row = connection.execute("SELECT * FROM media_ratings_cache WHERE id = ?", (entry_id,)).fetchone()
-                return [dict(row)] if row else []
+                return [self._enrich_candidate(dict(row), self._overlay_context(connection, dict(row)))] if row else []
+            context = self._overlay_context(connection)
             rows = connection.execute(
                 "SELECT * FROM media_ratings_cache WHERE (media_type IN ('movie', 'show', 'episode') OR (? AND media_type = 'season')) AND "
                 f"(expires_at <= ? OR (media_type = 'episode' AND ({missing_episode_scores})) OR "
@@ -99,7 +187,14 @@ class RatingsRefreshService:
                 ).fetchall()
                 for row in missing:
                     candidates[(row["server_type"], row["item_id"])] = dict(row)
-        return list(candidates.values())
+        from dynamic_overlays_service import season_ratings_enabled_for_library
+        result = []
+        for item in candidates.values():
+            self._enrich_candidate(item, context)
+            if item.get("media_type") == "season" and not season_ratings_enabled_for_library(settings or {}, item.get("library_name")):
+                continue
+            result.append(item)
+        return self._apply_retry_policy(result, settings or {}, credentials or {}) if automatic else result
 
     async def start(self, credentials, settings, entry_id=None, trigger="manual"):
         with self.lock:
@@ -216,6 +311,7 @@ class RatingsRefreshService:
                 raise ValueError("No movie, show or episode metadata returned")
             item.update(title=node.get("title") or item.get("title"), year=int(node.get("year")) if node.get("year") else item.get("year"),
                         media_type=node.get("type") if node.get("type") in ("movie", "show", "episode", "season") else ("show" if node.tag == "Directory" else "movie"))
+            item["released_at"] = node.get("originallyAvailableAt")
             if item["media_type"] == "season":
                 parent_id, season_number = node.get("parentRatingKey"), node.get("index")
             if item["media_type"] == "episode":
@@ -237,6 +333,7 @@ class RatingsRefreshService:
                 raise ValueError(f"Media server metadata HTTP {response.status_code}")
             data = response.json()
             ids = data.get("ProviderIds") or {}
+            item["released_at"] = data.get("PremiereDate")
             item["tvdb_id"] = ids.get("Tvdb")
             item.update(title=data.get("Name") or item.get("title"), year=data.get("ProductionYear") or item.get("year"),
                         imdb_id=ids.get("Imdb") or item.get("imdb_id"), tmdb_id=ids.get("Tmdb") or item.get("tmdb_id"),
@@ -254,6 +351,9 @@ class RatingsRefreshService:
         except (TypeError, ValueError):
             season_number = episode_number = None
         if item["media_type"] == "season":
+            from dynamic_overlays_service import season_ratings_enabled_for_library
+            if not season_ratings_enabled_for_library(settings, item.get("library_name")):
+                raise ValueError("Season library is not enabled for anime ratings")
             if parent_id is None or season_number is None:
                 raise ValueError("No season parent or season number returned")
             parent, episodes = await self._season_context(server, parent_id, item["item_id"], server_config, client)
@@ -287,12 +387,21 @@ class RatingsRefreshService:
             self.episode_parent_ids = {}
             self.season_parent_metadata = {}
             self.season_catalog_cache = {}
-            items = await asyncio.to_thread(self.candidates, entry_id, state["trigger"] != "automatic", settings.get("rating_sources"), bool(settings.get("simkl_client_id")))
+            unfiltered = await asyncio.to_thread(self.candidates, entry_id, state["trigger"] != "automatic", settings.get("rating_sources"), bool(settings.get("simkl_client_id")), settings)
+            items = await asyncio.to_thread(self._apply_retry_policy, unfiltered, settings, credentials) if state["trigger"] == "automatic" and entry_id is None else unfiltered
+            state["deferred"] = len(unfiltered) - len(items)
+            if state["deferred"]:
+                logger.info("[RatingsRefresh] Deferred %s candidates by retry policy", state["deferred"])
+            if entry_id is not None and items and items[0].get("media_type") == "season":
+                from dynamic_overlays_service import season_ratings_enabled_for_library
+                if not season_ratings_enabled_for_library(settings, items[0].get("library_name")):
+                    items = []
             state["total"] = len(items)
             self._save(state)
             async with httpx.AsyncClient(timeout=15.0) as client:
                 for item in items:
                     state["current_title"] = item.get("title") or item["item_id"]
+                    result = {}
                     try:
                         result = await self._refresh_item(item, credentials, settings, client)
                         outcome = result["_refresh_status"]
@@ -302,7 +411,7 @@ class RatingsRefreshService:
                             message = "No native ratings or IMDb/TMDb IDs available from the media server"
                     except Exception as error:
                         outcome = "failed"
-                        message = str(error) if isinstance(error, ValueError) and str(error).startswith(("Plex metadata HTTP", "Media server metadata HTTP", "Media server is disabled", "No movie")) else f"Metadata request failed ({type(error).__name__})"
+                        message = str(error) if isinstance(error, ValueError) and str(error).startswith(("Plex metadata HTTP", "Media server metadata HTTP", "Media server is disabled", "No movie", "Season library")) else f"Metadata request failed ({type(error).__name__})"
                         details = {"message": message}
                     state["current_title"] = item.get("title") or item["item_id"]
                     logger.info("[RatingsRefresh] %s %s '%s': %s; %s", item["server_type"], item["item_id"],
@@ -320,6 +429,7 @@ class RatingsRefreshService:
                                 "UPDATE media_ratings_cache SET title = ?, media_type = ? WHERE server_type = ? AND item_id = ?",
                                 (item.get("title"), item["media_type"], item["server_type"], item["item_id"]),
                             )
+                    await asyncio.to_thread(self._record_retry_policy, item, settings, credentials, outcome, message, result)
                     state[outcome] += 1
                     state["completed"] += 1
                     if message:

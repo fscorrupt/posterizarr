@@ -308,6 +308,7 @@ def get_dynamic_overlays_settings() -> Dict[str, Any]:
         "mdblist_api_key": "",           # Optional MDBList API Key
         "omdb_api_key": "",              # Optional OMDb API Key
         "simkl_client_id": "",
+        "season_rating_libraries": [],
         "rating_cache_ttl_days": 7,      # Cache TTL
         "ratings_auto_refresh_enabled": True,
         "debug_logging": False,          # Switchable debug pixel log for overlay positioning
@@ -343,6 +344,14 @@ def get_dynamic_overlays_settings() -> Dict[str, Any]:
         pass
 
     return merged
+
+
+def season_ratings_enabled_for_library(settings: Dict[str, Any], library_name: str) -> bool:
+    selected = settings.get("season_rating_libraries") or []
+    if not settings.get("simkl_client_id") or not isinstance(selected, list) or not str(library_name or "").strip():
+        return False
+    name = str(library_name).strip().casefold()
+    return any(str(value).strip().casefold() == name for value in selected)
 
 
 def save_dynamic_overlays_settings(settings: Dict[str, Any]) -> Dict[str, Any]:

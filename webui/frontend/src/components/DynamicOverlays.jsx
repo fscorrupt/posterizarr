@@ -560,6 +560,7 @@ export default function DynamicOverlays() {
     mdblist_api_key: "",
     omdb_api_key: "",
     simkl_client_id: "",
+    season_rating_libraries: [],
     rating_cache_ttl_days: 7,
     change_detection_dry_run: true
   });
@@ -942,6 +943,10 @@ export default function DynamicOverlays() {
     }
     return Array.from(libSet).sort();
   }, [visualConfig, scanData]);
+  const seasonRatingLibraryOptions = Array.from(new Set([
+    ...configuredLibraries,
+    ...(Array.isArray(featureSettings?.season_rating_libraries) ? featureSettings.season_rating_libraries : []),
+  ])).sort();
 
   // Sync server auto-selection: default to single enabled server or 'all' if multiple
   useEffect(() => {
@@ -7621,6 +7626,24 @@ export default function DynamicOverlays() {
                             {apiKeyTestResult.simkl.message || apiKeyTestResult.simkl.error}
                           </p>
                         )}
+                        <fieldset className="pt-3 border-t border-theme space-y-2">
+                          <legend className="text-xs font-semibold text-theme-text px-1">Libraries for Anime Season Ratings</legend>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
+                            {seasonRatingLibraryOptions.map(libraryName => (
+                              <label key={libraryName} className="inline-flex items-start gap-2 min-w-0 text-xs text-theme-text">
+                                <input type="checkbox" className="mt-0.5 shrink-0" disabled={isUpdatingFeatureSettings}
+                                  checked={(featureSettings?.season_rating_libraries || []).some(name => name.trim().toLowerCase() === libraryName.trim().toLowerCase())}
+                                  onChange={event => {
+                                    const previous = featureSettings?.season_rating_libraries || [];
+                                    const next = event.target.checked ? [...previous, libraryName] : previous.filter(name => name.trim().toLowerCase() !== libraryName.trim().toLowerCase());
+                                    handleUpdateDynamicSettings({ season_rating_libraries: next });
+                                  }} />
+                                <span className="break-words min-w-0">{libraryName}</span>
+                              </label>
+                            ))}
+                          </div>
+                          {seasonRatingLibraryOptions.length === 0 && <span className="text-xs text-theme-muted">No configured libraries</span>}
+                        </fieldset>
                       </div>
 
                       {/* Tiered TTL Summary & Clear Ratings Cache */}
@@ -13865,6 +13888,7 @@ export default function DynamicOverlays() {
                     <span className="text-green-400">{ratingsRefreshJob.success || 0} Succeeded</span>
                     <span className="text-amber-400">{ratingsRefreshJob.partial || 0} Partial</span>
                     <span className="text-red-400">{ratingsRefreshJob.failed || 0} Failed</span>
+                    {ratingsRefreshJob.deferred > 0 && <span className="text-theme-muted">{ratingsRefreshJob.deferred} Deferred</span>}
                     <span>{ratingsRefreshJob.trigger === "automatic" ? "Automatic" : "Manual"}</span>
                     <time>{new Date(ratingsRefreshJob.finished_at || ratingsRefreshJob.started_at).toLocaleString()}</time>
                   </div>

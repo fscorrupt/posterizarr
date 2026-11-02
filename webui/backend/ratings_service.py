@@ -673,6 +673,12 @@ class RatingsCacheManager:
                 with conn:
                     cur = conn.execute("UPDATE media_ratings_cache SET expires_at = ? WHERE id = ?", (past_iso, int(entry_id)))
                     updated = cur.rowcount > 0
+                    retry_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ratings_refresh_retry'").fetchone()
+                    if updated and retry_table:
+                        conn.execute(
+                            "DELETE FROM ratings_refresh_retry WHERE (server_type, item_id) IN "
+                            "(SELECT server_type, item_id FROM media_ratings_cache WHERE id = ?)", (int(entry_id),),
+                        )
                 conn.close()
                 return updated
             except Exception as e:
@@ -1417,17 +1423,24 @@ async def resolve_media_ratings(
     })
     logger.info("[Ratings] %s %s refresh %s; providers=%s", server_type, item_id, refresh_status, json.dumps(outcomes, sort_keys=True))
 
-    if not resolved:
-        stale = ratings_cache.get_cached_ratings(server_type, str(item_id), allow_stale=True) or {}
-        resolved = {key: stale[column] for key, column in (
-            ("imdb", "imdb_rating"), ("tmdb", "tmdb_rating"), ("rt_critic", "rt_critic_rating"),
-            ("rt_audience", "rt_audience_rating"), ("trakt", "trakt_rating"),
-            ("metacritic", "metacritic_rating"), ("letterboxd", "letterboxd_rating"),
-            ("simkl", "simkl_rating"), ("mal", "mal_rating"),
-        ) if stale.get(column) is not None}
-        if stale.get("simkl_url"):
-            resolved["_simkl_url"] = stale["simkl_url"]
-        resolved["_stale"] = bool(resolved)
+    has_fresh_scores = bool(resolved)
+    cached_scores = ratings_cache.get_cached_ratings(server_type, str(item_id), allow_stale=True) or {}
+    cached_sources = []
+    for key, column in (
+        ("imdb", "imdb_rating"), ("tmdb", "tmdb_rating"), ("rt_critic", "rt_critic_rating"),
+        ("rt_audience", "rt_audience_rating"), ("trakt", "trakt_rating"),
+        ("metacritic", "metacritic_rating"), ("letterboxd", "letterboxd_rating"),
+        ("simkl", "simkl_rating"), ("mal", "mal_rating"),
+    ):
+        if resolved.get(key) is None and cached_scores.get(column) is not None:
+            resolved[key] = cached_scores[column]
+            cached_sources.append(key)
+    if cached_sources:
+        resolved["_cached_sources"] = cached_sources
+        if not resolved.get("_simkl_url") and cached_scores.get("simkl_url"):
+            resolved["_simkl_url"] = cached_scores["simkl_url"]
+    if not has_fresh_scores:
+        resolved["_stale"] = bool(cached_sources)
 
     resolved["_source"] = primary_source
     resolved["_cached"] = False

@@ -20842,6 +20842,7 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     mdblist_api_key: Optional[str] = None
     omdb_api_key: Optional[str] = None
     simkl_client_id: Optional[str] = None
+    season_rating_libraries: Optional[List[str]] = None
     rating_cache_ttl_days: Optional[int] = None
     ratings_auto_refresh_enabled: Optional[bool] = None
     change_detection_enabled: Optional[bool] = None
@@ -21013,13 +21014,15 @@ async def save_season_rating_mapping(entry_id: int, req: SeasonRatingMappingRequ
     from ratings_service import ratings_cache
     from ratings_refresh import ratings_refresh_service
     from overlay_sync_service import get_server_credentials, is_overlay_sync_running
-    from dynamic_overlays_service import get_dynamic_overlays_settings
+    from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
     if is_overlay_sync_running() or (ratings_refresh_service.task is not None and not ratings_refresh_service.task.done()):
         raise HTTPException(status_code=409, detail="Wait for the active sync or ratings refresh to finish")
     item = await asyncio.to_thread(_get_season_rating_entry, entry_id)
     settings = await asyncio.to_thread(get_dynamic_overlays_settings)
     if not settings.get("simkl_client_id"):
         raise HTTPException(status_code=400, detail="Configure the SIMKL Client ID in provider settings first")
+    if not season_ratings_enabled_for_library(settings, item.get("library_name")):
+        raise HTTPException(status_code=403, detail="Enable this library for anime season ratings in provider settings first")
     mapping = await asyncio.to_thread(ratings_cache.get_season_mapping, item["server_type"], item["item_id"]) or {}
     mapping.update(mode="manual" if req.simkl_id is not None else "auto", simkl_id=req.simkl_id,
                    mal_id=None, source_title=None, status="pending")
@@ -21043,11 +21046,15 @@ async def get_ratings_refresh_status():
 async def start_ratings_refresh(req: RatingsRefreshRequest):
     from ratings_refresh import ratings_refresh_service
     from overlay_sync_service import get_server_credentials
-    from dynamic_overlays_service import get_dynamic_overlays_settings
+    from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
     if req.entry_id is not None and not await asyncio.to_thread(ratings_refresh_service.candidates, req.entry_id):
         raise HTTPException(status_code=404, detail="Rating entry not found")
     credentials = await asyncio.to_thread(get_server_credentials, CONFIG_PATH)
     settings = await asyncio.to_thread(get_dynamic_overlays_settings)
+    if req.entry_id is not None:
+        items = await asyncio.to_thread(ratings_refresh_service.candidates, req.entry_id)
+        if items and items[0].get("media_type") == "season" and not season_ratings_enabled_for_library(settings, items[0].get("library_name")):
+            raise HTTPException(status_code=403, detail="Enable this library for anime season ratings in provider settings first")
     return await ratings_refresh_service.start(credentials, settings, entry_id=req.entry_id)
 
 
