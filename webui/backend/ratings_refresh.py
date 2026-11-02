@@ -9,7 +9,7 @@ from datetime import datetime
 import httpx
 from xml.etree.ElementTree import fromstring
 
-from ratings_service import ratings_cache, resolve_media_ratings
+from ratings_service import ratings_cache, resolve_media_ratings, resolve_season_ratings, RatingsProviderRunState
 
 logger = logging.getLogger("ratings_refresh")
 
@@ -45,7 +45,10 @@ class RatingsRefreshService:
         self.task = None
         self.periodic_task = None
         self.lock = threading.Lock()
+        self.provider_run_state = None
         self.episode_parent_ids = {}
+        self.season_parent_metadata = {}
+        self.season_catalog_cache = {}
 
     def _connection(self):
         connection = self.cache._get_connection()
@@ -67,7 +70,7 @@ class RatingsRefreshService:
             self._save(state)
         return state
 
-    def candidates(self, entry_id=None, include_missing=True, enabled_sources=None):
+    def candidates(self, entry_id=None, include_missing=True, enabled_sources=None, include_seasons=False):
         episode_columns = {"imdb": "imdb_rating", "tmdb": "tmdb_rating"}
         sources = enabled_sources if enabled_sources is not None else ["imdb", "tmdb"]
         missing_episode_scores = " OR ".join(f"{column} IS NULL" for source, column in episode_columns.items() if source in sources) or "0"
@@ -76,9 +79,10 @@ class RatingsRefreshService:
                 row = connection.execute("SELECT * FROM media_ratings_cache WHERE id = ?", (entry_id,)).fetchone()
                 return [dict(row)] if row else []
             rows = connection.execute(
-                "SELECT * FROM media_ratings_cache WHERE media_type IN ('movie', 'show', 'episode') AND "
-                f"(expires_at <= ? OR (media_type = 'episode' AND ({missing_episode_scores}))) ORDER BY id",
-                (datetime.utcnow().isoformat(),)
+                "SELECT * FROM media_ratings_cache WHERE (media_type IN ('movie', 'show', 'episode') OR (? AND media_type = 'season')) AND "
+                f"(expires_at <= ? OR (media_type = 'episode' AND ({missing_episode_scores})) OR "
+                "(media_type = 'season' AND (simkl_rating IS NULL OR mal_rating IS NULL))) ORDER BY id",
+                (include_seasons, datetime.utcnow().isoformat())
             ).fetchall()
             candidates = {(row["server_type"], row["item_id"]): dict(row) for row in rows}
             exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dynamic_overlay_cache'").fetchone()
@@ -89,8 +93,9 @@ class RatingsRefreshService:
                     "ON ratings.server_type = overlay.server_type AND ratings.item_id = overlay.item_id "
                     "WHERE ratings.id IS NULL AND ("
                     "(overlay.asset_type = 'titlecard' AND overlay.media_type = 'episode') OR "
+                    "(? AND overlay.asset_type = 'season' AND overlay.media_type = 'season') OR "
                     "(? AND overlay.asset_type = 'poster' AND overlay.media_type IN ('movie', 'show'))) ",
-                    (include_missing,)
+                    (include_seasons, include_missing)
                 ).fetchall()
                 for row in missing:
                     candidates[(row["server_type"], row["item_id"])] = dict(row)
@@ -142,6 +147,49 @@ class RatingsRefreshService:
         self.episode_parent_ids[key] = tmdb_id
         return tmdb_id
 
+    async def _season_context(self, server, parent_id, season_id, server_config, client):
+        key = (server, str(parent_id))
+        if key not in self.season_parent_metadata:
+            parent = {"id": str(parent_id)}
+            if server == "plex":
+                response = await client.get(f"{server_config['url'].rstrip('/')}/library/metadata/{parent_id}",
+                    headers={"X-Plex-Token": server_config.get("token") or "", "Accept": "application/xml"}, params={"includeGuids": "1"})
+                if response.status_code != 200:
+                    raise ValueError(f"Plex metadata HTTP {response.status_code}")
+                root = fromstring(response.content)
+                node = root if root.tag == "Directory" else root.find("Directory")
+                if node is None or node.get("type") != "show":
+                    raise ValueError("No show metadata returned for season parent")
+                parent["title"] = node.get("title")
+                for guid in node.findall("Guid"):
+                    identifier = str(guid.get("id") or "")
+                    if identifier.startswith("tvdb://"):
+                        parent["tvdb_id"] = identifier[7:]
+            else:
+                response = await client.get(f"{server_config['url'].rstrip('/')}/Items/{parent_id}",
+                    headers={"X-Emby-Token": server_config.get("api_key") or ""}, params={"Fields": "ProviderIds"})
+                if response.status_code != 200:
+                    raise ValueError(f"Media server metadata HTTP {response.status_code}")
+                data = response.json()
+                if data.get("Type") != "Series":
+                    raise ValueError("No show metadata returned for season parent")
+                parent["title"] = data.get("Name")
+                parent["tvdb_id"] = (data.get("ProviderIds") or {}).get("Tvdb")
+            self.season_parent_metadata[key] = parent
+        if server == "plex":
+            response = await client.get(f"{server_config['url'].rstrip('/')}/library/metadata/{season_id}/children",
+                headers={"X-Plex-Token": server_config.get("token") or "", "Accept": "application/xml"})
+            if response.status_code != 200:
+                raise ValueError(f"Plex metadata HTTP {response.status_code}")
+            episodes = [int(node.get("index")) for node in fromstring(response.content).findall(".//Video") if str(node.get("index") or "").isdigit()]
+        else:
+            response = await client.get(f"{server_config['url'].rstrip('/')}/Shows/{parent_id}/Episodes",
+                headers={"X-Emby-Token": server_config.get("api_key") or ""}, params={"SeasonId": str(season_id)})
+            if response.status_code != 200:
+                raise ValueError(f"Media server metadata HTTP {response.status_code}")
+            episodes = [int(node["IndexNumber"]) for node in response.json().get("Items", []) if node.get("IndexNumber") is not None]
+        return self.season_parent_metadata[key], episodes
+
     async def _refresh_item(self, item, credentials, settings, client):
         server = item["server_type"]
         server_config = credentials.get(server) or {}
@@ -167,7 +215,9 @@ class RatingsRefreshService:
             if node is None:
                 raise ValueError("No movie, show or episode metadata returned")
             item.update(title=node.get("title") or item.get("title"), year=int(node.get("year")) if node.get("year") else item.get("year"),
-                        media_type=node.get("type") if node.get("type") in ("movie", "show", "episode") else ("show" if node.tag == "Directory" else "movie"))
+                        media_type=node.get("type") if node.get("type") in ("movie", "show", "episode", "season") else ("show" if node.tag == "Directory" else "movie"))
+            if item["media_type"] == "season":
+                parent_id, season_number = node.get("parentRatingKey"), node.get("index")
             if item["media_type"] == "episode":
                 item["imdb_id"] = item["tmdb_id"] = None
                 season_number, episode_number = node.get("parentIndex"), node.get("index")
@@ -190,7 +240,9 @@ class RatingsRefreshService:
             item["tvdb_id"] = ids.get("Tvdb")
             item.update(title=data.get("Name") or item.get("title"), year=data.get("ProductionYear") or item.get("year"),
                         imdb_id=ids.get("Imdb") or item.get("imdb_id"), tmdb_id=ids.get("Tmdb") or item.get("tmdb_id"),
-                        media_type={"Movie": "movie", "Series": "show", "Episode": "episode"}.get(data.get("Type"), item["media_type"]))
+                        media_type={"Movie": "movie", "Series": "show", "Episode": "episode", "Season": "season"}.get(data.get("Type"), item["media_type"]))
+            if item["media_type"] == "season":
+                parent_id, season_number = data.get("SeriesId"), data.get("IndexNumber")
             if item["media_type"] == "episode":
                 item["imdb_id"], item["tmdb_id"] = ids.get("Imdb"), None
                 season_number, episode_number = data.get("ParentIndexNumber"), data.get("IndexNumber")
@@ -201,6 +253,15 @@ class RatingsRefreshService:
             episode_number = int(episode_number) if episode_number is not None else None
         except (TypeError, ValueError):
             season_number = episode_number = None
+        if item["media_type"] == "season":
+            if parent_id is None or season_number is None:
+                raise ValueError("No season parent or season number returned")
+            parent, episodes = await self._season_context(server, parent_id, item["item_id"], server_config, client)
+            if parent.get("title"):
+                item["title"] = f"{parent['title']} S{season_number:02d}"
+            return await resolve_season_ratings(server, item["item_id"], item.get("title") or str(item["item_id"]),
+                parent, season_number, episodes, settings.get("simkl_client_id"), client, force_refresh=True,
+                cache=self.cache, catalog_cache=self.season_catalog_cache)
         if item["media_type"] == "episode" and parent_id and credentials.get("tmdb_token") and season_number is not None and episode_number is not None:
             item["tmdb_id"] = await self._episode_parent_tmdb_id(server, parent_id, server_config, client)
         enabled_sources = settings.get("rating_sources")
@@ -217,12 +278,16 @@ class RatingsRefreshService:
             client=client, force_refresh=True, server_community_rating=community_rating, server_critic_rating=critic_rating,
             season_number=season_number, episode_number=episode_number,
             simkl_client_id=settings.get("simkl_client_id"), tvdb_id=item.get("tvdb_id"),
+            provider_run_state=self.provider_run_state,
         )
 
     async def _run(self, credentials, settings, entry_id, state):
         try:
+            self.provider_run_state = RatingsProviderRunState()
             self.episode_parent_ids = {}
-            items = await asyncio.to_thread(self.candidates, entry_id, state["trigger"] != "automatic", settings.get("rating_sources"))
+            self.season_parent_metadata = {}
+            self.season_catalog_cache = {}
+            items = await asyncio.to_thread(self.candidates, entry_id, state["trigger"] != "automatic", settings.get("rating_sources"), bool(settings.get("simkl_client_id")))
             state["total"] = len(items)
             self._save(state)
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -232,8 +297,8 @@ class RatingsRefreshService:
                         result = await self._refresh_item(item, credentials, settings, client)
                         outcome = result["_refresh_status"]
                         details = {"providers": result.get("_providers", {})}
-                        message = "No fresh scores returned" if outcome == "failed" else "Some providers failed or returned no scores" if outcome == "partial" else None
-                        if outcome == "failed" and not (item.get("imdb_id") or item.get("tmdb_id")):
+                        message = (result.get("_message") or "No fresh scores returned") if outcome == "failed" else "Some providers failed or returned no scores" if outcome == "partial" else None
+                        if outcome == "failed" and item["media_type"] != "season" and not (item.get("imdb_id") or item.get("tmdb_id")):
                             message = "No native ratings or IMDb/TMDb IDs available from the media server"
                     except Exception as error:
                         outcome = "failed"
@@ -268,6 +333,9 @@ class RatingsRefreshService:
             state.update(status="failed", message=f"Refresh failed ({type(error).__name__})")
         finally:
             state.update(running=False, finished_at=datetime.utcnow().isoformat(), current_title=None)
+            if self.provider_run_state is not None:
+                state["omdb"] = self.provider_run_state.snapshot()
+                logger.info("[RatingsRefresh] OMDb run summary: %s", json.dumps(state["omdb"], sort_keys=True))
             self._save(state)
             logger.info("[RatingsRefresh] %s: %s/%s completed; success=%s partial=%s failed=%s", state["status"], state["completed"], state["total"], state["success"], state["partial"], state["failed"])
 

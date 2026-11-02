@@ -118,6 +118,12 @@ when other scores are already cached. Scores and their SIMKL source link are
 saved in the existing ratings cache; expired cached SIMKL/MAL sources are also
 refreshed by the ratings-refresh job. Missing optional logo images use explicit
 `SIMKL`/`MAL` text labels; custom image overrides remain available.
+The MAL badge uses the official `rating/MAL.png` asset. After selecting
+MyAnimeList, use **Config & YAML Files > Download All Available** if that logo
+is listed as missing/fetchable. Existing custom `MyAnimeList.png` files are
+also supported. With the logo present, the badge shows the logo and numerical
+score separately; the logo follows the configured font size unless a fixed
+`scale_height` overrides it.
 
 SIMKL title ratings are never used as episode ratings. The documented TV/anime
 episode-list responses do not contain rating fields. Missing title/provider
@@ -129,6 +135,77 @@ refreshing cached scores does not itself upload artwork.
 See [SIMKL ratings](https://api.simkl.org/api-reference/ratings.md),
 [rate limits](https://api.simkl.org/resources/rate-limits.md), and
 [API rules](https://api.simkl.org/api-rules.md).
+
+### OMDb Run Protection
+
+Each ratings-refresh job and overlay-sync run has its own OMDb request guard,
+shared across that run's items, servers, episodes, and parallel sync workers:
+
+- A confirmed quota/limit response, an explicitly invalid/unauthorized API key,
+   or HTTP 429 disables further OMDb requests for the remainder of that run.
+- Otherwise, three consecutive technical failures (such as an unexplained HTTP
+   401, HTTP 5xx, or transport failure) disable OMDb for the remainder of the run.
+   A successful response resets this consecutive-error counter.
+- A missing title or a response without usable scores does not open the guard.
+
+Requests already in flight can finish; new OMDb requests are skipped once the
+guard opens. Other providers and normal cache fallback continue. Skipped OMDb
+requests remain visible in provider diagnostics rather than pretending that a
+missing score was successfully refreshed. Failed lookups do not clear existing
+scores or renew their expiry. A partial lookup can still save fresh values from
+other providers using the normal cache behavior.
+
+The next run starts with a fresh guard and retries OMDb; the block is neither a
+persistent setting nor a permanent key rejection. `RatingsRefresh.log` records
+the reason when OMDb is disabled. Refresh-job results contain an `omdb` summary
+with `requests`, `skipped`, `suppressed`, and `reason`; the overlay-sync log also
+includes an OMDb run summary. OMDb JSON error bodies are interpreted on HTTP
+errors too, so a documented quota response is distinguishable from an invalid
+key. Raw provider error messages and API keys are not written to these diagnostics.
+
+### Anime Season Ratings
+
+Season rules can display real SIMKL/MAL ratings for the corresponding native
+anime entry. They do not synthesize a season average. For example:
+
+```yaml
+- default: ratings
+   template_variables:
+      builder_level: season
+      sources: [imdb, simkl, mal]
+```
+
+Automatic mapping uses the parent show's TVDb ID and compares the local season's
+episode numbers with the anime's TVDb episode coordinates. It requires one
+native anime entry covering exactly that whole season. Multiple cours, incomplete
+episode coverage, missing mappings, or an incomplete catalog lookup do not result
+in a guessed selection. This assumes the media server uses the corresponding
+TVDb episode ordering; use a manual mapping when its ordering differs.
+
+**Show scores remain as fallbacks per provider.** A confirmed MAL season value
+replaces the inherited MAL value, but an IMDb show score remains until an actual
+IMDb season source exists (this integration currently keeps the IMDb show fallback).
+Missing season values never erase the inherited show
+scores. The season ratings cache contains only the season's own SIMKL/MAL values,
+not copies of the fallbacks used for rendering.
+
+In **Sync & Cache > Ratings Cache & Refresh**, select **Seasons**, then use the
+row's **Season rating mapping** action. Choose a discovered anime/cour entry,
+enter a positive **SIMKL Anime ID**, or restore **Automatic (exact season match)**.
+The linked MAL ID is read from that anime entry. Saving starts a ratings-only
+refresh; existing season values are invalidated when the choice changes so scores
+from different entries are not mixed. Mapping changes are refused while a sync or
+ratings-refresh job is active. The next appropriate overlay sync applies the
+updated values to artwork; saving the mapping itself does not upload images.
+
+Mappings and selected SIMKL/MAL IDs survive restarts, separately from the ratings
+cache. With a configured SIMKL Client ID, hourly ratings refresh includes expired
+season entries, missing season entries already represented in the overlay cache,
+and season entries with incomplete SIMKL/MAL scores. Related-title catalog data is
+reused within a run. Discovery is limited to 32 anime entries; an unfinished lookup
+requires manual selection rather than guessing. A provider outage preserves any
+previously confirmed season scores and their expiry instead of renewing or
+deleting them.
 
 ### Rule Artwork Targets
 

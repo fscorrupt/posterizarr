@@ -43,7 +43,7 @@ import httpx
 from overlay_cache import OverlayCache, compute_metadata_hash, snapshot_overlay_layers
 from overlay_cache import compute_layers_recipe_hash as _compute_layers_recipe_hash
 from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
-from ratings_service import resolve_media_ratings, build_multi_rating_layers, ratings_cache
+from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
 from dynamic_overlays_service import get_dynamic_overlays_settings
 from plex_push_service import get_asset_path_from_config
 
@@ -75,7 +75,7 @@ def extract_edition(*candidates: Optional[str]) -> Optional[str]:
 
 async def resolve_episode_overlay_ratings(
     server_type, episode, parent_metadata, season_number, credentials, client,
-    enabled_sources, mdblist_api_key=None, omdb_api_key=None, force_refresh=False
+    enabled_sources, mdblist_api_key=None, omdb_api_key=None, force_refresh=False, provider_run_state=None
 ):
     episode_id = str(episode["id"])
     xml_bytes = episode.get("rating_xml")
@@ -109,6 +109,7 @@ async def resolve_episode_overlay_ratings(
         mdblist_api_key=mdblist_api_key, omdb_api_key=omdb_api_key,
         enabled_sources=enabled_sources, client=client, force_refresh=force_refresh,
         season_number=season_number, episode_number=episode["episode_number"],
+        provider_run_state=provider_run_state,
     )
 
 
@@ -695,6 +696,15 @@ def compute_layers_recipe_hash(layers: List[Dict[str, Any]]) -> str:
 
 def _rating_scores(ratings: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return {key: value for key, value in (ratings or {}).items() if not key.startswith("_") and value is not None}
+
+
+def _merge_season_rating_scores(show_ratings, season_ratings):
+    merged = dict(show_ratings or {})
+    for source in ("simkl", "mal"):
+        value = (season_ratings or {}).get(source)
+        if isinstance(value, (int, float)) and 0 < value <= 10:
+            merged[source] = value
+    return merged
 
 
 def _audience_rating_from_scores(ratings: Optional[Dict[str, Any]]) -> Optional[float]:
@@ -2088,7 +2098,9 @@ def build_multi_rating_layers(
             if num is not None:
                 score_text = f"{int(round(num))}"
         elif src in ("simkl", "mal"):
-            logo_file = assets_dir / ("SIMKL.png" if src == "simkl" else "MyAnimeList.png")
+            logo_file = assets_dir / ("SIMKL.png" if src == "simkl" else "MAL.png")
+            if src == "mal" and not logo_file.exists() and (assets_dir / "MyAnimeList.png").exists():
+                logo_file = assets_dir / "MyAnimeList.png"
             if num is not None:
                 score_text = f"{num:.1f}"
         else:
@@ -3864,6 +3876,7 @@ async def _run_overlay_sync_task(
         total_skipped = 0
         total_failed = 0
 
+        provider_run_state = RatingsProviderRunState()
         async with httpx.AsyncClient(timeout=45.0) as http_client:
             for s_type in servers_to_run:
                 write_log(f"\n>>> Processing Server: {s_type.upper()} <<<")
@@ -4514,6 +4527,7 @@ async def _run_overlay_sync_task(
                             tmdb_api_key=creds.get("tmdb_token"),
                             mdblist_api_key=mdblist_key,
                             omdb_api_key=omdb_key,
+                            provider_run_state=provider_run_state,
                             simkl_client_id=dyn_settings.get("simkl_client_id"),
                             tvdb_id=item.get("tvdb_id"),
                             enabled_sources=library_rating_sources,
@@ -5031,7 +5045,7 @@ async def _run_overlay_sync_task(
                                 return
 
                             # FAST-PATH: If show itself is up-to-date, server timestamp unchanged, and no clean artwork in show directory was modified since last sync:
-                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards):
+                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards) and not (needs_ratings and dyn_settings.get("simkl_client_id")):
                                 c_up = cached_entry.get("server_updated_at")
                                 s_up = item.get("server_updated_at")
                                 if c_up and s_up and str(c_up) == str(s_up):
@@ -5083,6 +5097,7 @@ async def _run_overlay_sync_task(
                                             except (ValueError, TypeError):
                                                 pass
 
+                            season_catalog_cache = {}
                             for s_info in seasons_to_process:
                                 if _cancel_requested:
                                     return
@@ -5093,6 +5108,8 @@ async def _run_overlay_sync_task(
                                 if not process_season and not process_titlecards:
                                     continue
                                 clean_season = find_season_poster(show_parent, s_num, root_f, dir_cache=dir_cache) if has_season_posters and process_season else None
+                                season_episode_nodes = None
+                                season_episode_items = None
                                 if clean_season:
                                     smtime, ssize, sclean_hash = compute_file_fingerprint(clean_season)
                                     s_resolution = (item.get("season_resolutions") or {}).get(str(s_num)) or item.get("resolution")
@@ -5111,6 +5128,28 @@ async def _run_overlay_sync_task(
                                     if season_aggregate is not None:
                                         s_item_meta.update(season_aggregate)
                                         s_item_meta["_language_order_precomputed"] = True
+                                    season_rating_rules = [rule for rule in lib_rules if isinstance(rule, dict)
+                                        and str(rule.get("default", "")).lower() in ("rating", "ratings")
+                                        and str((rule.get("template_variables") or {}).get("builder_level", "all")).lower() in ("all", "season")]
+                                    if dyn_settings.get("simkl_client_id") and (season_rating_rules or (needs_ratings and any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules))):
+                                        if s_type == "plex":
+                                            season_episode_nodes = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            if season_episode_nodes is None:
+                                                episode_response = await http_client.get(f"{s_url}/library/metadata/{s_rk}/children",
+                                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"})
+                                                season_episode_nodes = fromstring(episode_response.content).findall(".//Video") if episode_response.status_code == 200 else []
+                                            season_episode_numbers = [int(node.get("index")) for node in season_episode_nodes if str(node.get("index") or "").isdigit()]
+                                        else:
+                                            season_episode_items = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            if season_episode_items is None:
+                                                episode_response = await http_client.get(f"{s_url}/Shows/{item_id}/Episodes",
+                                                    params={"SeasonId": str(s_rk), "Fields": "MediaStreams,MediaSources,OfficialRating,RunTimeTicks,Status,ProviderIds,Path"}, headers=headers)
+                                                season_episode_items = episode_response.json().get("Items", []) if episode_response.status_code == 200 else []
+                                            season_episode_numbers = [int(node["IndexNumber"]) for node in season_episode_items if node.get("IndexNumber") is not None]
+                                        season_ratings = await resolve_season_ratings(s_type, str(s_rk), f"{title} S{s_num:02d}",
+                                            item, s_num, season_episode_numbers, dyn_settings["simkl_client_id"], http_client,
+                                            force_refresh=scope == "full", catalog_cache=season_catalog_cache)
+                                        s_item_meta["multi_ratings"] = _merge_season_rating_scores(item.get("multi_ratings"), season_ratings)
                                     s_layers = build_overlay_layers_for_item(s_item_meta, lib_rules, overlays_dir, is_landscape=False)
                                     s_recipe_hash = compute_layers_recipe_hash(s_layers)
                                     s_meta_hash = compute_metadata_hash(
@@ -5252,7 +5291,7 @@ async def _run_overlay_sync_task(
                                     try:
                                         episodes_to_process = []
                                         if s_type == "plex":
-                                            ep_nodes = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            ep_nodes = season_episode_nodes if season_episode_nodes is not None else (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
                                             if ep_nodes is None:
                                                 ep_resp = await http_client.get(
                                                     f"{s_url}/library/metadata/{s_rk}/children",
@@ -5434,7 +5473,7 @@ async def _run_overlay_sync_task(
                                                         "clean_tc": clean_tc
                                                     })
                                         elif s_type in ["jellyfin", "emby"]:
-                                            em_episode_items = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            em_episode_items = season_episode_items if season_episode_items is not None else (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
                                             if em_episode_items is None:
                                                 em_ep_resp = await http_client.get(
                                                     f"{s_url}/Shows/{item_id}/Episodes?SeasonId={s_rk}&Fields=MediaStreams,MediaSources,OfficialRating,RunTimeTicks,Status,ProviderIds,Path",
@@ -5534,7 +5573,7 @@ async def _run_overlay_sync_task(
                                                 )) if episode_rating_rules else rating_sources
                                                 ep_data["multi_ratings"] = await resolve_episode_overlay_ratings(
                                                     s_type, ep_data, item, s_num, {**creds, "url": s_url}, http_client,
-                                                    episode_sources, mdblist_key, omdb_key, force_refresh=scope == "full"
+                                                    episode_sources, mdblist_key, omdb_key, force_refresh=scope == "full", provider_run_state=provider_run_state
                                                 )
                                                 ep_data["audience_rating"] = ep_data.get("audience_rating") or _audience_rating_from_scores(ep_data["multi_ratings"])
 
@@ -5846,6 +5885,7 @@ async def _run_overlay_sync_task(
 
         write_log("=" * 70)
         write_log(f"DYNAMIC OVERLAYS SYNC COMPLETE")
+        write_log(f"OMDb run summary: {json.dumps(provider_run_state.snapshot(), sort_keys=True)}")
         write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed | Runtime: {runtime_text}")
         write_log("=" * 70)
 

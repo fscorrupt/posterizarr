@@ -137,6 +137,15 @@ class RatingsCacheManager:
                             PRIMARY KEY (media_type, tmdb_id)
                         )
                     """)
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS season_rating_mappings (
+                            server_type TEXT NOT NULL,
+                            item_id TEXT NOT NULL,
+                            payload TEXT NOT NULL,
+                            updated_at TEXT NOT NULL,
+                            PRIMARY KEY (server_type, item_id)
+                        )
+                    """)
                     for col_sql in [
                         "ALTER TABLE media_ratings_cache ADD COLUMN simkl_rating REAL;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN mal_rating REAL;",
@@ -232,6 +241,42 @@ class RatingsCacheManager:
             except Exception as e:
                 logger.error(f"[RatingsCache] Error reading cache ({server_type}, {item_id}): {e}")
                 return None
+
+    def get_season_mapping(self, server_type, item_id):
+        with self.lock, closing(self._get_connection()) as connection:
+            row = connection.execute(
+                "SELECT payload FROM season_rating_mappings WHERE server_type = ? AND item_id = ?",
+                (server_type.lower(), str(item_id)),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_season_mapping(self, server_type, item_id, mapping, invalidate=False, expected_choice=None):
+        now = datetime.utcnow().isoformat()
+        with self.lock, closing(self._get_connection()) as connection:
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                if expected_choice is not None:
+                    current_row = connection.execute(
+                        "SELECT payload FROM season_rating_mappings WHERE server_type = ? AND item_id = ?",
+                        (server_type.lower(), str(item_id)),
+                    ).fetchone()
+                    current = json.loads(current_row[0]) if current_row else {}
+                    if (current.get("mode", "auto"), current.get("simkl_id")) != expected_choice:
+                        return None
+                connection.execute(
+                    "INSERT INTO season_rating_mappings (server_type, item_id, payload, updated_at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(server_type, item_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at",
+                    (server_type.lower(), str(item_id), json.dumps(mapping), now),
+                )
+                if invalidate:
+                    connection.execute(
+                        "UPDATE media_ratings_cache SET imdb_rating = NULL, tmdb_rating = NULL, rt_critic_rating = NULL, "
+                        "rt_audience_rating = NULL, trakt_rating = NULL, metacritic_rating = NULL, letterboxd_rating = NULL, "
+                        "simkl_rating = NULL, mal_rating = NULL, simkl_url = NULL, expires_at = ?, "
+                        "last_refresh_status = NULL, last_refresh_details = NULL WHERE server_type = ? AND item_id = ? AND media_type = 'season'",
+                        (now, server_type.lower(), str(item_id)),
+                    )
+        return mapping
 
     get_ratings = get_cached_ratings
 
@@ -728,24 +773,39 @@ def parse_plex_xml_ratings(xml_content: bytes) -> Dict[str, Any]:
     return ratings
 
 
+def _rating_error_details(data):
+    error_text = str(data.get("error") or data.get("Error") or "").lower() if isinstance(data, dict) else ""
+    if "not found" in error_text or "not exist" in error_text:
+        return "not_found", "Item not found by provider"
+    if "limit" in error_text or "quota" in error_text:
+        return "quota", "Provider rate or daily limit reached"
+    if any(fragment in error_text for fragment in ("api key", "apikey", "api_key", "invalid key", "unauthor", "authenticat")):
+        return "auth", "Invalid or unauthorized API key"
+    return "rejected", "Provider rejected the request"
+
+
 async def _fetch_rating_json(client, provider, url, outcomes, **kwargs):
     try:
         response = await client.get(url, **kwargs)
         if response.status_code != 200:
             outcomes[provider] = {"status": "failed", "message": f"HTTP {response.status_code}"}
+            if provider == "omdb":
+                try:
+                    error_code, message = _rating_error_details(response.json())
+                except ValueError:
+                    error_code, message = "rejected", None
+                if error_code != "rejected":
+                    outcomes[provider].update(error_code=error_code, message=message)
+                else:
+                    outcomes[provider]["error_code"] = "rate_limit" if response.status_code == 429 else "http_error"
+                outcomes[provider]["http_status"] = response.status_code
             return None
         data = response.json()
         if not isinstance(data, dict) or data.get("error") or data.get("Response") == "False":
-            error_text = str(data.get("error") or data.get("Error") or "").lower() if isinstance(data, dict) else ""
-            if "not found" in error_text or "not exist" in error_text:
-                message = "Item not found by provider"
-            elif "limit" in error_text or "quota" in error_text:
-                message = "Provider rate or daily limit reached"
-            elif "key" in error_text or "unauthor" in error_text or "authenticat" in error_text:
-                message = "Invalid or unauthorized API key"
-            else:
-                message = "Provider rejected the request"
+            error_code, message = _rating_error_details(data)
             outcomes[provider] = {"status": "failed", "message": message}
+            if provider == "omdb":
+                outcomes[provider].update(error_code=error_code, http_status=response.status_code)
             return None
         outcomes[provider] = {"status": "no_scores", "message": "No usable scores returned"}
         return data
@@ -847,30 +907,54 @@ async def fetch_mdblist_ratings(
     return ratings
 
 
-async def fetch_simkl_ratings(imdb_id, tmdb_id, client_id, client, media_type="movie", outcomes=None, tvdb_id=None):
-    outcomes = outcomes if outcomes is not None else {}
-    if not client_id or media_type not in ("movie", "show") or not (imdb_id or tmdb_id or tvdb_id):
-        return {}
+def select_simkl_season_candidate(candidates, season_number, episode_numbers):
+    relevant = [candidate for candidate in candidates if season_number in candidate.get("mapped_seasons", [])]
+    if len(relevant) > 1:
+        return None, "ambiguous"
+    if not relevant:
+        return None, "unmapped"
+    candidate = relevant[0]
+    if candidate.get("mapped_seasons") != [season_number] or not episode_numbers:
+        return None, "unmapped"
+    if set(candidate.get("episode_numbers", [])) != set(episode_numbers):
+        return None, "incomplete"
+    return candidate, "matched"
+
+
+def _simkl_request_context(client_id):
     try:
         version = (PROJECT_ROOT / "Release.txt").read_text(encoding="utf-8").splitlines()[0].strip()
     except (OSError, IndexError):
         version = "unknown"
     params = {"client_id": str(client_id).strip(), "app-name": "posterizarr", "app-version": version}
     headers = {"User-Agent": f"Posterizarr/{version}"}
-    identifiers = {key: value for key, value in (("imdb", imdb_id), ("tmdb", tmdb_id), ("tvdb", tvdb_id)) if value}
+    return params, headers
+
+
+async def fetch_simkl_catalog(imdb_id, tmdb_id, client_id, client, media_type="movie", outcomes=None, tvdb_id=None, anime_id=None):
+    outcomes = outcomes if outcomes is not None else {}
+    if not client_id or media_type not in ("movie", "show") or not (imdb_id or tmdb_id or tvdb_id or anime_id):
+        return {}
+    params, headers = _simkl_request_context(client_id)
     try:
-        response = await client.get(
-            "https://api.simkl.com/redirect", params={**params, **identifiers, "type": "movie" if media_type == "movie" else "tv", "to": "simkl"},
-            headers=headers, follow_redirects=False, timeout=6.0,
-        )
-        if response.status_code not in (301, 302):
-            outcomes["simkl"] = {"status": "failed", "message": f"ID resolution HTTP {response.status_code}"}
-            return {}
-        destination = urlparse(response.headers.get("Location", ""))
-        parts = destination.path.strip("/").split("/")
-        if destination.scheme != "https" or destination.netloc != "simkl.com" or len(parts) < 2 or parts[0] not in ("movies", "tv", "anime") or not parts[1].isdigit():
-            outcomes["simkl"] = {"status": "no_scores", "message": "No matching catalog item"}
-            return {}
+        if anime_id is not None:
+            if not str(anime_id).isdigit() or int(anime_id) <= 0:
+                return {}
+            parts = ["anime", str(anime_id)]
+        else:
+            identifiers = {key: value for key, value in (("imdb", imdb_id), ("tmdb", tmdb_id), ("tvdb", tvdb_id)) if value}
+            response = await client.get(
+                "https://api.simkl.com/redirect", params={**params, **identifiers, "type": "movie" if media_type == "movie" else "tv", "to": "simkl"},
+                headers=headers, follow_redirects=False, timeout=6.0,
+            )
+            if response.status_code not in (301, 302):
+                outcomes["simkl"] = {"status": "failed", "message": f"ID resolution HTTP {response.status_code}"}
+                return {}
+            destination = urlparse(response.headers.get("Location", ""))
+            parts = destination.path.strip("/").split("/")
+            if destination.scheme != "https" or destination.netloc != "simkl.com" or len(parts) < 2 or parts[0] not in ("movies", "tv", "anime") or not parts[1].isdigit():
+                outcomes["simkl"] = {"status": "no_scores", "message": "No matching catalog item"}
+                return {}
         if (media_type == "movie" and parts[0] == "tv") or (media_type == "show" and parts[0] == "movies"):
             outcomes["simkl"] = {"status": "no_scores", "message": "Catalog item type mismatch"}
             return {}
@@ -878,31 +962,220 @@ async def fetch_simkl_ratings(imdb_id, tmdb_id, client_id, client, media_type="m
                                         params=params, headers=headers, follow_redirects=False, timeout=6.0)
         if not data:
             return {}
-        scores = {}
-        for source in ("imdb", "simkl", "mal"):
-            rating = (data.get("ratings") or {}).get(source)
-            if not isinstance(rating, dict):
-                continue
-            try:
-                value = float(rating.get("rating"))
-                if 0 < value <= 10:
-                    scores[source] = round(value, 1)
-            except (TypeError, ValueError):
-                pass
-        if scores:
-            scores["_simkl_url"] = f"https://simkl.com/{'/'.join(parts[:3])}"
-            outcomes["simkl"] = {"status": "success", "scores": sorted(key for key in scores if not key.startswith("_"))}
-        return scores
+        slug = str((data.get("ids") or {}).get("slug") or (parts[2] if len(parts) > 2 else ""))
+        slug = slug if all(character.isalnum() or character in "-_" for character in slug) else ""
+        data["_simkl_url"] = f"https://simkl.com/{parts[0]}/{parts[1]}" + (f"/{slug}" if slug else "")
+        data["_simkl_id"] = int(parts[1])
+        return data
     except Exception as error:
         outcomes["simkl"] = {"status": "failed", "message": f"Request failed ({type(error).__name__})"}
         return {}
+
+
+def _simkl_scores(data, sources=("imdb", "simkl", "mal")):
+    scores = {}
+    for source in sources:
+        rating = (data.get("ratings") or {}).get(source)
+        if not isinstance(rating, dict):
+            continue
+        try:
+            value = float(rating.get("rating"))
+            if 0 < value <= 10:
+                scores[source] = round(value, 1)
+        except (TypeError, ValueError):
+            pass
+    if scores and data.get("_simkl_url"):
+        scores["_simkl_url"] = data["_simkl_url"]
+    return scores
+
+
+async def fetch_simkl_ratings(imdb_id, tmdb_id, client_id, client, media_type="movie", outcomes=None, tvdb_id=None):
+    outcomes = outcomes if outcomes is not None else {}
+    data = await fetch_simkl_catalog(imdb_id, tmdb_id, client_id, client, media_type, outcomes, tvdb_id)
+    scores = _simkl_scores(data)
+    if scores:
+        outcomes["simkl"] = {"status": "success", "scores": sorted(key for key in scores if not key.startswith("_"))}
+    return scores
+
+
+async def fetch_simkl_season_candidates(parent_metadata, client_id, client):
+    tvdb_id = str(parent_metadata.get("tvdb_id") or "")
+    if not tvdb_id or not client_id:
+        return [], False
+    root = await fetch_simkl_catalog(None, None, client_id, client, "show", tvdb_id=tvdb_id)
+    if not root:
+        return [], False
+    if not str(root.get("_simkl_url", "")).startswith("https://simkl.com/anime/"):
+        return [], True
+    params, headers = _simkl_request_context(client_id)
+    pending = [root]
+    visited = set()
+    candidates = []
+    complete = True
+    while pending and len(visited) < 32:
+        data = pending.pop(0)
+        anime_id = data["_simkl_id"]
+        if anime_id in visited:
+            continue
+        visited.add(anime_id)
+        if str((data.get("ids") or {}).get("tvdb") or "") != tvdb_id:
+            complete = False
+            continue
+        for relation in data.get("relations") or []:
+            if not isinstance(relation, dict) or relation.get("relation_type") not in ("sequel", "prequel") or relation.get("anime_type", "tv") not in ("tv", "ona"):
+                continue
+            related_id = (relation.get("ids") or {}).get("simkl")
+            if related_id is None or not str(related_id).isdigit():
+                complete = False
+                continue
+            if int(related_id) in visited or any(entry["_simkl_id"] == int(related_id) for entry in pending):
+                continue
+            if len(visited) + len(pending) >= 32:
+                complete = False
+                break
+            related = await fetch_simkl_catalog(None, None, client_id, client, "show", anime_id=related_id)
+            if related:
+                pending.append(related)
+            else:
+                complete = False
+        try:
+            response = await client.get(f"https://api.simkl.com/anime/episodes/{anime_id}", params=params, headers=headers,
+                                        follow_redirects=False, timeout=6.0)
+            episodes = response.json() if response.status_code == 200 else None
+            if not isinstance(episodes, list) or not episodes:
+                complete = False
+                continue
+            by_season = {}
+            for episode in episodes:
+                if episode.get("type", "episode") != "episode":
+                    continue
+                coordinate = episode.get("tvdb") or {}
+                if coordinate.get("season") is None or coordinate.get("episode") is None:
+                    complete = False
+                    continue
+                by_season.setdefault(str(int(coordinate["season"])), []).append(int(coordinate["episode"]))
+            mapped_seasons = sorted(set(int(value) for value in (data.get("mapped_tvdb_seasons") or [])) | {int(value) for value in by_season})
+            candidates.append({"simkl_id": anime_id, "mal_id": (data.get("ids") or {}).get("mal"),
+                               "title": data.get("title") or str(anime_id), "mapped_seasons": mapped_seasons,
+                               "episodes_by_season": by_season, "ratings": _simkl_scores(data, ("simkl", "mal")),
+                               "url": data["_simkl_url"]})
+        except Exception as error:
+            complete = False
+            logger.info("[Ratings] SIMKL season mapping unavailable (%s)", type(error).__name__)
+    return candidates, complete and not pending
+
+
+async def resolve_season_ratings(server_type, item_id, title, parent_metadata, season_number, episode_numbers,
+                                 client_id, client, force_refresh=False, cache=None, catalog_cache=None):
+    cache = cache if cache is not None else ratings_cache
+    mapping = cache.get_season_mapping(server_type, item_id) or {"mode": "auto"}
+    expected_choice = (mapping.get("mode", "auto"), mapping.get("simkl_id"))
+    cached = cache.get_cached_ratings(server_type, item_id)
+    if cached and cached.get("media_type") == "season" and not force_refresh:
+        return {source: cached[f"{source}_rating"] for source in ("simkl", "mal") if cached.get(f"{source}_rating") is not None}
+    if cache.get_cached_ratings(server_type, item_id, allow_stale=True) is None:
+        cache.save_ratings(server_type, item_id, "season", title, None, None, None, {}, source="simkl", ttl_days=-1)
+    previous_id = mapping.get("simkl_id")
+    mapping.update(parent_item_id=str(parent_metadata.get("id") or ""), season_number=int(season_number),
+                   tvdb_id=parent_metadata.get("tvdb_id"), episode_numbers=list(episode_numbers))
+    scores = {}
+    if mapping["mode"] == "manual" and mapping.get("simkl_id"):
+        data = await fetch_simkl_catalog(None, None, client_id, client, "show", anime_id=mapping["simkl_id"])
+        if data and data.get("type", "anime") == "anime":
+            scores = _simkl_scores(data, ("simkl", "mal"))
+            mapping.update(status="manual", mal_id=(data.get("ids") or {}).get("mal"), source_title=data.get("title"))
+        else:
+            mapping["status"] = "unavailable"
+    else:
+        key = str(parent_metadata.get("tvdb_id") or "")
+        if catalog_cache is not None and key in catalog_cache:
+            candidates, complete = catalog_cache[key]
+        else:
+            candidates, complete = await fetch_simkl_season_candidates(parent_metadata, client_id, client)
+            if catalog_cache is not None:
+                catalog_cache[key] = (candidates, complete)
+        candidates = [{**candidate, "episode_numbers": (candidate.get("episodes_by_season") or {}).get(str(season_number), [])} for candidate in candidates]
+        selected, status = select_simkl_season_candidate(candidates, int(season_number), episode_numbers)
+        if not complete:
+            selected = None
+            mapping.update(status="unavailable")
+            if candidates:
+                mapping["candidates"] = candidates
+        else:
+            mapping.update(candidates=candidates, status=status, simkl_id=selected["simkl_id"] if selected else None,
+                           mal_id=selected.get("mal_id") if selected else None, source_title=selected.get("title") if selected else None)
+        if selected:
+            scores = selected["ratings"]
+    invalidate = previous_id != mapping.get("simkl_id") or mapping["status"] in ("ambiguous", "unmapped", "incomplete")
+    if cache.save_season_mapping(server_type, item_id, mapping, invalidate=invalidate, expected_choice=expected_choice) is None:
+        return {"_refresh_status": "failed", "_message": "Season mapping changed during lookup; retry with the new selection", "_providers": {}}
+    if scores:
+        if not cache.save_ratings(server_type, item_id, "season", title, None, None, None, scores, source="simkl"):
+            raise RuntimeError("Could not save season ratings to cache")
+        outcome, message = "success", "Season ratings resolved"
+    else:
+        outcome = "failed"
+        message = {"ambiguous": "Multiple anime entries cover this season; select one manually",
+                   "unmapped": "No one-to-one anime mapping for this season",
+                   "incomplete": "Incomplete anime mapping or episode coverage; manual selection required"}.get(mapping["status"], "No fresh season scores returned")
+        stale = cache.get_cached_ratings(server_type, item_id, allow_stale=True) or {}
+        scores = {source: stale[f"{source}_rating"] for source in ("simkl", "mal") if stale.get(f"{source}_rating") is not None}
+    details = {"message": message, "mapping_status": mapping["status"], "simkl_id": mapping.get("simkl_id")}
+    cache.record_refresh(server_type, item_id, outcome, details)
+    logger.info("[Ratings] %s season %s: %s; %s", server_type, item_id, outcome, json.dumps(details))
+    return {**scores, "_refresh_status": outcome, "_message": message, "_providers": {"simkl": {"status": outcome, "message": message}}}
+
+
+class RatingsProviderRunState:
+    """OMDb request guard owned by one ratings refresh or overlay sync run."""
+
+    def __init__(self, failure_threshold=3):
+        self.failure_threshold = max(1, int(failure_threshold))
+        self._lock = threading.Lock()
+        self._reason = None
+        self._failures = 0
+        self._requests = 0
+        self._skipped = 0
+
+    def begin_omdb_request(self):
+        with self._lock:
+            if self._reason:
+                self._skipped += 1
+                return self._reason
+            self._requests += 1
+        return None
+
+    def observe_omdb(self, outcome):
+        blocked_reason = None
+        with self._lock:
+            if self._reason:
+                return
+            error_code = outcome.get("error_code")
+            if error_code in ("quota", "auth", "rate_limit") or outcome.get("http_status") == 429:
+                blocked_reason = outcome.get("message") or "Provider request limit reached"
+            elif outcome.get("status") == "failed" and error_code != "not_found":
+                self._failures += 1
+                if self._failures >= self.failure_threshold:
+                    blocked_reason = f"{self._failures} consecutive provider failures ({outcome.get('message') or 'Unknown provider failure'})"
+            else:
+                self._failures = 0
+            if blocked_reason:
+                self._reason = blocked_reason
+        if blocked_reason:
+            logger.warning("[Ratings] OMDb disabled for the remainder of this run: %s", blocked_reason)
+
+    def snapshot(self):
+        with self._lock:
+            return {"suppressed": bool(self._reason), "reason": self._reason,
+                    "requests": self._requests, "skipped": self._skipped, "consecutive_failures": self._failures}
 
 
 async def fetch_omdb_ratings(
     imdb_id: str,
     api_key: str,
     client: httpx.AsyncClient,
-    outcomes: Optional[Dict[str, Any]] = None
+    outcomes: Optional[Dict[str, Any]] = None,
+    provider_run_state: Optional[RatingsProviderRunState] = None
 ) -> Dict[str, Any]:
     """
     Fetch IMDb, Rotten Tomatoes, and Metascore ratings from OMDb API.
@@ -914,6 +1187,12 @@ async def fetch_omdb_ratings(
     url = "https://www.omdbapi.com/"
     ratings = {}
     outcomes = outcomes if outcomes is not None else {}
+    if provider_run_state is not None:
+        reason = provider_run_state.begin_omdb_request()
+        if reason:
+            outcomes["omdb"] = {"status": "skipped", "error_code": "run_suppressed",
+                                "message": f"OMDb disabled for this run: {reason}"}
+            return {}
     try:
         data = await _fetch_rating_json(client, "omdb", url, outcomes,
                                         params={"apikey": api_key.strip(), "i": imdb_id.strip()}, timeout=6.0)
@@ -945,6 +1224,8 @@ async def fetch_omdb_ratings(
     if ratings:
         outcomes["omdb"] = {"status": "success", "scores": sorted(ratings)}
 
+    if provider_run_state is not None:
+        provider_run_state.observe_omdb(outcomes.get("omdb") or {})
     return ratings
 
 
@@ -972,7 +1253,8 @@ async def resolve_media_ratings(
     season_number: Optional[int] = None,
     episode_number: Optional[int] = None,
     simkl_client_id: Optional[str] = None,
-    tvdb_id: Optional[str] = None
+    tvdb_id: Optional[str] = None,
+    provider_run_state: Optional[RatingsProviderRunState] = None
 ) -> Dict[str, Any]:
     """
     Unified ratings resolver with multi-source fallback and SQLite caching.
@@ -1075,7 +1357,7 @@ async def resolve_media_ratings(
         omdb_sources = {"imdb": "imdb", "tomatoes": "rt_critic", "metacritic": "metacritic"}
         needs_omdb = any(source in enabled_sources and resolved.get(key) is None for source, key in omdb_sources.items())
         if omdb_api_key and needs_omdb and imdb_id:
-            omdb_res = await fetch_omdb_ratings(imdb_id, omdb_api_key, local_client, outcomes=outcomes)
+            omdb_res = await fetch_omdb_ratings(imdb_id, omdb_api_key, local_client, outcomes=outcomes, provider_run_state=provider_run_state)
             for k, v in omdb_res.items():
                 if v is not None and resolved.get(k) is None:
                     resolved[k] = v
@@ -1112,7 +1394,7 @@ async def resolve_media_ratings(
         if should_close_client:
             await local_client.aclose()
 
-    has_provider_failures = any(outcome["status"] in ("failed", "no_scores") for outcome in outcomes.values())
+    has_provider_failures = any(outcome["status"] in ("failed", "no_scores", "skipped") for outcome in outcomes.values())
     refresh_status = ("partial" if has_provider_failures else "success") if resolved else "failed"
     if resolved:
         saved = ratings_cache.save_ratings(

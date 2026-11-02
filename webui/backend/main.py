@@ -20988,6 +20988,47 @@ async def get_dynamic_overlays_ratings_cache_entries(
         logger.error(f"Error querying ratings cache entries: {e}", exc_info=True)
         return {"success": False, "error": str(e), "entries": [], "total": 0}
 
+class SeasonRatingMappingRequest(BaseModel):
+    simkl_id: Optional[int] = Field(default=None, ge=1)
+
+
+def _get_season_rating_entry(entry_id):
+    from ratings_refresh import ratings_refresh_service
+    entries = ratings_refresh_service.candidates(entry_id)
+    if not entries or entries[0].get("media_type") != "season":
+        raise HTTPException(status_code=404, detail="Season rating entry not found")
+    return entries[0]
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/season/{entry_id}")
+async def get_season_rating_mapping(entry_id: int):
+    from ratings_service import ratings_cache
+    item = await asyncio.to_thread(_get_season_rating_entry, entry_id)
+    mapping = await asyncio.to_thread(ratings_cache.get_season_mapping, item["server_type"], item["item_id"])
+    return {"success": True, "mapping": mapping or {"mode": "auto", "status": "unmapped", "candidates": []}}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/season/{entry_id}")
+async def save_season_rating_mapping(entry_id: int, req: SeasonRatingMappingRequest):
+    from ratings_service import ratings_cache
+    from ratings_refresh import ratings_refresh_service
+    from overlay_sync_service import get_server_credentials, is_overlay_sync_running
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+    if is_overlay_sync_running() or (ratings_refresh_service.task is not None and not ratings_refresh_service.task.done()):
+        raise HTTPException(status_code=409, detail="Wait for the active sync or ratings refresh to finish")
+    item = await asyncio.to_thread(_get_season_rating_entry, entry_id)
+    settings = await asyncio.to_thread(get_dynamic_overlays_settings)
+    if not settings.get("simkl_client_id"):
+        raise HTTPException(status_code=400, detail="Configure the SIMKL Client ID in provider settings first")
+    mapping = await asyncio.to_thread(ratings_cache.get_season_mapping, item["server_type"], item["item_id"]) or {}
+    mapping.update(mode="manual" if req.simkl_id is not None else "auto", simkl_id=req.simkl_id,
+                   mal_id=None, source_title=None, status="pending")
+    await asyncio.to_thread(ratings_cache.save_season_mapping, item["server_type"], item["item_id"], mapping, True)
+    credentials = await asyncio.to_thread(get_server_credentials, CONFIG_PATH)
+    refresh = await ratings_refresh_service.start(credentials, settings, entry_id=entry_id)
+    return {"success": True, "mapping": mapping, "refresh": refresh}
+
+
 class RatingsRefreshRequest(BaseModel):
     entry_id: Optional[int] = Field(default=None, ge=1)
 

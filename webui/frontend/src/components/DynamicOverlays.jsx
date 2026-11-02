@@ -696,6 +696,7 @@ export default function DynamicOverlays() {
   const [ratingsRefreshSubmitting, setRatingsRefreshSubmitting] = useState(false);
   const [isRatingsRefreshConfirmOpen, setIsRatingsRefreshConfirmOpen] = useState(false);
   const [ratingsRefreshError, setRatingsRefreshError] = useState("");
+  const [seasonRatingMapping, setSeasonRatingMapping] = useState(null);
 
   // High-Speed Change Detection State
   const [isDetectingChanges, setIsDetectingChanges] = useState(false);
@@ -2873,6 +2874,45 @@ export default function DynamicOverlays() {
   }, [overlayCacheSearch, overlayCacheServer, overlayCacheAssetType, overlayCacheLimit, isOverlayCacheModalOpen]);
 
   // --- RATINGS CACHE BROWSER HANDLERS ---
+  const handleOpenSeasonRatingMapping = async (entry) => {
+    setSeasonRatingMapping({ entry, loading: true, mapping: null, selection: "auto", customId: "", saving: false, error: "" });
+    try {
+      const response = await fetch(`/api/dynamic-overlays/ratings-cache/season/${encodeURIComponent(entry.id)}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.detail || data.error || "Could not load season mapping");
+      setSeasonRatingMapping(previous => previous?.entry.id === entry.id ? {
+        ...previous, loading: false, mapping: data.mapping,
+        selection: data.mapping.mode === "manual" && data.mapping.simkl_id ? String(data.mapping.simkl_id) : "auto",
+      } : previous);
+    } catch (error) {
+      setSeasonRatingMapping(previous => previous?.entry.id === entry.id ? { ...previous, loading: false, error: error.message } : previous);
+    }
+  };
+
+  const handleSaveSeasonRatingMapping = async (event) => {
+    event.preventDefault();
+    if (!seasonRatingMapping || seasonRatingMapping.loading || seasonRatingMapping.saving) return;
+    const rawId = seasonRatingMapping.selection === "custom" ? seasonRatingMapping.customId : seasonRatingMapping.selection;
+    const simklId = rawId === "auto" ? null : Number(rawId);
+    if (simklId !== null && (!Number.isSafeInteger(simklId) || simklId <= 0)) {
+      setSeasonRatingMapping(previous => ({ ...previous, error: "Enter a positive SIMKL Anime ID" }));
+      return;
+    }
+    setSeasonRatingMapping(previous => ({ ...previous, saving: true, error: "" }));
+    try {
+      const response = await fetch(`/api/dynamic-overlays/ratings-cache/season/${encodeURIComponent(seasonRatingMapping.entry.id)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ simkl_id: simklId }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.detail || data.error || "Could not save season mapping");
+      setSeasonRatingMapping(null);
+      showSuccess("Season rating mapping saved");
+      await fetchRatingsCacheItems(ratingsCachePage);
+    } catch (error) {
+      setSeasonRatingMapping(previous => previous ? { ...previous, saving: false, error: error.message } : previous);
+    }
+  };
+
   const fetchRatingsCacheItems = async (
     page = ratingsCachePage,
     search = ratingsCacheSearch,
@@ -10644,7 +10684,7 @@ export default function DynamicOverlays() {
                     fetchRatingsCacheItems(1);
                   }}
                   className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-semibold transition-all shadow-sm"
-                  title="Browse, search, and inspect cached movie, show, and episode ratings"
+                  title="Browse, search, and inspect cached movie, show, season, and episode ratings"
                 >
                   <Eye className="w-4 h-4" />
                   Browse Ratings
@@ -13681,7 +13721,7 @@ export default function DynamicOverlays() {
         onClose={() => setIsRatingsRefreshConfirmOpen(false)}
         onConfirm={() => handleRefreshRatings(null, true)}
         title="Refresh Ratings?"
-        message="Refresh missing and expired movie, show, and episode ratings across all configured servers?"
+        message="Refresh missing and expired movie, show, season, and episode ratings across all configured servers?"
         confirmText="Refresh Ratings"
         cancelText="Cancel"
         type="warning"
@@ -13809,7 +13849,7 @@ export default function DynamicOverlays() {
                     </button>
                   )}
                   <button type="button" onClick={() => handleRefreshRatings()} disabled={ratingsRefreshSubmitting || ratingsRefreshJob?.running}
-                    title="Refresh missing and expired movie, show, and episode ratings across all servers without changing artwork"
+                    title="Refresh missing and expired movie, show, season, and episode ratings across all servers without changing artwork"
                     className="flex items-center gap-2 px-3 py-2 border border-theme rounded-lg text-xs text-theme-text hover:bg-theme-hover disabled:opacity-50">
                     <RefreshCw className={`w-4 h-4 shrink-0 ${ratingsRefreshJob?.running ? "animate-spin" : ""}`} />
                     <span>Refresh Missing &amp; Expired</span>
@@ -13921,6 +13961,7 @@ export default function DynamicOverlays() {
                   { id: "all", label: "All" },
                   { id: "movie", label: "Movies" },
                   { id: "show", label: "Shows" },
+                  { id: "season", label: "Seasons" },
                   { id: "episode", label: "Episodes" }
                 ].map((mt) => (
                   <button
@@ -14160,7 +14201,7 @@ export default function DynamicOverlays() {
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-theme-muted italic text-[11px]">No scores recorded</span>
+                              <span className="text-theme-muted italic text-[11px]">{entry.media_type === "season" ? "No season scores; show fallback" : "No scores recorded"}</span>
                             )}
                           </td>
 
@@ -14204,6 +14245,14 @@ export default function DynamicOverlays() {
                                 className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text disabled:opacity-50">
                                 <RefreshCw className="w-4 h-4" />
                               </button>
+                              {entry.media_type === "season" && (
+                                <button type="button" onClick={() => handleOpenSeasonRatingMapping(entry)}
+                                  disabled={isActing || ratingsRefreshJob?.running}
+                                  title="Season rating mapping" aria-label={`Season rating mapping for ${entry.title || entry.item_id}`}
+                                  className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text disabled:opacity-50">
+                                  <Sliders className="w-4 h-4" />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleExpireRatingsCacheEntry(entry)}
@@ -14299,6 +14348,66 @@ export default function DynamicOverlays() {
       )}
 
       {/* ========================================================================= */}
+      {seasonRatingMapping && (
+        <div className="app-dialog-backdrop fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3"
+          onClick={event => { if (event.target === event.currentTarget && !seasonRatingMapping.saving) setSeasonRatingMapping(null); }}>
+          <form onSubmit={handleSaveSeasonRatingMapping} role="dialog" aria-modal="true" aria-labelledby="season-rating-mapping-title"
+            onKeyDown={event => { if (event.key === "Escape" && !seasonRatingMapping.saving) { event.stopPropagation(); setSeasonRatingMapping(null); } }}
+            className="app-dialog-panel bg-theme-card border border-theme rounded-lg w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-4 border-b border-theme flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 id="season-rating-mapping-title" className="text-base font-semibold text-theme-text">Season Rating Mapping</h3>
+                <p className="text-xs text-theme-muted break-words mt-1">{seasonRatingMapping.entry.title || seasonRatingMapping.entry.item_id}</p>
+              </div>
+              <button type="button" onClick={() => setSeasonRatingMapping(null)} disabled={seasonRatingMapping.saving}
+                title="Close season rating mapping" className="p-2 text-theme-muted hover:text-theme-text disabled:opacity-50"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {seasonRatingMapping.loading ? <Loader2 className="w-5 h-5 animate-spin text-theme-primary" /> : (
+                <>
+                  <div className="text-xs text-theme-muted">Status: <span className="text-theme-text capitalize">{seasonRatingMapping.mapping?.status || "unmapped"}</span></div>
+                  <label className="block text-xs font-medium text-theme-text" htmlFor="season-rating-source">Anime Entry</label>
+                  <select id="season-rating-source" autoFocus value={seasonRatingMapping.selection}
+                    onChange={event => setSeasonRatingMapping(previous => ({ ...previous, selection: event.target.value, error: "" }))}
+                    className="w-full min-w-0 bg-theme-hover border border-theme rounded-lg px-3 py-2 text-sm text-theme-text">
+                    <option value="auto">Automatic (exact season match)</option>
+                    {(seasonRatingMapping.mapping?.candidates || []).map(candidate => (
+                      <option key={candidate.simkl_id} value={String(candidate.simkl_id)}>
+                        {candidate.title} | SIMKL {candidate.simkl_id}{candidate.mal_id ? ` | MAL ${candidate.mal_id}` : ""}
+                      </option>
+                    ))}
+                    {seasonRatingMapping.mapping?.simkl_id && !(seasonRatingMapping.mapping.candidates || []).some(candidate => String(candidate.simkl_id) === String(seasonRatingMapping.mapping.simkl_id)) && (
+                      <option value={String(seasonRatingMapping.mapping.simkl_id)}>SIMKL {seasonRatingMapping.mapping.simkl_id}</option>
+                    )}
+                    <option value="custom">Enter SIMKL Anime ID</option>
+                  </select>
+                  {seasonRatingMapping.selection === "custom" && (
+                    <label className="block text-xs font-medium text-theme-text">SIMKL Anime ID
+                      <input type="number" min="1" step="1" required value={seasonRatingMapping.customId}
+                        onChange={event => setSeasonRatingMapping(previous => ({ ...previous, customId: event.target.value }))}
+                        className="mt-1 w-full bg-theme-hover border border-theme rounded-lg px-3 py-2 text-sm text-theme-text" />
+                    </label>
+                  )}
+                  {seasonRatingMapping.mapping?.mal_id && <div className="text-xs text-theme-muted">MAL ID: {seasonRatingMapping.mapping.mal_id}</div>}
+                  {seasonRatingMapping.selection !== "auto" && seasonRatingMapping.selection !== "custom" && (
+                    <a href={`https://simkl.com/anime/${encodeURIComponent(seasonRatingMapping.selection)}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-theme-primary hover:underline">SIMKL <ExternalLink className="w-3 h-3" /></a>
+                  )}
+                </>
+              )}
+              {seasonRatingMapping.error && <p role="alert" className="text-xs text-red-400 break-words">{seasonRatingMapping.error}</p>}
+            </div>
+            <div className="p-4 border-t border-theme flex justify-end gap-2">
+              <button type="button" disabled={seasonRatingMapping.saving} onClick={() => setSeasonRatingMapping(null)} className="px-3 py-2 rounded-lg border border-theme text-sm text-theme-text">Cancel</button>
+              <button type="submit" disabled={seasonRatingMapping.loading || seasonRatingMapping.saving}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-primary text-white text-sm disabled:opacity-50">
+                {seasonRatingMapping.saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Mapping
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* MODAL 3: FAST MEDIA CHANGE AUTODETECTION RESULTS */}
       {/* ========================================================================= */}
       {featureSettings?.enabled && isChangeModalOpen && (
