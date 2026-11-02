@@ -163,7 +163,7 @@ class OverlayYamlGenerator:
 
             if episode_list:
                 overlay_block_title = f"{anime_title} - {label_text}"
-                regex_pattern = f"(?i)({'|'.join(episode_list)})"
+                regex_pattern = f"(?i)({'|'.join(episode_list)})(?!\\d)"
 
                 self.overlays[overlay_block_title] = {
                     "template": {

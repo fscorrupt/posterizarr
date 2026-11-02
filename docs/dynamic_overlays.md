@@ -346,6 +346,8 @@ The rendering adaptations are attributed under the MIT License below. Upstream t
 | **Network Logos** | Seasons | Studio / TV Network | Official network logo (e.g., Netflix, HBO, Disney+, Apple TV+). |
 | **Common Sense Media**| Movies | Common Sense Media age rating | Age rating badge (e.g., 10+, 14+, 18+). |
 
+Generated AniMetaFill episode regexes include a numeric boundary so an episode such as `S21E16` cannot accidentally match `S21E161`. After upgrading a version that fixes older generated regexes, run AniMetaFill sync to regenerate `anime_overlays.yml`, then run Dynamic Overlays sync to update existing titlecards.
+
 ---
 
 ## Web UI Features
