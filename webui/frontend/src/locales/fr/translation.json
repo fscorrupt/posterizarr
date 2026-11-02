@@ -17,6 +17,10 @@
     "assetFetched": "Prêt : {{name}}",
     "batchSuccess": "{{count}} ressources téléchargées ou créées !",
     "yamlSaved": "YAML enregistré avec succès",
+    "ratingsAutomaticRefresh": "Actualisation automatique",
+    "ratingsRefreshEvery": "Toutes les",
+    "ratingsRefreshIntervalHours": "heures",
+    "ratingsRefreshScheduleHelp": "1 heure = toutes les heures ; 24 = chaque jour ; 168 = chaque semaine ; 720 = tous les 30 jours. La première exécution attend l'intervalle choisi après le démarrage.",
     "title": "Superpositions dynamiques",
     "navigation": {
       "configure": "Configurer",

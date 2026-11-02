@@ -17,6 +17,10 @@
     "assetFetched": "Bereit: {{name}}",
     "batchSuccess": "{{count}} Assets heruntergeladen oder bereitgestellt!",
     "yamlSaved": "YAML erfolgreich gespeichert",
+    "ratingsAutomaticRefresh": "Automatische Aktualisierung",
+    "ratingsRefreshEvery": "Alle",
+    "ratingsRefreshIntervalHours": "Stunden",
+    "ratingsRefreshScheduleHelp": "1 Stunde = stündlich; 24 = täglich; 168 = wöchentlich; 720 = alle 30 Tage. Der erste Lauf erfolgt erst nach dem gewählten Intervall ab dem Start.",
     "title": "Dynamische Overlays",
     "navigation": {
       "configure": "Einrichten",

@@ -17,6 +17,10 @@
     "assetFetched": "Pronto: {{name}}",
     "batchSuccess": "{{count}} recursos transferidos ou criados!",
     "yamlSaved": "YAML guardado com sucesso",
+    "ratingsAutomaticRefresh": "Atualização automática",
+    "ratingsRefreshEvery": "A cada",
+    "ratingsRefreshIntervalHours": "horas",
+    "ratingsRefreshScheduleHelp": "1 hora = de hora a hora; 24 = diariamente; 168 = semanalmente; 720 = a cada 30 dias. A primeira execução aguarda o intervalo escolhido após o arranque.",
     "title": "Sobreposições dinâmicas",
     "navigation": {
       "configure": "Configurar",
