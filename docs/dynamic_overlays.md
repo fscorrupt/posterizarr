@@ -295,11 +295,32 @@ numbers, not the show's rating. When an IMDb ID is missing, TMDb episode externa
 IDs can resolve it for OMDb lookup. OMDb requires its configured API key.
 Jellyfin and Emby use the episode's own provider IDs for external lookup.
 
-The current MDBList adapter supports movie/show lookup only and is not used for
-episodes. An unavailable episode/provider score is omitted instead of substituting
+The movie/show MDBList lookup is not used for episodes. The separate
+`mdblist_episode` source can request MDBList's episode score when configured.
+An unavailable episode/provider score is omitted instead of substituting
 a show score or labeling an unidentifiable server score as IMDb. Consequently,
 not every episode has every selected provider badge. After updating, run a full
 overlay sync for the affected show to replace previously rendered titlecards.
+
+Selecting only IMDb does not use a TMDb score when IMDb is missing. Enable TMDb
+as an additional provider to display its available episode scores under its own logo.
+
+### Language Priority and Parent Video Formats
+
+Episode language flags follow the configured `languages` order before applying
+`overlay_limit`. For example, `[de, ja, en]` with a limit of two selects German
+and Japanese when all three audio languages are present. Imported language
+templates use their explicit language codes rather than their English overlay names.
+
+Show and season resolution badges use the most common complete episode video
+format: resolution, Dolby Vision, and HDR together. Each episode contributes one
+format, so HDR-only and Dolby-Vision-only episodes do not create a combined badge.
+Ties prefer the higher resolution, then Dolby Vision, then HDR. Corner badges use
+the corresponding variant artwork when available, otherwise the plain resolution
+artwork; portrait tier banners retain their existing resolution-only design.
+Unrecognized Plex resolution labels fall back to reported video dimensions to
+identify 4K, 1080p, 720p, or SD without depending on the codec/profile description.
+After updating, run a full overlay sync for the affected shows and seasons.
 
 ## Folder Layout
 
@@ -423,6 +444,7 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 - **Incremental sync impact:** Changing an asset override changes the rendered layer and its recipe hash when that default variant is used. The next incremental sync may re-render and upload those affected items; unrelated variants remain unchanged.
 - **AniMetaFill titlecards:** When AniMetaFill is enabled, selecting one of its target libraries and the Titlecard format automatically shows a sample Canon badge using its saved label, color, font, size, and placement. The anime controls can preview Filler, Mixed, or Off. This is sample classification data, not a lookup of a particular episode; unrelated libraries and other asset formats do not receive the automatic badge.
 - **Matching badge artwork:** Drag & Drop uses transparent PNG layers rendered by the same Pillow compositor and recipe builder used for media-server uploads. Badge sizes, fonts, plates, shadows, and overlapping layer order are no longer approximated with HTML/CSS. Drag handles and alignment guides use the rendered pixel bounds, including compound badges such as a rating plate plus score.
+- **Preview request isolation:** Preview and sample-image rendering run in FastAPI worker threads, not on the API event loop, so blocking image processing or asset loading does not directly stall unrelated asynchronous API requests. Sprite-only requests skip loading, processing, and encoding the background image. Individual render time still depends on hardware, artwork, fonts, and asset availability; this is not a fixed preview-latency guarantee.
 - Select the target library to preview its saved upload recipe. Without a selected library, the renderer uses standard default rules. Preview metadata (ratings, status, languages, etc.) is sample data; actual item metadata and filters can select different badges during sync. Upload the generated clean asset as custom test artwork to compare against the same base image. Missing required assets or fonts produce an error instead of a visually different fallback badge.
 - Without a selected library, all five preview formats are available: movie poster, show poster, season poster, titlecard, and background. Existing libraries retain their movie/TV-specific format choices.
 - **Asset boundaries:** Enabled by default in both Drag & Drop and Final Render. Dashed, shaded boxes show the configured title/logo reservation, season title, optional show title on season posters, and separate episode title and season/episode text areas. A dashed rose outline marks the inner border edge when borders are enabled.

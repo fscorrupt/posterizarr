@@ -19690,7 +19690,7 @@ async def delete_dynamic_overlay_config_file(filename: str = Query(...)):
 
 
 @app.get("/api/dynamic-overlays/preview")
-async def preview_dynamic_overlay(
+def preview_dynamic_overlay(
     template_type: str = Query("movie_poster"),
     output: str = Query("image"),
     library_name: Optional[str] = Query(None),
@@ -19880,62 +19880,6 @@ async def preview_dynamic_overlay(
         is_landscape = (template_type in ("episode_card", "backdrop", "background", "titlecard"))
         dim = LANDSCAPE_DIM if is_landscape else PORTRAIT_DIM
 
-        base = None
-        custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
-        if custom_image_id:
-            safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(custom_image_id).strip())
-            for ext in (".png", ".jpg", ".jpeg", ".webp"):
-                candidate = custom_previews_dir / f"{safe_id}{ext}"
-                if candidate.exists():
-                    try:
-                        base = Image.open(candidate).convert("RGBA")
-                        break
-                    except Exception as e:
-                        logger.warning(f"Failed opening custom preview image {candidate}: {e}")
-
-        if base is None:
-            try:
-                try:
-                    from .defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
-                except ImportError:
-                    from defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
-
-                default_poster_path = BASE_DIR / "Overlayfiles" / "default_poster.jpg"
-                default_bg_path = BASE_DIR / "Overlayfiles" / "default_background.jpg"
-
-                if is_landscape:
-                    if default_bg_path.exists():
-                        base = Image.open(default_bg_path).convert("RGBA")
-                    elif DEFAULT_BACKGROUND_B64:
-                        raw_bg = base64.b64decode(DEFAULT_BACKGROUND_B64.strip())
-                        base = Image.open(BytesIO(raw_bg)).convert("RGBA")
-                else:
-                    if default_poster_path.exists():
-                        base = Image.open(default_poster_path).convert("RGBA")
-                    elif DEFAULT_POSTER_B64:
-                        raw_p = base64.b64decode(DEFAULT_POSTER_B64.strip())
-                        base = Image.open(BytesIO(raw_p)).convert("RGBA")
-            except Exception as img_err:
-                logger.warning(f"Failed to load sample image for dynamic overlay preview: {img_err}")
-                base = None
-
-        if not base:
-            base = Image.new("RGBA", dim, (24, 28, 36, 255))
-            draw = ImageDraw.Draw(base)
-            center_text = "SAMPLE TITLE CARD (1920x1080)" if is_landscape else "SAMPLE MOVIE POSTER (1000x1500)"
-            draw.text(
-                (dim[0] // 2, dim[1] // 2),
-                center_text,
-                anchor="mm",
-                fill=(255, 255, 255, 90)
-            )
-        base = _render_preview_base(base, template_type, resolution, media_type, asset_overlay)
-
-
-        base_buf = BytesIO()
-        base.save(base_buf, format="PNG")
-        base_bytes = base_buf.getvalue()
-
         from overlay_preview import build_preview_layers
         from overlay_sync_service import build_overlay_layers_for_item
         from dynamic_overlays_service import get_config_yml_path, get_overlays_dir
@@ -20013,6 +19957,61 @@ async def preview_dynamic_overlay(
                 sprite["placement"] = placements.get(sprite["key"], {"x": 0, "y": 0, "align": "left", "valign": "top"})
             return {"template_type": template_type, "width": dim[0], "height": dim[1], "sprites": sprites}
 
+        base = None
+        custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+        if custom_image_id:
+            safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(custom_image_id).strip())
+            for ext in (".png", ".jpg", ".jpeg", ".webp"):
+                candidate = custom_previews_dir / f"{safe_id}{ext}"
+                if candidate.exists():
+                    try:
+                        base = Image.open(candidate).convert("RGBA")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed opening custom preview image {candidate}: {e}")
+
+        if base is None:
+            try:
+                try:
+                    from .defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+                except ImportError:
+                    from defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+
+                default_poster_path = BASE_DIR / "Overlayfiles" / "default_poster.jpg"
+                default_bg_path = BASE_DIR / "Overlayfiles" / "default_background.jpg"
+
+                if is_landscape:
+                    if default_bg_path.exists():
+                        base = Image.open(default_bg_path).convert("RGBA")
+                    elif DEFAULT_BACKGROUND_B64:
+                        raw_bg = base64.b64decode(DEFAULT_BACKGROUND_B64.strip())
+                        base = Image.open(BytesIO(raw_bg)).convert("RGBA")
+                else:
+                    if default_poster_path.exists():
+                        base = Image.open(default_poster_path).convert("RGBA")
+                    elif DEFAULT_POSTER_B64:
+                        raw_p = base64.b64decode(DEFAULT_POSTER_B64.strip())
+                        base = Image.open(BytesIO(raw_p)).convert("RGBA")
+            except Exception as img_err:
+                logger.warning(f"Failed to load sample image for dynamic overlay preview: {img_err}")
+                base = None
+
+        if not base:
+            base = Image.new("RGBA", dim, (24, 28, 36, 255))
+            draw = ImageDraw.Draw(base)
+            center_text = "SAMPLE TITLE CARD (1920x1080)" if is_landscape else "SAMPLE MOVIE POSTER (1000x1500)"
+            draw.text(
+                (dim[0] // 2, dim[1] // 2),
+                center_text,
+                anchor="mm",
+                fill=(255, 255, 255, 90)
+            )
+        base = _render_preview_base(base, template_type, resolution, media_type, asset_overlay)
+
+        base_buf = BytesIO()
+        base.save(base_buf, format="PNG")
+        base_bytes = base_buf.getvalue()
+
         rendered_bytes = DynamicOverlayCompositor.composite_overlays(
             base_image_bytes=base_bytes,
             layers=layers,
@@ -20043,7 +20042,7 @@ def _render_preview_base(image, template_type, resolution, media_type, asset_ove
 
 
 @app.get("/api/dynamic-overlays/sample-image")
-async def get_dynamic_overlays_sample_image(
+def get_dynamic_overlays_sample_image(
     template_type: str = Query("movie_poster"),
     custom_image_id: Optional[str] = Query(None),
     asset_overlay: bool = Query(False),

@@ -422,6 +422,7 @@ def cached_episode_streams(entry, server_updated_at, filepath):
 
 def aggregate_episode_streams(episodes, language_order=None):
     language_counts = Counter()
+    video_counts = Counter()
     subtitle_counts = Counter()
     codec_counts = Counter()
     language_first_seen = {}
@@ -433,6 +434,8 @@ def aggregate_episode_streams(episodes, language_order=None):
     for episode in episodes:
         if not isinstance(episode, dict):
             continue
+        if episode.get("resolution"):
+            video_counts[(episode["resolution"], bool(episode.get("has_hdr")), bool(episode.get("has_dolby_vision")))] += 1
         for field, counts, first_seen in (
             ("audio_languages", language_counts, language_first_seen),
             ("subtitle_languages", subtitle_counts, subtitle_first_seen),
@@ -472,7 +475,9 @@ def aggregate_episode_streams(episodes, language_order=None):
 
     ranked_languages = ranked(language_counts, language_first_seen, use_language_priority=True)
     selected_codec = ranked(codec_counts, codec_first_seen)[0] if codec_counts else None
+    selected_video = max(video_counts, key=lambda value: (video_counts[value], _resolution_rank(value[0]), value[2], value[1])) if video_counts else None
     return {
+        **({"resolution": selected_video[0], "has_hdr": selected_video[1], "has_dolby_vision": selected_video[2]} if selected_video else {}),
         "audio_languages": ranked_languages,
         "subtitle_languages": ranked(subtitle_counts, subtitle_first_seen, use_language_priority=True),
         "audio_codec": selected_codec[0] if selected_codec else None,
@@ -539,7 +544,9 @@ def _plex_episode_stream_summary(item):
             has_hdr = has_hdr or stream.get("colorPrimaries") == "bt2020"
     part = item.find(".//Part")
     streams = _extract_stream_overlay_metadata(item)
+    media = item.find(".//Media")
     return {
+        "resolution": _plex_media_resolution(media) if media is not None else None,
         "audio_languages": languages,
         "audio_codec": audio_codec,
         "audio_profile": audio_profile,
@@ -572,7 +579,9 @@ def _emby_episode_stream_summary(item):
     sources = item.get("MediaSources") or []
     filepath = item.get("Path") or next((source.get("Path") for source in sources if source.get("Path")), None)
     streams = _extract_stream_overlay_metadata(item)
+    video_stream = next((stream for stream in item.get("MediaStreams") or [] if stream.get("Type") == "Video"), {})
     return {
+        "resolution": _plex_media_resolution({"width": video_stream.get("Width"), "height": video_stream.get("Height")}),
         "audio_languages": languages,
         "audio_codec": str(primary_audio.get("Codec") or audio_codec or "").strip().lower() or None,
         "audio_profile": primary_audio.get("Profile"),
@@ -626,10 +635,10 @@ async def fetch_show_episode_stream_data(http_client, server_type, server_url, i
                 cached = cached_episode_streams(
                     cache_map.get((server_type, episode_id, "titlecard")), server_updated_at, filepath
                 )
-                if cached:
+                if cached and "resolution" in cached:
                     summary = {key: cached.get(key) for key in (
                         "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
-                        "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title",
+                        "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title", "resolution",
                     )}
                     summary["streams_verified"] = True
                 else:
@@ -704,7 +713,7 @@ def titlecard_attr_snapshot(episode, snapshot):
         values["_episode_streams"] = {
             key: episode.get(key) for key in (
                 "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
-                "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title"
+                "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title", "resolution"
             )
         }
         values["_episode_streams"]["version"] = 1
@@ -2392,9 +2401,10 @@ def build_overlay_layers_for_item(
                 asset_path = Path(str(selected_asset))
                 artwork = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
             else:
-                artwork = badge_dir / f"{tier}{variant}.png"
-                if not artwork.exists():
-                    artwork = badge_dir / f"{tier}.png"
+                engine = _get_overlay_config_engine(overlays_dir)
+                artwork = engine.resolve_image_path(f"resolution/{tier}{variant}.png")
+                if artwork is None or not artwork.exists():
+                    artwork = engine.resolve_image_path(f"resolution/{tier}.png") or badge_dir / f"{tier}.png"
             native_rating_layers.append({
                 "name": "resolution", "type": "image", "image_path": str(artwork), "scale_height": int(variables.get("scale_height", 55)),
                 "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position") or "left",
@@ -3229,10 +3239,16 @@ def _resolution_rank(res: Optional[str]) -> int:
 
 def _plex_media_resolution(media) -> Optional[str]:
     width = int(media.get("width") or 0)
-    vr = media.get("videoResolution")
-    if width >= 3840 or vr in ("4k", "2160"):
+    height = int(media.get("height") or 0)
+    vr = str(media.get("videoResolution") or "").strip().lower()
+    if width >= 3840 or height >= 2160 or vr in ("4k", "2160", "2160p", "uhd"):
         return "4K"
-    return f"{vr}p" if vr else None
+    if vr in ("1080", "1080p", "720", "720p", "576", "576p", "480", "480p", "sd"):
+        return vr if vr.endswith("p") else f"{vr}p"
+    for tier, min_width, min_height in (("1080p", 1920, 1080), ("720p", 1280, 720), ("576p", 720, 576), ("480p", 640, 480)):
+        if width >= min_width or height >= min_height:
+            return tier
+    return None
 
 
 def _plex_season_resolutions(videos) -> Dict[str, str]:
@@ -4204,7 +4220,7 @@ async def _run_overlay_sync_task(
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
-                    needs_parent_stream_aggregation = _parent_stream_aggregation_requested(lib_rules) and not episode_only_targets
+                    needs_parent_stream_aggregation = (_parent_stream_aggregation_requested(lib_rules) or needs_resolution) and not episode_only_targets
                     provider_rules = [rule for rule in lib_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("rating", "ratings")]
                     library_rating_sources = list(dict.fromkeys(
                         source for rule in provider_rules for source in (
@@ -4609,6 +4625,9 @@ async def _run_overlay_sync_task(
                                     item["subtitle_languages"] = aggregate["subtitle_languages"]
                                 if aggregate["audio_codec"]:
                                     item["audio_codec"] = aggregate["audio_codec"]
+                                for key in ("resolution", "has_hdr", "has_dolby_vision"):
+                                    if key in aggregate:
+                                        item[key] = aggregate[key]
                                 item["_aggregated_episode_streams"] = True
                                 item["_language_order_precomputed"] = True
                                 stream_count = sum(len(items) for items in show_stream_data["episodes_by_season"].values())
@@ -5172,6 +5191,7 @@ async def _run_overlay_sync_task(
                                     season_aggregate = (show_stream_data or {}).get("season_aggregates", {}).get(s_num)
                                     if season_aggregate is not None:
                                         s_item_meta.update(season_aggregate)
+                                        s_resolution = s_item_meta.get("resolution")
                                         s_item_meta["_language_order_precomputed"] = True
                                     season_rating_rules = [rule for rule in lib_rules if isinstance(rule, dict)
                                         and str(rule.get("default", "")).lower() in ("rating", "ratings")
@@ -5398,6 +5418,7 @@ async def _run_overlay_sync_task(
                                                         previous_streams = (show_stream_data or {}).get("episode_streams", {}).get(str(ep_rk))
                                                     streams_verified = bool(previous_streams)
                                                     if previous_streams:
+                                                        ep_res = previous_streams.get("resolution") or ep_res
                                                         ep_langs = previous_streams["audio_languages"] or []
                                                         ep_audio_c = previous_streams["audio_codec"]
                                                         ep_has_hdr = previous_streams["has_hdr"]
@@ -5412,6 +5433,9 @@ async def _run_overlay_sync_task(
                                                             )
                                                             if ep_det_resp.status_code == 200:
                                                                 ep_det_root = fromstring(ep_det_resp.content)
+                                                                detail_media = ep_det_root.find(".//Media")
+                                                                if detail_media is not None:
+                                                                    ep_res = _plex_media_resolution(detail_media) or ep_res
                                                                 detail_part = ep_det_root.find(".//Part")
                                                                 if detail_part is not None and detail_part.get("file"):
                                                                     ep_filepath = detail_part.get("file")

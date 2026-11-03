@@ -2800,6 +2800,7 @@ class OverlayConfigEngine:
                 mapping_name = f"{ov_key}"
                 resolved_ov = {
                     "mapping_name": mapping_name,
+                    "language_code": str((ov_def.get("variables") or {}).get("key") or "").strip().lower(),
                     "name": _clean_val(ov_data.get("name"), ov_key),
                     "default": _clean_val(ov_data.get("default")),
                     "file": _clean_val(ov_data.get("file")),
@@ -2852,6 +2853,9 @@ class OverlayConfigEngine:
             preferred_langs = queue_lang_order.get(q_name, [])
             if preferred_langs:
                 def _q_sort_key(item):
+                    language_code = item.get("language_code")
+                    if language_code in preferred_langs:
+                        return (0, preferred_langs.index(language_code), -(item.get("weight") or 0))
                     m_name = str(item.get("mapping_name") or item.get("name") or "").lower()
                     for idx, lang in enumerate(preferred_langs):
                         if lang == m_name or f"_{lang}" in m_name or f"{lang}_" in m_name or lang in m_name:
