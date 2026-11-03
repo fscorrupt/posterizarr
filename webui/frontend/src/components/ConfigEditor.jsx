@@ -437,7 +437,9 @@ function ConfigEditor() {
     setHasUnsavedChanges(true);
   };
 
-  const getDisplayName = (key) => displayNames[key] ? displayNames[key] : key.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim();
+    const getDisplayName = (key) => key === "UseSilo" || key.startsWith("Silo")
+        ? t(`silo.fields.${key}`, { defaultValue: displayNames[key] || key })
+        : displayNames[key] ? displayNames[key] : key.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim();
 
   // Filtering & Search Logic
 
@@ -1185,6 +1187,9 @@ const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors
 const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges, setValidationErrors }) => {
     const { t } = useTranslation();
     const value = usingFlatStructure ? config[settingKey] : config[groupName]?.[settingKey];
+        const settingTooltip = settingKey === "UseSilo" || settingKey.startsWith("Silo")
+            ? t(`silo.tooltips.${settingKey}`, { defaultValue: tooltips[settingKey] || "" })
+            : tooltips[settingKey];
     const isWide = (settingKey === "NewLineOnSpecificSymbols" && groupName === "Text Formatting") || settingKey.includes("ResolutionOverlays") || settingKey.includes("LibstoExclude") || settingKey === "AgregarrTriggerEnabled";
     const uniqueId = `setting-${groupName}-${settingKey}`;
     const fieldKey = usingFlatStructure ? settingKey : `${groupName}.${settingKey}`;
@@ -1208,7 +1213,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                 <div className="relative min-w-0 flex-1">
                     <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder={placeholder} />
                 </div>
-                <ValidateButton type={type} config={config} label="Validate" onSuccess={showSuccess} onError={showError} disabled={disabled} />
+                <ValidateButton type={type} config={config} label={type === "silo" ? t("silo.validate") : "Validate"} onSuccess={showSuccess} onError={showError} disabled={disabled} />
             </div>
         );
 
@@ -1223,7 +1228,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         );
         if (settingKey === "JellyfinAPIKey") return renderValidate("jellyfin", disabled ? "Enable Jellyfin first" : "Enter Jellyfin API Key");
         if (settingKey === "EmbyAPIKey") return renderValidate("emby", disabled ? "Enable Emby first" : "Enter Emby API Key");
-        if (settingKey === "SiloAPIKey") return renderValidate("silo", "Enter Silo API Key");
+        if (settingKey === "SiloAPIKey") return renderValidate("silo", t("silo.apiKeyPlaceholder"));
         if (settingKey === "tmdbtoken") return renderValidate("tmdb", "Enter TMDB Token");
         if (settingKey === "tvdbapi") return renderValidate("tvdb", "Enter TVDB API Key");
         if (settingKey === "FanartTvAPIKey") return renderValidate("fanart", "Enter Fanart API Key");
@@ -1445,7 +1450,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         if (settingKey.includes("LanguageOrder")) return <LanguageOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LibstoExclude")) {
             const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : settingKey.includes("Silo") ? "silo" : "emby";
-            return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={tooltips[settingKey]} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
+            return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={settingTooltip} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
         }
         if (settingKey === "FavProvider") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none uppercase`}><option value="tmdb">TMDB</option><option value="tvdb">TVDB</option><option value="fanart">FANART</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "ProviderPriorityMode") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="Simple">Simple (Favorite Provider)</option><option value="Global">Global Custom Order</option><option value="PerMediaType">Per-Media Type Custom Order</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
@@ -1522,8 +1527,8 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0"> {/* FIX: Removed overflow-hidden, added min-w-0 */}
                         <label className="text-sm font-semibold text-theme-text truncate" title={getDisplayName(settingKey)}>{getDisplayName(settingKey)}</label>
-                        {tooltips[settingKey] && (
-                            <Tooltip text={tooltips[settingKey]}>
+                        {settingTooltip && (
+                            <Tooltip text={settingTooltip}>
                                 <HelpCircle className="w-3.5 h-3.5 text-theme-muted hover:text-theme-primary cursor-help flex-shrink-0 transition-colors" />
                             </Tooltip>
                         )}

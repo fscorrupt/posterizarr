@@ -136,6 +136,62 @@ See [SIMKL ratings](https://api.simkl.org/api-reference/ratings.md),
 [rate limits](https://api.simkl.org/resources/rate-limits.md), and
 [API rules](https://api.simkl.org/api-rules.md).
 
+### Local IMDb Dataset
+
+In **Sync & Cache > Ratings Cache & Refresh**, enable **Local IMDb Dataset**,
+then select **Download & Update** and confirm the import. This optional source is
+disabled by default. It downloads the official `title.ratings.tsv.gz`,
+`title.episode.tsv.gz`, and `title.basics.tsv.gz` files from
+[IMDb](https://datasets.imdbws.com/). IMDb permits these datasets for
+[non-commercial use only](https://data.imdb.com/non-commercial-datasets/).
+Downloads can exceed 1 GB compressed; allow several GB of free disk space and
+time for the initial indexing, especially on a NAS. Files are streamed to disk
+and imported in bounded batches, not loaded entirely into RAM.
+
+The index and explicit episode mappings are stored in
+`database/imdb_dataset.db` under the normal application data directory. Only
+rated episodes and series titles are indexed for matching; ratings are available
+by IMDb ID for movies and shows too. Import runs in a background thread. A failed
+import keeps the previous published index and manual choices. After the first
+successful manual import, the background ratings scheduler checks for an update
+every 24 hours while Dynamic Overlays and this source are enabled. Failed
+automatic attempts wait 24 hours; **Download & Update** can retry sooner.
+
+When IMDb is selected as a rating source, the resolver uses the local index
+before external providers to fill a missing IMDb rating. A known episode IMDb
+ID is preferred. Otherwise, matching is restricted to the identified IMDb
+series and requires an exact normalized episode-title match (case and
+punctuation ignored). A cached parent IMDb ID or a unique series title, optionally
+qualified by the series year, identifies the series. TRaSH-style filenames such
+as `One Piece (1999) - S21E83 - 974 - Oden Wouldnt Be Oden If It Wasnt Boiled! [German].mkv`
+provide the English title and absolute number independently of the Plex display
+language. The year disambiguates same-name remakes. Absolute numbering is used
+to distinguish otherwise identical title candidates in IMDb season 1; a number
+alone is only a suggestion, never proof that two numbering schemes agree.
+Ambiguous series/titles are not automatically assigned. This is not limited to
+anime, but does not guarantee matches for every language or filename format.
+
+For unclear cases, filter the cache to **Episodes** and select the row's
+**Episode IMDb Mapping** sliders icon. Search the local index by episode title
+or IMDb ID, review the candidate's series and IMDb numbering, and save a candidate
+or enter a rated episode's IMDb ID. **Automatic** removes the manual override.
+Saving updates only the row's IMDb ID/rating; other source scores and cache TTL
+are retained. Explicit manual choices take precedence even during a forced
+refresh. Search and save do not call rating-provider APIs or upload artwork.
+An ordinary ratings refresh can collect missing filename/series context; an
+overlay sync applies the updated ratings to artwork afterwards.
+With this source enabled, completely scoreless episodes encountered by the
+resolver receive an expired cache placeholder, so they can be corrected in the
+same dialog without being presented as successfully refreshed. The dataset
+panel and episode dialog both include an expandable **How matching works**
+section explaining IMDb IDs, conservative title matching, absolute numbering,
+and the precedence of manual choices.
+
+Successful local lookups avoid OMDb requests when IMDb is the only remaining
+score needed. OMDb or other configured providers may still be used for missing
+Rotten Tomatoes/Metacritic/etc. values or unresolved IMDb titles. Importing the
+dataset does not rewrite every ratings-cache row or automatically resync artwork.
+
 ### OMDb Run Protection
 
 Each ratings-refresh job and overlay-sync run has its own OMDb request guard,

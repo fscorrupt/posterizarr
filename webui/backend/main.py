@@ -21068,6 +21068,77 @@ async def get_dynamic_overlays_ratings_cache_entries(
         logger.error(f"Error querying ratings cache entries: {e}", exc_info=True)
         return {"success": False, "error": str(e), "entries": [], "total": 0}
 
+class ImdbDatasetRequest(BaseModel):
+    enabled: bool
+
+
+class EpisodeImdbMappingRequest(BaseModel):
+    imdb_id: Optional[str] = Field(default=None, pattern=r"^tt\d{7,12}$")
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/imdb-dataset")
+def get_imdb_dataset_status():
+    from ratings_service import imdb_dataset
+    return {"success": True, **imdb_dataset.status()}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/imdb-dataset")
+def configure_imdb_dataset(req: ImdbDatasetRequest):
+    from ratings_service import imdb_dataset
+    return {"success": True, **imdb_dataset.configure(req.enabled)}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/imdb-dataset/import")
+def import_imdb_dataset():
+    from ratings_service import imdb_dataset
+    if not imdb_dataset.status()["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable the IMDb dataset first")
+    return {"success": True, **imdb_dataset.start_import()}
+
+
+def _get_episode_imdb_entry(entry_id):
+    from ratings_refresh import ratings_refresh_service
+    items = ratings_refresh_service.candidates(entry_id)
+    if not items or items[0].get("media_type") != "episode":
+        raise HTTPException(status_code=404, detail="Episode rating entry not found")
+    return items[0]
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/episode/{entry_id}/imdb")
+def get_episode_imdb_mapping(entry_id: int, query: str = Query("", max_length=250)):
+    from ratings_service import imdb_dataset
+    item = _get_episode_imdb_entry(entry_id)
+    context = {"episode_title": item.get("title"), "file_path": (item.get("_overlay") or {}).get("media_file_path")}
+    saved_context = imdb_dataset.context(item["server_type"], item["item_id"])
+    context.update(saved_context)
+    match = imdb_dataset.resolve(item["server_type"], item["item_id"], item.get("imdb_id"), context=context)
+    candidates = imdb_dataset.search(query) if query.strip() else match.get("candidates", [])
+    if match.get("status") == "matched":
+        current = imdb_dataset.search(match["imdb_id"])
+        if not query.strip():
+            candidates = current
+    return {"success": True, "mapping": match, "context": context, "candidates": candidates}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/episode/{entry_id}/imdb")
+def save_episode_imdb_mapping(entry_id: int, req: EpisodeImdbMappingRequest):
+    from ratings_service import imdb_dataset, ratings_cache
+    from ratings_refresh import ratings_refresh_service
+    from overlay_sync_service import is_overlay_sync_running
+    if is_overlay_sync_running() or (ratings_refresh_service.task is not None and not ratings_refresh_service.task.done()):
+        raise HTTPException(status_code=409, detail="Wait for the active sync or ratings refresh to finish")
+    if not imdb_dataset.status()["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable the IMDb dataset first")
+    item = _get_episode_imdb_entry(entry_id)
+    try:
+        imdb_dataset.save_mapping(item["server_type"], item["item_id"], req.imdb_id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    match = imdb_dataset.resolve(item["server_type"], item["item_id"])
+    ratings_cache.apply_imdb_mapping(entry_id, match.get("imdb_id") if match.get("status") == "matched" else None, match.get("rating"))
+    return {"success": True, "mapping": match}
+
+
 class SeasonRatingMappingRequest(BaseModel):
     simkl_id: Optional[int] = Field(default=None, ge=1)
 

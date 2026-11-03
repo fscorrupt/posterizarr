@@ -789,11 +789,12 @@
 
         # Cleanup empty Asset dirs
         if ($LibraryFolders -eq 'true') {
-            # After all files are removed get all empty directories at once
-            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force | Where-Object { -not $_.GetFileSystemInfos() }
+            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force | Sort-Object { $_.FullName.Length } -Descending
 
             # Loop through the pre-filtered list
             foreach ($dir in $dirs2delete) {
+                if ($dir.GetFileSystemInfos().Count -ne 0) { continue }
+
                 # Increment counter
                 $PathsCleared++
                 # Remove the empty directory

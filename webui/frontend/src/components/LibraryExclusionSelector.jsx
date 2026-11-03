@@ -196,11 +196,11 @@ const LibraryExclusionSelector = ({
         setCachedExclusions(validExclusions); // Pruned list (10)
 
       } else {
-        setError(data.error || t("libraryExclusion.fetchFailed"));
+        setError(mediaServerType === "silo" ? t(data.message_key || "silo.validationFailed", data.message_params || {}) : data.error || t("libraryExclusion.fetchFailed"));
         setAvailableLibraries([]);
       }
     } catch (err) {
-      setError(t("libraryExclusion.fetchError", { message: err.message }));
+      setError(mediaServerType === "silo" ? t("silo.requestFailed") : t("libraryExclusion.fetchError", { message: err.message }));
       setAvailableLibraries([]);
     } finally {
       setLoadingLibraries(false);

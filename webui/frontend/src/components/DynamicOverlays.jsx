@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
 import ConfirmDialog from "./ConfirmDialog";
+import ImdbDatasetPanel from "./ImdbDatasetPanel";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -701,6 +702,7 @@ export default function DynamicOverlays() {
   const [isRatingsRefreshConfirmOpen, setIsRatingsRefreshConfirmOpen] = useState(false);
   const [ratingsRefreshError, setRatingsRefreshError] = useState("");
   const [seasonRatingMapping, setSeasonRatingMapping] = useState(null);
+  const [episodeImdbEntry, setEpisodeImdbEntry] = useState(null);
   const ratingsCacheAvailableShowStatuses = Object.entries(ratingsCacheStatsSummary.show_status_counts || {})
     .filter(([, count]) => count > 0)
     .map(([id, count]) => ({
@@ -942,11 +944,11 @@ export default function DynamicOverlays() {
     const siloUse = serverConfig.UseSilo ?? serverConfig.SiloPart?.UseSilo;
     const siloUrl = serverConfig.SiloUrl || serverConfig.SiloPart?.SiloUrl;
     if ((siloUse === true || String(siloUse).toLowerCase() === "true") && siloUrl) {
-      list.push({ id: "silo", name: "Silo (Experimental)" });
+      list.push({ id: "silo", name: t("silo.name") });
     }
 
     return list;
-  }, [serverConfig]);
+  }, [serverConfig, t]);
 
   // Dynamically compute user-configured libraries from visual studio and scanned rules
   const configuredLibraries = useMemo(() => {
@@ -13922,13 +13924,16 @@ export default function DynamicOverlays() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsRatingsCacheModalOpen(false)}
+                onClick={() => { setIsRatingsCacheModalOpen(false); setEpisodeImdbEntry(null); }}
                 className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text transition-all shrink-0"
                 title="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            <ImdbDatasetPanel entry={episodeImdbEntry} onClose={() => setEpisodeImdbEntry(null)}
+              onSaved={() => fetchRatingsCacheItems(ratingsCachePage)} disabled={ratingsRefreshJob?.running || isOverlaySyncRunning} />
 
             {/* Filter Toolbar */}
             <div className="p-4 border-b border-theme space-y-3">
@@ -14361,6 +14366,14 @@ export default function DynamicOverlays() {
                                 className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text disabled:opacity-50">
                                 <RefreshCw className="w-4 h-4" />
                               </button>
+                              {entry.media_type === "episode" && (
+                                <button type="button" onClick={() => setEpisodeImdbEntry(entry)}
+                                  disabled={isActing || ratingsRefreshJob?.running || isOverlaySyncRunning}
+                                  title={t("imdbDataset.mapping")} aria-label={`${t("imdbDataset.mapping")}: ${entry.title || entry.item_id}`}
+                                  className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text disabled:opacity-50">
+                                  <Sliders className="w-4 h-4" />
+                                </button>
+                              )}
                               {entry.media_type === "season" && (
                                 <button type="button" onClick={() => handleOpenSeasonRatingMapping(entry)}
                                   disabled={isActing || ratingsRefreshJob?.running}

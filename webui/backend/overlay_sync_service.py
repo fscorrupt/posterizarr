@@ -111,6 +111,10 @@ async def resolve_episode_overlay_ratings(
         enabled_sources=enabled_sources, client=client, force_refresh=force_refresh,
         season_number=season_number, episode_number=episode["episode_number"],
         provider_run_state=provider_run_state,
+        rating_context={"series_title": parent_metadata.get("title"), "parent_imdb_id": parent_metadata.get("imdb_id"),
+                        "series_year": parent_metadata.get("year"),
+                        "episode_title": episode.get("title"), "original_title": episode.get("original_title"),
+                        "file_path": episode.get("file_path") or episode.get("media_file_path")},
     )
 
 

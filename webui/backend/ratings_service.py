@@ -29,6 +29,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import httpx
 from urllib.parse import urlparse
+from imdb_dataset import ImdbDataset
 
 logger = logging.getLogger("ratings_service")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -56,6 +57,7 @@ def get_database_dir() -> Path:
 
 DATABASE_DIR = get_database_dir()
 DB_PATH = DATABASE_DIR / "overlay_cache.db"
+imdb_dataset = ImdbDataset(DATABASE_DIR / "imdb_dataset.db")
 # Auto-migrate legacy database from webui/backend/database/overlay_cache.db if canonical DB does not exist
 _old_backend_db = Path(__file__).resolve().parent / "database" / "overlay_cache.db"
 if not DB_PATH.exists() and _old_backend_db.exists():
@@ -732,6 +734,23 @@ class RatingsCacheManager:
             except Exception as e:
                 logger.error(f"[RatingsCache] Error querying entries: {e}")
                 return {"entries": [], "total": 0, "page": page, "limit": limit, "total_pages": 1, "stats": {}}
+
+    def ensure_unmapped_episode(self, server_type, item_id, title, year, imdb_id):
+        now = datetime.utcnow()
+        with self.lock, closing(self._get_connection()) as connection, connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO media_ratings_cache (server_type,item_id,media_type,title,year,imdb_id,cached_at,expires_at) VALUES (?,?,'episode',?,?,?,?,?)",
+                (server_type.lower(), str(item_id), title, year, imdb_id, now.isoformat(), (now - timedelta(days=1)).isoformat()),
+            )
+
+    def apply_imdb_mapping(self, entry_id, imdb_id, rating):
+        with self.lock, closing(self._get_connection()) as connection, connection:
+            connection.execute(
+                "UPDATE media_ratings_cache SET imdb_id=?, imdb_rating=?, source=CASE WHEN ? IS NOT NULL THEN 'imdb_dataset' ELSE source END WHERE id=? AND media_type='episode'",
+                (imdb_id, rating, rating, int(entry_id)),
+            )
+            if connection.execute("SELECT 1 FROM sqlite_master WHERE name='ratings_refresh_retry'").fetchone():
+                connection.execute("DELETE FROM ratings_refresh_retry WHERE (server_type,item_id) IN (SELECT server_type,item_id FROM media_ratings_cache WHERE id=?)", (int(entry_id),))
 
     def delete_entry(self, entry_id: int) -> bool:
         """Delete a single cached rating record by ID."""
@@ -1448,7 +1467,7 @@ async def fetch_omdb_ratings(
     api_key: str,
     client: httpx.AsyncClient,
     outcomes: Optional[Dict[str, Any]] = None,
-    provider_run_state: Optional[RatingsProviderRunState] = None
+    provider_run_state: Optional[RatingsProviderRunState] = None,
 ) -> Dict[str, Any]:
     """
     Fetch IMDb, Rotten Tomatoes, and Metascore ratings from OMDb API.
@@ -1527,7 +1546,8 @@ async def resolve_media_ratings(
     episode_number: Optional[int] = None,
     simkl_client_id: Optional[str] = None,
     tvdb_id: Optional[str] = None,
-    provider_run_state: Optional[RatingsProviderRunState] = None
+    provider_run_state: Optional[RatingsProviderRunState] = None,
+    rating_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Unified ratings resolver with multi-source fallback and SQLite caching.
@@ -1544,7 +1564,8 @@ async def resolve_media_ratings(
             source in requested_episode_sources and cached.get(column) is None
             for source, column in EPISODE_RATING_SOURCE_COLUMNS.items()
         )
-        if cached and not missing_simkl_selection and not missing_episode_selection:
+        missing_dataset_selection = cached and cached.get("imdb_rating") is None and "imdb" in (enabled_sources or ["imdb"]) and imdb_dataset.status()["enabled"]
+        if cached and not missing_simkl_selection and not missing_episode_selection and not missing_dataset_selection:
             return {
                 "imdb": cached.get("imdb_rating"),
                 "tmdb": cached.get("tmdb_rating"),
@@ -1577,6 +1598,43 @@ async def resolve_media_ratings(
                 resolved[k] = v
         outcomes["plex"] = {"status": "success" if resolved else "no_scores", "scores": sorted(resolved)}
 
+    dataset_context = dict(rating_context or {})
+    if media_type == "episode" and plex_xml_bytes:
+        root = fromstring(plex_xml_bytes)
+        video = root if root.tag == "Video" else root.find(".//Video")
+        if video is not None:
+            part = video.find(".//Part")
+            if video.get("grandparentRatingKey"):
+                parent = ratings_cache.get_cached_ratings(server_type, video.get("grandparentRatingKey"), allow_stale=True) or {}
+                dataset_context.update({key: value for key, value in {"parent_imdb_id": parent.get("imdb_id"), "series_year": parent.get("year")}.items() if value})
+            dataset_context.update({key: value for key, value in {
+                "series_title": video.get("grandparentTitle"), "episode_title": video.get("title"),
+                "original_title": video.get("originalTitle"), "file_path": part.get("file") if part is not None else None,
+                "season_number": video.get("parentIndex"), "episode_number": video.get("index"),
+                "released_at": video.get("originallyAvailableAt"),
+            }.items() if value is not None})
+
+    async def local_imdb_rating():
+        nonlocal imdb_id, primary_source
+        if "imdb" not in enabled_sources:
+            return
+        try:
+            match = await asyncio.to_thread(imdb_dataset.resolve, server_type, str(item_id), imdb_id, media_type, dataset_context)
+            if match.get("status") == "disabled":
+                return
+            outcomes["imdb_dataset"] = {"status": "success" if match.get("rating") is not None else "unmapped",
+                                        "mapping_status": match["status"], "mode": match.get("mode", "auto")}
+            if match.get("rating") is not None and (resolved.get("imdb") is None or match.get("mode") == "manual"):
+                imdb_id = match["imdb_id"]
+                resolved["imdb"] = match["rating"]
+                primary_source = "imdb_dataset"
+        except (OSError, sqlite3.Error, ValueError):
+            logger.exception("[IMDb Dataset] Local lookup unavailable; using existing providers")
+            outcomes["imdb_dataset"] = {"status": "failed", "message": "Local index unavailable"}
+
+    await local_imdb_rating()
+    dataset_checked_id = imdb_id
+
     # 3. If TMDb rating is requested and missing, use TMDb API
     local_client = client or httpx.AsyncClient(timeout=10.0)
     should_close_client = client is None
@@ -1584,7 +1642,7 @@ async def resolve_media_ratings(
     try:
         if media_type == "episode" and tmdb_id and tmdb_api_key and season_number is not None and episode_number is not None:
             needs_episode_details = ("tmdb" in enabled_sources and resolved.get("tmdb") is None) or (
-                not imdb_id and (mdblist_api_key or omdb_api_key)
+                not imdb_id and (mdblist_api_key or omdb_api_key or imdb_dataset.status()["enabled"])
                 and any(source not in ("tmdb", "mdblist_episode") for source in enabled_sources)
             )
             if needs_episode_details:
@@ -1611,6 +1669,9 @@ async def resolve_media_ratings(
             if tmdb_score is not None:
                 resolved["tmdb"] = tmdb_score
                 primary_source = "tmdb"
+
+        if imdb_id != dataset_checked_id:
+            await local_imdb_rating()
 
         # 4. If MDBList API key is provided and needed ratings are still missing (or Trakt/Letterboxd requested)
         source_aliases = {"tomatoes": "rt_critic", "tomatoesaudience": "rt_audience"}
@@ -1702,6 +1763,8 @@ async def resolve_media_ratings(
         )
         if not saved:
             raise RuntimeError("Could not save fresh ratings to cache")
+    elif media_type == "episode" and "imdb" in enabled_sources and imdb_dataset.status()["enabled"]:
+        ratings_cache.ensure_unmapped_episode(server_type, item_id, title, year, imdb_id)
     ratings_cache.record_refresh(server_type, str(item_id), refresh_status, {
         "scores": sorted(resolved),
         "providers": outcomes,

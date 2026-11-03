@@ -349,6 +349,7 @@ class RatingsRefreshService:
         season_number = None
         episode_number = None
         parent_id = None
+        rating_context = {}
         if server == "plex":
             response = await client.get(f"{server_config['url']}/library/metadata/{item['item_id']}",
                                         headers={"X-Plex-Token": server_config.get("token") or "", "Accept": "application/xml"},
@@ -397,6 +398,8 @@ class RatingsRefreshService:
                 item["imdb_id"], item["tmdb_id"] = ids.get("Imdb"), None
                 season_number, episode_number = data.get("ParentIndexNumber"), data.get("IndexNumber")
                 parent_id = data.get("SeriesId")
+                rating_context = {"series_title": data.get("SeriesName"), "episode_title": data.get("Name"),
+                                  "original_title": data.get("OriginalTitle"), "file_path": data.get("Path") or next((source.get("Path") for source in data.get("MediaSources", []) if source.get("Path")), None)}
             community_rating, critic_rating = data.get("CommunityRating"), data.get("CriticRating")
         try:
             season_number = int(season_number) if season_number is not None else None
@@ -432,6 +435,7 @@ class RatingsRefreshService:
             season_number=season_number, episode_number=episode_number,
             simkl_client_id=settings.get("simkl_client_id"), tvdb_id=item.get("tvdb_id"),
             provider_run_state=self.provider_run_state,
+            rating_context=rating_context,
         )
 
     async def _run(self, credentials, settings, entry_id, state):
@@ -520,10 +524,13 @@ class RatingsRefreshService:
     async def _periodic(self, config_path):
         from dynamic_overlays_service import get_dynamic_overlays_settings
         from overlay_sync_service import get_server_credentials
+        from ratings_service import imdb_dataset
         startup_checked = False
         while True:
             try:
                 settings = await asyncio.to_thread(get_dynamic_overlays_settings)
+                if settings.get("enabled"):
+                    await asyncio.to_thread(imdb_dataset.maybe_update)
                 if settings.get("enabled") and settings.get("ratings_auto_refresh_enabled", True):
                     try:
                         interval_hours = int(settings.get("ratings_auto_refresh_interval_hours", 1))

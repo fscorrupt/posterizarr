@@ -349,9 +349,9 @@ const runModes = [
     if (type === 'silo') {
       return (
         <div className="mt-2 p-3 bg-theme-bg/30 rounded-lg flex flex-col gap-3 min-h-0 overflow-y-auto">
-          <h4 className="font-semibold text-sm text-theme-primary">Silo (Experimental)</h4>
+          <h4 className="font-semibold text-sm text-theme-primary">{t("silo.name")}</h4>
           <label className="block text-xs font-medium text-theme-muted">
-            Server URL
+            {t("silo.serverUrl")}
             <ClearableInput value={config.SiloUrl} onChange={value => { handleChange("SiloUrl", value); setSiloValidated(false); setSiloLibsValid(false); }} placeholder="http://silo:8080" />
           </label>
           <label className="block text-xs font-medium text-theme-muted">
