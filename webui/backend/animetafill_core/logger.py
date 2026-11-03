@@ -1,7 +1,7 @@
 import logging
-import logging.handlers
 import os
 import sys
+from log_rotation import RunLogFileHandler
 
 if sys.platform == "win32":
     try:
@@ -46,10 +46,8 @@ class Logger:
             if log_dir and not os.path.exists(log_dir):
                 os.makedirs(log_dir, exist_ok=True)
 
-            handler = logging.handlers.RotatingFileHandler(
+            handler = RunLogFileHandler(
                 self.log_file,
-                maxBytes=10*1024*1024, # 10MB safety limit
-                backupCount=5,
                 encoding='utf-8'
             )
 
@@ -75,6 +73,11 @@ class Logger:
             self._setup_handler()
         except Exception:
             pass
+
+    def start_run(self):
+        for handler in self._file_logger.handlers:
+            if isinstance(handler, RunLogFileHandler):
+                handler.start_run()
 
     def _log_to_file(self, level: str, msg: str):
         try:

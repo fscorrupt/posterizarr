@@ -10,6 +10,12 @@
     "logs": "Journaux"
   },
   "dynamicOverlays": {
+    "parentLanguageMode": {
+      "label": "Drapeaux des séries et saisons",
+      "frequency": "Les plus fréquentes",
+      "preferredThenFrequency": "Langue préférée, puis fréquence",
+      "help": "S'applique uniquement aux affiches de séries et de saisons où les drapeaux de langue sont explicitement activés. Ce réglage n'active aucun drapeau supplémentaire. Par défaut, la première langue de votre liste prioritaire obtient une place dès qu'un épisode la propose ; les autres places suivent la fréquence, puis la priorité en cas d'égalité. Un drapeau ne signifie pas que toute la série ou saison est disponible dans cette langue. Choisissez Les plus fréquentes pour désactiver la préférence."
+    },
     "errorLoad": "Impossible de charger l'état des superpositions dynamiques",
     "scanSuccess": "Analyse terminée avec succès",
     "scanFailed": "Échec de l'analyse",

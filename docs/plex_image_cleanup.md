@@ -4,11 +4,12 @@ Repeated custom poster/titlecard uploads can leave old, unselected images in Ple
 
 Posterizarr provides a separate **Plex Image Cleanup** scheduler task inspired by [ImageMaid](https://github.com/Kometa-Team/ImageMaid), by **meisnate12 and the Kometa Team**. ImageMaid in turn credits **bullmoose20's Plex Bloat Fix**. Selected-artwork protection in this integration adapts ImageMaid's MIT-licensed helpers. This is a limited image-cleanup integration, not the complete ImageMaid application.
 
-## Scheduled Only
+## Scheduled Or On Demand
 
 - No cleanup schedule is created or enabled by default.
 - Cleanup does not run on startup, after an upload, after overlay sync, or when previewing artwork.
-- Add a **Plex Image Cleanup** task in Scheduler and explicitly enable the scheduler. Its Run Now control is disabled, and the manual-run API rejects this mode.
+- Add a **Plex Image Cleanup** task in Scheduler. Use the play button beside any saved task to run it immediately with its saved options, even when the scheduler is disabled. To run it automatically, explicitly enable the scheduler.
+- On-demand cleanup uses the same Read Only setting, removal confirmation, age threshold, and safety checks as scheduled cleanup. Its progress opens in `PlexImageCleanup.log`.
 - Schedule it in a separate maintenance window after Posterizarr, Kometa, TitleCardMaker, and other artwork writers. In-app overlay work and queued requests exclude cleanup; overlay requests arriving during cleanup wait until it finishes. Existing scheduled tasks remain serialized by the scheduler. A loaded active Plex Sync worker also causes cleanup to skip.
 - API snapshot mode refuses to proceed while Plex reports active playback sessions. External tools and users changing artwork are not locked by Posterizarr; keep them idle throughout cleanup. Cleanup is not a transaction with the live Plex server.
 
@@ -106,6 +107,8 @@ An older unselected upload may still be a useful alternative poster. Quarantine 
 ## Reports
 
 Each executed task creates `UILogs/PlexImageCleanup.log` at startup and appends timestamped progress for snapshot creation/download, selected-artwork protection, metadata scanning, and candidate processing. Long scans report progress periodically rather than once per image. The final JSON summary is appended to this log and written to `UILogs/last_image_cleanup_report.json`.
+
+All UI logs and the latest cleanup report are preserved across backend and container restarts. In Docker, they live under `/config/UILogs` and survive container recreation when the same persistent `/config` volume is retained. Only when the next cleanup actually starts is `PlexImageCleanup.log` renamed to `PlexImageCleanup.old.log`, replacing the older backup. The new run writes a fresh active log, while the JSON report is replaced with the latest result. A skipped cleanup does not rotate the log.
 
 The top navigation shows **IMAGE CLEANUP**, not Overlay Sync. Click that activity badge, or the log button beside the saved schedule, to open the cleanup live log. Cleanup has no Overlay Sync Stop action. Reports include action, candidate/changed counts and bytes, skipped files, errors, and the quarantine path when applicable. Busy skips are recorded by the scheduler.
 

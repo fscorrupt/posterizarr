@@ -10,6 +10,12 @@
     "logs": "Log"
   },
   "dynamicOverlays": {
+    "parentLanguageMode": {
+      "label": "Bandiere per serie e stagioni",
+      "frequency": "Lingue più frequenti",
+      "preferredThenFrequency": "Lingua preferita, poi frequenza",
+      "help": "Si applica solo ai poster di serie e stagioni per cui le bandiere delle lingue sono esplicitamente abilitate. Questa impostazione non abilita altre bandiere sui poster. Per impostazione predefinita, la prima lingua nell'elenco di priorità ottiene un posto non appena un episodio la contiene; gli altri posti seguono la frequenza e, a parità, la priorità. Una bandiera non indica che l'intera serie o stagione sia disponibile in quella lingua. Seleziona Lingue più frequenti per disattivare la preferenza."
+    },
     "errorLoad": "Impossibile caricare lo stato delle sovrapposizioni dinamiche",
     "scanSuccess": "Scansione completata con successo",
     "scanFailed": "Scansione non riuscita",

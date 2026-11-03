@@ -857,6 +857,7 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
         try:
             if hasattr(core_logger, "reconfigure_log_file"):
                 core_logger.reconfigure_log_file(str(LOG_FILE_PATH))
+            core_logger.start_run()
         except Exception:
             pass
 

@@ -2869,9 +2869,14 @@ class OverlayConfigEngine:
             if q_limit is not None and q_limit > 0:
                 sorted_q = sorted_q[:q_limit]
 
+            active_slots = slots[:len(sorted_q)]
+            if preferred_langs and active_slots:
+                anchors = {(slot["horizontal_align"], slot["horizontal_offset"], slot["vertical_align"]) for slot in active_slots}
+                if len(anchors) == 1:
+                    active_slots = sorted(active_slots, key=lambda slot: slot["vertical_offset"] * (-1 if slot["vertical_align"] == "bottom" else 1))
             for idx, item in enumerate(sorted_q):
-                if idx < len(slots):
-                    slot = slots[idx]
+                if idx < len(active_slots):
+                    slot = active_slots[idx]
                     item["horizontal_align"] = slot["horizontal_align"]
                     item["horizontal_offset"] = slot["horizontal_offset"]
                     item["vertical_align"] = slot["vertical_align"]

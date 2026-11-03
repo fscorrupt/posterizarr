@@ -10,6 +10,12 @@
     "logs": "Logs"
   },
   "dynamicOverlays": {
+    "parentLanguageMode": {
+      "label": "Show / Season Flag Selection",
+      "frequency": "Most frequent",
+      "preferredThenFrequency": "Preferred language, then frequency",
+      "help": "Only applies to show and season posters explicitly enabled for language flags. This setting does not enable additional poster flags. By default, the first language in your priority list gets a slot as soon as one episode has it; remaining slots follow frequency, with priority breaking ties. A flag does not mean the whole show or season has that language. Select Most frequent to disable the preference."
+    },
     "errorLoad": "Failed to load dynamic overlays status",
     "scanSuccess": "Scan completed successfully",
     "scanFailed": "Scan failed",

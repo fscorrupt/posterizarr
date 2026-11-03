@@ -10,6 +10,12 @@
     "logs": "Logs"
   },
   "dynamicOverlays": {
+    "parentLanguageMode": {
+      "label": "Flaggenauswahl für Serien und Staffeln",
+      "frequency": "Nach Häufigkeit",
+      "preferredThenFrequency": "Bevorzugte Sprache, dann Häufigkeit",
+      "help": "Gilt nur für Serien- und Staffelposter, auf denen Sprachflaggen ausdrücklich aktiviert sind. Diese Einstellung aktiviert keine zusätzlichen Poster-Flaggen. Standardmäßig erhält die erste Sprache deiner Prioritätsliste einen Platz, sobald eine Episode sie enthält; weitere Plätze folgen der Häufigkeit, bei Gleichstand der Priorität. Eine Flagge bedeutet nicht, dass die ganze Serie oder Staffel in dieser Sprache verfügbar ist. Mit Nach Häufigkeit deaktivierst du die Bevorzugung."
+    },
     "errorLoad": "Status der dynamischen Overlays konnte nicht geladen werden",
     "scanSuccess": "Scan erfolgreich abgeschlossen",
     "scanFailed": "Scan fehlgeschlagen",

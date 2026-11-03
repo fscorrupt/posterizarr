@@ -2460,7 +2460,7 @@ def build_overlay_layers_for_item(
             if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "languages":
                 continue
             variables = rule.get("template_variables") or {}
-            target = str(variables.get("builder_level", "all")).lower()
+            target = str(variables.get("builder_level", "episode")).lower()
             target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
             parent_opt_in = variables.get("aggregate_parent_streams") is True
             if target not in ("all", target_level) and not (target == "episode" and parent_opt_in):
@@ -2477,7 +2477,12 @@ def build_overlay_layers_for_item(
             if not item_metadata.get("_language_order_precomputed"):
                 priority = {code: index for index, code in enumerate(allowed)}
                 selected.sort(key=priority.__getitem__)
+            if item_level in ("show", "season") and variables.get("parent_language_mode", "preferred_then_frequency") == "preferred_then_frequency" and allowed and allowed[0] in selected:
+                selected.remove(allowed[0])
+                selected.insert(0, allowed[0])
             selected = selected[:max(0, min(5, int(variables.get("overlay_limit", 5))))]
+            display_priority = {code: index for index, code in enumerate(allowed)}
+            selected.sort(key=display_priority.__getitem__)
             horizontal_align = variables.get("horizontal_align") or variables.get("horizontal_position", "left")
             vertical_align = variables.get("vertical_align") or variables.get("vertical_position", "bottom")
             horizontal_offset = int(variables.get("horizontal_offset", 48))
@@ -2513,6 +2518,7 @@ def build_overlay_layers_for_item(
                         font_file = "Inter-Bold.ttf"
 
             for index, code in enumerate(selected):
+                position_index = len(selected) - index - 1 if vertical_align == "bottom" else index
                 if hide_text:
                     native_language_layers.append({
                         "name": f"language_flag_{code}",
@@ -2521,7 +2527,7 @@ def build_overlay_layers_for_item(
                         "horizontal_align": horizontal_align,
                         "horizontal_offset": horizontal_offset,
                         "vertical_align": vertical_align,
-                        "vertical_offset": vertical_offset + (len(selected) - index - 1) * 61,
+                        "vertical_offset": vertical_offset + position_index * 61,
                     })
                 else:
                     lang_text = code.lower() if str(variables.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
@@ -2553,7 +2559,7 @@ def build_overlay_layers_for_item(
                         "horizontal_align": horizontal_align,
                         "horizontal_offset": horizontal_offset,
                         "vertical_align": vertical_align,
-                        "vertical_offset": vertical_offset + (len(selected) - index - 1) * 61,
+                        "vertical_offset": vertical_offset + position_index * 61,
                     })
 
         for rule in library_rules:
@@ -2794,6 +2800,8 @@ def build_overlay_layers_for_item(
                 clean_detected.sort(key=language_priority.__getitem__)
             limit = int(lang_vars.get("overlay_limit", 5))
             clean_detected = clean_detected[:limit]
+            display_priority = {code: index for index, code in enumerate(allowed_langs)}
+            clean_detected.sort(key=display_priority.__getitem__)
 
             if clean_detected:
                 flag_w = 46
@@ -3706,12 +3714,9 @@ async def _fetch_overlay_target_items(
 
 
 def _open_overlay_sync_log(log_file_path: Path):
+    from log_rotation import rotate_run_log
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
-    if log_file_path.exists() and log_file_path.stat().st_size > 10 * 1024 * 1024:
-        try:
-            log_file_path.replace(log_file_path.with_name(log_file_path.name + ".old"))
-        except OSError as error:
-            logger.warning("[OverlaySync] Could not rotate sync log (%s); appending to the active log", type(error).__name__)
+    rotate_run_log(log_file_path)
     return log_file_path.open("a", encoding="utf-8", buffering=1)
 
 

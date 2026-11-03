@@ -68,6 +68,14 @@ The backend handles the following core responsibilities:
 
 ---
 
+## Log Retention
+
+Backend/container startup does not delete or truncate logs. In Docker, `UILogs` lives under the persistent `/config` volume. `BackendServer.log` and `FrontendUI.log` append across restarts because they record continuous server activity rather than individual jobs.
+
+When a Python job actually starts, its previous active log is renamed to `Name.old.log` and the new run writes a fresh `Name.log`. One previous run is retained; the next rotation replaces that backup. This applies to Plex Sync, Dynamic Overlays Sync, Overlay Defaults, Ratings Refresh, AniMetaFill, and Plex Image Cleanup. Rejected/busy jobs do not rotate logs. If rotation fails, the existing log is retained and new output is appended rather than discarded. The `.old.log` files remain available in the log viewer.
+
+PowerShell runs keep their existing timestamped archive behavior under `RotatedLogs`; backend startup does not clear those archives.
+
 ## Support Bundles
 
 The Generate Support Logs action includes application/UI logs, selected change-detection JSON reports, scheduler and application configuration, Dynamic Overlays/AniMetaFill JSON settings, active overlay YAML files, and default templates. Legacy JSON locations and the older `Overlayfiles/kometa` directory are supported.

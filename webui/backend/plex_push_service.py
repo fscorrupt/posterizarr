@@ -1172,17 +1172,6 @@ async def run_plex_sync_task(
         log_file_path = base_dir / "UILogs" / "PlexSync.log"
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Automatic log rotation: rotate if log file exceeds 10MB
-    if log_file_path.exists():
-        try:
-            if log_file_path.stat().st_size > 10 * 1024 * 1024:
-                old_log = log_file_path.with_name("PlexSync.old.log")
-                if old_log.exists():
-                    old_log.unlink()
-                log_file_path.rename(old_log)
-        except Exception:
-            pass
-
     def write_log(msg: str):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         formatted = f"[{now_str}] {msg}\n"
@@ -1201,6 +1190,8 @@ async def run_plex_sync_task(
     _stop_plex_sync_requested = False
 
     try:
+        from log_rotation import rotate_run_log
+        rotate_run_log(log_file_path)
         write_log("=" * 60)
         write_log("STARTING SCHEDULED PLEX SYNC TASK")
 

@@ -6435,6 +6435,27 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
 
+                      {curLib?.media_type === "show" && (
+                        <label className="block space-y-1 text-xs text-theme-text">
+                          <span>{t("dynamicOverlays.parentLanguageMode.label")}</span>
+                          <select
+                            aria-label={t("dynamicOverlays.parentLanguageMode.label")}
+                            value={badges.audio_languages?.template_variables?.parent_language_mode || "preferred_then_frequency"}
+                            onChange={event => updateBadge("audio_languages", {
+                              template_variables: {
+                                ...badges.audio_languages?.template_variables,
+                                parent_language_mode: event.target.value
+                              }
+                            })}
+                            className="w-full min-w-0 bg-theme-hover border border-theme rounded-lg px-2 py-1.5 text-xs text-theme-text"
+                          >
+                            <option value="frequency">{t("dynamicOverlays.parentLanguageMode.frequency")}</option>
+                            <option value="preferred_then_frequency">{t("dynamicOverlays.parentLanguageMode.preferredThenFrequency")}</option>
+                          </select>
+                          <span className="block text-[11px] leading-relaxed text-theme-muted">{t("dynamicOverlays.parentLanguageMode.help")}</span>
+                        </label>
+                      )}
+
                       {/* Position & Offsets */}
                       <div className="flex items-start gap-2.5 pt-1 border-t border-theme/40">
                         <PositionPicker

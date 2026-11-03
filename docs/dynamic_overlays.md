@@ -307,10 +307,49 @@ as an additional provider to display its available episode scores under its own 
 
 ### Language Priority and Parent Video Formats
 
-Episode language flags follow the configured `languages` order before applying
+Movie and episode language flags follow the configured `languages` order before applying
 `overlay_limit`. For example, `[de, ja, en]` with a limit of two selects German
 and Japanese when all three audio languages are present. Imported language
 templates use their explicit language codes rather than their English overlay names.
+
+Across movie, episode, show, season, and background artwork, selected flags are
+displayed in configured priority order from top to bottom, even when the group
+is anchored at the bottom. For `[de, en, ja]`, German is above English, then
+Japanese if all three are selected. Frequency or hybrid rules still decide which
+languages fit the limit; this display ordering does not add or replace selected
+languages. Group position and spacing are preserved. Horizontal queues retain
+their existing layout.
+
+Show and season flags default to **Preferred language, then frequency**. The
+**Show / Season Flag Selection** control in the visual language editor can switch
+back to **Most frequent**. The default behavior is also available explicitly in YAML:
+
+```yaml
+- default: languages
+   template_variables:
+      builder_level: episode
+      aggregate_parent_streams: true
+      languages: [de, en, ja]
+      overlay_limit: 2
+      parent_language_mode: preferred_then_frequency
+```
+
+This selection mode does not enable additional artwork targets. Show or season
+flags must already be explicitly configured with `builder_level: show`,
+`builder_level: season`, or `builder_level: all`. An episode rule can explicitly
+include parent artwork with `aggregate_parent_streams: true`, as in the example.
+Episode-only rules without that opt-in remain episode-only, even when the hybrid
+selection mode is enabled or other rules aggregate episode metadata.
+The first configured language gets the first flag slot as soon as at least one
+episode has it. Remaining slots follow frequency, then configured priority for
+ties. With JA:40, EN:20, DE:1, the result is DE + JA; with DE:0 it displays EN + JA;
+with JA:40, EN:40, DE:1 it is DE + EN. A flag means the language is available on
+at least one episode, not necessarily the complete season or show. Missing
+preferred languages are never fabricated. Omitting the option enables this hybrid
+selection, including for existing rules. Set `parent_language_mode: frequency` to
+disable the preference and rank by frequency, using configured priority for ties.
+An explicitly saved `frequency` choice is preserved. Episode and background
+selection rules are unchanged; their vertical display follows the same priority order.
 
 Show and season resolution badges use the most common complete episode video
 format: resolution, Dolby Vision, and HDR together. Each episode contributes one

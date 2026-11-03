@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import hashlib
-from logging.handlers import RotatingFileHandler
+from log_rotation import RunLogFileHandler
 import threading
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -23,9 +23,8 @@ logger = logging.getLogger("ratings_refresh")
 
 def configure_ratings_logging(log_directory):
     log_directory.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(
-        log_directory / "RatingsRefresh.log", maxBytes=10 * 1024 * 1024,
-        backupCount=1, encoding="utf-8",
+    handler = RunLogFileHandler(
+        log_directory / "RatingsRefresh.log", encoding="utf-8",
     )
     handler.set_name("ratings_file")
     handler.setLevel(logging.INFO)
@@ -254,6 +253,9 @@ class RatingsRefreshService:
             state = {"running": True, "status": "running", "trigger": trigger, "started_at": datetime.utcnow().isoformat(),
                      "finished_at": None, "total": 0, "completed": 0, "success": 0, "partial": 0, "failed": 0, "errors": []}
             self._save(state)
+            for handler in logger.handlers:
+                if isinstance(handler, RunLogFileHandler):
+                    handler.start_run()
             self.task = asyncio.create_task(self._run(credentials, settings, entry_id, state))
         return {"success": True, "job": state.copy()}
 

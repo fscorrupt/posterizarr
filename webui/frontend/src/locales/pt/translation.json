@@ -10,6 +10,12 @@
     "logs": "Logs"
   },
   "dynamicOverlays": {
+    "parentLanguageMode": {
+      "label": "Bandeiras de séries e temporadas",
+      "frequency": "Idiomas mais frequentes",
+      "preferredThenFrequency": "Idioma preferido, depois frequência",
+      "help": "Aplica-se apenas aos posters de séries e temporadas com bandeiras de idiomas explicitamente ativadas. Esta opção não ativa bandeiras adicionais nos posters. Por predefinição, o primeiro idioma da lista de prioridades recebe um lugar assim que um episódio o disponibiliza; os restantes lugares seguem a frequência e, em caso de empate, a prioridade. Uma bandeira não significa que toda a série ou temporada esteja disponível nesse idioma. Selecione Idiomas mais frequentes para desativar a preferência."
+    },
     "errorLoad": "Não foi possível carregar o estado das sobreposições dinâmicas",
     "scanSuccess": "Análise concluída com sucesso",
     "scanFailed": "Falha na análise",

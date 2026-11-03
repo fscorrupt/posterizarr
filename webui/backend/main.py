@@ -319,16 +319,6 @@ queue_manager = QueueManager(QUEUE_DB_PATH)
 # Global lock for process management
 process_lock = threading.RLock()
 
-# Clear UILogs on startup - remove all log files
-import glob
-
-for log_file in glob.glob(str(UI_LOGS_DIR / "*.log")):
-    try:
-        os.remove(log_file)
-        pass  # Silent - no console output
-    except Exception as e:
-        pass  # Silent - no console output
-
 # Determine log level from config file or environment variable or default to INFO
 LOG_LEVEL_MAP = {
     "DEBUG": logging.DEBUG,
@@ -438,7 +428,7 @@ logging.root.handlers.clear()
 
 # Create file handler for BackendServer.log
 file_handler = logging.FileHandler(
-    UI_LOGS_DIR / "BackendServer.log", mode="w", encoding="utf-8"
+    UI_LOGS_DIR / "BackendServer.log", mode="a", encoding="utf-8"
 )
 file_handler.setLevel(LOG_LEVEL)
 file_handler.setFormatter(
@@ -518,19 +508,12 @@ def setup_backend_ui_logger():
         logger.debug(f"UILogs directory: {UI_LOGS_DIR}")
         logger.debug(f"UILogs directory exists: {UI_LOGS_DIR.exists()}")
 
-        # CLEANUP: Delete old log files on startup
         backend_log_path = UI_LOGS_DIR / "FrontendUI.log"
-        if backend_log_path.exists():
-            logger.debug(f"Removing existing FrontendUI.log: {backend_log_path}")
-            backend_log_path.unlink()
-            logger.info(f"Cleared old FrontendUI.log")
-        else:
-            logger.debug("No existing FrontendUI.log to clear")
 
         # Create File Handler for FrontendUI.log with thread-safe queue
         logger.debug(f"Creating file handler for: {backend_log_path}")
         backend_ui_file_handler = logging.FileHandler(
-            backend_log_path, encoding="utf-8", mode="w"
+            backend_log_path, encoding="utf-8", mode="a"
         )
         backend_ui_file_handler.setLevel(LOG_LEVEL)  # Use configurable log level
         backend_ui_file_handler.setFormatter(
@@ -11753,9 +11736,12 @@ async def run_scheduler_now(request: Request):
         except Exception:
             pass
 
-        # Use asyncio.create_task to run it asynchronously
         if mode.lower() == "pleximagecleanup":
-            raise HTTPException(status_code=400, detail="Plex Image Cleanup is scheduled-only and cannot be run manually")
+            from plex_image_cleanup import cleanup_schedule_options
+            try:
+                schedule_config = {**(schedule_config or {}), **cleanup_schedule_options(schedule_config or {})}
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
         asyncio.create_task(scheduler.run_script(mode=mode, schedule_config=schedule_config, force_run=True))
         return {"success": True, "message": f"Manual run triggered successfully for mode '{mode}'"}
     except RuntimeError as e:

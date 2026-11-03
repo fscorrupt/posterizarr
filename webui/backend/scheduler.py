@@ -212,9 +212,6 @@ class PosterizarrScheduler:
         scheduled_execution: bool = False,
     ):
         """Execute Posterizarr script in normal mode (non-blocking)"""
-        if mode.lower() == "pleximagecleanup" and not scheduled_execution:
-            logger.warning("Plex Image Cleanup is scheduled-only; manual execution refused")
-            return
         with self._lock:
             config = self.load_config()
             is_already_running = False
@@ -283,11 +280,11 @@ class PosterizarrScheduler:
             if mode.lower() == "pleximagecleanup":
                 try:
                     from plex_image_cleanup import run_scheduled_image_cleanup
-                    result = await asyncio.to_thread(run_scheduled_image_cleanup, self.base_dir, schedule_config or {}, scheduled=True)
+                    result = await asyncio.to_thread(run_scheduled_image_cleanup, self.base_dir, schedule_config or {}, scheduled=scheduled_execution)
                     self.update_schedule_status(schedule_config, "skipped" if result.get("skipped") else ("success" if result.get("success") else "failed"))
-                    logger.info("Scheduled Plex Image Cleanup finished: %s", result)
+                    logger.info("Plex Image Cleanup finished: %s", result)
                 except Exception:
-                    logger.exception("Scheduled Plex Image Cleanup failed")
+                    logger.exception("Plex Image Cleanup failed")
                     self.update_schedule_status(schedule_config, "failed")
                 finally:
                     with self._lock:
@@ -387,16 +384,8 @@ class PosterizarrScheduler:
                 log_file_path = self.base_dir / "UILogs" / "OverlayDefaults.log"
                 log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Automatic log rotation: rotate if log file exceeds 10MB
-                if log_file_path.exists():
-                    try:
-                        if log_file_path.stat().st_size > 10 * 1024 * 1024:
-                            old_log = log_file_path.with_name("OverlayDefaults.old.log")
-                            if old_log.exists():
-                                old_log.unlink()
-                            log_file_path.rename(old_log)
-                    except Exception:
-                        pass
+                from log_rotation import rotate_run_log
+                rotate_run_log(log_file_path)
 
                 def write_defaults_log(msg: str):
                     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

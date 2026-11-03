@@ -740,10 +740,6 @@ const SchedulerSettings = () => {
   };
 
   const triggerScheduleNow = async (schedule) => {
-    if (schedule?.mode === "pleximagecleanup") {
-      showError(t("schedulerSettings.cleanup.scheduledOnlyInfo"));
-      return;
-    }
     if (isUpdating) return;
     setIsUpdating(true);
     try {
@@ -759,6 +755,7 @@ const SchedulerSettings = () => {
         fetchSchedulerData();
         let logFile = "Scriptlog.log";
         if (mode === "plexsync") logFile = "PlexSync.log";
+        else if (mode === "pleximagecleanup") logFile = "PlexImageCleanup.log";
         else if (mode === "kometadefaults") logFile = "OverlayDefaults.log";
         else if (mode === "dynamicoverlays") logFile = "DynamicOverlaysSync.log";
         await waitForLogFile(logFile);
@@ -904,7 +901,7 @@ const SchedulerSettings = () => {
             {isUpdating ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
             {t("schedulerSettings.restartScheduler")}
           </button>
-          <button onClick={triggerNow} disabled={isUpdating || status?.is_executing || !config?.enabled} className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100">
+          <button onClick={triggerNow} disabled={isUpdating || status?.is_executing} className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100">
             {isUpdating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
             {t("schedulerSettings.runNow")}
           </button>
@@ -1485,7 +1482,7 @@ const SchedulerSettings = () => {
                           <span>{t("schedulerSettings.scheduleDetails.target", { path: "Overlayfiles/dynamic_overlays/defaults/" })}</span>
                         </div>
                       )}
-                      {mode === "pleximagecleanup" && <div className="mt-1 text-xs text-theme-muted break-words">{t("schedulerSettings.cleanup.scheduleSummary", { mode: t("schedulerSettings.cleanup.scheduledOnly"), action: schedule.cleanup_read_only !== false ? t("schedulerSettings.cleanup.readOnlyReport") : t(`schedulerSettings.cleanup.actions.${schedule.cleanup_action || "report"}`), age: schedule.minimum_age_days ?? 7, path: schedule.plex_data_path })}</div>}
+                      {mode === "pleximagecleanup" && <div className="mt-1 text-xs text-theme-muted break-words">{t("schedulerSettings.cleanup.scheduleSummary", { mode: mConfig.label, action: schedule.cleanup_read_only !== false ? t("schedulerSettings.cleanup.readOnlyReport") : t(`schedulerSettings.cleanup.actions.${schedule.cleanup_action || "report"}`), age: schedule.minimum_age_days ?? 7, path: schedule.plex_data_path })}</div>}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1493,9 +1490,10 @@ const SchedulerSettings = () => {
                     <button
                       type="button"
                       onClick={() => triggerScheduleNow(schedule)}
-                      disabled={isUpdating || status?.is_executing || mode === "pleximagecleanup"}
+                      disabled={isUpdating || status?.is_executing}
                       className="p-2 text-green-400 hover:bg-green-500/10 rounded-lg transition-all disabled:opacity-50"
-                      title={mode === "pleximagecleanup" ? t("schedulerSettings.cleanup.scheduledOnly") : t("schedulerSettings.runModeNow", { mode: mConfig.label })}
+                      title={t("schedulerSettings.runModeNow", { mode: mConfig.label })}
+                      aria-label={t("schedulerSettings.runModeNow", { mode: mConfig.label })}
                     >
                       <Play className="w-4 h-4" />
                     </button>

@@ -81,12 +81,7 @@ def quarantine_availability(base_dir, config_path=None):
         root = _quarantine_root(base)
         if root.exists():
             result["has_history"] = any(QUARANTINE_RUN_ID.fullmatch(path.name) and not _is_link(path) and path.is_dir() for path in root.iterdir())
-        reports = (
-            base / "UILogs" / "last_image_cleanup_report.json",
-            base / "UILogs" / "PlexImageCleanup.log",
-            base / "Logs" / "last_image_cleanup_report.json",
-            base / "Logs" / "PlexImageCleanup.log"
-        )
+        reports = (base / "UILogs" / "last_image_cleanup_report.json", base / "UILogs" / "PlexImageCleanup.log")
         result["has_history"] = result["has_history"] or any(path.is_file() and not _is_link(path) and path.stat().st_size > 0 for path in reports)
     except (OSError, ValueError):
         pass
@@ -378,8 +373,6 @@ def apply_image_cleanup(metadata_dir, candidates, selected, action, quarantine_d
 
 def run_scheduled_image_cleanup(base_dir, options, *, scheduled=False):
     global _cleanup_running
-    if not scheduled:
-        return {"success": False, "error": "Plex image cleanup can only run from a configured schedule"}
     from overlay_sync_service import _sync_condition, is_overlay_sync_running, get_server_credentials
     with _sync_condition:
         plex_push = sys.modules.get("plex_push_service")
@@ -398,7 +391,9 @@ def run_scheduled_image_cleanup(base_dir, options, *, scheduled=False):
         logger.log(logging.ERROR if level == "ERROR" else logging.INFO, "[PlexImageCleanup] %s", message)
 
     try:
-        write_log("STARTING SCHEDULED PLEX IMAGE CLEANUP")
+        from log_rotation import rotate_run_log
+        rotate_run_log(log_file)
+        write_log(f"STARTING {'SCHEDULED' if scheduled else 'MANUAL'} PLEX IMAGE CLEANUP")
         options = cleanup_schedule_options(options)
         action = options.get("cleanup_action", "report")
         write_log(f"Action: {action} | Read Only: {options['cleanup_read_only']} | Snapshot: {options['database_source']} | Minimum image age: {options['minimum_age_days']} days")
