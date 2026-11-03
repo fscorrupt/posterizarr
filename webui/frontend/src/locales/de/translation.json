@@ -1,4 +1,28 @@
 {
+  "silo": {
+    "name": "Silo (Experimentell)",
+    "serverUrl": "Silo-Serveradresse",
+    "apiKeyPlaceholder": "Silo-API-Schlüssel eingeben",
+    "validate": "Prüfen",
+    "validationSuccess": "Silo {{version}}: {{count}} Bibliotheken; Katalogzugriff geprüft. Experimentelle Unterstützung; Episoden-Artwork kann nicht hochgeladen werden.",
+    "validationFailed": "Silo-Prüfung fehlgeschlagen. Serveradresse, API-Schlüssel und Berechtigungen prüfen.",
+    "requestFailed": "Silo ist nicht erreichbar. Verbindung und Serveradresse prüfen.",
+    "httpError": "Silo meldet HTTP {{status}}. API-Schlüssel und Kontoberechtigungen prüfen.",
+    "fields": {
+      "UseSilo": "Silo verwenden (Experimentell)",
+      "SiloUrl": "Silo-URL",
+      "SiloAPIKey": "Silo-API-Schlüssel",
+      "SiloProfileId": "Silo-Profil-ID",
+      "SiloLibstoExclude": "Ausgeschlossene Silo-Bibliotheken"
+    },
+    "tooltips": {
+      "UseSilo": "Silos native API v2 als primären Server verwenden (experimentell). Nur Film-, Serien- und Staffel-Artwork; keine Episoden-Uploads.",
+      "SiloUrl": "Native Silo-Serveradresse einschließlich eines möglichen Reverse-Proxy-Pfadpräfixes. Eine interne Docker-Adresse umgeht interaktive Authentifizierung.",
+      "SiloAPIKey": "Silo-API-Schlüssel eines Kontos mit Lesezugriff auf Katalog und Dateimetadaten sowie Bearbeitungsrechten für Artwork. Den Schlüssel niemals in die URL eintragen.",
+      "SiloProfileId": "Optionale ID des primären Haushaltsprofils. Leer lassen, um das primäre Profil automatisch zu ermitteln.",
+      "SiloLibstoExclude": "Namen der Silo-Bibliotheken, die von Generierung und Overlay-Synchronisierung ausgeschlossen werden."
+    }
+  },
   "support": {
     "title": "Posterizarr unterstützen",
     "message": "Deine Unterstützung hilft bei der Weiterentwicklung."

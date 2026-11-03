@@ -297,6 +297,11 @@ CONFIG_GROUPS = {
     "JellyfinUploadExistingAssets": "JellyfinPart",
     "JellyfinReplaceThumbwithBackdrop": "JellyfinPart",
     "JellyfinReplaceThumbwithBackdropExclusively": "JellyfinPart",
+    "UseSilo": "SiloPart",
+    "SiloUrl": "SiloPart",
+    "SiloProfileId": "SiloPart",
+    "SiloLibstoExclude": "SiloPart",
+    "SiloAPIKey": "ApiPart",
     # EmbyPart
     "EmbyLibstoExclude": "EmbyPart",
     "EmbyUrl": "EmbyPart",
@@ -609,6 +614,11 @@ UI_GROUPS = {
         "EmbyReplaceThumbwithBackdrop",
         "EmbyReplaceThumbwithBackdropExclusively",
         "EmbyLibstoExclude",
+        "UseSilo",
+        "SiloUrl",
+        "SiloAPIKey",
+        "SiloProfileId",
+        "SiloLibstoExclude",
     ],
     "Language & Notifications": [
         "PreferredLanguageOrder",
@@ -892,6 +902,8 @@ def flatten_config(grouped_config):
                     flat_key = "JellyfinLibstoExclude"
                 elif group_name == "EmbyPart":
                     flat_key = "EmbyLibstoExclude"
+                elif group_name == "SiloPart":
+                    flat_key = "SiloLibstoExclude"
                 else:
                     flat_key = key
             elif key == "UploadExistingAssets":
@@ -996,6 +1008,8 @@ def unflatten_config(flat_config):
                 storage_key = "ReplaceThumbwithBackdrop"
             elif key == "EmbyReplaceThumbwithBackdropExclusively":
                 storage_key = "ReplaceThumbwithBackdropExclusively"
+        elif key == "SiloLibstoExclude" and group_name == "SiloPart":
+            storage_key = "LibstoExclude"
         # Use the new helper function to restore original case
         elif key.startswith("Poster") and group_name == "PosterOverlayPart":
             storage_key = remove_prefix_with_original_case(key)
@@ -1037,6 +1051,11 @@ def unflatten_config(flat_config):
 
 # Friendly display names for UI
 DISPLAY_NAMES = {
+    "UseSilo": "Use Silo (Experimental)",
+    "SiloUrl": "Silo URL",
+    "SiloAPIKey": "Silo API Key",
+    "SiloProfileId": "Silo Profile ID",
+    "SiloLibstoExclude": "Silo Excluded Libraries",
     # WebUI Settings
     "basicAuthEnabled": "Enable Basic Authentication",
     "basicAuthUsername": "Basic Auth Username",

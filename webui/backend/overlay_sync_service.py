@@ -46,6 +46,7 @@ from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, P
 from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
 from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
 from plex_push_service import get_asset_path_from_config
+from silo_client import SiloClient, get_silo_credentials
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -186,6 +187,16 @@ async def _post_artwork_with_retry(
                 f"Retrying in {delay}s (attempt {attempt + 1}/3)."
             )
             await asyncio.sleep(delay)
+
+async def _upload_silo_artwork(http_client, credentials, item_id, content, image_type, media_type, write_log, dry_run=False):
+    if _cancel_requested:
+        return False
+    if dry_run:
+        write_log(f"  [DRY RUN] SILO {media_type} {image_type}: artwork rendered; upload skipped.")
+        return False
+    silo = SiloClient(http_client, credentials["url"], credentials["api_key"], credentials.get("profile_id"))
+    await silo.upload(item_id, content, image_type, media_type)
+    return True
 
 async def _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash):
     headers = {"X-Plex-Token": token, "Accept": "application/xml"}
@@ -691,6 +702,22 @@ async def fetch_show_episode_stream_data(http_client, server_type, server_url, i
                 season_items.append(summary)
                 all_streams.append(summary)
             season_streams[season_number] = aggregate_episode_streams(season_items, language_order)
+    elif server_type == "silo":
+        silo = SiloClient(http_client, server_url, credentials["api_key"], credentials.get("profile_id"))
+        rows = [row for row in await silo.catalog(media_type="episode") if row.get("series_id") == str(item_id)]
+        for season in await silo.seasons(item_id):
+            season_id = str(season["content_id"])
+            season_number = int(season["season_number"])
+            seasons.append({"id": season_id, "season_number": season_number})
+            episode_rows = [row for row in rows if row.get("season_number") == season_number]
+            episodes_by_season[season_id] = episode_rows
+            summaries = []
+            for row in episode_rows:
+                summary = await silo.stream_metadata(row)
+                episode_streams[str(row["content_id"])] = summary
+                summaries.append(summary)
+                all_streams.append(summary)
+            season_streams[season_number] = aggregate_episode_streams(summaries, language_order)
     else:
         return None
 
@@ -1158,6 +1185,7 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
         "plex": {"enabled": False, "url": None, "token": None, "excluded_libs": []},
         "jellyfin": {"enabled": False, "url": None, "api_key": None, "excluded_libs": []},
         "emby": {"enabled": False, "url": None, "api_key": None, "excluded_libs": []},
+        "silo": {"enabled": False, "url": None, "api_key": None, "excluded_libs": []},
         "asset_path": None,
     }
     if not config_path.exists():
@@ -1220,6 +1248,9 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
                 "api_key": em_key,
                 "excluded_libs": em_ex or []
             }
+        silo = get_silo_credentials(cfg)
+        if silo["url"] and is_safe_url(silo["url"]):
+            info["silo"] = {**silo, "url": silo["url"].rstrip("/"), "excluded_libs": silo["excluded"] or []}
         # TMDb Token
         tmdb_tok = cfg.get("tmdbtoken") or cfg.get("ApiPart", {}).get("tmdbtoken")
         info["tmdb_token"] = tmdb_tok
@@ -1229,6 +1260,7 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
             info["jellyfin"]["tmdb_token"] = tmdb_tok
         if "emby" in info and isinstance(info["emby"], dict):
             info["emby"]["tmdb_token"] = tmdb_tok
+        info["silo"]["tmdb_token"] = tmdb_tok
     except Exception as e:
         logger.error(f"[OverlaySync] Failed parsing credentials: {e}")
 
@@ -3503,7 +3535,7 @@ async def search_overlay_sync_items(
     items = []
     errors = []
     seen = set()
-    for server_type in ("plex", "jellyfin", "emby"):
+    for server_type in ("plex", "jellyfin", "emby", "silo"):
         config = credentials.get(server_type) or {}
         if target_server not in ("all", server_type) or not config.get("enabled") or not config.get("url"):
             continue
@@ -3513,6 +3545,22 @@ async def search_overlay_sync_items(
             "X-Emby-Token": config.get("api_key") or "", "Accept": "application/json",
         }
         try:
+            if server_type == "silo":
+                silo = SiloClient(http_client, server_url, config["api_key"], config.get("profile_id"))
+                for folder in await silo.libraries():
+                    name = folder["name"]
+                    if name.casefold() in excluded or (library != "all" and name.casefold() != library.casefold()):
+                        continue
+                    if not resolve_library_rules(name, folder["type"], library_rules_map)[1]:
+                        continue
+                    for row in await silo.catalog(folder["id"], folder["type"]):
+                        identity = (server_type, row["content_id"])
+                        if query.casefold() not in row.get("title", "").casefold() or identity in seen or len(items) >= limit:
+                            continue
+                        seen.add(identity)
+                        items.append({"id": row["content_id"], "server_type": "silo", "library_name": name,
+                                      "media_type": folder["type"], "title": row.get("title"), "year": row.get("year")})
+                continue
             response = await http_client.get(server_url + ("/library/sections" if server_type == "plex" else "/Library/VirtualFolders"), headers=headers)
             if response.status_code != 200:
                 errors.append(f"{server_type.upper()}: library search HTTP {response.status_code}")
@@ -3680,7 +3728,12 @@ async def _fetch_overlay_target_items(
             continue
         seen.add(item_id)
         try:
-            if server_type == "plex":
+            if server_type == "silo":
+                silo = SiloClient(http_client, server_url, credentials["api_key"], credentials.get("profile_id"))
+                for folder in await silo.libraries():
+                    if folder["name"].casefold() == library_name.casefold():
+                        items.extend(await silo.library_items(folder, item_id))
+            elif server_type == "plex":
                 response = await http_client.get(
                     f"{server_url}/library/metadata/{urllib.parse.quote(item_id, safe='')}",
                     headers={"X-Plex-Token": credentials.get("token"), "Accept": "application/xml"},
@@ -3929,6 +3982,8 @@ async def _run_overlay_sync_task(
             servers_to_run.append("jellyfin")
         if target_server in ["all", "emby"] and server_creds["emby"]["enabled"] and server_creds["emby"]["url"]:
             servers_to_run.append("emby")
+        if target_server in ["all", "silo"] and server_creds.get("silo", {}).get("enabled") and server_creds["silo"]["url"]:
+            servers_to_run.append("silo")
 
         if not servers_to_run:
             msg = f"No media servers are enabled or configured matching target '{target_server}'."
@@ -3958,6 +4013,18 @@ async def _run_overlay_sync_task(
                         excluded, library_rules_map, write_log,
                     )
                     write_log(f"Instant Target Mode: Fetched {len(media_items)} item(s) directly by ID on {s_type.upper()}.")
+                elif s_type == "silo":
+                    silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                    for folder in await silo.libraries():
+                        name = folder["name"]
+                        if name.casefold() in {str(entry).casefold() for entry in excluded}:
+                            continue
+                        if library != "all" and library.casefold() != name.casefold():
+                            continue
+                        if not resolve_library_rules(name, folder["type"], library_rules_map)[1]:
+                            continue
+                        media_items.extend(await silo.library_items(folder))
+                    write_log(f"  [+] SILO: Discovered {len(media_items)} movie/show items. Episode artwork uploads are unsupported.")
                 elif s_type == "plex":
                     token = creds.get("token")
                     try:
@@ -4802,6 +4869,10 @@ async def _run_overlay_sync_task(
                                             dry_run=dry_run
                                         )
                                         upload_success = resp is not None and resp.status_code in [200, 201]
+                                    elif s_type == "silo":
+                                        upload_success = await _upload_silo_artwork(
+                                            http_client, creds, item_id, composited_jpeg, "poster", m_type, write_log, dry_run
+                                        )
                                     elif s_type in ["jellyfin", "emby"]:
                                         upload_url = f"{s_url}/Items/{item_id}/Images/Primary"
                                         headers = {
@@ -5002,6 +5073,10 @@ async def _run_overlay_sync_task(
                                             dry_run=dry_run
                                         )
                                         b_upload_success = b_resp is not None and b_resp.status_code in [200, 201]
+                                    elif s_type == "silo":
+                                        b_upload_success = await _upload_silo_artwork(
+                                            http_client, creds, item_id, b_comp, "backdrop", m_type, write_log, dry_run
+                                        )
                                     elif s_type in ["jellyfin", "emby"]:
                                         b_url = f"{s_url}/Items/{item_id}/Images/Backdrop"
                                         b_headers = {
@@ -5152,6 +5227,10 @@ async def _run_overlay_sync_task(
                                         s_idx = s_dir.get("index")
                                         if s_rk and s_idx and s_idx.isdigit():
                                             seasons_to_process.append({"id": str(s_rk), "season_number": int(s_idx)})
+                            elif show_stream_data is None and s_type == "silo":
+                                silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                                seasons_to_process = [{"id": str(season["content_id"]), "season_number": int(season["season_number"])}
+                                                      for season in await silo.seasons(item_id)]
                             elif show_stream_data is None and s_type in ["jellyfin", "emby"]:
                                 em_s_resp = await http_client.get(
                                     f"{s_url}/Shows/{item_id}/Seasons",
@@ -5175,6 +5254,8 @@ async def _run_overlay_sync_task(
                                 s_num = s_info["season_number"]
                                 process_season = _overlay_target_includes(item, item_targets, "season", s_num)
                                 process_titlecards = _overlay_target_includes(item, item_targets, "titlecard", s_num)
+                                if s_type == "silo":
+                                    process_titlecards = False
                                 if not process_season and not process_titlecards:
                                     continue
                                 clean_season = find_season_poster(show_parent, s_num, root_f, dir_cache=dir_cache) if has_season_posters and process_season else None
@@ -5210,6 +5291,11 @@ async def _run_overlay_sync_task(
                                                     headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"})
                                                 season_episode_nodes = fromstring(episode_response.content).findall(".//Video") if episode_response.status_code == 200 else []
                                             season_episode_numbers = [int(node.get("index")) for node in season_episode_nodes if str(node.get("index") or "").isdigit()]
+                                        elif s_type == "silo":
+                                            silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                                            episode_rows = await silo.catalog(item.get("library_id"), "episode")
+                                            season_episode_numbers = [int(row["episode_number"]) for row in episode_rows
+                                                if row.get("series_id") == item_id and row.get("season_number") == s_num]
                                         else:
                                             season_episode_items = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
                                             if season_episode_items is None:
@@ -5285,6 +5371,10 @@ async def _run_overlay_sync_task(
                                                     dry_run=dry_run
                                                 )
                                                 s_success = s_resp is not None and s_resp.status_code in [200, 201]
+                                            elif s_type == "silo":
+                                                s_success = await _upload_silo_artwork(
+                                                    http_client, creds, s_rk, s_comp, "poster", "season", write_log, dry_run
+                                                )
                                             elif s_type in ["jellyfin", "emby"]:
                                                 b64_s = base64.b64encode(s_comp)
                                                 s_resp = await _post_artwork_with_retry(
@@ -6045,13 +6135,14 @@ async def detect_media_changes(
         pass
 
     creds_map = {}
-    for s_name in ["plex", "jellyfin", "emby"]:
+    for s_name in ["plex", "jellyfin", "emby", "silo"]:
         s_data = server_info.get(s_name)
         if s_data and s_data.get("url") and s_data.get("enabled"):
             creds_map[s_name] = {
                 "url": s_data.get("url"),
                 "token": s_data.get("token"),
                 "api_key": s_data.get("api_key"),
+                "profile_id": s_data.get("profile_id"),
                 "excluded": s_data.get("excluded_libs", [])
             }
 
@@ -6096,7 +6187,7 @@ async def detect_media_changes(
 
     servers_to_scan = []
     if target_server == "all":
-        servers_to_scan = [s for s in ["plex", "jellyfin", "emby"] if s in creds_map]
+        servers_to_scan = [s for s in ["plex", "jellyfin", "emby", "silo"] if s in creds_map]
     elif target_server.lower() in creds_map:
         servers_to_scan = [target_server.lower()]
 
@@ -6107,7 +6198,49 @@ async def detect_media_changes(
             excluded = [str(x).lower() for x in creds.get("excluded", [])]
             cache_map = cache.load_cache_map(s_type)
 
-            if s_type == "plex":
+            if s_type == "silo":
+                silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                for folder in await silo.libraries():
+                    name = folder["name"]
+                    if name.lower() in excluded or (library != "all" and name.casefold() != library.casefold()):
+                        continue
+                    if not resolve_library_rules(name, folder["type"], library_rules_map)[1]:
+                        continue
+                    for item in await silo.library_items(folder):
+                        clean_asset = find_clean_asset(real_asset_path, name, item["root_folder"], item["title"], "poster", year=item.get("year"), dir_cache=dir_cache)
+                        if not clean_asset:
+                            continue
+                        total_scanned += 1
+                        cached = cache_map.get(("silo", item["id"], "poster"))
+                        differences = []
+                        if not cached or cached.get("status") not in ("synced", "skipped"):
+                            differences.append("new")
+                        else:
+                            if abs(clean_asset.stat().st_mtime - float(cached.get("clean_asset_mtime") or 0)) > 1:
+                                differences.append("asset_modified")
+                            silo_rules = resolve_library_rules(name, "show", library_rules_map)[1]
+                            silo_needs_streams = _parent_stream_aggregation_requested(silo_rules) or any(term in json.dumps(silo_rules).lower() for term in ("resolution", "overlays_tv"))
+                            if item["media_type"] == "show" and silo_needs_streams:
+                                stream_data = await fetch_show_episode_stream_data(http_client, "silo", s_url, item["id"], creds, cache_map)
+                                if stream_data:
+                                    item.update(stream_data["aggregate"])
+                            if sorted(item.get("audio_languages") or []) != sorted(filter(None, (cached.get("detected_languages") or "").split(","))):
+                                differences.append("languages")
+                            for category, current_key, cached_key in (("editions", "edition", "edition"), ("runtimes", "runtime_mins", "runtime_mins"), ("status", "status", "show_status")):
+                                if item.get(current_key) != cached.get(cached_key):
+                                    differences.append(category)
+                            if item.get("resolution") != cached.get("detected_resolution") or item.get("audio_codec") != cached.get("detected_audio_codec"):
+                                differences.append("metadata")
+                            snapshot = json.loads(cached.get("attr_snapshot") or "{}")
+                            if any(bool(item.get(key)) != bool(snapshot.get(key)) for key in ("has_hdr", "has_dolby_vision")) and "metadata" not in differences:
+                                differences.append("metadata")
+                        if differences:
+                            for category in differences:
+                                summary[category] = summary.get(category, 0) + 1
+                            changed_items.append({"id": item["id"], "title": item["title"], "library": name, "server_type": "silo",
+                                "media_type": item["media_type"], "change_types": differences, "details": ", ".join(differences),
+                                "cached": None, "current": {"edition": item.get("edition"), "runtime_mins": item.get("runtime_mins"), "status": item.get("status")}})
+            elif s_type == "plex":
                 token = creds.get("token")
                 try:
                     sec_resp = await http_client.get(

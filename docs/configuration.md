@@ -1,3 +1,55 @@
+## Silo (Experimental)
+
+Silo support targets the native `/api/v2` API, not the Jellyfin compatibility listener.
+The initial integration was checked against server build `bb1ee435` using a movie,
+a series, three episodes and two seasons. Silo is pre-release: pin a tested build
+and back up its configuration, database and encryption key before updating.
+
+In Configuration > Media Servers, enable **Use Silo (Experimental)**, enter
+**Silo URL** and **Silo API Key**, validate, choose included libraries and save.
+Only one primary server may be enabled. Existing configurations receive disabled
+Silo fields in the editor; Silo is never enabled automatically.
+
+- `SiloPart.UseSilo`: `"true"` to select Silo as the primary server.
+- `SiloPart.SiloUrl`: Native server URL, preserving any reverse-proxy path prefix.
+    For containers sharing a network, an internal address such as `http://silo:8080`
+    avoids interactive Authelia authentication. Host ports may differ.
+- `ApiPart.SiloAPIKey`: A key with catalog/file read access and artwork-edit authority.
+    Keep it out of URLs and public diagnostics.
+- `SiloPart.SiloProfileId`: Optional primary household profile ID; auto-discovered
+    when blank. Account/profile restrictions still apply.
+- `SiloPart.LibstoExclude`: Library names excluded from generation and overlay sync.
+
+Normal generation uses existing provider and naming settings. The existing global
+`PrerequisitePart.PlexUpload` setting also controls direct Silo uploads despite its
+historical name. When Dynamic Overlays is enabled, generation keeps clean assets
+and the separate overlay sync performs the upload instead.
+
+Supported initial workflows are movie/show posters and backdrops, season posters,
+targeted overlay sync, and movie/show change detection. Technical overlay inputs
+come from the selected file's actual audio/video/subtitle tracks. Explicitly scoped
+show/season rules can aggregate episode stream metadata.
+
+Episode artwork uploads are unsupported by Silo and are blocked; locally generated
+titlecards remain local. Collection editing, logo-browser workflows, artwork reset,
+backup/restore and Plex-mirror sync are not certified for Silo in this initial
+integration. Native upload transport understands logo slots, but this does not add
+Silo to those separate user-facing workflows.
+
+Uploads use multipart image data, at most 10 MiB, and are not automatically retried
+after a connection failure with an uncertain outcome. Silo applies its artwork
+selection/lock behavior; season image changes can lock images on the parent series.
+Artwork URLs can expire and are fetched fresh rather than used as persistent IDs.
+Dynamic Overlays dry-run mode renders without making artwork writes.
+
+Validation included live read-only discovery in both Python and PowerShell and one
+live movie-poster upload using the existing image, followed by selected-image and
+pixel checks. Series/season upload routing is covered by isolated worker tests,
+not live writes. A complete scheduled PowerShell generation run was not executed
+against the test server.
+
+## Settings
+
 1. Open `config.example.json` located in the script directory.
 2. Update the following variables with your API keys and preferences [my personal config](https://github.com/fscorrupt/posterizarr/blob/main/MyPersonalConfig.json):
 
@@ -16,6 +68,7 @@
     - `PlexToken`: Your Plex token (Leave empty if not applicable).
     - `JellyfinAPIKey`: Your Jellyfin API key. (You can create an API key from inside Jellyfin at Settings > Advanced > Api Keys.)
     - `EmbyAPIKey`: Your Emby API key. (You can create an API key from inside Emby at Settings > Advanced > Api Keys.)
+    - `SiloAPIKey`: A Silo API key with catalog/file read access and artwork-edit authority. Silo support is experimental and uses the native `/api/v2` API.
     - `FavProvider`: Set your preferred provider (default is `tmdb`).
 
         - possible values are:
@@ -29,7 +82,7 @@
 
         [Search order in script](searchorder.md)
 
-    - `ProviderPriorityMode`: Select the strategy Posterizarr uses when searching for artwork. 
+    - `ProviderPriorityMode`: Select the strategy Posterizarr uses when searching for artwork.
         - `Simple`: Starts with your `FavProvider`, followed by the remaining providers (Legacy default).
         - `Global`: Strictly follows the custom array you define in `ProviderOrder`.
         - `PerMediaType`: Strictly follows the `MovieProviderOrder` array for Movies and `ShowProviderOrder` for TV Shows.

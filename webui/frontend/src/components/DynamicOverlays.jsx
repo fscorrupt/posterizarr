@@ -939,6 +939,12 @@ export default function DynamicOverlays() {
       list.push({ id: "emby", name: "Emby" });
     }
 
+    const siloUse = serverConfig.UseSilo ?? serverConfig.SiloPart?.UseSilo;
+    const siloUrl = serverConfig.SiloUrl || serverConfig.SiloPart?.SiloUrl;
+    if ((siloUse === true || String(siloUse).toLowerCase() === "true") && siloUrl) {
+      list.push({ id: "silo", name: "Silo (Experimental)" });
+    }
+
     return list;
   }, [serverConfig]);
 

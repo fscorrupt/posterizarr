@@ -1,4 +1,28 @@
 {
+  "silo": {
+    "name": "Silo (Experimental)",
+    "serverUrl": "Endereço do servidor Silo",
+    "apiKeyPlaceholder": "Introduza a chave de API do Silo",
+    "validate": "Verificar",
+    "validationSuccess": "Silo {{version}}: {{count}} bibliotecas; acesso ao catálogo verificado. Suporte experimental; o envio de imagens de episódios não é suportado.",
+    "validationFailed": "A verificação do Silo falhou. Verifique o endereço do servidor, a chave de API e as permissões.",
+    "requestFailed": "Não foi possível contactar o Silo. Verifique a ligação e o endereço do servidor.",
+    "httpError": "O Silo devolveu HTTP {{status}}. Verifique a chave de API e as permissões da conta.",
+    "fields": {
+      "UseSilo": "Utilizar Silo (Experimental)",
+      "SiloUrl": "URL do Silo",
+      "SiloAPIKey": "Chave de API do Silo",
+      "SiloProfileId": "ID do perfil Silo",
+      "SiloLibstoExclude": "Bibliotecas Silo excluídas"
+    },
+    "tooltips": {
+      "UseSilo": "Utilizar a API nativa v2 do Silo como servidor principal (experimental). Apenas imagens de filmes, séries e temporadas; sem envios para episódios.",
+      "SiloUrl": "Endereço nativo do servidor Silo, incluindo qualquer prefixo de caminho do proxy inverso. Um endereço Docker interno evita a autenticação interativa.",
+      "SiloAPIKey": "Chave de API do Silo de uma conta autorizada a ler o catálogo e os metadados dos ficheiros e a editar imagens. Nunca coloque esta chave no URL.",
+      "SiloProfileId": "ID opcional do perfil principal do agregado familiar. Deixe em branco para detetar automaticamente o perfil principal.",
+      "SiloLibstoExclude": "Nomes das bibliotecas Silo a excluir da geração e da sincronização dos overlays."
+    }
+  },
   "support": {
     "title": "Apoie o Posterizarr",
     "message": "O seu apoio ajuda a manter o desenvolvimento."

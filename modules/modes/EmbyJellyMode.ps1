@@ -38,9 +38,14 @@
     
     while ($retryCount -le $maxRetries) {
         try {
-            $PreferredMetadataLanguage = (Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/System/Configuration" -Headers $global:OtherMediaServerHeaders -ErrorAction Stop).PreferredMetadataLanguage ?? "en"
-            $allLibsquery = "$($OtherMediaServerUrl.TrimEnd('/'))/Library/VirtualFolders"
-            $AllLibs = Invoke-RestMethod -Method Get -Uri $allLibsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+            if ($UseSilo -eq 'true') {
+                $PreferredMetadataLanguage = 'en'
+                $AllLibs = $global:SiloLibraries
+            } else {
+                $PreferredMetadataLanguage = (Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/System/Configuration" -Headers $global:OtherMediaServerHeaders -ErrorAction Stop).PreferredMetadataLanguage ?? "en"
+                $allLibsquery = "$($OtherMediaServerUrl.TrimEnd('/'))/Library/VirtualFolders"
+                $AllLibs = Invoke-RestMethod -Method Get -Uri $allLibsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+            }
         } catch { }
 
         $validLibs = @($AllLibs | Where-Object { $_.Name -notin $LibstoExclude })
@@ -114,6 +119,13 @@
     $AllEpisodes = [System.Collections.Generic.List[object]]::new()
     foreach ($slib in $AllLibs) {
         if ($slib.Name -notin $LibstoExclude) {
+            if ($UseSilo -eq 'true') {
+                $nativeItems = @($global:SiloItems.Values | Where-Object SiloLibraryId -eq $slib.ItemId)
+                $AllMovies.Add([pscustomobject]@{ Items = @($nativeItems | Where-Object Type -eq 'Movie') })
+                $AllShows.Add([pscustomobject]@{ Items = @($nativeItems | Where-Object Type -eq 'Series') })
+                $AllEpisodes.Add([pscustomobject]@{ Items = @($nativeItems | Where-Object Type -eq 'Episode') })
+                continue
+            }
             if ($slib.CollectionType -eq 'movies') {
                 Write-Entry -Subtext "Getting all Itmes from [$($slib.Name)] with item id [$($slib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
                 $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
@@ -515,7 +527,12 @@
             $OtherMediaServerTitleCardUrlsList = [System.Collections.Generic.List[string]]::new()
             foreach ($epId in ($EpisodeIds -split ',')) {
                 if ($epId) {
-                    $OtherMediaServerTitleCardUrlsList.Add("$OtherMediaServerUrl/Items/$epId/Images/Primary")
+                    if ($UseSilo -eq 'true') {
+                        $nativeEpisode = $global:SiloItems.Values | Where-Object Id -eq $epId | Select-Object -First 1
+                        $OtherMediaServerTitleCardUrlsList.Add([string]$nativeEpisode.ImageTags.Primary)
+                    } else {
+                        $OtherMediaServerTitleCardUrlsList.Add("$OtherMediaServerUrl/Items/$epId/Images/Primary")
+                    }
                 }
             }
             $OtherMediaServerTitleCardUrls = $OtherMediaServerTitleCardUrlsList -join ','
@@ -555,7 +572,10 @@
             if ($SeasonId) { $showSeasonIds.Add($SeasonId) }
             $showSeasonNumbers.Add($SeasonEpisodes[0].ParentIndexNumber)
             $showSeasonNames.Add($Season.Name)
-            if ($SeasonId) { $showSeasonUrls.Add("$OtherMediaServerUrl/Items/$SeasonId/Images/Primary") }
+            if ($SeasonId) {
+                if ($UseSilo -eq 'true') { $showSeasonUrls.Add([string]$SeasonEpisodes[0].SeriesPrimaryImageTag) }
+                else { $showSeasonUrls.Add("$OtherMediaServerUrl/Items/$SeasonId/Images/Primary") }
+            }
         }
 
         # Append collected season metadata to the parent show object

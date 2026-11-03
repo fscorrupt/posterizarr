@@ -12,6 +12,11 @@ function UploadOtherMediaServerArtwork {
         return
     }
 
+    if ($UseSilo -eq 'true') {
+        Send-SiloArtwork -ItemId $itemId -ImageType $imageType -ImagePath $imagePath
+        return
+    }
+
     $userAssetType = $imageType
     if ($imageType -eq 'Backdrop') {
         $userAssetType = "Background"

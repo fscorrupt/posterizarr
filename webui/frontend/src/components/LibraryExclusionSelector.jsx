@@ -130,6 +130,12 @@ const LibraryExclusionSelector = ({
         url: config.JellyfinPart?.JellyfinUrl || config.JellyfinUrl,
         api_key: config.ApiPart?.JellyfinAPIKey || config.JellyfinAPIKey,
       };
+    } else if (mediaServerType === "silo") {
+      return {
+        url: config.SiloPart?.SiloUrl || config.SiloUrl,
+        api_key: config.ApiPart?.SiloAPIKey || config.SiloAPIKey,
+        profile_id: config.SiloPart?.SiloProfileId || config.SiloProfileId || null,
+      };
     } else if (mediaServerType === "emby") {
       return {
         url: config.EmbyPart?.EmbyUrl || config.EmbyUrl,

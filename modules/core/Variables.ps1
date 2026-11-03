@@ -398,9 +398,21 @@ if ($UseEmby -eq 'true') {
     $global:ReplaceThumbwithBackdropExclusively = if ($config.EmbyPart.ReplaceThumbwithBackdropExclusively) { "$($config.EmbyPart.ReplaceThumbwithBackdropExclusively)".tolower() } else { 'false' }
 }
 
+$UseSilo = "$($config.SiloPart.UseSilo)".ToLower()
+if ($UseSilo -eq 'true') {
+    $OtherMediaServerUrl = $config.SiloPart.SiloUrl
+    $OtherMediaServerApiKey = $config.ApiPart.SiloAPIKey
+    $UseOtherMediaServer = 'true'
+    $LibstoExclude = $config.SiloPart.LibstoExclude
+    $global:SiloProfileId = $config.SiloPart.SiloProfileId
+    $global:UploadExistingAssets = "$($config.SiloPart.UploadExistingAssets)".ToLower()
+    $global:ReplaceThumbwithBackdrop = 'false'
+    $global:ReplaceThumbwithBackdropExclusively = 'false'
+}
+
 $global:OtherMediaServerHeaders = @{}
 if ($OtherMediaServerApiKey) {
-    $global:OtherMediaServerHeaders["Authorization"] = "MediaBrowser Token=`"$OtherMediaServerApiKey`""
+    $global:OtherMediaServerHeaders["Authorization"] = if ($UseSilo -eq 'true') { "Bearer $OtherMediaServerApiKey" } else { "MediaBrowser Token=`"$OtherMediaServerApiKey`"" }
 }
 
 # Count how many media servers are enabled
@@ -408,6 +420,7 @@ $enabledServers = 0
 if ($UseEmby -eq 'true') { $enabledServers++ }
 if ($UseJellyfin -eq 'true') { $enabledServers++ }
 if ($UsePlex -eq 'true') { $enabledServers++ }
+if ($UseSilo -eq 'true') { $enabledServers++ }
 
 # If more than one media server is enabled, exit with an error
 if ($enabledServers -gt 1) {

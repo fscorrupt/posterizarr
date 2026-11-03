@@ -288,6 +288,10 @@ if (!$SyncJelly -and !$SyncEmby) {
         # Check Emby now:
         CheckEmbyAccess -EmbyUrl $EmbyUrl -EmbyAPI $EmbyAPIKey
     }
+    if ($UseSilo -eq 'true') {
+        try { Initialize-SiloCatalog }
+        catch { HandleScriptExit -Message "Silo access failed: $($_.Exception.Message)" }
+    }
 }
 # Check overlay artwork for poster, background, and titlecard dimensions
 Write-Entry -Message "Checking size of overlay files..." -Path $global:configLogging -Color White -log Info

@@ -112,6 +112,8 @@ class ServerLibrariesDB:
                         ex = cfg.get("JellyfinLibstoExclude") or cfg.get("JellyfinPart", {}).get("LibstoExclude", []) or []
                     elif server_type == "emby":
                         ex = cfg.get("EmbyLibstoExclude") or cfg.get("EmbyPart", {}).get("LibstoExclude", []) or []
+                    elif server_type == "silo":
+                        ex = cfg.get("SiloLibstoExclude") or cfg.get("SiloPart", {}).get("LibstoExclude", []) or []
                     else:
                         ex = []
                     if ex:

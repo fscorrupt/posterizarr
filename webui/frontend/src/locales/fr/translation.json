@@ -1,4 +1,28 @@
 {
+  "silo": {
+    "name": "Silo (Expérimental)",
+    "serverUrl": "Adresse du serveur Silo",
+    "apiKeyPlaceholder": "Saisir la clé API Silo",
+    "validate": "Vérifier",
+    "validationSuccess": "Silo {{version}} : {{count}} bibliothèques ; accès au catalogue vérifié. Prise en charge expérimentale ; l'envoi d'illustrations d'épisodes n'est pas pris en charge.",
+    "validationFailed": "La vérification de Silo a échoué. Vérifiez l'adresse du serveur, la clé API et les autorisations.",
+    "requestFailed": "Impossible de joindre Silo. Vérifiez la connexion et l'adresse du serveur.",
+    "httpError": "Silo a renvoyé HTTP {{status}}. Vérifiez la clé API et les autorisations du compte.",
+    "fields": {
+      "UseSilo": "Utiliser Silo (Expérimental)",
+      "SiloUrl": "URL de Silo",
+      "SiloAPIKey": "Clé API Silo",
+      "SiloProfileId": "ID du profil Silo",
+      "SiloLibstoExclude": "Bibliothèques Silo exclues"
+    },
+    "tooltips": {
+      "UseSilo": "Utiliser l'API native v2 de Silo comme serveur principal (expérimental). Illustrations des films, séries et saisons uniquement ; aucun envoi pour les épisodes.",
+      "SiloUrl": "Adresse native du serveur Silo, y compris tout préfixe de chemin du proxy inverse. Une adresse Docker interne évite l'authentification interactive.",
+      "SiloAPIKey": "Clé API Silo d'un compte autorisé à lire le catalogue et les métadonnées des fichiers et à modifier les illustrations. Ne placez jamais cette clé dans l'URL.",
+      "SiloProfileId": "ID facultatif du profil principal du foyer. Laissez vide pour détecter automatiquement le profil principal.",
+      "SiloLibstoExclude": "Noms des bibliothèques Silo à exclure de la génération et de la synchronisation des overlays."
+    }
+  },
   "support": {
     "title": "Soutenir Posterizarr",
     "message": "Votre soutien aide à poursuivre le développement."

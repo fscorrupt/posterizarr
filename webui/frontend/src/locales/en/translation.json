@@ -1,4 +1,28 @@
 {
+  "silo": {
+    "name": "Silo (Experimental)",
+    "serverUrl": "Silo server URL",
+    "apiKeyPlaceholder": "Enter Silo API key",
+    "validate": "Validate",
+    "validationSuccess": "Silo {{version}}: {{count}} libraries; catalog access verified. Experimental support; episode artwork uploads are unsupported.",
+    "validationFailed": "Silo validation failed. Check the server address, API key and permissions.",
+    "requestFailed": "Could not reach Silo. Check the connection and server address.",
+    "httpError": "Silo returned HTTP {{status}}. Check the API key and account permissions.",
+    "fields": {
+      "UseSilo": "Use Silo (Experimental)",
+      "SiloUrl": "Silo URL",
+      "SiloAPIKey": "Silo API key",
+      "SiloProfileId": "Silo profile ID",
+      "SiloLibstoExclude": "Excluded Silo libraries"
+    },
+    "tooltips": {
+      "UseSilo": "Use Silo's native API v2 as the primary server (experimental). Movie, show and season artwork only; episode uploads are unsupported.",
+      "SiloUrl": "Silo's native server address, including any reverse-proxy path prefix. An internal Docker address avoids interactive authentication middleware.",
+      "SiloAPIKey": "A Silo API key whose owner can read the catalog and file metadata and edit artwork. Never put this key in the URL.",
+      "SiloProfileId": "Optional primary household profile ID. Leave blank to discover the primary profile automatically.",
+      "SiloLibstoExclude": "Silo library names to exclude from generation and overlay sync."
+    }
+  },
   "support": {
     "title": "Support Posterizarr",
     "message": "Your support helps keep development going."

@@ -2524,6 +2524,10 @@ class JellyfinValidationRequest(BaseModel):
     api_key: str
 
 
+class SiloValidationRequest(JellyfinValidationRequest):
+    profile_id: Optional[str] = None
+
+
 class EmbyValidationRequest(BaseModel):
     url: str
     api_key: str
@@ -2729,6 +2733,8 @@ async def get_config(request: Request):
 
         if CONFIG_MAPPER_AVAILABLE:
             flat_config = flatten_config(grouped_config)
+            for key, default in {"UseSilo": "false", "SiloUrl": "", "SiloAPIKey": "", "SiloProfileId": "", "SiloLibstoExclude": []}.items():
+                flat_config.setdefault(key, default)
             # Never expose basicAuthPassword hash in the returned config
             if "basicAuthPassword" in flat_config:
                 flat_config["basicAuthPassword"] = ""
@@ -4987,7 +4993,7 @@ async def perform_jellyfin_emby_action(request: JellyfinEmbyActionRequest):
 async def get_cached_libraries(server_type: str, refresh: bool = False):
     logger.info(f"Fetching cached libraries for {server_type} (refresh={refresh})")
 
-    if server_type not in ["plex", "jellyfin", "emby"]:
+    if server_type not in ["plex", "jellyfin", "emby", "silo"]:
         return {"success": False, "error": "Invalid server type"}
 
     if not SERVER_LIBRARIES_DB_AVAILABLE or server_libraries_db is None:
@@ -5008,7 +5014,15 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                         config = json.load(f)
                 except Exception:
                     pass
-            if server_type == "plex":
+            if server_type == "silo":
+                from silo_client import SiloClient, get_silo_credentials
+                creds = get_silo_credentials(config)
+                if creds["url"] and creds["api_key"] and is_safe_url(creds["url"], allow_private=True, allow_loopback=True):
+                    async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+                        libraries = await SiloClient(client, creds["url"], creds["api_key"], creds["profile_id"]).libraries()
+                    server_libraries_db.save_media_server_libraries("silo", libraries, None)
+                    result = server_libraries_db.get_media_server_libraries("silo")
+            elif server_type == "plex":
                 plex_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
                 plex_token = config.get("PlexToken") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("PlexToken")
                 if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True, allow_loopback=True):
@@ -5102,7 +5116,7 @@ class LibraryExclusionUpdate(BaseModel):
 async def update_library_exclusions(server_type: str, request: LibraryExclusionUpdate):
     logger.info(f"Updating exclusions for {server_type}: {request.excluded_libraries}")
 
-    if server_type not in ["plex", "jellyfin", "emby"]:
+    if server_type not in ["plex", "jellyfin", "emby", "silo"]:
         return {"success": False, "error": "Invalid server type"}
 
     try:
@@ -5171,6 +5185,41 @@ async def get_plex_libraries(request: PlexValidationRequest):
     except Exception as e:
         logger.error(f"[ERROR] Error fetching Plex libraries: {str(e)}")
         return {"success": False, "error": str(e)}
+
+@app.post("/api/validate/silo")
+async def validate_silo(request: SiloValidationRequest):
+    from silo_client import SiloClient, SiloError
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
+        raise HTTPException(status_code=400, detail="Invalid Silo server URL")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+            silo = SiloClient(client, request.url, request.api_key, request.profile_id)
+            info = await silo.info()
+            libraries = await silo.libraries()
+            await silo.profile_headers()
+            await silo.catalog()
+        return {"valid": True, "server_version": info.get("server_version", ""), "library_count": len(libraries),
+            "message": f"Silo {info.get('server_version', '')}: {len(libraries)} libraries; catalog access verified. Experimental support; no episode artwork uploads."}
+    except SiloError as error:
+        return {"valid": False, "message": str(error), "message_key": "silo.httpError" if error.status else "silo.validationFailed",
+            "message_params": {"status": error.status} if error.status else {}}
+
+
+@app.post("/api/libraries/silo")
+async def get_silo_libraries(request: SiloValidationRequest):
+    from silo_client import SiloClient, SiloError
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
+        raise HTTPException(status_code=400, detail="Invalid Silo server URL")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+            libraries = await SiloClient(client, request.url, request.api_key, request.profile_id).libraries()
+        if SERVER_LIBRARIES_DB_AVAILABLE and server_libraries_db is not None:
+            server_libraries_db.save_media_server_libraries("silo", libraries, None)
+        return {"success": True, "libraries": libraries, "excluded": []}
+    except SiloError as error:
+        return {"success": False, "libraries": [], "error": str(error), "message_key": "silo.httpError" if error.status else "silo.validationFailed",
+            "message_params": {"status": error.status} if error.status else {}}
+
 
 @app.post("/api/libraries/jellyfin")
 async def get_jellyfin_libraries(request: JellyfinValidationRequest):
@@ -15992,10 +16041,26 @@ async def get_proxy_poster(server_type: str, item_id: str):
         raise HTTPException(status_code=503, detail="Database not available")
 
     import re
-    if not re.match(r"^[a-zA-Z0-9\-]+$", item_id):
+    if server_type.lower() == "silo":
+        valid_item_id = bool(item_id) and len(item_id) <= 512 and all(ord(character) >= 32 for character in item_id)
+    else:
+        valid_item_id = bool(re.match(r"^[a-zA-Z0-9\-]+$", item_id))
+    if not valid_item_id:
         raise HTTPException(status_code=400, detail="Invalid item_id format")
 
     try:
+        if server_type.lower() == "silo":
+            from silo_client import SiloClient, SiloError, get_silo_credentials
+            with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
+                credentials = get_silo_credentials(json.load(config_file))
+            if not credentials["url"] or not credentials["api_key"] or not is_safe_url(credentials["url"], allow_private=True, allow_loopback=True):
+                raise HTTPException(status_code=400, detail="Silo credentials missing or invalid")
+            try:
+                async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+                    content, media_type = await SiloClient(client, credentials["url"], credentials["api_key"], credentials["profile_id"]).poster(item_id)
+                return StreamingResponse(iter([content]), media_type=media_type)
+            except SiloError as error:
+                raise HTTPException(status_code=502, detail=str(error)) from None
         if server_type.lower() == "plex":
             active_server = "plex"
             server_url, server_token = _get_media_server_credentials("plex")

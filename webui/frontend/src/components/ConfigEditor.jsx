@@ -1223,6 +1223,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         );
         if (settingKey === "JellyfinAPIKey") return renderValidate("jellyfin", disabled ? "Enable Jellyfin first" : "Enter Jellyfin API Key");
         if (settingKey === "EmbyAPIKey") return renderValidate("emby", disabled ? "Enable Emby first" : "Enter Emby API Key");
+        if (settingKey === "SiloAPIKey") return renderValidate("silo", "Enter Silo API Key");
         if (settingKey === "tmdbtoken") return renderValidate("tmdb", "Enter TMDB Token");
         if (settingKey === "tvdbapi") return renderValidate("tvdb", "Enter TVDB API Key");
         if (settingKey === "FanartTvAPIKey") return renderValidate("fanart", "Enter Fanart API Key");
@@ -1443,7 +1444,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         if (settingKey.includes("ProviderOrder") && settingKey !== "OverrideProviderOrder") return <ProviderOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LanguageOrder")) return <LanguageOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LibstoExclude")) {
-            const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : "emby";
+            const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : settingKey.includes("Silo") ? "silo" : "emby";
             return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={tooltips[settingKey]} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
         }
         if (settingKey === "FavProvider") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none uppercase`}><option value="tmdb">TMDB</option><option value="tvdb">TVDB</option><option value="fanart">FANART</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
@@ -1470,17 +1471,19 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                      setHasUnsavedChanges(true);
                      return;
                  }
-                 if (["UsePlex", "UseJellyfin", "UseEmby"].includes(settingKey) && checked) {
+                 if (["UsePlex", "UseJellyfin", "UseEmby", "UseSilo"].includes(settingKey) && checked) {
                      const updates = {};
-                     const target = settingKey === "UsePlex" ? "Plex" : settingKey === "UseJellyfin" ? "Jellyfin" : "Emby";
+                     const target = settingKey.replace(/^Use/, "");
                      if (usingFlatStructure) {
                          updates.UsePlex = target==="Plex"?"true":"false"; updates.UseJellyfin = target==="Jellyfin"?"true":"false"; updates.UseEmby = target==="Emby"?"true":"false";
+                         updates.UseSilo = target === "Silo" ? "true" : "false";
                          setConfig({ ...config, ...updates });
                      } else {
                          const newConfig = { ...config };
                          if(newConfig.PlexPart) newConfig.PlexPart.UsePlex = target==="Plex"?"true":"false";
                          if(newConfig.JellyfinPart) newConfig.JellyfinPart.UseJellyfin = target==="Jellyfin"?"true":"false";
                          if(newConfig.EmbyPart) newConfig.EmbyPart.UseEmby = target==="Emby"?"true":"false";
+                         newConfig.SiloPart = { ...newConfig.SiloPart, UseSilo: target === "Silo" ? "true" : "false" };
                          setConfig(newConfig);
                      }
                      setHasUnsavedChanges(true);

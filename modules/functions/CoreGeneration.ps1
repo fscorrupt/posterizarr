@@ -147,7 +147,7 @@ function Invoke-MoviePosterCreation {
                                 $Arturl = $plexurl + $entry.PlexPosterUrl
                             }
                             elseif ($entry.OtherMediaServerPosterUrl) {
-                                $Arturl = "$OtherMediaServerUrl/items/$($entry.Id)/images/Primary/"
+                                $Arturl = if ($UseSilo -eq 'true') { $entry.OtherMediaServerPosterUrl } else { "$OtherMediaServerUrl/items/$($entry.Id)/images/Primary/" }
                             }
 
                             foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
@@ -964,7 +964,7 @@ function Invoke-MoviePosterCreation {
                                 $Arturl = $plexurl + $entry.PlexBackgroundUrl
                             }
                             elseif ($entry.OtherMediaServerBackgroundUrl) {
-                                $Arturl = "$OtherMediaServerUrl/items/$($entry.Id)/images/backdrop/"
+                                $Arturl = if ($UseSilo -eq 'true') { ($entry.OtherMediaServerBackgroundUrl -split ',')[0] } else { "$OtherMediaServerUrl/items/$($entry.Id)/images/backdrop/" }
                             }
 
                             foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
@@ -1869,7 +1869,7 @@ function Invoke-ShowPosterCreation {
                             $Arturl = $plexurl + $entry.PlexPosterUrl
                         }
                         elseif ($entry.OtherMediaServerPosterUrl) {
-                            $Arturl = "$OtherMediaServerUrl/items/$($entry.Id)/images/Primary/"
+                            $Arturl = if ($UseSilo -eq 'true') { $entry.OtherMediaServerPosterUrl } else { "$OtherMediaServerUrl/items/$($entry.Id)/images/Primary/" }
                         }
                         foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
                             $filePath = "$ManualTestPath$ext"
@@ -2747,7 +2747,7 @@ function Invoke-ShowPosterCreation {
                             $Arturl = $plexurl + $entry.PlexBackgroundUrl
                         }
                         elseif ($entry.OtherMediaServerBackgroundUrl) {
-                            $Arturl = "$OtherMediaServerUrl/items/$($entry.Id)/images/backdrop/"
+                            $Arturl = if ($UseSilo -eq 'true') { ($entry.OtherMediaServerBackgroundUrl -split ',')[0] } else { "$OtherMediaServerUrl/items/$($entry.Id)/images/backdrop/" }
                         }
 
                         foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
@@ -4747,7 +4747,7 @@ function Invoke-TitleCardCreation {
                             $Arturl = $global:OtherMediaServerTitleCardUrls[$i]
                         }
                         elseif ($episode.OtherMediaServerBackgroundUrl) {
-                            $Arturl = "$OtherMediaServerUrl/items/$($episode.ShowId)/images/backdrop/"
+                            $Arturl = if ($UseSilo -eq 'true') { ($episode.OtherMediaServerBackgroundUrl -split ',')[0] } else { "$OtherMediaServerUrl/items/$($episode.ShowId)/images/backdrop/" }
                         }
                         foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
                             $manualFile = "$Manualtestpath$ext"
@@ -5526,7 +5526,7 @@ function Invoke-TitleCardCreation {
                             $Arturl = $global:OtherMediaServerTitleCardUrls[$i]
                         }
                         elseif ($episode.OtherMediaServerBackgroundUrl) {
-                            $Arturl = "$OtherMediaServerUrl/items/$($episode.ShowId)/images/backdrop/"
+                            $Arturl = if ($UseSilo -eq 'true') { ($episode.OtherMediaServerBackgroundUrl -split ',')[0] } else { "$OtherMediaServerUrl/items/$($episode.ShowId)/images/backdrop/" }
                         }
                         foreach ($ext in @('.jpg', '.jpeg', '.png', '.webp', '.bmp')) {
                             $manualFile = "$Manualtestpath$ext"

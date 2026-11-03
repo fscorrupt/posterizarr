@@ -532,7 +532,7 @@ function Output-ConfigJson {
         # For any string longer than 1 char, show the first char and then redact.
         return $value.Substring(0, 1) + '****'
     }
-    $redactKeys = @("tvdbapi", "tmdbtoken", "fanarttvapikey", "plextoken", "jellyfinapikey", "embyapikey", "embyurl", "jellyfinurl", "discord", "plexurl", "UptimeKumaUrl", "AppriseUrl", "basicAuthPassword", "basicAuthUsername")
+    $redactKeys = @("tvdbapi", "tmdbtoken", "fanarttvapikey", "plextoken", "jellyfinapikey", "embyapikey", "siloapikey", "silourl", "embyurl", "jellyfinurl", "discord", "plexurl", "UptimeKumaUrl", "AppriseUrl", "basicAuthPassword", "basicAuthUsername")
     $indent = '  ' * $indentLevel
 
     if ($indentLevel -eq 0) {

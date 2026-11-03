@@ -11,6 +11,7 @@
     "PlexToken": "",
     "JellyfinAPIKey": "JELLYFINAPIKEY",
     "EmbyAPIKey": "EMBYAPIKEY",
+    "SiloAPIKey": "",
     "FavProvider": "tmdb",
     "ProviderPriorityMode": "Simple",
     "ProviderOrder": [
@@ -119,6 +120,12 @@
     "UploadExistingAssets": "false",
     "ReplaceThumbwithBackdrop": "false",
     "ReplaceThumbwithBackdropExclusively": "false"
+  },
+  "SiloPart": {
+    "UseSilo": "false",
+    "SiloUrl": "",
+    "SiloProfileId": "",
+    "LibstoExclude": []
   },
   "Notification": {
     "SendNotification": "false",

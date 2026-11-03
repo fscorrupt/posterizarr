@@ -134,10 +134,12 @@ const runModes = [
   const [plexValidated, setPlexValidated] = useState(false);
   const [jellyfinValidated, setJellyfinValidated] = useState(false);
   const [embyValidated, setEmbyValidated] = useState(false);
+  const [siloValidated, setSiloValidated] = useState(false);
 
   const [plexLibsValid, setPlexLibsValid] = useState(false);
   const [jellyfinLibsValid, setJellyfinLibsValid] = useState(false);
   const [embyLibsValid, setEmbyLibsValid] = useState(false);
+  const [siloLibsValid, setSiloLibsValid] = useState(false);
 
   const [config, setConfig] = useState({
     // Server URLs and Tokens
@@ -150,6 +152,9 @@ const runModes = [
     EmbyUrl: "",
     EmbyAPIKey: "",
     UseEmby: "false",
+    SiloUrl: "",
+    SiloAPIKey: "",
+    UseSilo: "false",
 
     // API Keys
     tmdbtoken: "",
@@ -251,6 +256,7 @@ const runModes = [
       finalConfig.UsePlex = (primaryServer === 'plex') ? "true" : "false";
       finalConfig.UseJellyfin = (primaryServer === 'jellyfin') ? "true" : "false";
       finalConfig.UseEmby = (primaryServer === 'emby') ? "true" : "false";
+      finalConfig.UseSilo = (primaryServer === 'silo') ? "true" : "false";
       // Note: If syncFromPlex is true, the secondary server URLs/Tokens are sent, but their 'Use' flag remains false.
 
       // Enforce Notification toggle
@@ -340,6 +346,26 @@ const runModes = [
   };
 
   const renderServerForm = (type) => {
+    if (type === 'silo') {
+      return (
+        <div className="mt-2 p-3 bg-theme-bg/30 rounded-lg flex flex-col gap-3 min-h-0 overflow-y-auto">
+          <h4 className="font-semibold text-sm text-theme-primary">Silo (Experimental)</h4>
+          <label className="block text-xs font-medium text-theme-muted">
+            Server URL
+            <ClearableInput value={config.SiloUrl} onChange={value => { handleChange("SiloUrl", value); setSiloValidated(false); setSiloLibsValid(false); }} placeholder="http://silo:8080" />
+          </label>
+          <label className="block text-xs font-medium text-theme-muted">
+            {t("onboarding.apiKey")}
+            <ClearableInput value={config.SiloAPIKey} onChange={value => { handleChange("SiloAPIKey", value); setSiloValidated(false); setSiloLibsValid(false); }} isPassword />
+          </label>
+          <div className="flex justify-end">
+            <ValidateButton type="silo" config={config} label={t("onboarding.testConnection")} disabled={!config.SiloUrl || !config.SiloAPIKey} onSuccess={() => setSiloValidated(true)} />
+          </div>
+          <LibraryExclusionSelector value={config.SiloLibstoExclude || []} onChange={value => handleChange("SiloLibstoExclude", value)} mediaServerType="silo" config={config}
+            disabled={!siloValidated} inlineMode={true} autoFetchTrigger={siloValidated} onValidStateChange={setSiloLibsValid} />
+        </div>
+      );
+    }
     if (type === 'plex') {
       return (
         <div className="mt-2 p-3 bg-theme-bg/30 rounded-xl animate-fade-in flex flex-col h-full overflow-hidden">
@@ -490,7 +516,7 @@ const runModes = [
               </div>
             )}
 
-            <div className={`grid grid-cols-1 min-[440px]:grid-cols-3 gap-3 shrink-0 transition-all duration-300 ${primaryServer ? 'mb-2' : 'mb-6'}`}>
+            <div className={`grid grid-cols-1 min-[440px]:grid-cols-2 md:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${primaryServer ? 'mb-2' : 'mb-6'}`}>
               <button
                 onClick={() => setPrimaryServer('plex')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'plex' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
@@ -511,6 +537,10 @@ const runModes = [
               >
                 <img src="/emby.svg" alt="Emby" className="w-5 h-5 mr-2 object-contain drop-shadow-md opacity-90 transition-transform hover:scale-110" />
                 <span className="font-semibold text-sm">Emby</span>
+              </button>
+              <button onClick={() => setPrimaryServer('silo')}
+                className={`py-2 px-3 rounded-lg flex items-center justify-center transition-all ${primaryServer === 'silo' ? 'bg-theme-primary/15 text-theme-primary ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}>
+                <span className="font-semibold text-sm">Silo</span>
               </button>
             </div>
 
@@ -1010,7 +1040,7 @@ const runModes = [
                 <button
                   onClick={handleNext}
                   disabled={
-                    (currentStep === 1 && !((plexValidated && plexLibsValid) || (jellyfinValidated && jellyfinLibsValid) || (embyValidated && embyLibsValid))) ||
+                    (currentStep === 1 && !({ plex: plexValidated && plexLibsValid, jellyfin: jellyfinValidated && jellyfinLibsValid, emby: embyValidated && embyLibsValid, silo: siloValidated && siloLibsValid && config.SiloUrl && config.SiloAPIKey }[primaryServer])) ||
                     (currentStep === 2 && (!config.tmdbtoken || !config.tvdbapi || !config.FanartTvAPIKey))
                   }
                   className="flex items-center px-5 py-2 bg-theme-primary text-black rounded-lg font-semibold shadow-md shadow-theme-primary/20 hover:bg-theme-accent hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"

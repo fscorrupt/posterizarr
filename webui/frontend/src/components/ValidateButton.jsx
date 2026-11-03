@@ -47,6 +47,14 @@ const ValidateButton = ({
           };
           break;
 
+        case "silo":
+          requestBody = {
+            url: (config.SiloUrl || config.SiloPart?.SiloUrl)?.trim(),
+            api_key: (config.SiloAPIKey || config.ApiPart?.SiloAPIKey)?.trim(),
+            profile_id: (config.SiloProfileId || config.SiloPart?.SiloProfileId)?.trim() || null,
+          };
+          break;
+
         case "tmdb":
           requestBody = {
             token: config.tmdbtoken?.trim(),
