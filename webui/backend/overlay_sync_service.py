@@ -4629,7 +4629,8 @@ async def _run_overlay_sync_task(
                                 if aggregate["subtitle_languages"]:
                                     item["subtitle_languages"] = aggregate["subtitle_languages"]
                                 if aggregate["audio_codec"]:
-                                    item["audio_codec"] = aggregate["audio_codec"]
+                                    for key in ("audio_codec", "audio_profile", "audio_track_title", "audio_title"):
+                                        item[key] = aggregate.get(key)
                                 for key in ("resolution", "has_hdr", "has_dolby_vision"):
                                     if key in aggregate:
                                         item[key] = aggregate[key]
