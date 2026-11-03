@@ -165,17 +165,22 @@ function Get-OptimalPointSize {
 
     $global:IsTruncated = $null
 
-    # Construct the command with interline spacing and font option
-    $cmd = "& `"$magick`" -size ${box_width}x${box_height} -font `"$fontImagemagick`" -gravity center -fill black -interline-spacing ${lineSpacing} caption:`"$text`" -format `"%[caption:pointsize]`" info:"
+    $magickArgs = @(
+        '-size', "${box_width}x${box_height}",
+        '-font', $fontImagemagick,
+        '-gravity', 'center',
+        '-fill', 'black',
+        '-interline-spacing', "$lineSpacing",
+        "caption:$text",
+        '-format', '%[caption:pointsize]',
+        'info:'
+    )
 
-    # Log the command for debugging purposes
-    try { $cmd | Out-File $magickLog -Append
+    try { (ConvertTo-Json -InputObject $magickArgs -Compress) | Out-File $magickLog -Append
  -ErrorAction Stop } catch {}
-    # [stats] start timing the ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“missÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â compute path
     $tsc_sw = [Diagnostics.Stopwatch]::StartNew()
 
-    # Execute the command and get the current point size
-    $current_pointsize = [int](Invoke-Expression $cmd | Out-String).Trim()
+    $current_pointsize = [int](& $magick @magickArgs | Out-String).Trim()
 
     # Apply point size limits
     if ($current_pointsize -gt $max_pointsize) {

@@ -18909,7 +18909,7 @@ async def api_get_studio_logo_image(filename: str):
 
     base_dir = (IMAGES_DIR / "studio_logos").resolve()
     file_path = (base_dir / clean_filename).resolve()
-    if not str(file_path).startswith(str(base_dir)):
+    if not _is_within_root(file_path, base_dir):
         raise HTTPException(status_code=403, detail="Path traversal detected")
 
     if not file_path.is_file():

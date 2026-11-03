@@ -107,7 +107,7 @@ function UploadOtherMediaServerArtwork {
 
         if ($imageType -eq "Backdrop") {
             $isExclusive = ($global:ReplaceThumbwithBackdrop -eq 'true' -and $global:ReplaceThumbwithBackdropExclusively -eq 'true')
-            
+
             if (-not $isExclusive) {
                 $deleteUrl = "$OtherMediaServerUrl/items/$itemId/images/$imageType/0"
                 # Make the API request to delete the backdrop image
@@ -157,7 +157,7 @@ function UploadOtherMediaServerArtwork {
                         Write-Entry -Subtext "Failed to upload Thumb image. Error: $_" -Path $global:configLogging -Color Red -log Error
                     }
                 }
-                
+
                 if ($isExclusive) {
                     Write-Entry -Subtext "Replace Thumb Exclusively is enabled. Skipping Backdrop upload." -Path $global:configLogging -Color Cyan -log Info
                     return

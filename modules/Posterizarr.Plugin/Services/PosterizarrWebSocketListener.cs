@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.WebSockets;
@@ -402,6 +403,83 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
         }
     }
 
+    private static string ResolveLinks(string path, HashSet<string> resolvingLinks)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var pathRoot = Path.GetPathRoot(fullPath)!;
+        var currentPath = pathRoot;
+        var segments = fullPath.Substring(pathRoot.Length).Split(
+            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var segment in segments)
+        {
+            var candidate = Path.Combine(currentPath, segment);
+            FileSystemInfo info = Directory.Exists(candidate)
+                ? new DirectoryInfo(candidate)
+                : new FileInfo(candidate);
+            var target = info.ResolveLinkTarget(false);
+            if (target == null)
+            {
+                currentPath = candidate;
+                continue;
+            }
+
+            var linkPath = Path.GetFullPath(candidate);
+            if (!resolvingLinks.Add(linkPath))
+            {
+                throw new IOException("A symbolic link cycle was detected.");
+            }
+
+            try
+            {
+                var targetPath = target.FullName;
+                if (!Path.IsPathRooted(targetPath))
+                {
+                    targetPath = Path.Combine(Path.GetDirectoryName(linkPath)!, targetPath);
+                }
+                currentPath = ResolveLinks(targetPath, resolvingLinks);
+            }
+            finally
+            {
+                resolvingLinks.Remove(linkPath);
+            }
+        }
+
+        return Path.GetFullPath(currentPath);
+    }
+
+    private static bool TryResolveSafeAssetPath(string assetFolder, string path, out string resolvedPath)
+    {
+        resolvedPath = string.Empty;
+        try
+        {
+            var comparison = Path.DirectorySeparatorChar == '\\'
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            var linkComparer = Path.DirectorySeparatorChar == '\\'
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal;
+            var resolvedRoot = ResolveLinks(assetFolder, new HashSet<string>(linkComparer));
+            var candidate = ResolveLinks(path, new HashSet<string>(linkComparer));
+            var rootPrefix = Path.EndsInDirectorySeparator(resolvedRoot)
+                ? resolvedRoot
+                : resolvedRoot + Path.DirectorySeparatorChar;
+
+            if (!candidate.StartsWith(rootPrefix, comparison) || !File.Exists(candidate))
+            {
+                return false;
+            }
+
+            resolvedPath = candidate;
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
     private async Task HandleAssetUpdatedEventAsync(AssetEventPayload payload, PluginConfiguration config, CancellationToken ct)
     {
         _logger.LogInformation("[Posterizarr WS] Received real-time update event: {0} for '{1}' (Folder: '{2}')",
@@ -446,12 +524,17 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
         }
 
         // 2. Canonicalize path and ensure it strictly resides within AssetFolderPath root
-        string normalizedRoot = Path.GetFullPath(config.AssetFolderPath)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string normalizedRoot = Path.GetFullPath(config.AssetFolderPath);
+        string rootPrefix = Path.EndsInDirectorySeparator(normalizedRoot)
+            ? normalizedRoot
+            : normalizedRoot + Path.DirectorySeparatorChar;
+        var pathComparison = Path.DirectorySeparatorChar == '\\'
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
         string fullTargetFile = Path.GetFullPath(Path.Combine(config.AssetFolderPath, relativeForTarget.Replace('/', Path.DirectorySeparatorChar)));
 
-        if (!fullTargetFile.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+        if (!fullTargetFile.StartsWith(rootPrefix, pathComparison))
         {
             _logger.LogWarning("[Posterizarr Security] Path traversal blocked! Target '{0}' escapes asset root '{1}'", fullTargetFile, normalizedRoot);
             return;
@@ -470,6 +553,13 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
             _logger.LogWarning("[Posterizarr WS] Asset file does not exist on disk at '{0}'. Verify that Jellyfin's Root Asset Folder Path ('{1}') is correctly mounted to Posterizarr's asset directory.", fullTargetFile, config.AssetFolderPath);
             return;
         }
+
+        if (!TryResolveSafeAssetPath(config.AssetFolderPath, fullTargetFile, out var resolvedTargetFile))
+        {
+            _logger.LogWarning("[Posterizarr Security] Rejected asset path outside the configured root: '{0}'", fullTargetFile);
+            return;
+        }
+        fullTargetFile = resolvedTargetFile;
 
         // Invalidate in-memory asset resolver cache for this folder so subsequent metadata refreshes hit the new file
         Providers.AssetPathResolver.InvalidateFile(fullTargetFile);
