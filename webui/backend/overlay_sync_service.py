@@ -82,6 +82,8 @@ async def resolve_episode_overlay_ratings(
     xml_bytes = episode.get("rating_xml")
     imdb_id = (episode.get("provider_ids") or {}).get("Imdb")
     cached = None if force_refresh else ratings_cache.get_cached_ratings(server_type, episode_id)
+    cached_identity = cached or ratings_cache.get_cached_ratings(server_type, episode_id, allow_stale=True) or {}
+    imdb_id = imdb_id or cached_identity.get("imdb_id")
     if server_type == "plex" and not cached:
         try:
             response = await client.get(
@@ -115,6 +117,7 @@ async def resolve_episode_overlay_ratings(
                         "series_year": parent_metadata.get("year"),
                         "episode_title": episode.get("title"), "original_title": episode.get("original_title"),
                         "file_path": episode.get("file_path") or episode.get("media_file_path")},
+        reuse_partial_cache=True,
     )
 
 

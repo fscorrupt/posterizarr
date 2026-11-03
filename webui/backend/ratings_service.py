@@ -1548,6 +1548,7 @@ async def resolve_media_ratings(
     tvdb_id: Optional[str] = None,
     provider_run_state: Optional[RatingsProviderRunState] = None,
     rating_context: Optional[Dict[str, Any]] = None,
+    reuse_partial_cache: bool = False,
 ) -> Dict[str, Any]:
     """
     Unified ratings resolver with multi-source fallback and SQLite caching.
@@ -1556,15 +1557,15 @@ async def resolve_media_ratings(
     # 1. Cache lookup
     if not force_refresh:
         cached = ratings_cache.get_cached_ratings(server_type, item_id)
-        missing_simkl_selection = cached and simkl_client_id and media_type != "episode" and any(
+        missing_simkl_selection = cached and not reuse_partial_cache and simkl_client_id and media_type != "episode" and any(
             source in (enabled_sources or []) and cached.get(f"{source}_rating") is None for source in ("simkl", "mal")
         )
         requested_episode_sources = enabled_sources or ["imdb", "tmdb", "tomatoes", "tomatoesaudience"]
-        missing_episode_selection = cached and media_type == "episode" and any(
+        missing_episode_selection = cached and not reuse_partial_cache and media_type == "episode" and any(
             source in requested_episode_sources and cached.get(column) is None
             for source, column in EPISODE_RATING_SOURCE_COLUMNS.items()
         )
-        missing_dataset_selection = cached and cached.get("imdb_rating") is None and "imdb" in (enabled_sources or ["imdb"]) and imdb_dataset.status()["enabled"]
+        missing_dataset_selection = cached and not reuse_partial_cache and cached.get("imdb_rating") is None and "imdb" in (enabled_sources or ["imdb"]) and imdb_dataset.status()["enabled"]
         if cached and not missing_simkl_selection and not missing_episode_selection and not missing_dataset_selection:
             return {
                 "imdb": cached.get("imdb_rating"),

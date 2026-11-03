@@ -74,6 +74,12 @@ MyAnimeList (`mal`). Choose providers in
 is a default, not a three-provider limit. Cached ratings are independent of this
 selection; cached values do not automatically enable their badges.
 Live Preview uses sample values, not the selected item's cached ratings.
+Incremental episode overlay syncs reuse unexpired ratings caches even when some
+selected provider scores are missing. Missing scores alone do not trigger another
+provider lookup or extend the cache expiry. Use **Ratings Cache & Refresh** to
+explicitly fetch missing scores; automatic refresh keeps its existing candidate
+selection and retry policy. Expired or absent caches and full syncs still resolve
+ratings, reusing the episode's cached IMDb ID when native metadata omits it.
 When provider ratings are available, the built-in provider layout suppresses the
 legacy `rating_high` / `user_rating` audience badges from imported overlay files,
 so the old audience score is not drawn a second time.
