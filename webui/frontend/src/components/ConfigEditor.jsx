@@ -1183,6 +1183,7 @@ const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors
 
 // Extracted Setting Card Component for cleaner main loop
 const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges, setValidationErrors }) => {
+    const { t } = useTranslation();
     const value = usingFlatStructure ? config[settingKey] : config[groupName]?.[settingKey];
     const isWide = (settingKey === "NewLineOnSpecificSymbols" && groupName === "Text Formatting") || settingKey.includes("ResolutionOverlays") || settingKey.includes("LibstoExclude") || settingKey === "AgregarrTriggerEnabled";
     const uniqueId = `setting-${groupName}-${settingKey}`;
@@ -1250,13 +1251,13 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                 <div className="space-y-3">
                     <div className={`flex flex-wrap gap-2 p-3 bg-theme-bg/50 rounded-lg border border-theme min-h-[52px] ${disabled ? "opacity-50" : ""}`}>
                         {symbols.map((symbol, idx) => (
-                            <div key={idx} className="flex items-center gap-1 bg-theme-card border border-theme-primary/30 rounded px-2 py-1 group focus-within:border-theme-primary transition-all">
+                            <div key={idx} className="flex min-w-0 max-w-full items-center gap-1 bg-theme-card border border-theme-primary/30 rounded px-2 py-1 group focus-within:border-theme-primary transition-all">
                                 <input
                                     type="text"
                                     value={symbol}
                                     onChange={(e) => handleUpdateSymbol(idx, e.target.value)}
                                     disabled={disabled}
-                                    className="bg-transparent border-none focus:ring-0 p-0 text-xs font-mono text-theme-primary min-w-[20px]"
+                                    className="max-w-full bg-transparent border-none focus:ring-0 p-0 text-xs font-mono text-theme-primary min-w-[20px]"
                                     style={{ width: `${Math.max(symbol.length, 1) + 0.5}ch` }}
                                     placeholder={isSkipWord ? "Word" : "⎵"}
                                 />
@@ -1282,8 +1283,20 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                         </button>
                     )}
                     <p className="text-[10px] text-theme-muted italic">
-                        {isSkipWord ? "Words are preserved exactly as typed. Wrap in slashes to use Regex (e.g. /pattern/)" : "Spaces are preserved exactly as typed inside the boxes."}
+                        {isSkipWord ? t("configEditor.skipWordsHelp") : "Spaces are preserved exactly as typed inside the boxes."}
                     </p>
+                    {isSkipWord && (
+                        <div className="min-w-0 space-y-2 text-[10px] leading-relaxed text-theme-muted">
+                            <div>
+                                <code className="block max-w-full overflow-x-auto text-theme-text">{String.raw`/(?i)^\s*tba\s*$/`}</code>
+                                <span>{t("configEditor.skipWordsTbaExample")}</span>
+                            </div>
+                            <div>
+                                <code className="block max-w-full overflow-x-auto text-theme-text">{String.raw`/(?i)^(?:folge|episode)\s*#?\s*[0-9]+(?:\.[0-9]+)?\s*$/`}</code>
+                                <span>{t("configEditor.skipWordsEpisodeExample")}</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }

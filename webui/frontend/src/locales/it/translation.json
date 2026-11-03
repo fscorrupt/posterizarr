@@ -1896,6 +1896,9 @@
     "replaceSuccess": "Asset sostituito con successo!"
   },
   "configEditor": {
+    "skipWordsHelp": "Regex supportate tra /barre/ (richiede SkipTBA).",
+    "skipWordsTbaExample": "Riconosce TBA o tba, anche con spazi prima o dopo.",
+    "skipWordsEpisodeExample": "Riconosce titoli provvisori come Folge 12, Episode #12 o Episode 12.5.",
     "loadingConfig": "Caricamento configurazione...",
     "errorLoadingConfig": "Errore durante il caricamento della configurazione",
     "retry": "Riprova",

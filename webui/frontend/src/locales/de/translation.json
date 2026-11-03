@@ -1896,6 +1896,9 @@
     "replaceSuccess": "Asset erfolgreich ersetzt!"
   },
   "configEditor": {
+    "skipWordsHelp": "Regex in /Schrägstrichen/ möglich (SkipTBA erforderlich).",
+    "skipWordsTbaExample": "Erkennt TBA oder tba, auch mit Leerraum davor oder danach.",
+    "skipWordsEpisodeExample": "Erkennt Platzhalter wie Folge 12, Episode #12 oder Episode 12.5.",
     "loadingConfig": "Lade Konfiguration...",
     "errorLoadingConfig": "Fehler beim Laden der Konfiguration",
     "retry": "Erneut versuchen",

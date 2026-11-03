@@ -192,7 +192,7 @@
     - `SeasonPosters`: Set to `true` to also create season posters.
     - `BackgroundPosters`: Set to `true` to also create background posters.
     - `TitleCards` : Set to `true` to also create title cards.
-    - `SkipTBA` : If set to `true`, TitleCard creation will be skipped when TitleText contains any word from `SkipWords`. (You can use Regex by wrapping the word in slashes like `/^TBA$/`)
+    - `SkipTBA` : If set to `true`, TitleCard creation is skipped when the title starts with a plain `SkipWords` entry or matches a regex entry wrapped in slashes, such as `/^TBA$/`. See the `SkipWords` examples below.
         !!! note "Regex in config.json"
             If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
     - `SkipJapTitle` : Set to `true` to skip TitleCard creation if the Titletext is `Jap or Chinese`.
@@ -329,9 +329,34 @@
     - `AddBorder`: Set to `true` to add a border to the TitleCard image.
     - `borderwidth`: Border width.
     - `bordercolor`: Color of border.
-    - `SkipWords`: List of words to be skipped for TC, e.g 'TBA, Episode...'. (SkipTBA has to be true). You can also use Regex by wrapping your expression in slashes (e.g. `/^TBA$/`).
+        - `SkipWords`: Title prefixes or regex expressions that skip TitleCard generation. `SkipTBA` must be `true`. Wrap each regex in `/slashes/` and add it as a separate list entry. `(?i)` makes matching case-insensitive.
+
+                Enter these examples exactly as shown in the Web UI:
+
+                ```text
+                /(?i)^\s*tba\s*$/
+                /(?i)^(?:folge|episode)\s*#?\s*[0-9]+(?:\.[0-9]+)?\s*$/
+                ```
+
+                The first matches only `TBA`, allowing surrounding whitespace. The second matches placeholders such as `Folge 12`, `Episode #12`, and `Episode 12.5`, but not `Episode 12 - A Real Title`. These are optional examples, not additional default skip rules. Successful skip logs show the matched title text rather than the regex pattern.
+
         !!! note
-            If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
+                        The Web UI accepts single backslashes and handles JSON escaping when saving. When editing `config.json` manually, double each backslash. Merge the following example into the corresponding sections of your existing configuration; do not replace the entire file:
+
+                        ```json
+                        {
+                            "PrerequisitePart": {
+                                "SkipTBA": "true"
+                            },
+                            "TitleCardOverlayPart": {
+                                "SkipWords": [
+                                    "/(?i)^\\s*tba\\s*$/",
+                                    "/(?i)^(?:folge|episode)\\s*#?\\s*[0-9]+(?:\\.[0-9]+)?\\s*$/"
+                                ]
+                            }
+                        }
+                        ```
+
         - **Any already created TitleCards that match these words will be deleted.**
 
     #### TitleCardTitleTextPart

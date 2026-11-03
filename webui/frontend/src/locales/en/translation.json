@@ -1896,6 +1896,9 @@
     "replaceSuccess": "Asset replaced successfully!"
   },
   "configEditor": {
+    "skipWordsHelp": "Regex supported in /slashes/ (requires SkipTBA).",
+    "skipWordsTbaExample": "Matches TBA or tba, including surrounding whitespace.",
+    "skipWordsEpisodeExample": "Matches placeholders such as Folge 12, Episode #12 or Episode 12.5.",
     "loadingConfig": "Loading configuration...",
     "errorLoadingConfig": "Error Loading Configuration",
     "retry": "Retry",
