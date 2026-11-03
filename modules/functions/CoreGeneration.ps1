@@ -4710,22 +4710,25 @@ function Invoke-TitleCardCreation {
 
                 # Pre-check the title against skipwords
                 $matchedWord = $null
+                $matchedText = $null
                 foreach ($word in $SkipWords) {
                     if ($word -match '^/(.+)/$') {
                         if ($global:EPTitle -match $matches[1]) {
                             $matchedWord = $word
+                            $matchedText = $matches[0]
                             break # Stop checking once we find a match
                         }
                     } else {
                         if ($global:EPTitle -match "^$([regex]::Escape($word))") {
                             $matchedWord = $word
+                            $matchedText = $matches[0]
                             break # Stop checking once we find a match
                         }
                     }
                 }
 
                 if ($SkipTBA -eq 'true' -and $matchedWord) {
-                    Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedWord'" -Path $global:configLogging -Color Yellow -log Warning
+                    Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
                     $SkipTBACount++
                 }
                 Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
@@ -5487,22 +5490,25 @@ function Invoke-TitleCardCreation {
 
                 # Pre-check the title against skipwords
                 $matchedWord = $null
+                $matchedText = $null
                 foreach ($word in $SkipWords) {
                     if ($word -match '^/(.+)/$') {
                         if ($global:EPTitle -match $matches[1]) {
                             $matchedWord = $word
+                            $matchedText = $matches[0]
                             break # Stop checking once we find a match
                         }
                     } else {
                         if ($global:EPTitle -match "^$([regex]::Escape($word))") {
                             $matchedWord = $word
+                            $matchedText = $matches[0]
                             break # Stop checking once we find a match
                         }
                     }
                 }
 
                 if ($SkipTBA -eq 'true' -and $matchedWord) {
-                    Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedWord'" -Path $global:configLogging -Color Yellow -log Warning
+                    Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
                     $SkipTBACount++
                 }
                 Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
@@ -6199,22 +6205,25 @@ function Invoke-TitleCardCreation {
 
                                     # Pre-check the title against skipwords
                                     $matchedWord = $null
+                                    $matchedText = $null
                                     foreach ($word in $SkipWords) {
                                         if ($word -match '^/(.+)/$') {
                                             if ($global:EPTitle -match $matches[1]) {
                                                 $matchedWord = $word
+                                                $matchedText = $matches[0]
                                                 break # Stop checking once we find a match
                                             }
                                         } else {
                                             if ($global:EPTitle -match "^$([regex]::Escape($word))") {
                                                 $matchedWord = $word
+                                                $matchedText = $matches[0]
                                                 break # Stop checking once we find a match
                                             }
                                         }
                                     }
 
                                     if ($SkipTBA -eq 'true' -and $matchedWord) {
-                                        Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedWord'" -Path $global:configLogging -Color Yellow -log Warning
+                                        Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
                                         $SkipTBACount++
                                     }
                                     Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
