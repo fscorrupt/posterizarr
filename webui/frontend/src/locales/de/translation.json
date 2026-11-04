@@ -10,7 +10,7 @@
       "manualBody": "Mehrdeutige Treffer werden nicht automatisch übernommen. Eine manuelle Auswahl hat Vorrang, bis du wieder Automatisch auswählst.",
       "filename": "Beispiel mit absoluter Episodennummer",
       "exampleTitle": "Episodentitel",
-      "absolute": "S21E83 ist die lokale Nummerierung, 974 die absolute Folge. Die absolute Nummer hilft, gleiche Titel zu unterscheiden. Sie allein reicht nicht für eine automatische Zuordnung.",
+      "absolute": "Bei Anime sollte die absolute Episodennummer im Dateinamen stehen. Im Beispiel ist S21E83 die lokale Nummerierung und 974 die absolute Folge. Sie hilft, gleiche Titel zu unterscheiden, reicht allein aber nicht für eine automatische Zuordnung. Orientiere dich am <guide>empfohlenen Anime-Benennungsschema der Trash Guides</guide>.",
       "local": "Suche und Zuordnung bleiben lokal, ohne Provider-Abfragen. Beim Speichern wird nur IMDb im Ratings-Cache geändert. Deine Bilder bleiben unverändert."
     },
     "title": "Lokaler IMDb-Datensatz",
@@ -88,6 +88,20 @@
     "ratingsRefreshIntervalHours": "Stunden",
     "ratingsRefreshScheduleHelp": "1 Stunde = stündlich; 24 = täglich; 168 = wöchentlich; 720 = alle 30 Tage. Der erste Lauf erfolgt erst nach dem gewählten Intervall ab dem Start.",
     "episodeRatingProviderNote": "Episodenwertungen sind folgenspezifisch. MDBList-Episodenwertungen verwenden die Episodenmatrix des Supporter-Tarifs; SIMKL/MAL liefern Serien- oder Staffelwerte, keine Werte einzelner Folgen. Serienwerte werden nie auf Episoden übertragen.",
+    "animetafillRules": {
+      "title": "Overlay-Ausgaberegeln",
+      "description": "Die Klassifizierungsdaten bleiben vollständig erhalten. Diese Regeln legen fest, welche Badges beim nächsten Scan in die YAML geschrieben werden.",
+      "categoriesLabel": "Overlay-Kategorien",
+      "categories": { "canon": "Kanon", "filler": "Filler", "mixed": "Gemischt" },
+      "thresholdLabel": "Schwellenwert pro Serie",
+      "noThreshold": "Kein Schwellenwert",
+      "totalEpisodes": "Gesamtzahl der Episoden",
+      "fillerEpisodes": "Anzahl der Filler-Episoden",
+      "nonCanonPercent": "Filler + Gemischt in Prozent",
+      "minimumPercent": "Mindestanteil in Prozent",
+      "minimumEpisodes": "Mindestanzahl Episoden",
+      "percentHelp": "Der Prozentwert berechnet sich aus Filler- und gemischten Episoden geteilt durch die Gesamtzahl der Episoden der Serie."
+    },
     "title": "Dynamische Overlays",
     "navigation": {
       "configure": "Einrichten",

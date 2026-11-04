@@ -171,7 +171,9 @@ punctuation ignored). A cached parent IMDb ID or a unique series title, optional
 qualified by the series year, identifies the series. TRaSH-style filenames such
 as `One Piece (1999) - S21E83 - 974 - Oden Wouldnt Be Oden If It Wasnt Boiled! [German].mkv`
 provide the English title and absolute number independently of the Plex display
-language. The year disambiguates same-name remakes. Absolute numbering is used
+language. For anime, include the absolute episode number in the filename; see the
+[TRaSH Guides recommended anime naming scheme](https://trash-guides.info/Sonarr/Sonarr-recommended-naming-scheme/?h=naming#episode-format).
+The year disambiguates same-name remakes. Absolute numbering is used
 to distinguish otherwise identical title candidates in IMDb season 1; a number
 alone is only a suggestion, never proof that two numbering schemes agree.
 Ambiguous series/titles are not automatically assigned. This is not limited to

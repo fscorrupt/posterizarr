@@ -218,7 +218,16 @@ def run_sync(scheduler=None, custom_config=None, force=False):
             if any(db_mapping.values()):
                 # Use 2-tier mapping (Numeric + Title)
                 sonarr_map, title_map = sonarr.get_absolute_to_season_map(series_info['id']) if series_info else (sonarr_map, {})
-                overlay_gen.add_show_overlays(title, db_mapping, sonarr_map, title_map=title_map)
+                overlay_gen.add_show_overlays(
+                    title,
+                    db_mapping,
+                    sonarr_map,
+                    title_map=title_map,
+                    selected_categories=overlay_conf.get("overlay_categories"),
+                    threshold_mode=overlay_conf.get("overlay_threshold_mode", "none"),
+                    threshold_value=overlay_conf.get("overlay_threshold_value", 0),
+                    total_episode_count=sonarr_count,
+                )
                 successful_count += 1
                 logger.success(f"Show mapped with {db_count} filler/canon markers.")
             else:
@@ -230,7 +239,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
             continue
 
     # 4. Finalize Exports
-    overlay_gen.save_unified_file("anime_overlays.yml")
+    overlay_gen.save_unified_file("anime_overlays.yml", allow_empty=True)
     db.export_to_json(json_export_path)
 
     # Export Unmapped Shows report

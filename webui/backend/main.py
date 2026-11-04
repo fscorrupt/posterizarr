@@ -72,6 +72,11 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+try:
+    from .config_password import preserve_masked_basic_auth_password
+except ImportError:
+    from config_password import preserve_masked_basic_auth_password
+
 # Check if running in Docker
 IS_DOCKER = (
     os.path.exists("/.dockerenv")
@@ -2889,17 +2894,13 @@ async def update_config(data: ConfigUpdate):
         else:
             current_flat = current_config
 
-        # Check if basicAuthPassword is being updated
-        if "basicAuthPassword" in data.config:
-            new_pass = str(data.config["basicAuthPassword"]).strip()
-            # If empty/blank, don't overwrite the existing hashed password
-            if not new_pass:
-                del data.config["basicAuthPassword"]
-            # Only hash if it's not already a hash (user entered a new plain password)
-            elif not new_pass.startswith(("$2b$", "$2a$", "$2y$")):
+        password_config = preserve_masked_basic_auth_password(data.config, current_config, current_flat)
+        if "basicAuthPassword" in password_config:
+            new_pass = str(password_config["basicAuthPassword"]).strip()
+            if new_pass and not new_pass.startswith(("$2b$", "$2a$", "$2y$")):
                 logger.info("Hashing new password provided in config update...")
                 hashed = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                data.config["basicAuthPassword"] = hashed
+                password_config["basicAuthPassword"] = hashed
 
         # Normalize UptimeKumaUrl if full push query was pasted
         def _clean_kuma_url(v):
@@ -20763,6 +20764,9 @@ class AniMetaFillConfigRequest(BaseModel):
     sonarr_url: Optional[str] = None
     sonarr_api_key: Optional[str] = None
     simkl_client_id: Optional[str] = None
+    overlay_categories: Optional[List[Literal["canon", "filler", "mixed"]]] = None
+    overlay_threshold_mode: Optional[Literal["none", "total_episodes", "filler_episodes", "non_canon_percent"]] = None
+    overlay_threshold_value: Optional[float] = None
     labels: Optional[Dict[str, str]] = None
     colors: Optional[Dict[str, str]] = None
     aesthetic: Optional[Dict[str, Any]] = None

@@ -796,16 +796,24 @@
 
         # Cleanup empty Asset dirs
         if ($LibraryFolders -eq 'true') {
-            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force | Sort-Object { $_.FullName.Length } -Descending
+            # NAS/OS metadata that should not keep an otherwise empty folder alive
+            $junkNames = [System.Collections.Generic.HashSet[string]]::new([string[]]@('@eaDir', '.DS_Store', 'Thumbs.db', 'desktop.ini'), [System.StringComparer]::OrdinalIgnoreCase)
+            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force |
+                Where-Object { $_.FullName -notmatch '[\\/]@eaDir([\\/]|$)' } |
+                Sort-Object { $_.FullName.Length } -Descending
 
             # Loop through the pre-filtered list
             foreach ($dir in $dirs2delete) {
-                if ($dir.GetFileSystemInfos().Count -ne 0) { continue }
+                if (@($dir.GetFileSystemInfos() | Where-Object { -not $junkNames.Contains($_.Name) }).Count -ne 0) { continue }
 
-                # Increment counter
+                try {
+                    Remove-Item -LiteralPath $dir.FullName -Recurse -Force -Confirm:$false -ErrorAction Stop | Out-Null
+                }
+                catch {
+                    Write-Entry -Subtext "Could not remove empty directory: $($dir.FullName) - $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    continue
+                }
                 $PathsCleared++
-                # Remove the empty directory
-                Remove-Item -LiteralPath $dir.FullName -Force -Confirm:$false | Out-Null
 
                 # Log the action
                 Write-Entry -Subtext "Removed empty directory: $($dir.FullName)" -Path $global:configLogging -Color Yellow -log Info

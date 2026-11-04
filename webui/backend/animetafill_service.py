@@ -383,6 +383,9 @@ def _get_defaults() -> Dict[str, Any]:
         "enabled": False,
         "media_server": server,  # plex, jellyfin, or emby
         "target_libraries": ["Anime Shows"],
+        "overlay_categories": ["canon", "filler", "mixed"],
+        "overlay_threshold_mode": "none",
+        "overlay_threshold_value": 50,
         "labels": {
             "canon": "Canon",
             "filler": "Filler",
@@ -599,11 +602,27 @@ def save_animetafill_config(new_config: Dict[str, Any]) -> Dict[str, Any]:
         target_libs = current.get("target_libraries", [])
 
     media_srv = new_config.get("media_server") or current.get("media_server", "plex")
+    valid_categories = {"canon", "filler", "mixed"}
+    raw_categories = new_config.get("overlay_categories", current.get("overlay_categories", ["canon", "filler", "mixed"]))
+    overlay_categories = [category for category in raw_categories if category in valid_categories] if isinstance(raw_categories, list) else ["canon", "filler", "mixed"]
+    threshold_modes = {"none", "total_episodes", "filler_episodes", "non_canon_percent"}
+    threshold_mode = new_config.get("overlay_threshold_mode", current.get("overlay_threshold_mode", "none"))
+    if threshold_mode not in threshold_modes:
+        threshold_mode = "none"
+    try:
+        threshold_value = max(0, float(new_config.get("overlay_threshold_value", current.get("overlay_threshold_value", 50))))
+    except (TypeError, ValueError):
+        threshold_value = 50
+    if threshold_mode == "non_canon_percent":
+        threshold_value = min(threshold_value, 100)
 
     db_payload: Dict[str, Any] = {
         "enabled": bool(new_config.get("enabled", current.get("enabled", False))),
         "media_server": media_srv.lower().strip(),
         "target_libraries": target_libs if isinstance(target_libs, list) else [],
+        "overlay_categories": overlay_categories,
+        "overlay_threshold_mode": threshold_mode,
+        "overlay_threshold_value": threshold_value,
         "labels": new_config.get("labels", current.get("labels", _get_defaults()["labels"])),
         "colors": new_config.get("colors", current.get("colors", _get_defaults()["colors"])),
         "aesthetic": new_config.get("aesthetic", current.get("aesthetic", _get_defaults()["aesthetic"])),
@@ -909,14 +928,20 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
                     "font_path": font_path_str,
                     "labels": cfg.get("labels", {}),
                     "colors": cfg.get("colors", {}),
-                    "aesthetic": cfg.get("aesthetic", {})
+                    "aesthetic": cfg.get("aesthetic", {}),
+                    "overlay_categories": cfg.get("overlay_categories", ["canon", "filler", "mixed"]),
+                    "overlay_threshold_mode": cfg.get("overlay_threshold_mode", "none"),
+                    "overlay_threshold_value": cfg.get("overlay_threshold_value", 50)
                 },
                 "kometa": {
                     "output_dir": out_dir,
                     "font_path": font_path_str,
                     "labels": cfg.get("labels", {}),
                     "colors": cfg.get("colors", {}),
-                    "aesthetic": cfg.get("aesthetic", {})
+                    "aesthetic": cfg.get("aesthetic", {}),
+                    "overlay_categories": cfg.get("overlay_categories", ["canon", "filler", "mixed"]),
+                    "overlay_threshold_mode": cfg.get("overlay_threshold_mode", "none"),
+                    "overlay_threshold_value": cfg.get("overlay_threshold_value", 50)
                 },
                 "database": {
                     "path": db_path

@@ -10,7 +10,7 @@
       "manualBody": "I risultati ambigui non vengono selezionati automaticamente. La scelta manuale ha priorità finché non selezioni di nuovo Automatica.",
       "filename": "Esempio con numero assoluto dell’episodio",
       "exampleTitle": "Titolo episodio",
-      "absolute": "S21E83 è la numerazione locale; 974 è il numero assoluto. Il numero assoluto aiuta a distinguere titoli identici, ma da solo non basta per un’associazione automatica.",
+      "absolute": "Per gli anime, inserisci il numero assoluto dell'episodio nel nome del file. In questo esempio, S21E83 è la numerazione locale e 974 è il numero assoluto. Aiuta a distinguere titoli identici, ma da solo non basta per un'associazione automatica. Segui lo <guide>schema di denominazione consigliato da Trash Guides per gli anime</guide>.",
       "local": "Ricerca e associazione restano locali, senza richieste ai fornitori. Il salvataggio modifica solo IMDb nella cache. Le immagini restano invariate."
     },
     "title": "Dati IMDb locali",
@@ -88,6 +88,20 @@
     "ratingsRefreshIntervalHours": "ore",
     "ratingsRefreshScheduleHelp": "1 ora = ogni ora; 24 = ogni giorno; 168 = ogni settimana; 720 = ogni 30 giorni. Il primo aggiornamento attende l'intervallo scelto dopo l'avvio.",
     "episodeRatingProviderNote": "Le valutazioni sono specifiche per episodio. Le valutazioni MDBList degli episodi usano la matrice riservata ai supporter; SIMKL/MAL forniscono valutazioni di serie o stagioni, non dei singoli episodi. La valutazione della serie non viene mai copiata sugli episodi.",
+    "animetafillRules": {
+      "title": "Regole di output degli overlay",
+      "description": "I dati di classificazione restano completi. Queste regole determinano quali badge vengono scritti nel file YAML alla prossima scansione.",
+      "categoriesLabel": "Categorie da sovrapporre",
+      "categories": { "canon": "Canon", "filler": "Filler", "mixed": "Misto" },
+      "thresholdLabel": "Soglia per serie",
+      "noThreshold": "Nessuna soglia",
+      "totalEpisodes": "Numero totale di episodi",
+      "fillerEpisodes": "Numero di episodi filler",
+      "nonCanonPercent": "Percentuale Filler + Misto",
+      "minimumPercent": "Percentuale minima",
+      "minimumEpisodes": "Numero minimo di episodi",
+      "percentHelp": "La percentuale è data dagli episodi Filler e Misto divisi per il numero totale di episodi della serie."
+    },
     "title": "Overlay dinamici",
     "navigation": {
       "configure": "Configura",

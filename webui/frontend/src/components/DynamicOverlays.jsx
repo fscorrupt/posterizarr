@@ -11333,6 +11333,76 @@ export default function DynamicOverlays() {
                 )}
               </div>
 
+              {/* OVERLAY OUTPUT RULES */}
+              <div className="space-y-3 rounded-xl border border-theme bg-theme-hover/30 p-4 text-xs">
+                <div>
+                  <h4 className="font-semibold text-theme-text">{t("dynamicOverlays.animetafillRules.title")}</h4>
+                  <p className="mt-1 text-[11px] text-theme-muted">
+                    {t("dynamicOverlays.animetafillRules.description")}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-theme-muted font-medium">{t("dynamicOverlays.animetafillRules.categoriesLabel")}</span>
+                  {["canon", "filler", "mixed"].map((category) => (
+                    <label key={category} className="flex items-center gap-2.5 cursor-pointer text-theme-text">
+                      <input
+                        type="checkbox"
+                        checked={(animetafillConfig?.overlay_categories || ["canon", "filler", "mixed"]).includes(category)}
+                        onChange={(event) => setAnimetafillConfig((prev) => {
+                          const current = prev?.overlay_categories || ["canon", "filler", "mixed"];
+                          return {
+                            ...prev,
+                            overlay_categories: event.target.checked
+                              ? [...new Set([...current, category])]
+                              : current.filter((value) => value !== category)
+                          };
+                        })}
+                        className="rounded bg-theme-card border-theme text-theme-primary focus:ring-0"
+                      />
+                      <span>{t(`dynamicOverlays.animetafillRules.categories.${category}`)}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-theme-muted font-medium mb-1" htmlFor="animetafill-threshold-mode">{t("dynamicOverlays.animetafillRules.thresholdLabel")}</label>
+                    <select
+                      id="animetafill-threshold-mode"
+                      value={animetafillConfig?.overlay_threshold_mode || "none"}
+                      onChange={(event) => setAnimetafillConfig((prev) => ({ ...prev, overlay_threshold_mode: event.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg bg-theme-hover border border-theme text-theme-text focus:outline-none focus:border-theme-primary"
+                    >
+                      <option value="none">{t("dynamicOverlays.animetafillRules.noThreshold")}</option>
+                      <option value="total_episodes">{t("dynamicOverlays.animetafillRules.totalEpisodes")}</option>
+                      <option value="filler_episodes">{t("dynamicOverlays.animetafillRules.fillerEpisodes")}</option>
+                      <option value="non_canon_percent">{t("dynamicOverlays.animetafillRules.nonCanonPercent")}</option>
+                    </select>
+                  </div>
+                  {animetafillConfig?.overlay_threshold_mode && animetafillConfig.overlay_threshold_mode !== "none" && (
+                    <div>
+                      <label className="block text-theme-muted font-medium mb-1" htmlFor="animetafill-threshold-value">
+                        {t(animetafillConfig.overlay_threshold_mode === "non_canon_percent" ? "dynamicOverlays.animetafillRules.minimumPercent" : "dynamicOverlays.animetafillRules.minimumEpisodes")}
+                      </label>
+                      <input
+                        id="animetafill-threshold-value"
+                        type="number"
+                        min="0"
+                        max={animetafillConfig.overlay_threshold_mode === "non_canon_percent" ? "100" : undefined}
+                        step="1"
+                        value={animetafillConfig?.overlay_threshold_value ?? 50}
+                        onChange={(event) => setAnimetafillConfig((prev) => ({ ...prev, overlay_threshold_value: Number(event.target.value) }))}
+                        className="w-full px-3 py-2 rounded-lg bg-theme-hover border border-theme text-theme-text focus:outline-none focus:border-theme-primary"
+                      />
+                    </div>
+                  )}
+                </div>
+                {animetafillConfig?.overlay_threshold_mode === "non_canon_percent" && (
+                  <p className="text-[11px] text-theme-muted">{t("dynamicOverlays.animetafillRules.percentHelp")}</p>
+                )}
+              </div>
+
               {/* SAVE BUTTON */}
               <div className="pt-2">
                 <button

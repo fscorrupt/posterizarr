@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { ChevronDown, Database, Download, ExternalLink, FileText, HelpCircle, Key, Loader2, Save, Search, ShieldCheck, X } from "lucide-react";
 import ConfirmDialog from "./ConfirmDialog";
 
@@ -39,7 +39,14 @@ function ImdbMatchingHelp() {
         <div className="space-y-1.5">
           <div className="font-medium text-theme-text">{t("imdbDataset.help.filename")}</div>
           <code className="block text-[11px] leading-relaxed break-words text-theme-text">S21E83 - <mark className="bg-amber-500/15 text-amber-500 px-1 rounded-sm">974</mark> - {t("imdbDataset.help.exampleTitle")}</code>
-          <p className="leading-relaxed">{t("imdbDataset.help.absolute")}</p>
+          <p className="leading-relaxed">
+            <Trans
+              i18nKey="imdbDataset.help.absolute"
+              components={{
+                guide: <a href="https://trash-guides.info/Sonarr/Sonarr-recommended-naming-scheme/?h=naming#episode-format" target="_blank" rel="noopener noreferrer" className="text-theme-primary underline underline-offset-2" />
+              }}
+            />
+          </p>
         </div>
         <p className="pt-2 border-t border-theme leading-relaxed">{t("imdbDataset.help.local")}</p>
       </div>

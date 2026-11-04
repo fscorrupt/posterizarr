@@ -10,7 +10,7 @@
       "manualBody": "Ambiguous matches are never selected automatically. A manual choice takes priority until you select Automatic again.",
       "filename": "Example with an absolute episode number",
       "exampleTitle": "Episode title",
-      "absolute": "S21E83 is the local numbering; 974 is the absolute episode number. The absolute number helps distinguish identical titles, but is not enough for an automatic match on its own.",
+      "absolute": "For anime, include the absolute episode number in the filename. In this example, S21E83 is the local numbering and 974 is the absolute number. It helps distinguish identical titles, but is not enough for an automatic match on its own. Follow the <guide>Trash Guides recommended anime naming scheme</guide>.",
       "local": "Search and matching stay local, without provider requests. Saving changes only IMDb in the ratings cache. Your artwork stays unchanged."
     },
     "title": "Local IMDb Dataset",
@@ -88,6 +88,20 @@
     "ratingsRefreshIntervalHours": "hours",
     "ratingsRefreshScheduleHelp": "1 hour = hourly; 24 = daily; 168 = weekly; 720 = every 30 days. The first run waits for the selected interval after startup.",
     "episodeRatingProviderNote": "Episode ratings are episode-specific. MDBList episode ratings use the supporter-only show episode matrix; SIMKL/MAL provide series or season scores, not individual episode scores. Show scores are never copied to episodes.",
+    "animetafillRules": {
+      "title": "Overlay Output Rules",
+      "description": "Classification data stays complete. These rules control which badges are written to the YAML on the next scan.",
+      "categoriesLabel": "Categories to overlay",
+      "categories": { "canon": "Canon", "filler": "Filler", "mixed": "Mixed" },
+      "thresholdLabel": "Per-show threshold",
+      "noThreshold": "No threshold",
+      "totalEpisodes": "Total episode count",
+      "fillerEpisodes": "Filler episode count",
+      "nonCanonPercent": "Filler + Mixed percentage",
+      "minimumPercent": "Minimum percent",
+      "minimumEpisodes": "Minimum episodes",
+      "percentHelp": "The percentage is Filler and Mixed episodes divided by the show's total episode count."
+    },
     "title": "Dynamic Overlays",
     "navigation": {
       "configure": "Configure",

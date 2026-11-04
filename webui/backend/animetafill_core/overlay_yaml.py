@@ -131,16 +131,44 @@ class OverlayYamlGenerator:
         if not title: return ""
         return re.sub(r'[^a-z0-9]', '', title.lower())
 
-    def add_show_overlays(self, anime_title: str, episode_mapping: Dict[str, List[tuple]], sonarr_map: Dict[int, str], title_map: Dict[str, str] = None):
+    def add_show_overlays(
+        self,
+        anime_title: str,
+        episode_mapping: Dict[str, List[tuple]],
+        sonarr_map: Dict[int, str],
+        title_map: Dict[str, str] = None,
+        selected_categories: List[str] = None,
+        threshold_mode: str = "none",
+        threshold_value: float = 0,
+        total_episode_count: int = 0,
+    ):
         """
         Creates localized regex-based overlay blocks using a 2-tier matching strategy:
         1. Numerical check via sonarr_map (Absolute Number)
         2. Surgical Text check via title_map (Normalized Title) - handles Specials/Shifts
         """
         title_map = title_map or {}
+        selected_categories = set(selected_categories) if selected_categories is not None else {"canon", "filler", "mixed"}
+        filler_count = len(episode_mapping.get("filler", []))
+        mixed_count = len(episode_mapping.get("mixed", []))
+
+        try:
+            threshold_value = float(threshold_value)
+        except (TypeError, ValueError):
+            threshold_value = 0
+
+        if threshold_mode == "total_episodes" and total_episode_count < threshold_value:
+            return
+        if threshold_mode == "filler_episodes" and filler_count < threshold_value:
+            return
+        if threshold_mode == "non_canon_percent":
+            non_canon_percent = ((filler_count + mixed_count) / total_episode_count * 100) if total_episode_count else 0
+            if non_canon_percent < threshold_value:
+                return
+
         is_uppercase = bool(self.aesthetic.get("uppercase", False))
         for category, episodes_data in episode_mapping.items():
-            if not episodes_data: continue
+            if not episodes_data or category not in selected_categories: continue
 
             # Use configured labels and colors
             label_text = self.labels.get(category, category.title())
@@ -181,13 +209,13 @@ class OverlayYamlGenerator:
                     }
                 }
 
-    def save_unified_file(self, filename: str = "anime_overlays.yml"):
+    def save_unified_file(self, filename: str = "anime_overlays.yml", allow_empty: bool = False):
         """
         Saves the finalized unified overlay file atomically using a temporary file
         and os.replace. This prevents external tools from reading a partially-written
         file during active runs.
         """
-        if not self.overlays: return None
+        if not self.overlays and not allow_empty: return None
         file_path = os.path.join(self.output_dir, filename)
         tmp_path = f"{file_path}.tmp"
         try:
