@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "target_libraries": ["Gallery Anime"],
+  "labels": {"canon": "Canon", "filler": "Filler", "mixed": "Mixed"},
+  "colors": {"canon": "#7DF3A3", "filler": "#FF706D", "mixed": "#FFCA69"},
+  "aesthetic": {
+    "font": "Inter-Bold.ttf",
+    "font_size": 60,
+    "uppercase": true,
+    "back_color": "#00000000",
+    "back_width": 300,
+    "back_height": 90,
+    "horizontal_align": "right",
+    "vertical_align": "bottom",
+    "horizontal_offset": 35,
+    "vertical_offset": 25
+  }
+}

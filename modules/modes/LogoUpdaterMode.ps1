@@ -121,7 +121,7 @@
             $LibraryName = $SelectedLib.Name
             Set-LibraryLanguageOverride -LibraryName $LibraryName
             Write-Entry -Message "Processing library: $LibraryName ($($SelectedLib.CollectionType))" -Path $global:configLogging -Color Cyan -log Info
-            
+
             $allItems = [System.Collections.Generic.List[object]]::new()
             $libId = $SelectedLib.ItemId
             $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$libId&Recursive=true&Fields=ProviderIds,OriginalTitle,ImageTags,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie,Series&CollapseBoxSetItems=false"
@@ -140,14 +140,14 @@
                 Write-Entry -Subtext "Error fetching items for $LibraryName" -Path $global:configLogging -Color Red -log Error
                 continue
             }
-            
+
             Write-Entry -Subtext "Found $($allItems.Count) items. Checking for missing logos..." -Path $global:configLogging -Color Cyan -log Info
-            
+
             foreach ($item in $allItems) {
                 $ratingKey = $item.Id
                 $title = $item.Name
                 $hasLogo = if ($item.ImageTags -and $item.ImageTags.Logo) { $true } else { $false }
-                
+
                 if ($hasLogo) {
                     if ($LogoRevert) {
                         Write-Entry -Message "[$title] Logo exists. Attempting Revert..." -Path $global:configLogging -Color Yellow -log Info
@@ -212,44 +212,44 @@
                     }
                     Write-Entry -Message "[$title] Missing Logo. Attempting to fetch..." -Path $global:configLogging -Color Yellow -log Info
                 }
-                
+
                 $global:tmdbid = $item.ProviderIds.Tmdb
                 $global:tvdbid = $item.ProviderIds.Tvdb
                 $global:imdbid = $item.ProviderIds.Imdb
                 $global:LogoUrl = $null
                 $global:UseClearlogo = 'true'
                 $global:UseClearart = 'false'
-                
+
                 if (-not $global:tmdbid -and -not $global:tvdbid -and -not $global:imdbid) {
                     Write-Entry -Subtext "[$title] Could not extract any IDs." -Path $global:configLogging -Color Yellow -log Warning
                     continue
                 }
-                
+
                 $mediaType = if ($item.Type -eq 'Movie') { 'movie' } else { 'tv' }
                 $tvdbType = if ($item.Type -eq 'Movie') { 'movies' } else { 'series' }
                 $fanartType = if ($item.Type -eq 'Movie') { 'movies' } else { 'tv' }
-                
+
                 GetTMDBLogo -Type $mediaType | Out-Null
                 if (-not $global:LogoUrl) { GetTVDBLogo -Type $tvdbType | Out-Null }
                 if (-not $global:LogoUrl) { GetFanartLogo -Type $fanartType | Out-Null }
-                
+
                 if ($global:LogoUrl) {
                     Write-Entry -Subtext "[$title] Found Logo URL: $global:LogoUrl" -Path $global:configLogging -Color Green -log Info
                     $global:matched++
-                    
+
                     $safeLogoId = $ratingKey -replace '[^a-zA-Z0-9_-]', '_'
                     $tempLogo = Join-Path $global:ScriptRoot -ChildPath "temp\logo_$safeLogoId.png"
                     try {
                         Invoke-WebRequest -Uri $global:LogoUrl -OutFile $tempLogo -ErrorAction Stop
-                        
+
                         if ($magick) {
                             $CommentArguments = "`"$tempLogo`" -set `"comment`" `"created with posterizarr`" `"$tempLogo`""
                             InvokeMagickCommand -Command $magick -Arguments $CommentArguments
                         }
-                        
+
                         $uploadUri = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
                         Write-Entry -Subtext "[$title] Uploading Logo to Jellyfin/Emby..." -Path $global:configLogging -Color DarkMagenta -log Info
-                        
+
                         if ($UseSilo -eq 'true') {
                             Send-SiloArtwork -ItemId $ratingKey -ImageType 'Logo' -ImagePath $tempLogo
                         } else {
@@ -258,7 +258,7 @@
                         }
                         Write-Entry -Subtext "[$title] Logo uploaded successfully!" -Path $global:configLogging -Color Green -log Info
                         if ($UseSilo -ne 'true') { $global:UploadCount = Increment-GlobalStat 'UploadCount' }
-                        
+
                     } catch {
                         Write-Entry -Subtext "[$title] Processing failed: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
                         $global:errorCount = Increment-GlobalStat 'errorCount'
@@ -586,7 +586,7 @@
                     }
 
                     # Upload to Plex ClearLogo endpoint
-                    
+
                     $uploadUri = "$PlexUrl/library/metadata/$ratingKey/clearLogos"
 
                     Write-Entry -Subtext "[$title] Uploading Logo to Plex..." -Path $global:configLogging -Color DarkMagenta -log Info

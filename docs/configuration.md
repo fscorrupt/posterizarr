@@ -1,3 +1,50 @@
+# Configure Posterizarr
+
+For normal use, configure Posterizarr in **Configuration** in the Web UI. You do
+not need to edit `config.json` or use the command line for routine setup.
+
+![Configuration groups and expandable settings cards in the Posterizarr Web UI](images/ui-configuration-groups.png)
+
+*Current Web UI capture; no API keys or personal media titles are shown.*
+
+## Find and change a setting
+
+1. Open **Configuration** from the left sidebar.
+2. Choose a group: **System**, **Providers**, **Media Servers**, **Global
+    Visuals**, **Posters**, **Seasons**, **Backgrounds**, **Title Cards**, or
+    **Collections**.
+3. Use **Search settings by name or value** to find a specific option, or open a
+    settings card to see its controls and explanation.
+4. Make changes, then select **Save Changes**. Use **Settings Wiki** on a card
+    when you need its detailed behavior or examples.
+
+## Suggested setup order
+
+- **System:** choose where assets and backups are stored and check Web UI options.
+- **Providers:** add the services and credentials used to search for artwork.
+- **Media Servers:** connect Plex, Jellyfin, or Emby and choose included
+  libraries.
+- **Global Visuals:** set shared language, image processing, text, logo, border,
+  and overlay preferences.
+- **Posters, Seasons, Backgrounds, Title Cards, Collections:** tune each output
+  type separately. Different asset types can use different layouts and language
+  priorities.
+
+Start with one library and the normal Web UI workflow in the
+[first-time setup guide](getting_started.md). Keep a backup before importing or
+editing raw configuration data.
+
+## Detailed `config.json` reference
+
+Most users will not need this field-by-field reference. Expand it when editing
+the underlying file directly or when a Settings Wiki link points here.
+
+<details markdown="1">
+<summary>Open advanced configuration fields and examples</summary>
+
+Do not replace an existing configuration with a partial example. Merge only the
+settings you intend to change, and keep a backup before editing manually.
+
 ## Silo (Experimental)
 
 Silo support targets the native `/api/v2` API, not the Jellyfin compatibility listener.
@@ -523,7 +570,4 @@ may require adapter updates.
 3. Rename the config file to `config.json`.
 4. Place your overlay images (e.g. `overlay-innerglow.png` defined in `overlayfile`) and font files (e.g. `Colus-Regular.ttf` defined in `font`) into `Overlayfiles/` (or the script root if running bare-metal). Docker containers already bundle default overlays and fonts in `/app/Overlayfiles`.
 
-
-## Main Capabilities of Posterizarr
-
-The main capabilities of Posterizarr have been moved to a dedicated page. Please see the [Main Capabilities of Posterizarr](capabilities.md) for a full overview.
+</details>

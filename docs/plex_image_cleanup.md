@@ -2,6 +2,11 @@
 
 Repeated custom poster/titlecard uploads can leave old, unselected images in Plex's metadata directory. Changing the selected poster does not necessarily remove those files.
 
+Open **Scheduler** in the Web UI and add a **Plex Image Cleanup** task. Start
+with **Read Only (Report)** enabled, then review the report before choosing a
+quarantine or removal action. Quarantined copies can be reviewed under
+**Asset Management > Plex Image Quarantine**.
+
 Posterizarr provides a separate **Plex Image Cleanup** scheduler task inspired by [ImageMaid](https://github.com/Kometa-Team/ImageMaid), by **meisnate12 and the Kometa Team**. ImageMaid in turn credits **bullmoose20's Plex Bloat Fix**. Selected-artwork protection in this integration adapts ImageMaid's MIT-licensed helpers. This is a limited image-cleanup integration, not the complete ImageMaid application.
 
 ## Scheduled Or On Demand

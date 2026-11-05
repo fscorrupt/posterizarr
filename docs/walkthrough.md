@@ -1,3 +1,12 @@
+# Manual PowerShell Walkthrough
+
+This detailed guide covers script-first installation and command-line workflows
+on Windows and Linux. For Docker, use the complete
+[Docker Compose installation](installation.md#docker-compose); for Unraid, use
+the [Community Apps installation](installation.md#unraid). Then follow the
+[first-time setup guide](getting_started.md). Installing the Web UI from source
+is a separate path; see [Run the Web UI from source](uiinstallation.md).
+
 ## Getting Started
 
 !!! tip
@@ -17,7 +26,7 @@
     - **Plex Token:** [Optain Plex Token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
 
 ### Docker/ARM
-- For Docker please start here: [Docker](#docker)
+- For Docker, follow the [complete Docker Compose installation](installation.md#docker-compose), including `docker compose up -d` and the Web UI address.
 
 - For Linux/ARM please start here: [ARM](#arm-prerequisites)
 

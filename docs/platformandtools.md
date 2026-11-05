@@ -14,6 +14,13 @@
   - For external schedulers (for example Kubernetes CronJob), start the container with `--run` (or `-Run`) so `Start.ps1` skips internal scheduling and executes immediately once.
   - You may also have to change `user: "1000:1000"` (PUID/PGID)
 
+  <details markdown="1">
+  <summary>Optional: run a mode from the Docker terminal</summary>
+
+  These commands are only needed if you deliberately want to control Posterizarr
+  from a terminal. For everyday use, use the Web UI's **Run Modes** and
+  **Scheduler** views.
+
   If you manually want to run the Script you can do it this way:
 
   **Automatic Mode:**
@@ -72,6 +79,7 @@
     pwsh /app/Posterizarr.ps1 -SyncJelly
     pwsh /app/Posterizarr.ps1 -PosterReset -LibraryToReset "Test Lib"
     ```
+  </details>
 
 ## unRAID
 
@@ -99,6 +107,9 @@ In order to view the `16:9` episode posters without getting cropped to `3:2`, yo
 | APP_PORT | 8000 | The Web UI Port. |
 | DISABLE_UI | false | Set to true to disable the Web UI. |
 | ARR_WAIT_TIME | 300 | The time in seconds to wait after an Arr trigger to allow media servers (Jellyfin/Plex) to finish scanning. |
+
+<details markdown="1">
+<summary>Advanced: one-shot containers and external schedulers</summary>
 
 For one-shot runs without the internal scheduler loop, pass this startup arg:
 
@@ -141,6 +152,8 @@ containers:
     image: ghcr.io/fscorrupt/posterizarr:latest
     args: ["--run"]
 ```
+
+</details>
 
 ### CSS Client side How-To
 

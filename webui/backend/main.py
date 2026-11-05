@@ -21027,6 +21027,128 @@ class DynamicOverlaysVisualConfigRequest(BaseModel):
 class DynamicOverlaysImportYamlRequest(BaseModel):
     yaml_text: str
 
+async def _overlay_bundle_context(resolve_libraries=False):
+    from dynamic_overlays_service import get_config_dir, get_overlays_dir, get_dynamic_overlays_settings, load_visual_config
+    from animetafill_service import get_animetafill_config
+    anime = await asyncio.to_thread(get_animetafill_config)
+    server = str(anime.get("media_server") or "plex").lower()
+    libraries = []
+    if resolve_libraries:
+        response = await get_cached_libraries(server, refresh=False)
+        for library in response.get("libraries") or []:
+            name = library.get("name") or library.get("title")
+            kind = str(library.get("type") or "").lower()
+            kind = "show" if kind in ("show", "shows", "tv", "tvshows", "series") else "movie" if kind in ("movie", "movies") else kind
+            if name and kind in ("movie", "show"):
+                libraries.append({"name": str(name), "type": kind})
+    return {
+        "root": get_config_dir(), "overlays": get_overlays_dir(),
+        "settings": await asyncio.to_thread(get_dynamic_overlays_settings),
+        "visual": await asyncio.to_thread(load_visual_config), "anime": anime,
+        "libraries": libraries, "server": server,
+    }
+
+
+@app.get("/api/dynamic-overlays/bundle/export")
+async def export_dynamic_overlay_bundle():
+    from overlay_bundle import BundleError, export_profile, read_document
+    try:
+        context = await _overlay_bundle_context()
+        from ratings_service import imdb_dataset
+        private_config = await asyncio.to_thread(read_document, CONFIG_PATH)
+        payload = await asyncio.to_thread(
+            export_profile, context["root"], context["overlays"], context["settings"], context["visual"],
+            context["anime"], imdb_enabled=imdb_dataset.status().get("enabled", False), private_config=private_config,
+        )
+        return Response(payload, media_type="application/zip", headers={
+            "Content-Disposition": 'attachment; filename="posterizarr-overlays.zip"', "Cache-Control": "no-store",
+        })
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Overlay bundle export failed")
+        raise HTTPException(status_code=500, detail="Could not export the overlay bundle.")
+
+
+@app.post("/api/dynamic-overlays/bundle/preview")
+async def preview_dynamic_overlay_bundle(file: UploadFile = File(...)):
+    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES, inspect_profile
+    try:
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        context = await _overlay_bundle_context(resolve_libraries=True)
+        summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
+        warnings = []
+        warning_codes = []
+        if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
+            warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
+            warning_codes.append("simklRequired")
+        if summary["features"]["imdb_dataset"]:
+            warnings.append("The local IMDb dataset must be downloaded separately; its index is not included.")
+            warning_codes.append("imdbDownload")
+        if not context["libraries"]:
+            warnings.append("No destination libraries are available. Refresh the libraries for your configured media server first.")
+            warning_codes.append("noLibraries")
+        return {"success": True, **summary, "destination_server": context["server"], "warnings": warnings, "warning_codes": warning_codes}
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Overlay bundle preview failed")
+        raise HTTPException(status_code=500, detail="Could not inspect the overlay bundle.")
+
+
+@app.post("/api/dynamic-overlays/bundle/import")
+async def import_dynamic_overlay_bundle(
+    file: UploadFile = File(...), mapping: str = Form(...),
+    anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
+    import_settings: bool = Form(True), replace_files: bool = Form(False),
+):
+    from overlay_bundle import BundleError, IMPORT_LOCK, MAX_BUNDLE_BYTES, commit_import, prepare_import
+    from overlay_sync_service import is_overlay_sync_running, stop_overlay_change_detector_background, start_overlay_change_detector_background
+    from animetafill_service import is_animetafill_running, _write_to_config_db
+    if not IMPORT_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="An overlay bundle import is already running.")
+    try:
+        if is_overlay_sync_running() or is_animetafill_running():
+            raise HTTPException(status_code=409, detail="Wait for the current overlay or AniMetaFill run to finish before importing.")
+        try:
+            library_mapping = json.loads(mapping)
+            anime_targets = json.loads(anime_libraries)
+            season_targets = json.loads(season_libraries)
+        except ValueError:
+            raise BundleError("Invalid library mapping JSON.")
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        context = await _overlay_bundle_context(resolve_libraries=True)
+        plan = await asyncio.to_thread(
+            prepare_import, payload, context["overlays"], context["libraries"], library_mapping,
+            anime_targets, season_targets, import_settings, replace_files,
+        )
+        stopped = await asyncio.to_thread(stop_overlay_change_detector_background, wait=True)
+        if not stopped:
+            raise HTTPException(status_code=409, detail="The overlay background scan is still stopping. Please retry after it finishes.")
+        if is_overlay_sync_running() or is_animetafill_running():
+            raise HTTPException(status_code=409, detail="An overlay job started during import preparation. Please retry after it finishes.")
+        result = await asyncio.to_thread(commit_import, plan, context["root"])
+        if plan["animetafill"]:
+            await asyncio.to_thread(_write_to_config_db, plan["animetafill"], section="AniMetaFill")
+        if plan["imdb_dataset"] is not None:
+            from ratings_service import imdb_dataset
+            await asyncio.to_thread(imdb_dataset.configure, plan["imdb_dataset"])
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        saved = await asyncio.to_thread(get_dynamic_overlays_settings)
+        if saved.get("enabled") and saved.get("change_detection_enabled", True):
+            start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
+        return {"success": True, **result, "message": "Overlay bundle imported in Dry Run. No artwork was uploaded."}
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Overlay bundle import failed")
+        raise HTTPException(status_code=500, detail="Could not import the overlay bundle. Check the local log and bundle backups.")
+    finally:
+        IMPORT_LOCK.release()
+
+
 @app.get("/api/dynamic-overlays/settings")
 async def get_dynamic_overlays_settings_endpoint():
     """Return master settings for Dynamic Overlays (Disabled by default)."""

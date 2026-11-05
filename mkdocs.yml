@@ -4,14 +4,17 @@ repo_url: https://github.com/fscorrupt/posterizarr
 repo_name: fscorrupt/posterizarr
 edit_uri: edit/main/docs/
 
+exclude_docs: |
+  /includes/
+  /tools/
+
 theme:
   name: material
+  variant: classic
   logo: images/logo_banner.png
   favicon: images/webhook.png
   features:
-    - navigation.tabs
     - navigation.sections
-    - navigation.expand
     - navigation.top
     - search.suggest
     - search.highlight
@@ -23,56 +26,61 @@ theme:
     - header.autohide
     - search.share
     - content.tabs.link
+    - toc.follow
   palette:
-    # Palette toggle for light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: blue
-      accent: indigo
+    - scheme: slate
+      primary: black
+      accent: orange
       toggle:
         icon: material/brightness-7
-        name: Switch to dark mode
-
-    # Palette toggle for dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: blue
-      accent: indigo
+        name: Switch to light mode
+    - scheme: default
+      primary: black
+      accent: deep orange
       toggle:
         icon: material/brightness-4
-        name: Switch to light mode
+        name: Switch to dark mode
+
+extra_css:
+  - extra.css
+
+extra_javascript:
+  - gallery.js
 
 # Page navigation
 nav:
   - 'Home': 'index.md'
-  - 'Showcase': 'showcase.md'
-  - 'Getting Started':
+  - 'Start Here':
+    - 'First-time setup': 'getting_started.md'
     - 'Requirements': 'requirements.md'
-    - 'Quick Start': 'installation.md'
-    - 'Main Capabilities': 'capabilities.md'
-    - 'Manual UI Installation': 'uiinstallation.md'
-    - 'Walkthrough': 'walkthrough.md'
-    - 'Networking': 'networking.md'
-    - 'FAQs': 'faqs.md'
-  - 'Configuration': 'configuration.md'
-  - 'Usage & Guides':
-    - 'Usage & Modes': 'modes.md'
-    - 'Action Center Guide': 'action_center.md'
-    - 'Blueprints & Recipes': 'blueprints.md'
+    - 'Choose an installation method': 'installation.md'
+    - 'Manual PowerShell walkthrough': 'walkthrough.md'
+    - 'Run the Web UI from source': 'uiinstallation.md'
+  - 'Use Posterizarr':
+    - 'What Posterizarr does': 'capabilities.md'
+    - 'Artwork showcase': 'showcase.md'
+    - 'Run modes and automation': 'modes.md'
+    - 'Action Center': 'action_center.md'
     - 'Dynamic Overlays': 'dynamic_overlays.md'
+    - 'Blueprints and recipes': 'blueprints.md'
+    - 'Manual asset naming': 'namingconvention.md'
     - 'Plex Image Cleanup (ImageMaid)': 'plex_image_cleanup.md'
+  - 'Servers & Integrations':
     - 'Agregarr Integration': 'agregarrintegration.md'
     - 'Jellyfin Plugin': 'jellyfin_plugin.md'
     - 'Emby Plugin': 'emby_plugin.md'
-    - 'Homepage Custom API': 'homepage.md'
-  - 'Advanced':
-    - 'Search Order': 'searchorder.md'
-    - 'Naming Convention': 'namingconvention.md'
+    - 'Homepage API integration': 'homepage.md'
     - 'Optional Kometa Compatibility': 'kometaintegration.md'
+  - 'Configuration & Reference':
+    - 'Configuration reference': 'configuration.md'
+    - 'Artwork search order': 'searchorder.md'
     - 'Platform & Tools': 'platformandtools.md'
+    - 'Networking': 'networking.md'
+    - 'FAQs and troubleshooting': 'faqs.md'
     - 'API Endpoints': 'endpoints.md'
-    - 'Telemetry Server': 'telemetry.md'
+    - 'Privacy and telemetry': 'telemetry.md'
   - 'Developer Guide':
+    - 'Documentation preview workflow': 'docs_preview.md'
     - 'PowerShell Scripts': 'powershell_scripts.md'
     - 'Backend Python': 'backend_python.md'
     - 'Frontend Components': 'frontend_components.md'
@@ -81,6 +89,8 @@ nav:
 
 # Extensions
 markdown_extensions:
+  - attr_list
+  - md_in_html
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
@@ -110,4 +120,4 @@ extra:
       link: https://ko-fi.com/R6R81S6SC
       name: Support on Ko-fi
 
-copyright: Copyright &copy; 2025 fscorrupt
+copyright: Copyright &copy; 2026 fscorrupt

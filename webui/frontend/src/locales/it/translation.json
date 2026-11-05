@@ -1,4 +1,53 @@
 {
+  "overlayBundle": {
+    "export": "Esporta pacchetto",
+    "import": "Importa pacchetto",
+    "exportHint": "Esporta YAML, risorse, caratteri e impostazioni delle sovrapposizioni",
+    "importHint": "Controlla e importa un pacchetto di sovrapposizioni",
+    "fileLabel": "File ZIP del pacchetto di sovrapposizioni",
+    "title": "Importa un pacchetto di sovrapposizioni",
+    "stats": "File: {{files}} / Risorse: {{assets}} / Destinazione: {{server}}",
+    "close": "Chiudi il controllo dell'importazione",
+    "safety": "Le chiavi API locali e le impostazioni del server multimediale rimangono invariate. L'importazione avvia una simulazione; nessuna immagine viene caricata.",
+    "restoreSettings": "Ripristina le impostazioni delle funzioni, inclusi AniMetaFill e le fonti delle valutazioni",
+    "ratingSources": "Fonti delle valutazioni: {{sources}}",
+    "imdbEnabled": "Dataset IMDb locale: attivato in questo pacchetto",
+    "profileSummary": "{{type}} / Regole di sovrapposizione: {{count}}",
+    "destination": "Libreria di destinazione",
+    "destinationFor": "Libreria di destinazione per {{library}}",
+    "skip": "Salta questo profilo",
+    "animeFor": "AniMetaFill per {{library}}",
+    "seasonFor": "Valutazioni delle stagioni per {{library}}",
+    "seasonRatings": "Valutazioni delle stagioni",
+    "duplicate": "Associa ogni profilo a una libreria di destinazione diversa.",
+    "replaceFiles_one": "Sostituisci {{count}} file YAML/risorsa condiviso in conflitto dopo il backup",
+    "replaceFiles_other": "Sostituisci {{count}} file YAML/risorse condivisi in conflitto dopo il backup",
+    "conflicts": "Conflitti dei file condivisi",
+    "cancel": "Annulla",
+    "exported": "Pacchetto di sovrapposizioni esportato senza chiavi API o connessioni ai server multimediali.",
+    "imported": "Pacchetto di sovrapposizioni importato in simulazione. Nessuna immagine è stata caricata.",
+    "tooLarge": "I pacchetti di sovrapposizioni devono essere inferiori a 128 MiB.",
+    "types": {"movie": "Film", "show": "Serie", "mixed": "Misto"},
+    "errors": {
+      "requestFailed": "La richiesta non è riuscita. Controlla la connessione e il registro del server.",
+      "invalidBundle": "Il pacchetto non è valido, sicuro o completo. Controlla l'archivio e i file di configurazione.",
+      "busy": "Un'attività di sovrapposizione o un'importazione è in esecuzione o in arresto. Riprova al termine.",
+      "missingConfig": "Nessun config.yml delle sovrapposizioni da esportare. Configura prima le librerie.",
+      "invalidMapping": "Controlla le associazioni delle librerie e le funzioni di destinazione. Ogni profilo richiede una destinazione compatibile e distinta.",
+      "missingLibrary": "Una libreria di destinazione non è più disponibile. Aggiorna l'elenco e associa nuovamente i profili.",
+      "conflicts": "Conferma la sostituzione dei file condivisi in conflitto prima dell'importazione.",
+      "credentials": "Una configurazione o una risorsa contiene una credenziale. Rimuovila prima dell'esportazione.",
+      "missingAsset": "Un riferimento locale a YAML, immagine o carattere è mancante o non trasferibile. Controlla le dipendenze.",
+      "sizeLimit": "Il pacchetto supera il limite di caricamento, dimensione estratta o numero di file.",
+      "unsupportedBundle": "Questo formato o questa versione del pacchetto di sovrapposizioni non è supportato."
+    },
+    "warnings": {
+      "simklRequired": "AniMetaFill richiede un ID client SIMKL configurato in questa installazione.",
+      "imdbDownload": "Scarica separatamente il dataset IMDb locale; il suo indice non è incluso.",
+      "noLibraries": "Nessuna libreria di destinazione disponibile. Aggiorna prima le librerie del server multimediale configurato.",
+      "unknown": "Alcune funzioni importate potrebbero richiedere credenziali locali o dati aggiuntivi. Controlla le impostazioni di destinazione."
+    }
+  },
   "imdbDataset": {
     "help": {
       "heading": "Come funziona l’associazione",

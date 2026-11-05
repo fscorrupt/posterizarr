@@ -2,6 +2,10 @@
 
 The **Action Center** is a central hub in the Posterizarr Web UI designed to help you review, manage, and fix issues with your media library assets (Posters, Backgrounds, Season Posters, and Title Cards).
 
+Open it from **Asset Management > Asset Overview** in the left sidebar. After a
+run, use its filters to find assets flagged for review; these are curation
+suggestions, not necessarily failed jobs.
+
 When Posterizarr runs, it tracks assets that don't meet your ideal configuration—such as missing high-quality sources, incorrect languages, or truncated text. These appear in the Action Center for your review.
 
 ---

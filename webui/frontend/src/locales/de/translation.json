@@ -1,4 +1,53 @@
 {
+  "overlayBundle": {
+    "export": "Paket exportieren",
+    "import": "Paket importieren",
+    "exportHint": "Overlay-YAML, Assets, Schriftarten und Funktionseinstellungen exportieren",
+    "importHint": "Ein Overlay-Paket prüfen und importieren",
+    "fileLabel": "ZIP-Datei des Overlay-Pakets",
+    "title": "Overlay-Paket importieren",
+    "stats": "Dateien: {{files}} / Assets: {{assets}} / Ziel: {{server}}",
+    "close": "Importprüfung schließen",
+    "safety": "Lokale API-Schlüssel und Medienserver-Einstellungen bleiben unverändert. Der Import startet im Testlauf; es werden keine Artworks hochgeladen.",
+    "restoreSettings": "Funktionseinstellungen einschließlich AniMetaFill und Bewertungsquellen übernehmen",
+    "ratingSources": "Bewertungsquellen: {{sources}}",
+    "imdbEnabled": "Lokaler IMDb-Datensatz: in diesem Paket aktiviert",
+    "profileSummary": "{{type}} / Overlay-Regeln: {{count}}",
+    "destination": "Zielbibliothek",
+    "destinationFor": "Zielbibliothek für {{library}}",
+    "skip": "Dieses Profil überspringen",
+    "animeFor": "AniMetaFill für {{library}}",
+    "seasonFor": "Staffelbewertungen für {{library}}",
+    "seasonRatings": "Staffelbewertungen",
+    "duplicate": "Ordne jedem Profil eine andere Zielbibliothek zu.",
+    "replaceFiles_one": "{{count}} gemeinsame YAML-/Asset-Datei mit Konflikt nach einer Sicherung ersetzen",
+    "replaceFiles_other": "{{count}} gemeinsame YAML-/Asset-Dateien mit Konflikten nach einer Sicherung ersetzen",
+    "conflicts": "Konflikte bei gemeinsamen Dateien",
+    "cancel": "Abbrechen",
+    "exported": "Overlay-Paket ohne API-Schlüssel oder Medienserver-Verbindungen exportiert.",
+    "imported": "Overlay-Paket im Testlauf importiert. Es wurden keine Artworks hochgeladen.",
+    "tooLarge": "Overlay-Pakete müssen kleiner als 128 MiB sein.",
+    "types": {"movie": "Filme", "show": "Serien", "mixed": "Gemischt"},
+    "errors": {
+      "requestFailed": "Die Paketanfrage ist fehlgeschlagen. Prüfe deine Verbindung und das Serverprotokoll.",
+      "invalidBundle": "Das Paket ist ungültig, unsicher oder unvollständig. Prüfe das Archiv und seine Konfigurationsdateien.",
+      "busy": "Eine Overlay-Aufgabe oder ein Import läuft oder wird noch beendet. Versuche es danach erneut.",
+      "missingConfig": "Es gibt keine Overlay-config.yml zum Exportieren. Konfiguriere zuerst deine Overlay-Bibliotheken.",
+      "invalidMapping": "Prüfe Bibliothekszuordnung und Funktionsziele. Jedes Profil benötigt ein passendes, eigenes Ziel.",
+      "missingLibrary": "Eine Zielbibliothek ist nicht mehr verfügbar. Aktualisiere die Bibliotheksliste und ordne die Profile erneut zu.",
+      "conflicts": "Bestätige vor dem Import das Ersetzen gemeinsamer Dateien mit Konflikten.",
+      "credentials": "Eine Konfiguration oder ein Asset enthält einen Zugangsschlüssel. Entferne ihn vor dem Export.",
+      "missingAsset": "Ein lokaler YAML-, Bild- oder Schriftverweis fehlt oder ist nicht übertragbar. Prüfe die Overlay-Abhängigkeiten.",
+      "sizeLimit": "Das Paket überschreitet die Grenze für Uploadgröße, entpackte Größe oder Dateianzahl.",
+      "unsupportedBundle": "Dieses Overlay-Paketformat oder diese Version wird nicht unterstützt."
+    },
+    "warnings": {
+      "simklRequired": "Für AniMetaFill muss auf dieser Installation eine SIMKL Client ID eingerichtet sein.",
+      "imdbDownload": "Lade den lokalen IMDb-Datensatz separat herunter; sein Index ist nicht enthalten.",
+      "noLibraries": "Es sind keine Zielbibliotheken verfügbar. Aktualisiere zuerst die Bibliotheken deines Medienservers.",
+      "unknown": "Einige importierte Funktionen benötigen möglicherweise lokale Zugangsdaten oder zusätzliche Daten. Prüfe die Zieleinstellungen."
+    }
+  },
   "imdbDataset": {
     "help": {
       "heading": "So funktioniert die Zuordnung",

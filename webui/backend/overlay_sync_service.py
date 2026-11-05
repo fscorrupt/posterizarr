@@ -6862,10 +6862,17 @@ def start_overlay_change_detector_background(
     logger.info("Dynamic overlays background change detector daemon started.")
 
 
-def stop_overlay_change_detector_background():
+def stop_overlay_change_detector_background(wait=False, timeout=30):
     """Stop background change detection daemon thread."""
     global _change_detector_running
     _change_detector_running = False
+    thread = _change_detector_thread
+    if wait and thread is not None:
+        if thread is threading.current_thread():
+            return False
+        thread.join(timeout=timeout)
+        return not thread.is_alive()
+    return True
 
 
 # ==============================================================================

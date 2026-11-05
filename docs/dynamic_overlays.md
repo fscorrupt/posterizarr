@@ -51,6 +51,57 @@ configuration is an example, not the installation defaults.*
     rules and readiness before applying them. Posterizarr renders supported
     overlays itself; it does not start Kometa.
 
+### Share a Complete Overlay Bundle
+
+Use **Export bundle** in the Dynamic Overlays header to download
+`posterizarr-overlays.zip`. This is separate from Blueprint exports and raw
+YAML uploads. It contains the available local overlay YAML, images (including
+custom resolution badges), fonts, visual layouts, rating-source selections,
+and portable feature settings such as AniMetaFill styling and enablement.
+Shared `Overlayfiles`, `overlays`, and `fonts` resources are included when
+available locally. Cache, backup, and temporary preview directories are excluded.
+
+API keys, tokens, passwords, media-server connections, and the main application
+configuration are not exported. Import does not replace existing provider keys
+with blank or null values and does not change the destination media server.
+Credentials required by imported features must already be configured locally.
+
+To import a bundle:
+
+1. Select **Import bundle** and choose the ZIP. Inspection alone changes nothing.
+2. Map each source profile to an existing library on the destination server, or
+   leave it at **Skip this profile**. Foreign library names are never created
+   automatically; movie/show types must match.
+3. Choose **AniMetaFill** and **Season ratings** for the mapped show libraries.
+   **Restore feature settings** also restores the exported rating sources,
+   styles, and enabled states. Leave it off to import layouts/assets without
+   replacing shared feature preferences.
+4. Review any conflicting shared YAML/assets. Replacing them requires explicit
+   confirmation and can affect other libraries using those same files. Changed
+   files are backed up under `dynamic_overlays/bundle_backups/`; each backup has
+   an `index.json` recording its original destination paths.
+5. Confirm **Import bundle**. Review the imported layout in preview and Dry Run
+   before deliberately enabling uploads. The import itself uploads no artwork
+   and always sets change detection to **Dry Run**, including when shared
+   feature settings are not restored.
+
+The import review preserves the local server selection and only lists libraries
+available from that server. Refresh the server's library list first if it is
+empty. An active overlay or AniMetaFill run blocks imports.
+
+!!! note "Portable settings, not a database clone"
+    Ratings caches, IMDb indexes, server item IDs, and manual episode/season
+    mappings are not transferred. The local IMDb feature flag can be restored,
+    but its datasets must be downloaded separately. AniMetaFill classification
+    can be regenerated against the mapped local libraries. Remote-only or missing
+    dependencies are not downloaded during export; use readiness checks after
+    import. Only share fonts and artwork you have permission to redistribute,
+    and only import bundles from sources you trust.
+
+Bundles are limited to 128 MiB compressed, 256 MiB expanded, and 2,048 files.
+Archive paths, checksums, file types, and library mappings are validated before
+files are written. A failed file-replacement step restores the prior files.
+
 ### Importing an Existing Configuration
 
 Upload `config.yml` or `config.yaml` together with any referenced custom overlay
@@ -144,7 +195,8 @@ See [SIMKL ratings](https://api.simkl.org/api-reference/ratings.md),
 
 ### Local IMDb Dataset
 
-In **Sync & Cache > Ratings Cache & Refresh**, enable **Local IMDb Dataset**,
+Open **Builders > Dynamic Overlays > Sync & Cache > Browse Ratings** to open
+**Ratings Cache & Refresh**. Enable **Local IMDb Dataset**,
 then select **Download & Update** and confirm the import. This optional source is
 disabled by default. It downloads the official `title.ratings.tsv.gz`,
 `title.episode.tsv.gz`, and `title.basics.tsv.gz` files from
@@ -153,6 +205,11 @@ disabled by default. It downloads the official `title.ratings.tsv.gz`,
 Downloads can exceed 1 GB compressed; allow several GB of free disk space and
 time for the initial indexing, especially on a NAS. Files are streamed to disk
 and imported in bounded batches, not loaded entirely into RAM.
+
+![Local IMDb Dataset showing an imported ratings index, Download and Update, and expanded matching guidance](images/ui-imdb-dataset.png)
+
+*Read-only capture of an existing imported index. Its count and timestamp are
+installation-specific, not download requirements or a performance benchmark.*
 
 The index and explicit episode mappings are stored in
 `database/imdb_dataset.db` under the normal application data directory. Only

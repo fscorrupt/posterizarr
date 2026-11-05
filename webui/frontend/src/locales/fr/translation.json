@@ -1,4 +1,53 @@
 {
+  "overlayBundle": {
+    "export": "Exporter le paquet",
+    "import": "Importer le paquet",
+    "exportHint": "Exporter les YAML, ressources, polices et paramètres des superpositions",
+    "importHint": "Vérifier et importer un paquet de superpositions",
+    "fileLabel": "Fichier ZIP du paquet de superpositions",
+    "title": "Importer un paquet de superpositions",
+    "stats": "Fichiers : {{files}} / Ressources : {{assets}} / Destination : {{server}}",
+    "close": "Fermer la vérification de l'importation",
+    "safety": "Les clés API locales et les paramètres du serveur multimédia restent inchangés. L'importation démarre en simulation ; aucune illustration n'est envoyée.",
+    "restoreSettings": "Restaurer les paramètres des fonctions, y compris AniMetaFill et les sources de notes",
+    "ratingSources": "Sources de notes : {{sources}}",
+    "imdbEnabled": "Jeu de données IMDb local : activé dans ce paquet",
+    "profileSummary": "{{type}} / Règles de superposition : {{count}}",
+    "destination": "Bibliothèque de destination",
+    "destinationFor": "Bibliothèque de destination pour {{library}}",
+    "skip": "Ignorer ce profil",
+    "animeFor": "AniMetaFill pour {{library}}",
+    "seasonFor": "Notes des saisons pour {{library}}",
+    "seasonRatings": "Notes des saisons",
+    "duplicate": "Associez chaque profil à une bibliothèque de destination différente.",
+    "replaceFiles_one": "Remplacer {{count}} fichier YAML/ressource partagé en conflit après sauvegarde",
+    "replaceFiles_other": "Remplacer {{count}} fichiers YAML/ressources partagés en conflit après sauvegarde",
+    "conflicts": "Conflits de fichiers partagés",
+    "cancel": "Annuler",
+    "exported": "Paquet de superpositions exporté sans clés API ni connexions aux serveurs multimédias.",
+    "imported": "Paquet de superpositions importé en simulation. Aucune illustration n'a été envoyée.",
+    "tooLarge": "Les paquets de superpositions doivent faire moins de 128 Mio.",
+    "types": {"movie": "Films", "show": "Séries", "mixed": "Mixte"},
+    "errors": {
+      "requestFailed": "La requête a échoué. Vérifiez la connexion et le journal du serveur.",
+      "invalidBundle": "Le paquet est invalide, non sécurisé ou incomplet. Vérifiez l'archive et ses fichiers de configuration.",
+      "busy": "Une tâche de superposition ou une importation est en cours ou en cours d'arrêt. Réessayez ensuite.",
+      "missingConfig": "Aucun fichier config.yml de superpositions à exporter. Configurez d'abord vos bibliothèques.",
+      "invalidMapping": "Vérifiez les associations de bibliothèques et les fonctions ciblées. Chaque profil nécessite une destination compatible et distincte.",
+      "missingLibrary": "Une bibliothèque de destination n'est plus disponible. Actualisez la liste et associez à nouveau les profils.",
+      "conflicts": "Confirmez le remplacement des fichiers partagés en conflit avant l'importation.",
+      "credentials": "Une configuration ou une ressource contient une valeur d'identification. Supprimez-la avant l'exportation.",
+      "missingAsset": "Une référence locale à un YAML, une image ou une police manque ou n'est pas transférable. Vérifiez les dépendances.",
+      "sizeLimit": "Le paquet dépasse la limite de transfert, de taille décompressée ou de nombre de fichiers.",
+      "unsupportedBundle": "Ce format ou cette version de paquet de superpositions n'est pas pris en charge."
+    },
+    "warnings": {
+      "simklRequired": "AniMetaFill nécessite un identifiant client SIMKL configuré sur cette installation.",
+      "imdbDownload": "Téléchargez séparément le jeu de données IMDb local ; son index n'est pas inclus.",
+      "noLibraries": "Aucune bibliothèque de destination disponible. Actualisez d'abord les bibliothèques de votre serveur multimédia.",
+      "unknown": "Certaines fonctions importées peuvent nécessiter des identifiants locaux ou des données supplémentaires. Vérifiez les paramètres de destination."
+    }
+  },
   "imdbDataset": {
     "help": {
       "heading": "Comment fonctionne l’association",

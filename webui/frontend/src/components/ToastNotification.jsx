@@ -88,7 +88,7 @@ const ToastNotification = ({
       </div>
       <button
         onClick={handleClose}
-        aria-label="Dismiss notification"
+        aria-label={t("common.close")}
         className={`${style.closeColor} min-w-11 min-h-11 flex items-center justify-center transition-colors flex-shrink-0`}
       >
         <X className="w-5 h-5" />

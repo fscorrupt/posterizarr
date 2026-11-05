@@ -1,34 +1,54 @@
-<div align="center">
-  <img src="images/logo_banner.png" alt="Posterizarr" width="160">
-
-  <h1 align="center">Welcome to Posterizarr</h1>
-
-  <p>
-    Automate the creation of beautiful assets for your Plex, Jellyfin, or Emby library.
-  </p>
+<div class="pz-hero">
+  <p class="pz-kicker">ARTWORK AUTOMATION · PLEX · JELLYFIN · EMBY · SILO (EXPERIMENTAL)</p>
+  <h1>Make your library<br>feel like yours.</h1>
+  <p class="pz-hero-copy">Choose the look for each artwork type once. Posterizarr keeps generating matching posters, seasons, backgrounds, and title cards. Add Dynamic Overlays on top for ratings, resolution, language flags, and more.</p>
+  <div class="pz-hero-actions">
+    <a class="pz-button" href="getting_started.md">Start with the setup guide</a>
+    <a class="pz-text-link" href="showcase.md">Explore real artwork</a>
+  </div>
 </div>
 
-<div align="center">
-  <a href="showcase/">
-    <img src="images/posterizarr_banner.jpg" alt="Posterizarr artwork formats and native Dynamic Overlay examples" width="1200">
-  </a>
-  <br />
-  <p>
-  <a href="https://ko-fi.com/R6R81S6SC" target="_blank">
-    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Buy Me A Coffee" style="height: 35px; width: auto;">
-  </a><br />
-  <a href="https://discord.gg/fYyJQSGt54" target="_blank">
-    <img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style="height: 35px; width: auto;">
-  </a>
-</p>
-  Posterizarr is free to use. If it saves you time, <a href="https://ko-fi.com/R6R81S6SC">your support helps keep development going</a>.
-  <br>
-  <a href="https://discord.gg/fYyJQSGt54">Join our Discord</a>
+<p class="pz-community-links"><a href="https://ko-fi.com/R6R81S6SC">Support Posterizarr on Ko-fi</a> <span>·</span> <a href="https://discord.gg/fYyJQSGt54">Join the Discord community</a></p>
+
+<div class="pz-gallery-home" data-showcase-url="showcase/" markdown="1">
+--8<-- "docs/includes/artwork-gallery.md"
 </div>
+
+## New to Posterizarr?
+
+Start with the short setup path. It helps you choose an installation method,
+connect your media server, and test the result before enabling automation.
+
+<div class="grid cards" markdown>
+
+-   **I am new to Posterizarr**
+
+  Choose an install path, connect one library, and test before automating.
+
+  [Start the setup guide](getting_started.md)
+
+-   **I already installed it**
+
+  Jump to everyday tasks: run modes, Action Center, overlays, or recipes.
+
+  [Browse user guides](modes.md)
+
+-   **I want to understand the settings**
+
+  Look up a specific configuration field or provider behavior.
+
+  [Open the configuration reference](configuration.md)
+
+</div>
+
+See real examples in the [artwork showcase](showcase.md), or learn
+[what Posterizarr can do](capabilities.md) before setting it up.
 
 ## Manage Your Artwork From the Web UI
 
-Posterizarr creates and manages artwork for Plex, Jellyfin, and Emby. Use the
+Posterizarr creates and manages artwork for Plex, Jellyfin, and Emby, with
+experimental support for Silo. Silo does not yet have full feature parity with
+the other servers. Use the
 dashboard to check engine status, upcoming schedules, and recently generated
 artwork. Open **Action Center** to review assets that need attention, or
 **Insights** to explore execution history and runtime statistics.
@@ -54,6 +74,21 @@ Supported Kometa-style YAML can be imported, but Posterizarr does not run Kometa
 and does not implement every Kometa feature.
 
 [Open the Dynamic Overlays setup guide](dynamic_overlays.md)
+
+## Import IMDb Ratings Locally
+
+Posterizarr can import IMDb's official ratings, episode, and title datasets into
+a local index. Missing IMDb scores can then be resolved locally, without an
+API call for each successful lookup. Episode matching and manual episode/season
+mapping help with alternate numbering and anime.
+
+Open **Builders > Dynamic Overlays > Sync & Cache > Browse Ratings** for
+**Local IMDb Dataset** and **Download & Update**. The download and indexing
+require disk space and time; IMDb's datasets are for non-commercial use only.
+
+![Local IMDb Dataset import status and the built-in explanation of local episode matching](images/ui-imdb-dataset.png)
+
+[Read the IMDb import and matching guide](dynamic_overlays.md#local-imdb-dataset).
 
 ## Explore Run History
 

@@ -1,4 +1,9 @@
-This guide is for users on **Windows** and **Linux** who are not using Docker and wish to run the web UI from the source.
+# Run the Web UI from Source
+
+This guide is for development or manual setups on **Windows** and **Linux**. It
+is not needed when running the standard Docker or Unraid installation, which
+already includes the Web UI. For a normal first-time setup, see the
+[getting started guide](getting_started.md).
 
 **Prerequisites**
 

@@ -1,4 +1,53 @@
 {
+  "overlayBundle": {
+    "export": "Export bundle",
+    "import": "Import bundle",
+    "exportHint": "Export overlay YAML, assets, fonts, and feature settings",
+    "importHint": "Review and import an overlay bundle",
+    "fileLabel": "Overlay bundle ZIP file",
+    "title": "Import overlay bundle",
+    "stats": "Files: {{files}} / Assets: {{assets}} / Destination: {{server}}",
+    "close": "Close import review",
+    "safety": "Local API keys and media-server settings stay unchanged. Imports start in Dry Run; no artwork is uploaded.",
+    "restoreSettings": "Restore feature settings, including AniMetaFill and rating sources",
+    "ratingSources": "Rating sources: {{sources}}",
+    "imdbEnabled": "Local IMDb dataset: enabled in this bundle",
+    "profileSummary": "{{type}} / Overlay rules: {{count}}",
+    "destination": "Destination library",
+    "destinationFor": "Destination library for {{library}}",
+    "skip": "Skip this profile",
+    "animeFor": "AniMetaFill for {{library}}",
+    "seasonFor": "Season ratings for {{library}}",
+    "seasonRatings": "Season ratings",
+    "duplicate": "Map each profile to a different destination library.",
+    "replaceFiles_one": "Replace {{count}} conflicting shared YAML/asset after backing it up",
+    "replaceFiles_other": "Replace {{count}} conflicting shared YAML/assets after backing them up",
+    "conflicts": "Shared-file conflicts",
+    "cancel": "Cancel",
+    "exported": "Overlay bundle exported without API keys or media-server connections.",
+    "imported": "Overlay bundle imported in Dry Run. No artwork was uploaded.",
+    "tooLarge": "Overlay bundles must be smaller than 128 MiB.",
+    "types": {"movie": "Movies", "show": "Shows", "mixed": "Mixed"},
+    "errors": {
+      "requestFailed": "The bundle request failed. Check your connection and the server log.",
+      "invalidBundle": "The bundle is invalid, unsafe, or incomplete. Check the archive and its configuration files.",
+      "busy": "An overlay task or import is running or still stopping. Try again after it finishes.",
+      "missingConfig": "No overlay config.yml is available to export. Configure your overlay libraries first.",
+      "invalidMapping": "Check the library mapping and feature targets. Each profile needs a compatible, distinct destination.",
+      "missingLibrary": "A destination library is no longer available. Refresh the library list and map the profiles again.",
+      "conflicts": "Confirm replacement of the conflicting shared files before importing.",
+      "credentials": "A configuration or asset contains a credential value. Remove it before exporting.",
+      "missingAsset": "A local YAML, image, or font reference is missing or cannot be transferred. Check the overlay dependencies.",
+      "sizeLimit": "The bundle exceeds its upload, expanded-size, or file-count limit.",
+      "unsupportedBundle": "This overlay bundle format or version is not supported."
+    },
+    "warnings": {
+      "simklRequired": "AniMetaFill needs a SIMKL Client ID configured on this installation.",
+      "imdbDownload": "Download the local IMDb dataset separately; its index is not included.",
+      "noLibraries": "No destination libraries are available. Refresh the libraries for your configured media server first.",
+      "unknown": "Some imported features may need local credentials or additional data. Review the destination settings."
+    }
+  },
   "imdbDataset": {
     "help": {
       "heading": "How matching works",

@@ -14,6 +14,7 @@ import WorkspaceHeader from "./WorkspaceHeader";
 import SiloSupportNotice from "./SiloSupportNotice";
 import ConfirmDialog from "./ConfirmDialog";
 import ImdbDatasetPanel from "./ImdbDatasetPanel";
+import OverlayBundleTransfer from "./OverlayBundleTransfer";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -4816,6 +4817,7 @@ export default function DynamicOverlays() {
 
           {/* MASTER FEATURE TOGGLE & QUICK STATS */}
           <div className="flex flex-wrap items-center gap-2.5">
+            <OverlayBundleTransfer disabled={systemRunStatus.running || isAnimetafillRunning} onImported={() => window.location.reload()} />
             <div className="flex items-center gap-2.5 bg-theme-bg border border-theme px-3 py-1.5 rounded-lg">
               <span className="text-xs font-semibold text-theme-muted">Master Switch:</span>
               <button

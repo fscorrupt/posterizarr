@@ -1,0 +1,40 @@
+{
+  "contributors": {
+    "CoreComplex": {
+      "name": "CoreComplex"
+    },
+    "fscorrupt": {
+      "name": "fscorrupt",
+      "overlay_url": "https://github.com/Kometa-Team/Community-Configs/tree/master/fscorrupt",
+      "overlay_name": "Imported config: fscorrupt",
+      "note": "Configuration imported from fscorrupt's Kometa Community Configs."
+    },
+    "kytte77": {
+      "name": "kytte77",
+      "overlay_url": "https://github.com/olli991/Kometa-overlay",
+      "overlay_name": "olli991/Kometa-overlay",
+      "note": "Adapted for these examples. Original overlay work by olli991/Kometa-overlay, based on jmxd's presets."
+    }
+  },
+  "artworks": {
+    "native-movie-poster.jpg": {"contributor": "fscorrupt", "title": "The Matrix", "format": "Movie poster"},
+    "native-show-poster.jpg": {"contributor": "fscorrupt", "title": "Breaking Bad", "format": "Show poster"},
+    "native-season-poster.jpg": {"contributor": "fscorrupt", "title": "Breaking Bad - Season 1", "format": "Season poster"},
+    "collection-poster-example.jpg": {"contributor": "fscorrupt", "title": "Alien & Predator Timeline", "format": "Collection poster"},
+    "native-titlecard.jpg": {"contributor": "fscorrupt", "title": "Breaking Bad - S01E01", "format": "Titlecard"},
+    "6-fscorrupt.jpg": {"contributor": "fscorrupt", "title": "Anime - S01E59", "format": "Anime titlecard"},
+    "1-kytte77.png": {"contributor": "kytte77", "title": "Ted Lasso", "format": "Show poster"},
+    "2-kytte77.png": {"contributor": "kytte77", "title": "Ted Lasso - Season 1", "format": "Season poster"},
+    "3-kytte77.png": {"contributor": "kytte77", "title": "Ted Lasso - S01E01", "format": "Titlecard"},
+    "4-kytte77.png": {"contributor": "kytte77", "title": "Drive - The Pretenders", "format": "Movie poster"},
+    "5-kytte77.png": {"contributor": "kytte77", "title": "Waterworld", "format": "Movie poster"},
+    "1-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "Steel Ball Run", "format": "Show poster"},
+    "2-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "Fallout - S01E02", "format": "Titlecard"},
+    "3-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "Demon Slayer", "format": "Anime titlecard"},
+    "4-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "The Penguin", "format": "Show poster"},
+    "5-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "28 Years Later", "format": "Movie poster"},
+    "6-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "Dandadan", "format": "Landscape artwork"},
+    "7-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "The Last of Us - Season 1", "format": "Season poster"},
+    "8-CoreComplex.jpg": {"contributor": "CoreComplex", "title": "Peaky Blinders", "format": "Titlecard"}
+  }
+}

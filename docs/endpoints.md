@@ -12,6 +12,29 @@ The following API endpoints are available.
 
 ## Dynamic Overlays
 
+### Overlay Bundles
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/dynamic-overlays/bundle/export` | Download a ZIP of local YAML, assets, fonts, visual layouts, and portable feature settings, excluding credentials and media-server connections. |
+| `POST /api/dynamic-overlays/bundle/preview` | Multipart `file` upload. Returns source profiles, existing destination libraries/server, features, file counts, conflicts, and warnings without applying the bundle. |
+| `POST /api/dynamic-overlays/bundle/import` | Multipart upload with `file`, JSON-string `mapping`, JSON-string `anime_libraries`/`season_libraries`, and boolean `import_settings`/`replace_files`. Applies validated mappings and starts in Dry Run, without uploading artwork. |
+
+`mapping` maps source profile names to existing destination library names, for
+example `{"Source TV":"My Shows","Source Movies":""}`. An empty value skips a
+profile. The two feature-target arrays contain mapped destination show-library
+names. Duplicate destinations, nonexistent libraries, and movie/show mismatches
+are rejected. `replace_files=true` explicitly approves conflicting shared files;
+existing files are backed up before replacement.
+
+Local credentials and media-server selections are preserved even if an uploaded
+bundle contains credential fields with blank/null values. Invalid bundles return
+`400`; validation failures include `detail.code` and a readable `detail.message`
+so clients can translate the error. Preview responses also include
+`warning_codes` alongside the existing readable `warnings` list. An active
+sync/classification/import returns `409`. See the
+[bundle workflow and limits](dynamic_overlays.md#share-a-complete-overlay-bundle).
+
 ### `POST /api/dynamic-overlays/sync`
 
 Starts a background overlay sync. Without `target_items`, `library` and `target_server` select the libraries and servers to scan. `scope: "incremental"` skips unchanged artwork; `scope: "all"` forces uploads.

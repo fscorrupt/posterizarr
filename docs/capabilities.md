@@ -1,4 +1,122 @@
-# Main Capabilities of Posterizarr
+# What Posterizarr Can Do
+
+<div class="pz-capabilities-intro">
+	<p class="pz-kicker">A COMPLETE ARTWORK WORKFLOW</p>
+	<p class="pz-capabilities-lead">Set the look you want for each artwork type. Posterizarr keeps creating it for your library, then adds native Dynamic Overlays when you want extra information.</p>
+</div>
+
+<figure class="pz-capabilities-banner">
+	<img src="images/posterizarr_banner.jpg" alt="Posterizarr artwork for movies, shows, seasons, collections, titlecards, and backgrounds">
+	<figcaption>Examples of artwork created or managed with Posterizarr.</figcaption>
+</figure>
+
+Everyday setup and operation happen in the Web UI. Choose the media server and
+libraries, set the artwork style you want, and use the UI to test, run, review,
+and automate. **You do not need a command line for everyday use.**
+
+## Set up the artwork style once
+
+Choose how posters, season posters, backgrounds, and titlecards should look.
+Posterizarr applies your provider order, language preferences, image-quality
+rules, text, logos, borders, and templates to the asset types you enable. You
+can tune each type or library independently, reuse local assets, and choose a
+Blueprint when you want a ready-made setup.
+
+<div class="pz-capability-gallery pz-capability-gallery--posters" markdown="1">
+<figure><img src="images/artwork/native-movie-poster.jpg" alt="Movie poster example from the Posterizarr artwork collection"><figcaption>Movie poster</figcaption></figure>
+<figure><img src="images/artwork/native-show-poster.jpg" alt="Show poster example from the Posterizarr artwork collection"><figcaption>Show poster</figcaption></figure>
+<figure><img src="images/artwork/native-season-poster.jpg" alt="Season poster example from the Posterizarr artwork collection"><figcaption>Season poster</figcaption></figure>
+</div>
+
+[Explore the artwork showcase](showcase.md) ·
+[Configure artwork preferences](configuration.md) ·
+[Browse Blueprints and recipes](blueprints.md)
+
+## Add Dynamic Overlays on top
+
+The native Dynamic Overlays builder adds supported metadata badges to posters,
+season artwork, titlecards, and backgrounds. Set rules per library and artwork
+type, arrange badges in the visual editor, and preview or Dry Run before
+uploading. Overlay compositing happens in memory, so clean source artwork stays
+unchanged on disk. A separate Kometa installation is optional, not required.
+
+![Dynamic Overlays editor with the visual preview and badge controls](images/ui-dynamic-overlays.png)
+
+[Open the Dynamic Overlays guide](dynamic_overlays.md) ·
+[Browse the artwork gallery](showcase.md) ·
+[Read about optional Kometa compatibility](kometaintegration.md)
+
+## Keep IMDb Lookups Local
+
+Import IMDb's official ratings, episode, and title dumps into a local database.
+Posterizarr can fill missing IMDb ratings from that index, match episodes
+conservatively, and let you correct episode IDs or season numbering locally.
+Successful local lookups avoid per-item provider requests; other sources and
+unresolved items can still need external providers.
+
+![Local IMDb Dataset import controls and local episode-matching explanation](images/ui-imdb-dataset.png)
+
+[Set up the local IMDb dataset](dynamic_overlays.md#local-imdb-dataset).
+The datasets are optional, require disk space for indexing, and are licensed by
+IMDb for non-commercial use only.
+
+## Manage and automate from the Web UI
+
+Use the dashboard to monitor runs, the Action Center to review assets, and
+Testing Mode to check sample output before changing a live library. The Web UI
+also includes manual asset creation, backups and restores, logs, scheduled
+runs, and supported Tautulli or Sonarr/Radarr webhooks.
+
+![Posterizarr dashboard with run status, scheduler, configuration, and recent assets](images/ui-dashboard.png)
+
+[See all Run Modes](modes.md) · [Review assets in Action Center](action_center.md) ·
+[Set up your first run](getting_started.md)
+
+![Run Modes page showing normal, testing, backup, restore, sync, and logo-updater actions](images/ui-run-modes.png)
+
+## Configure each artwork type
+
+The Web UI groups settings by purpose instead of presenting one giant form:
+system, providers, media servers, global visuals, posters, seasons, backgrounds,
+title cards, and collections. Search by setting name or value, open a settings
+card for its controls, then save changes in the UI.
+
+![Configuration page with searchable settings and grouped artwork sections](images/ui-configuration-groups.png)
+
+[Open the configuration guide](configuration.md)
+
+## Use your preferred media server
+
+Posterizarr supports Plex, Jellyfin, and Emby for its main artwork workflows.
+Silo support is **experimental** and does not yet have full feature parity.
+Optional plugins and integrations extend how local assets or server events are
+handled. Select only the workflows you use; Kometa, Agregarr, and the media
+server plugins are optional.
+
+[Jellyfin Plugin](jellyfin_plugin.md) · [Emby Plugin](emby_plugin.md) ·
+[Agregarr Integration](agregarrintegration.md)
+
+## More useful tools
+
+- **Choose artwork sources and quality:** provider priority, language order,
+	minimum image sizes, automatic resizing, and handling for multiple media
+	versions.
+- **Shape each asset type:** text, logos, borders, gradients, RTL fonts,
+	title-card fallbacks, and title line-break rules.
+- **Reuse local work:** manual asset preference, Season/Episode templates, and
+	existing assets instead of downloading a new source.
+- **Protect and maintain libraries:** exclusions, `skip_posterizarr` tags,
+	change detection, backups/restores, and optional cleanup of obsolete assets.
+- **Review and diagnose:** Action Center, searchable logs, CSV exports, and
+	notifications through Discord, Apprise, or Uptime Kuma.
+- **Automate and integrate:** schedules, Tautulli and Sonarr/Radarr webhooks,
+	Plex sync, and optional Agregarr, Jellyfin/Emby plugins, or Kometa workflows.
+
+## Full feature reference
+
+<details markdown="1">
+<summary>Show the full capability list</summary>
+
 
 | **Feature**                              | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,3 +150,5 @@
 | **Plex Collection Diff & Sync**          | - Visual diffing of local collection artwork (Assets/Collections/) against Plex server collections in real-time.<br>- Displays status badges (In Sync, Update Ready, Missing on Plex, No Local Asset).<br>- Allows interactive Local vs Server artwork inspection, 1-click single-collection push, and batch pushing.                                           |
 | **Plex Asset Sync Scheduler**            | - Lightweight, pure Python background sync engine for Plex.<br>- Selectively push artwork (collections, posters, seasons, title cards, backgrounds) directly to Plex on a schedule without running full image generation scripts.<br>- Built-in SQLite change tracking prevents duplicate uploads.                                                                              |
 | **Optional External Asset Compatibility** | - Existing external tools can consume the local library/title artwork layout.<br>- **[Optional Kometa compatibility](kometaintegration.md)** remains documented for users who choose to keep a separate Kometa installation; it is not required by the native overlay engine. |
+| **Optional External Asset Compatibility** | - Existing external tools can consume the local library/title artwork layout.<br>- **[Optional Kometa compatibility](kometaintegration.md)** remains documented for users who choose to keep a separate Kometa installation; it is not required by the native overlay engine. |
+</details>
