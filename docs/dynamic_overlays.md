@@ -195,6 +195,22 @@ panel and episode dialog both include an expandable **How matching works**
 section explaining IMDb IDs, conservative title matching, absolute numbering,
 and the precedence of manual choices.
 
+For TVDB seasons that belong to a separate IMDb series (for example an anime
+continuation), open an episode's mapping dialog and select **Entire season**.
+Enable **Override IMDb series for this season**, enter the continuation's
+**IMDb series ID**, and set its **IMDb season** and **Episode offset (+/-)**.
+The target episode number is the local episode number plus the offset: local
+episode 13 with an offset of -12 becomes IMDb episode 1. The dialog previews
+the numbering for the selected episode. Refresh episode ratings first if the
+series/season context is missing and the season option is disabled.
+
+Saving updates IMDb IDs/ratings for already indexed episodes of that season
+on the same server; future episode lookups use the saved rule too. Individual
+episode overrides still take priority. Missing target episodes are not guessed
+from another series. Disable the season override and save to return to automatic
+matching. Rules survive dataset updates and restarts. Other rating sources,
+cache expiry and artwork are unchanged; sync overlays to update artwork.
+
 Successful local lookups avoid OMDb requests when IMDb is the only remaining
 score needed. OMDb or other configured providers may still be used for missing
 Rotten Tomatoes/Metacritic/etc. values or unresolved IMDb titles. Importing the

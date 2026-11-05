@@ -52,6 +52,10 @@ class ImdbDataset:
                 CREATE TABLE IF NOT EXISTS mappings (
                     server TEXT NOT NULL, item TEXT NOT NULL, imdb_id TEXT NOT NULL,
                     PRIMARY KEY(server, item));
+                CREATE TABLE IF NOT EXISTS season_mappings (
+                    server TEXT NOT NULL, series TEXT NOT NULL, season INTEGER NOT NULL,
+                    imdb_id TEXT NOT NULL, target_season INTEGER NOT NULL, episode_offset INTEGER NOT NULL,
+                    PRIMARY KEY(server, series, season));
                 CREATE TABLE IF NOT EXISTS ratings (imdb_id TEXT PRIMARY KEY, rating REAL, votes INTEGER);
                 CREATE TABLE IF NOT EXISTS titles (
                     imdb_id TEXT PRIMARY KEY, title TEXT, original_title TEXT, normalized TEXT,
@@ -121,6 +125,18 @@ class ImdbDataset:
         context = self.context(server, item, context)
         with self.lock, closing(self.connect()) as connection:
             manual = connection.execute("SELECT imdb_id FROM mappings WHERE server=? AND item=?", (server, str(item))).fetchone()
+            season_mapping = self.season_mapping(server, context)
+            if media_type == "episode" and not manual and season_mapping:
+                target_episode = int(context.get("episode_number") or 0) + season_mapping["episode_offset"]
+                rows = connection.execute("""
+                    SELECT e.imdb_id, r.rating, r.votes FROM episodes e
+                    LEFT JOIN ratings r USING(imdb_id)
+                    WHERE e.parent_id=? AND e.season=? AND e.episode=? LIMIT 2
+                """, (season_mapping["imdb_id"], season_mapping["target_season"], target_episode)).fetchall()
+                result = {"mode": "season", "season_mapping": season_mapping, "context": context}
+                if context.get("episode_number") is not None and target_episode > 0 and len(rows) == 1:
+                    return {**result, **dict(rows[0]), "status": "matched"}
+                return {**result, "status": "unmapped", "candidates": []}
             selected = manual[0] if manual else imdb_id
             if selected and IMDB_ID.fullmatch(str(selected)):
                 row = connection.execute("SELECT * FROM ratings WHERE imdb_id=?", (selected,)).fetchone()
@@ -168,6 +184,36 @@ class ImdbDataset:
             candidates = matches or [dict(row) for row in rows if absolute is not None and row["season"] == 1 and row["episode"] == absolute]
             return {"status": "ambiguous" if len(matches) > 1 else "unmapped", "mode": "auto", "parent_id": parent_id,
                     "context": context, "candidates": candidates[:30]}
+
+    def season_mapping(self, server, context):
+        series = context.get("series_title") or context.get("parent_imdb_id")
+        season = context.get("season_number")
+        if not series or season is None or not self.path.exists():
+            return None
+        with self.lock, closing(self.connect()) as connection:
+            exists = connection.execute("SELECT 1 FROM sqlite_master WHERE name='season_mappings'").fetchone()
+            if not exists:
+                return None
+            row = connection.execute("SELECT * FROM season_mappings WHERE server=? AND series=? AND season=?",
+                                     (server, str(series), int(season))).fetchone()
+            return dict(row) if row else None
+
+    def save_season_mapping(self, server, context, imdb_id, target_season=1, episode_offset=0):
+        self.initialize()
+        series = context.get("series_title") or context.get("parent_imdb_id")
+        season = context.get("season_number")
+        if not series or season is None:
+            raise ValueError("Refresh episode ratings first to load the series and season context")
+        with self.lock, closing(self.connect()) as connection, connection:
+            if imdb_id is None:
+                connection.execute("DELETE FROM season_mappings WHERE server=? AND series=? AND season=?",
+                                   (server, str(series), int(season)))
+            else:
+                if (not IMDB_ID.fullmatch(imdb_id) or target_season < 0 or not connection.execute(
+                        "SELECT 1 FROM titles WHERE imdb_id=? AND kind IN ('tvSeries', 'tvMiniSeries')", (imdb_id,)).fetchone()):
+                    raise ValueError("Select a series present in the local IMDb dataset and a valid target season")
+                connection.execute("INSERT OR REPLACE INTO season_mappings VALUES (?, ?, ?, ?, ?, ?)",
+                                   (server, str(series), int(season), imdb_id, int(target_season), int(episode_offset)))
 
     def save_mapping(self, server, item, imdb_id):
         self.initialize()

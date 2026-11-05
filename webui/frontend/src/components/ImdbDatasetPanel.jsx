@@ -60,6 +60,11 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
   const [data, setData] = useState(null);
   const [selection, setSelection] = useState("auto");
   const [customId, setCustomId] = useState("");
+  const [scope, setScope] = useState("episode");
+  const [seasonEnabled, setSeasonEnabled] = useState(false);
+  const [seriesId, setSeriesId] = useState("");
+  const [targetSeason, setTargetSeason] = useState(1);
+  const [episodeOffset, setEpisodeOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -77,6 +82,12 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
           const currentId = result.mapping?.imdb_id;
           setSelection(result.mapping?.mode === "manual" ? result.candidates.some(candidate => candidate.imdb_id === currentId) ? currentId : "custom" : "auto");
           setCustomId(currentId || "");
+          const season = result.season_mapping;
+          setScope(result.mapping?.mode === "season" ? "season" : "episode");
+          setSeasonEnabled(Boolean(season));
+          setSeriesId(season?.imdb_id || "");
+          setTargetSeason(season?.target_season ?? 1);
+          setEpisodeOffset(season?.episode_offset ?? 0);
           initialized.current = true;
         }
         setData(result);
@@ -93,7 +104,8 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
   const save = async event => {
     event.preventDefault();
     if (saving || loading || disabled) return;
-    const imdbId = selection === "auto" ? null : selection === "custom" ? customId.trim() : selection;
+    const imdbId = scope === "season" ? seasonEnabled ? seriesId.trim() : null
+      : selection === "auto" ? null : selection === "custom" ? customId.trim() : selection;
     if (imdbId !== null && !/^tt\d{7,12}$/.test(imdbId)) {
       setError(t("imdbDataset.invalidId"));
       return;
@@ -101,7 +113,9 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
     setSaving(true);
     setError("");
     try {
-      await request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imdb_id: imdbId }) });
+      await request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        imdb_id: imdbId, scope, target_season: Number(targetSeason), episode_offset: Number(episodeOffset),
+      }) });
       onSaved();
       onClose();
     } catch (failure) {
@@ -129,6 +143,33 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
             {data?.mapping?.imdb_id && <a className="inline-flex items-center gap-1 text-theme-primary" href={`https://www.imdb.com/title/${data.mapping.imdb_id}/`} target="_blank" rel="noopener noreferrer">{data.mapping.imdb_id}<ExternalLink className="w-3 h-3" /></a>}
           </div>
           {data?.context?.file_path && <p className="text-[11px] text-theme-muted break-all">{data.context.file_path}</p>}
+          <fieldset className="flex flex-wrap gap-4 text-sm text-theme-text" disabled={saving}>
+            <legend className="sr-only">{t("imdbDataset.scope")}</legend>
+            <label className="inline-flex items-center gap-2"><input type="radio" name="imdb-scope" checked={scope === "episode"} onChange={() => setScope("episode")} />{t("imdbDataset.episodeScope")}</label>
+            <label className="inline-flex items-center gap-2"><input type="radio" name="imdb-scope" checked={scope === "season"} onChange={() => setScope("season")}
+              disabled={!data?.context?.series_title || data?.context?.season_number == null} />{t("imdbDataset.seasonScope")}</label>
+          </fieldset>
+          {scope === "season" ? <fieldset className="space-y-4 min-w-0" disabled={saving}>
+            <legend className="text-xs font-medium text-theme-text mb-2">{data?.context?.series_title} / S{data?.context?.season_number}</legend>
+            <label className="flex items-center gap-2 text-sm text-theme-text"><input type="checkbox" checked={seasonEnabled} onChange={event => setSeasonEnabled(event.target.checked)} />{t("imdbDataset.seasonOverride")}</label>
+            <label className="block text-xs text-theme-text">{t("imdbDataset.seriesId")}
+              <input type="text" placeholder="tt1234567" pattern="tt[0-9]{7,12}" required={seasonEnabled} disabled={!seasonEnabled} value={seriesId}
+                onChange={event => setSeriesId(event.target.value)} className="mt-1 w-full min-w-0 border border-theme rounded-lg bg-theme-bg px-3 py-2 text-sm text-theme-text disabled:opacity-50" />
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block text-xs text-theme-text">{t("imdbDataset.targetSeason")}
+                <input type="number" min="0" step="1" required disabled={!seasonEnabled} value={targetSeason} onChange={event => setTargetSeason(event.target.value)}
+                  className="mt-1 w-full min-w-0 border border-theme rounded-lg bg-theme-bg px-3 py-2 text-sm disabled:opacity-50" />
+              </label>
+              <label className="block text-xs text-theme-text">{t("imdbDataset.episodeOffset")}
+                <input type="number" step="1" required disabled={!seasonEnabled} value={episodeOffset} onChange={event => setEpisodeOffset(event.target.value)}
+                  className="mt-1 w-full min-w-0 border border-theme rounded-lg bg-theme-bg px-3 py-2 text-sm disabled:opacity-50" />
+              </label>
+            </div>
+            {seasonEnabled && data?.context?.episode_number != null && <output className="block text-xs text-theme-muted break-words">
+              S{data.context.season_number} E{data.context.episode_number}{" -> "}S{targetSeason} E{Number(data.context.episode_number) + Number(episodeOffset)}
+            </output>}
+          </fieldset> : <>
           <label className="block text-xs text-theme-text">{t("imdbDataset.search")}
             <div className="relative mt-1"><Search className="absolute left-3 top-2.5 w-4 h-4 text-theme-muted" />
               <input autoFocus type="search" value={query} maxLength={250} onChange={event => setQuery(event.target.value)} disabled={saving}
@@ -153,6 +194,7 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
             {selection === "custom" && <input aria-label={t("imdbDataset.customId")} type="text" placeholder="tt14571480" pattern="tt[0-9]{7,12}" required value={customId}
               onChange={event => setCustomId(event.target.value)} className="w-full min-w-0 border border-theme rounded-lg bg-theme-bg px-3 py-2 text-sm text-theme-text" />}
           </fieldset>
+          </>}
           {error && <p role="alert" className="text-xs text-red-400 break-words">{error}</p>}
         </div>
         <div className="p-4 border-t border-theme flex flex-wrap justify-end gap-2">

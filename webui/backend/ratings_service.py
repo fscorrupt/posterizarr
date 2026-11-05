@@ -763,6 +763,21 @@ class RatingsCacheManager:
             if connection.execute("SELECT 1 FROM sqlite_master WHERE name='ratings_refresh_retry'").fetchone():
                 connection.execute("DELETE FROM ratings_refresh_retry WHERE (server_type,item_id) IN (SELECT server_type,item_id FROM media_ratings_cache WHERE id=?)", (int(entry_id),))
 
+    def apply_imdb_season_mapping(self, dataset, server, context):
+        series = context.get("series_title") or context.get("parent_imdb_id")
+        with self.lock, closing(self._get_connection()) as connection:
+            entries = connection.execute("SELECT id, item_id FROM media_ratings_cache WHERE server_type=? AND media_type='episode'", (server,)).fetchall()
+        updated = 0
+        for entry in entries:
+            saved = dataset.context(server, entry["item_id"])
+            if ((saved.get("series_title") or saved.get("parent_imdb_id")) != series
+                    or str(saved.get("season_number")) != str(context.get("season_number"))):
+                continue
+            match = dataset.resolve(server, entry["item_id"])
+            self.apply_imdb_mapping(entry["id"], match.get("imdb_id") if match.get("status") == "matched" else None, match.get("rating"))
+            updated += 1
+        return updated
+
     def delete_entry(self, entry_id: int) -> bool:
         """Delete a single cached rating record by ID."""
         with self.lock:
@@ -1611,6 +1626,10 @@ async def resolve_media_ratings(
         outcomes["plex"] = {"status": "success" if resolved else "no_scores", "scores": sorted(resolved)}
 
     dataset_context = dict(rating_context or {})
+    if media_type == "episode":
+        dataset_context.update({key: value for key, value in {
+            "season_number": season_number, "episode_number": episode_number,
+        }.items() if value is not None})
     if media_type == "episode" and plex_xml_bytes:
         root = fromstring(plex_xml_bytes)
         video = root if root.tag == "Video" else root.find(".//Video")
@@ -1626,8 +1645,10 @@ async def resolve_media_ratings(
                 "released_at": video.get("originallyAvailableAt"),
             }.items() if value is not None})
 
+    season_override = False
+
     async def local_imdb_rating():
-        nonlocal imdb_id, primary_source
+        nonlocal imdb_id, primary_source, season_override
         if "imdb" not in enabled_sources:
             return
         try:
@@ -1636,7 +1657,11 @@ async def resolve_media_ratings(
                 return
             outcomes["imdb_dataset"] = {"status": "success" if match.get("rating") is not None else "unmapped",
                                         "mapping_status": match["status"], "mode": match.get("mode", "auto")}
-            if match.get("rating") is not None and (resolved.get("imdb") is None or match.get("mode") == "manual"):
+            if match.get("mode") == "season":
+                season_override = True
+                imdb_id = match.get("imdb_id")
+                resolved.pop("imdb", None)
+            if match.get("rating") is not None and (resolved.get("imdb") is None or match.get("mode") in ("manual", "season")):
                 imdb_id = match["imdb_id"]
                 resolved["imdb"] = match["rating"]
                 primary_source = "imdb_dataset"
@@ -1654,7 +1679,7 @@ async def resolve_media_ratings(
     try:
         if media_type == "episode" and tmdb_id and tmdb_api_key and season_number is not None and episode_number is not None:
             needs_episode_details = ("tmdb" in enabled_sources and resolved.get("tmdb") is None) or (
-                not imdb_id and (mdblist_api_key or omdb_api_key or imdb_dataset.status()["enabled"])
+                not imdb_id and not season_override and (mdblist_api_key or omdb_api_key or imdb_dataset.status()["enabled"])
                 and any(source not in ("tmdb", "mdblist_episode") for source in enabled_sources)
             )
             if needs_episode_details:
@@ -1682,7 +1707,7 @@ async def resolve_media_ratings(
                 resolved["tmdb"] = tmdb_score
                 primary_source = "tmdb"
 
-        if imdb_id != dataset_checked_id:
+        if imdb_id != dataset_checked_id or season_override:
             await local_imdb_rating()
 
         # 4. If MDBList API key is provided and needed ratings are still missing (or Trakt/Letterboxd requested)
@@ -1793,6 +1818,8 @@ async def resolve_media_ratings(
         ("metacritic", "metacritic_rating"), ("letterboxd", "letterboxd_rating"),
         ("simkl", "simkl_rating"), ("mal", "mal_rating"),
     ):
+        if key == "imdb" and season_override and (not imdb_id or cached_scores.get("imdb_id") != imdb_id):
+            continue
         if resolved.get(key) is None and cached_scores.get(column) is not None:
             resolved[key] = cached_scores[column]
             cached_sources.append(key)

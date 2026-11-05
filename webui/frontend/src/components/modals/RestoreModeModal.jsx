@@ -79,27 +79,27 @@ const RestoreModeModal = React.memo(({ show, onClose, onStart, loading, status, 
             <p className="text-blue-200 font-medium mb-2">Restores local backups back to your media server.</p>
             <p className="text-blue-100 text-sm">This will look into your backup folder and upload posters and backgrounds for your libraries directly without processing them with overlays.</p>
           </div>
-          
+
           <div className="space-y-4">
             <label className="block text-sm font-medium text-theme-text mb-2">What would you like to restore?</label>
             <div className="flex flex-col sm:flex-row gap-4 mb-4">
               <label className="flex items-center gap-2 cursor-pointer bg-theme-bg p-3 rounded-lg border border-theme hover:border-theme-primary transition-all">
-                <input 
-                  type="radio" 
-                  name="restoreScope" 
-                  value="all" 
-                  checked={restoreScope === "all"} 
+                <input
+                  type="radio"
+                  name="restoreScope"
+                  value="all"
+                  checked={restoreScope === "all"}
                   onChange={() => setRestoreScope("all")}
                   className="w-4 h-4 text-theme-primary focus:ring-theme-primary border-theme-muted"
                 />
                 <span className="text-theme-text">Restore All Libraries</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer bg-theme-bg p-3 rounded-lg border border-theme hover:border-theme-primary transition-all">
-                <input 
-                  type="radio" 
-                  name="restoreScope" 
-                  value="specific" 
-                  checked={restoreScope === "specific"} 
+                <input
+                  type="radio"
+                  name="restoreScope"
+                  value="specific"
+                  checked={restoreScope === "specific"}
                   onChange={() => setRestoreScope("specific")}
                   className="w-4 h-4 text-theme-primary focus:ring-theme-primary border-theme-muted"
                 />

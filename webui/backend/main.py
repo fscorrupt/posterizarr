@@ -21162,6 +21162,9 @@ class ImdbDatasetRequest(BaseModel):
 
 class EpisodeImdbMappingRequest(BaseModel):
     imdb_id: Optional[str] = Field(default=None, pattern=r"^tt\d{7,12}$")
+    scope: str = Field(default="episode", pattern=r"^(episode|season)$")
+    target_season: int = Field(default=1, ge=0)
+    episode_offset: int = 0
 
 
 @app.get("/api/dynamic-overlays/ratings-cache/imdb-dataset")
@@ -21205,7 +21208,8 @@ def get_episode_imdb_mapping(entry_id: int, query: str = Query("", max_length=25
         current = imdb_dataset.search(match["imdb_id"])
         if not query.strip():
             candidates = current
-    return {"success": True, "mapping": match, "context": context, "candidates": candidates}
+    return {"success": True, "mapping": match, "context": context, "candidates": candidates,
+            "season_mapping": imdb_dataset.season_mapping(item["server_type"], context)}
 
 
 @app.post("/api/dynamic-overlays/ratings-cache/episode/{entry_id}/imdb")
@@ -21219,6 +21223,12 @@ def save_episode_imdb_mapping(entry_id: int, req: EpisodeImdbMappingRequest):
         raise HTTPException(status_code=409, detail="Enable the IMDb dataset first")
     item = _get_episode_imdb_entry(entry_id)
     try:
+        if req.scope == "season":
+            context = imdb_dataset.context(item["server_type"], item["item_id"])
+            imdb_dataset.save_season_mapping(item["server_type"], context, req.imdb_id, req.target_season, req.episode_offset)
+            updated = ratings_cache.apply_imdb_season_mapping(imdb_dataset, item["server_type"], context)
+            return {"success": True, "updated": updated,
+                    "mapping": imdb_dataset.resolve(item["server_type"], item["item_id"])}
         imdb_dataset.save_mapping(item["server_type"], item["item_id"], req.imdb_id)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
