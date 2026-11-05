@@ -1,5 +1,8 @@
 #region Restore Mode
-if ($UsePlex -eq 'true') {
+if ($UseSilo -eq 'true') {
+    Invoke-SiloArtworkRestore
+}
+elseif ($UsePlex -eq 'true') {
     MassRestorePlexArtwork
 }
 Else {

@@ -529,7 +529,7 @@ def _split_unified_position(pos: str) -> Tuple[str, str]:
 def get_media_server_library_type(lib_name: str) -> Optional[str]:
     """
     Looks up library media type ('movie' or 'show') from cached media server libraries database.
-    Checks Plex, Emby, and Jellyfin.
+    Checks Plex, Emby, Jellyfin, and Silo.
     """
     if not lib_name:
         return None
@@ -542,7 +542,7 @@ def get_media_server_library_type(lib_name: str) -> Optional[str]:
         try:
             from main import server_libraries_db
             if server_libraries_db:
-                for srv in ["plex", "jellyfin", "emby"]:
+                for srv in ["plex", "jellyfin", "emby", "silo"]:
                     res = server_libraries_db.get_media_server_libraries(srv)
                     for cl in res.get("libraries") or []:
                         c_name = str(cl.get("name") or cl.get("title") or "").strip().lower()
@@ -564,7 +564,7 @@ def get_media_server_library_type(lib_name: str) -> Optional[str]:
         for db_p in db_candidates:
             if db_p.exists():
                 db_obj = ServerLibrariesDB(db_p)
-                for srv in ["plex", "jellyfin", "emby"]:
+                for srv in ["plex", "jellyfin", "emby", "silo"]:
                     res = db_obj.get_media_server_libraries(srv)
                     for cl in res.get("libraries") or []:
                         c_name = str(cl.get("name") or cl.get("title") or "").strip().lower()
@@ -601,7 +601,7 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
             for db_p in db_candidates:
                 if db_p.exists():
                     db_obj = ServerLibrariesDB(db_p)
-                    for s_type in ["plex", "jellyfin", "emby"]:
+                    for s_type in ["plex", "jellyfin", "emby", "silo"]:
                         res = db_obj.get_media_server_libraries(s_type)
                         cached_libs = res.get("libraries") or []
                         for cl in cached_libs:

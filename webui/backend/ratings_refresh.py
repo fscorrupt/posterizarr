@@ -210,6 +210,8 @@ class RatingsRefreshService:
         with closing(self.cache._get_connection()) as connection:
             if entry_id is not None:
                 row = connection.execute("SELECT * FROM media_ratings_cache WHERE id = ?", (entry_id,)).fetchone()
+                if row and row["server_type"] == "silo" and row["media_type"] == "episode":
+                    return []
                 return [self._enrich_candidate(dict(row), self._overlay_context(connection, dict(row)))] if row else []
             context = self._overlay_context(connection)
             rows = connection.execute(
@@ -240,6 +242,8 @@ class RatingsRefreshService:
         from dynamic_overlays_service import season_ratings_enabled_for_library
         result = []
         for item in candidates.values():
+            if item.get("server_type") == "silo" and item.get("media_type") == "episode":
+                continue
             self._enrich_candidate(item, context)
             if item.get("media_type") == "season" and not season_ratings_enabled_for_library(settings or {}, item.get("library_name")):
                 continue
@@ -297,6 +301,25 @@ class RatingsRefreshService:
 
     async def _season_context(self, server, parent_id, season_id, server_config, client):
         key = (server, str(parent_id))
+        if server == "silo":
+            from silo_client import SiloClient
+
+            silo = SiloClient(client, server_config["url"], server_config.get("api_key") or "", server_config.get("profile_id"))
+            if key not in self.season_parent_metadata:
+                data = await silo.item(parent_id)
+                self.season_parent_metadata[key] = {"id": str(parent_id), "title": data.get("title"), "tvdb_id": data.get("tvdb_id")}
+            seasons = await silo.seasons(parent_id)
+            season = next((row for row in seasons if str(row.get("content_id")) == str(season_id)), None)
+            if season is None:
+                raise ValueError("No season metadata returned")
+            episode_key = (server, "catalog", "episodes")
+            if episode_key not in self.season_parent_metadata:
+                self.season_parent_metadata[episode_key] = await silo.catalog(media_type="episode")
+            episodes = sorted({int(row["episode_number"]) for row in self.season_parent_metadata[episode_key]
+                               if str(row.get("series_id")) == str(parent_id)
+                               and str(row.get("season_number")) == str(season.get("season_number"))
+                               and str(row.get("episode_number") or "").isdigit() and int(row["episode_number"]) > 0})
+            return self.season_parent_metadata[key], episodes
         if key not in self.season_parent_metadata:
             parent = {"id": str(parent_id)}
             if server == "plex":
@@ -380,6 +403,28 @@ class RatingsRefreshService:
                     item["tmdb_id"] = value[7:]
                 elif value.startswith("tvdb://"):
                     item["tvdb_id"] = value[7:]
+        elif server == "silo":
+            from silo_client import SiloClient, SiloError
+
+            if item.get("media_type") == "episode":
+                raise ValueError("Silo episode ratings refresh is not supported")
+            silo = SiloClient(client, server_config["url"], server_config.get("api_key") or "", server_config.get("profile_id"))
+            try:
+                data = await silo.item(item["item_id"])
+            except SiloError as error:
+                if error.status is not None:
+                    raise ValueError(f"Media server metadata HTTP {error.status}") from None
+                raise ValueError("Silo metadata request failed") from None
+            native_type = {"movie": "movie", "series": "show", "show": "show", "season": "season"}.get(data.get("type"))
+            if data.get("type") == "episode":
+                raise ValueError("Silo episode ratings refresh is not supported")
+            item.update(title=data.get("title") or item.get("title"), year=data.get("year") or item.get("year"),
+                        imdb_id=data.get("imdb_id") or item.get("imdb_id"), tmdb_id=data.get("tmdb_id") or item.get("tmdb_id"),
+                        tvdb_id=data.get("tvdb_id") or item.get("tvdb_id"), media_type=native_type or item["media_type"])
+            item["released_at"] = data.get("release_date")
+            critic_rating = data.get("rating_rt_critic")
+            if item["media_type"] == "season":
+                parent_id, season_number = data.get("series_id"), data.get("season_number")
         else:
             response = await client.get(f"{server_config['url']}/Items/{item['item_id']}",
                                         headers={"X-Emby-Token": server_config.get("api_key") or ""})

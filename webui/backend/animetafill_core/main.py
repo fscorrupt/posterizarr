@@ -60,7 +60,8 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     srv_token = server_conf.get('token') or config.get('server_token') or config.get('plex', {}).get('token') or ''
 
     from animetafill_core.media_scanner import MediaServerScanner
-    scanner = MediaServerScanner(server_type=srv_type, url=srv_url, token=srv_token)
+    scanner = MediaServerScanner(server_type=srv_type, url=srv_url, token=srv_token,
+                                 profile_id=server_conf.get('profile_id'))
 
     sonarr_conf = config.get('sonarr', {})
     sonarr = SonarrTranslator(sonarr_conf.get('url'), sonarr_conf.get('api_key'))

@@ -36,6 +36,22 @@
     "states": { "loading": "Chargement", "disabled": "Désactivé", "matched": "Associé", "unmapped": "Non associé", "ambiguous": "Ambigu", "missing_series": "Série non identifiée" }
   },
   "silo": {
+    "support": {
+      "heading": "Limites de Silo",
+      "general": "Intégration expérimentale de l'API native v2. L'envoi d'images et l'actualisation des notes des épisodes, les étiquettes d'exclusion côté serveur et la suppression d'images sont indisponibles. Les sauvegardes d'images n'incluent pas la base Silo. La réinitialisation choisit une image de fournisseur, pas une image précédente.",
+      "artwork": "Images de films, séries et saisons uniquement. L'envoi d'images d'épisodes est indisponible ; les images créées localement restent locales. Les changements de l'API Silo peuvent nécessiter une mise à jour de l'intégration.",
+      "ratings": "Actualisation des films, séries et saisons d'anime autorisées. L'actualisation des notes et l'association IMDb des épisodes Silo sont indisponibles.",
+      "anime": "La découverte des séries et la correspondance des numéros d'épisodes sont en lecture seule. Silo ne peut pas recevoir d'images d'épisodes. L'association anime n'active pas leur envoi.",
+      "logos": "Logos de films et séries uniquement. La réinitialisation choisit le premier logo de fournisseur renvoyé par Silo ; elle ne supprime pas un logo envoyé et ne restaure pas une ancienne sélection inconnue. Sans candidat, le logo actuel est conservé.",
+      "collections": "Images des collections existantes dans les bibliothèques incluses uniquement. L'envoi d'une affiche ne crée pas de collection et ne change pas ses éléments. Les logos de collection sont indisponibles.",
+      "backup": "Sauvegarde/restauration d'images uniquement : affiches, arrière-plans et logos des films/séries, affiches des saisons et affiches/arrière-plans des collections. Les épisodes, la base Silo et les paramètres serveur sont exclus. Ce n'est pas une sauvegarde complète de Silo.",
+      "reset": "La réinitialisation choisit la première image correspondante d'un fournisseur renvoyée par Silo. Elle ne supprime pas les envois et ne récupère pas une ancienne image. Sans candidat, l'image actuelle est conservée. Les épisodes sont exclus.",
+      "mirror": "Copie les images des films/séries/saisons correspondants de Plex vers Silo et peut remplacer les images existantes. Silo doit être activé et l'URL/le jeton Plex configurés. Les épisodes et correspondances ambiguës sont ignorés ; les métadonnées et l'historique de lecture ne sont pas copiés.",
+      "skipTags": "L'API native Silo ne permet pas de modifier des étiquettes d'exclusion côté serveur. Cette action est indisponible ; les décisions locales de Posterizarr sont distinctes."
+    },
+    "syncTitle": "Synchroniser Silo",
+    "syncDescription": "Copier les images Plex vers Silo",
+    "syncConfirm": "Copier les images des films, series et saisons correspondants de Plex vers Silo ? Les images Silo existantes peuvent etre remplacees. Les episodes sont exclus. Les deux serveurs doivent etre configures et Silo active.",
     "name": "Silo (Expérimental)",
     "serverUrl": "Adresse du serveur Silo",
     "apiKeyPlaceholder": "Saisir la clé API Silo",

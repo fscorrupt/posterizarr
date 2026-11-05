@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Upload, X, Loader2 } from "lucide-react";
+import SiloSupportNotice from "../SiloSupportNotice";
 
 const API_URL = "/api";
 
@@ -73,6 +74,7 @@ const RestoreModeModal = React.memo(({ show, onClose, onStart, loading, status, 
           </button>
         </div>
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          <SiloSupportNotice scope="backup" />
           <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded mb-4">
             <p className="text-blue-200 font-medium mb-2">Restores local backups back to your media server.</p>
             <p className="text-blue-100 text-sm">This will look into your backup folder and upload posters and backgrounds for your libraries directly without processing them with overlays.</p>

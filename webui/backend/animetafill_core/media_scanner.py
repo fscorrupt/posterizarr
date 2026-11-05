@@ -1,22 +1,28 @@
+import asyncio
 import os
 import re
 import urllib.parse
 from typing import List, Dict, Optional
 import requests
+import httpx
 
 from animetafill_core.logger import logger
+from silo_client import SiloClient
 
 class MediaServerScanner:
     """
-    Unified scanner supporting Plex, Jellyfin, and Emby media servers.
+    Unified scanner supporting Plex, Jellyfin, Emby, and Silo media servers.
     Retrieves show lists from user-selected libraries and generates
     fallback episode mappings if Sonarr has no match.
     """
-    def __init__(self, server_type: str = "plex", url: str = "", token: str = ""):
+    def __init__(self, server_type: str = "plex", url: str = "", token: str = "", profile_id: Optional[str] = None):
         self.server_type = (server_type or "plex").lower().strip()
         self.url = (url or "").rstrip("/")
         self.token = (token or "").strip()
         self._plex_server = None
+        self.profile_id = profile_id
+        self._silo_shows = {}
+        self._silo_episodes = {}
 
     def _get_headers(self) -> Dict[str, str]:
         if self.server_type == "plex":
@@ -180,6 +186,60 @@ class MediaServerScanner:
             logger.error(f"[{self.server_type.capitalize()}] Episode lookup error for '{title}': {e}")
             return {}
 
+    def _get_shows_silo(self, libraries: List[str]) -> List[str]:
+        async def scan():
+            async with httpx.AsyncClient(timeout=30) as client:
+                silo = SiloClient(client, self.url, self.token, self.profile_id)
+                selected = {name.strip().casefold() for name in libraries if name.strip()}
+                shows = {}
+                for library in await silo.libraries():
+                    if library["type"] != "show" or (selected and library["name"].strip().casefold() not in selected):
+                        continue
+                    for row in await silo.catalog(library["id"], "show"):
+                        title = row.get("title")
+                        if title and row.get("content_id"):
+                            shows.setdefault(title, set()).add((library["id"], str(row["content_id"])))
+                return shows
+
+        self._silo_shows = {}
+        self._silo_episodes = {}
+        try:
+            self._silo_shows = asyncio.run(scan())
+        except Exception as error:
+            logger.error(f"[Silo] Failed scanning libraries: {error}")
+        return sorted(self._silo_shows)
+
+    def _get_episodes_silo(self, title: str) -> Dict[int, str]:
+        matches = self._silo_shows.get(title, set())
+        if len({series_id for _, series_id in matches}) != 1:
+            return {}
+
+        async def scan():
+            coordinates = set()
+            async with httpx.AsyncClient(timeout=30) as client:
+                silo = SiloClient(client, self.url, self.token, self.profile_id)
+                for library_id, series_id in matches:
+                    if library_id not in self._silo_episodes:
+                        self._silo_episodes[library_id] = await silo.catalog(library_id, "episode")
+                    for row in self._silo_episodes[library_id]:
+                        if str(row.get("series_id")) != series_id:
+                            continue
+                        try:
+                            season = int(row.get("season_number"))
+                            episode = int(row.get("episode_number"))
+                        except (TypeError, ValueError):
+                            continue
+                        if season > 0 and episode > 0:
+                            coordinates.add((season, episode))
+            return {index: f"S{season:02d}E{episode:02d}"
+                    for index, (season, episode) in enumerate(sorted(coordinates), 1)}
+
+        try:
+            return asyncio.run(scan())
+        except Exception as error:
+            logger.error(f"[Silo] Episode lookup error for '{title}': {error}")
+            return {}
+
     # -------------------------------------------------------------
     # PUBLIC INTERFACE
     # -------------------------------------------------------------
@@ -188,6 +248,8 @@ class MediaServerScanner:
             return self._get_shows_plex(libraries)
         elif self.server_type in ("jellyfin", "emby"):
             return self._get_shows_jellyfin_emby(libraries)
+        elif self.server_type == "silo":
+            return self._get_shows_silo(libraries)
         return []
 
     def get_episode_map(self, title: str) -> Dict[int, str]:
@@ -195,4 +257,6 @@ class MediaServerScanner:
             return self._get_episodes_plex(title)
         elif self.server_type in ("jellyfin", "emby"):
             return self._get_episodes_jellyfin_emby(title)
+        elif self.server_type == "silo":
+            return self._get_episodes_silo(title)
         return {}

@@ -36,6 +36,22 @@
     "states": { "loading": "Caricamento", "disabled": "Disattivato", "matched": "Associato", "unmapped": "Non associato", "ambiguous": "Ambiguo", "missing_series": "Serie non identificata" }
   },
   "silo": {
+    "support": {
+      "heading": "Limiti di Silo",
+      "general": "Integrazione sperimentale dell'API nativa v2. Caricamento immagini e aggiornamento valutazioni degli episodi, tag di esclusione sul server ed eliminazione immagini non disponibili. I backup delle immagini non includono il database Silo. Il ripristino seleziona immagini del provider, non un'immagine precedente.",
+      "artwork": "Solo immagini di film, serie e stagioni. Il caricamento delle immagini degli episodi non è disponibile; quelle generate localmente restano locali. Le modifiche all'API Silo possono richiedere un aggiornamento dell'integrazione.",
+      "ratings": "Aggiornamento per film, serie e stagioni anime abilitate. Aggiornamento valutazioni e associazione IMDb degli episodi Silo non disponibili.",
+      "anime": "La scoperta delle serie e la corrispondenza dei numeri degli episodi sono in sola lettura. Silo non può ricevere immagini degli episodi. L'associazione anime non ne abilita il caricamento.",
+      "logos": "Solo loghi di film e serie. Il ripristino sceglie il primo logo del provider restituito da Silo; non elimina un logo caricato e non recupera una selezione precedente sconosciuta. Senza candidati, il logo attuale resta invariato.",
+      "collections": "Solo immagini di raccolte esistenti nelle librerie incluse. Caricare una locandina non crea una raccolta e non ne modifica gli elementi. I loghi delle raccolte non sono disponibili.",
+      "backup": "Solo backup/ripristino delle immagini: locandine, sfondi e loghi di film/serie, locandine delle stagioni e locandine/sfondi delle raccolte. Episodi, database Silo e impostazioni server sono esclusi. Non è un backup completo del server Silo.",
+      "reset": "Il ripristino seleziona la prima immagine corrispondente del provider restituita da Silo. Non elimina caricamenti e non recupera immagini precedenti. Senza candidati, l'immagine attuale resta invariata. Gli episodi sono esclusi.",
+      "mirror": "Copia le immagini di film/serie/stagioni corrispondenti da Plex a Silo e può sostituire quelle esistenti. Richiede Silo attivo e URL/token Plex configurati. Episodi e corrispondenze ambigue vengono ignorati; metadati e cronologia di riproduzione non vengono copiati.",
+      "skipTags": "L'API nativa Silo non permette di scrivere tag di esclusione sul server. L'azione non è disponibile; le decisioni locali di Posterizarr sono separate."
+    },
+    "syncTitle": "Sincronizza Silo",
+    "syncDescription": "Copia le immagini Plex su Silo",
+    "syncConfirm": "Copiare le immagini di film, serie e stagioni corrispondenti da Plex a Silo? Le immagini Silo esistenti possono essere sostituite. Gli episodi sono esclusi. Entrambi i server devono essere configurati e Silo attivo.",
     "name": "Silo (Sperimentale)",
     "serverUrl": "Indirizzo del server Silo",
     "apiKeyPlaceholder": "Inserisci la chiave API Silo",

@@ -36,6 +36,22 @@
     "states": { "loading": "Wird geladen", "disabled": "Deaktiviert", "matched": "Zugeordnet", "unmapped": "Nicht zugeordnet", "ambiguous": "Mehrdeutig", "missing_series": "Serie nicht identifiziert" }
   },
   "silo": {
+    "support": {
+      "heading": "Silo: Einschränkungen",
+      "general": "Experimentelle Integration der nativen API v2. Episodenbilder-Uploads, Episodenbewertungs-Aktualisierung, serverseitige Überspringen-Tags und Bildlöschung sind nicht verfügbar. Bildsicherungen enthalten nicht die Silo-Datenbank. Zurücksetzen wählt Anbieterbilder, nicht ein früheres Bild.",
+      "artwork": "Nur Film-, Serien- und Staffelbilder. Episoden-/Titlecard-Uploads sind nicht verfügbar; lokal erzeugte Titlecards bleiben lokal. Änderungen an Silos API können ein Integrationsupdate erfordern.",
+      "ratings": "Aktualisierung für Filme, Serien und freigegebene Anime-Staffeln. Episodenbewertungen und die IMDb-Zuordnung für Silo-Episoden sind nicht verfügbar.",
+      "anime": "Serienerkennung und Zuordnung der Episodennummern sind rein lesend. Silo kann keine Episoden-/Titlecard-Bilder empfangen. Anime-Zuordnung aktiviert keine Episoden-Uploads.",
+      "logos": "Nur Film-/Serienlogos. Logo-Zurücksetzen wählt das erste von Silo gelieferte Anbieterlogo; hochgeladene Logos können nicht gelöscht und unbekannte frühere Auswahlen nicht wiederhergestellt werden. Ohne Anbieterbild bleibt das aktuelle Logo erhalten.",
+      "collections": "Nur Bilder vorhandener Sammlungen in eingeschlossenen Bibliotheken. Ein Poster-Upload erstellt keine Sammlung und ändert deren Inhalte nicht. Sammlungslogos sind nicht verfügbar.",
+      "backup": "Nur Bildsicherung/-wiederherstellung: Film-/Serienposter, Hintergründe und Logos, Staffelposter sowie Sammlungsposter/-hintergründe. Episoden, Silo-Datenbank und Servereinstellungen sind ausgeschlossen. Dies ist keine vollständige Silo-Serversicherung.",
+      "reset": "Zurücksetzen wählt das erste passende Anbieterbild, das Silo liefert. Uploads werden nicht gelöscht und frühere Bilder nicht wiederhergestellt. Ohne Anbieterbild bleibt das aktuelle Bild erhalten. Episoden sind ausgeschlossen.",
+      "mirror": "Kopiert zugeordnete Film-/Serien-/Staffelbilder von Plex nach Silo und kann vorhandene Bilder ersetzen. Silo muss aktiviert und Plex-URL/-Token konfiguriert sein. Episoden und mehrdeutige Treffer werden übersprungen; Metadaten und Wiedergabeverlauf werden nicht kopiert.",
+      "skipTags": "Silos native API unterstützt keine schreibbaren serverseitigen Überspringen-Tags. Die Server-Tag-Aktion ist nicht verfügbar; lokale Posterizarr-Entscheidungen sind davon getrennt."
+    },
+    "syncTitle": "Silo synchronisieren",
+    "syncDescription": "Plex-Bilder nach Silo kopieren",
+    "syncConfirm": "Zugeordnete Film-, Serien- und Staffelbilder von Plex nach Silo kopieren? Bestehende Silo-Bilder werden gegebenenfalls ersetzt. Episoden sind ausgeschlossen. Beide Server muessen konfiguriert und Silo aktiviert sein.",
     "name": "Silo (Experimentell)",
     "serverUrl": "Silo-Serveradresse",
     "apiKeyPlaceholder": "Silo-API-Schlüssel eingeben",

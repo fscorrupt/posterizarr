@@ -36,6 +36,22 @@
     "states": { "loading": "Loading", "disabled": "Disabled", "matched": "Matched", "unmapped": "Unmapped", "ambiguous": "Ambiguous", "missing_series": "Series not identified" }
   },
   "silo": {
+    "support": {
+      "heading": "Silo Support Limits",
+      "general": "Experimental native API v2 integration. Episode artwork uploads, episode ratings refresh, server-side skip tags and image deletion are unavailable. Artwork backups do not include Silo's database. Reset/revert selects provider artwork, not a previous image.",
+      "artwork": "Movie, show and season artwork only. Episode/titlecard uploads are unavailable; locally generated titlecards stay local. API changes in Silo may require an integration update.",
+      "ratings": "Refresh supports movies, shows and opted-in anime seasons. Silo episode ratings refresh and episode IMDb mapping are unavailable.",
+      "anime": "Show discovery and episode-coordinate matching are read-only. Silo cannot receive episode/titlecard artwork. Anime matching does not enable episode uploads.",
+      "logos": "Movie/show logos only. Logo Revert selects the first provider logo returned by Silo; it cannot delete an uploaded logo or restore an unknown previous selection. Without a provider candidate, the current logo is retained.",
+      "collections": "Artwork for existing collections in included libraries only. Uploading a poster does not create a collection or change its membership. Collection logos are unavailable.",
+      "backup": "Artwork backup/restore only: movie/show posters, backgrounds and logos, season posters, and collection posters/backgrounds. Episodes, Silo's database and server settings are excluded. This is not a full Silo server backup.",
+      "reset": "Reset selects the first matching provider image returned by Silo. It does not delete uploads or recover a previous image. If no provider candidate exists, the current image is kept. Episodes are excluded.",
+      "mirror": "Copies matched Plex movie/show/season artwork to Silo and may replace existing artwork. Requires Silo enabled and Plex URL/token configured. Episodes and ambiguous matches are skipped; no metadata or watch history is copied.",
+      "skipTags": "Silo's native API has no writable server-side skip tags. The server-tag action is unavailable; local Posterizarr decisions are separate."
+    },
+    "syncTitle": "Sync Silo",
+    "syncDescription": "Copy Plex artwork to Silo",
+    "syncConfirm": "Copy matched movie, show and season artwork from Plex to Silo? Existing Silo artwork can be replaced. Episodes are excluded. Both servers must be configured; Silo must be enabled.",
     "name": "Silo (Experimental)",
     "serverUrl": "Silo server URL",
     "apiKeyPlaceholder": "Enter Silo API key",

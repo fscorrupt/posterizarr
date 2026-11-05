@@ -1061,6 +1061,18 @@
         elseif ($UseSilo -eq 'true' -and $TitleCard) {
             Write-Entry -Message "Manual Mode: Silo does not support episode artwork uploads. Title card was created locally only (no media server upload)." -Path $global:configLogging -Color Yellow -log Warning
         }
+        elseif ($UseSilo -eq 'true' -and $CollectionCard) {
+            $collectionTitle = (($FolderName -replace '\\', '/').TrimEnd('/') -split '/')[-1]
+            $libraryIds = @($global:SiloLibraries | Where-Object { $_.Name -eq $LibraryName -and $_.Name -notin $LibstoExclude } | ForEach-Object ItemId)
+            $collections = @(Get-SiloCollection -Path '/admin/collections' -Query @{ limit = 200 } | Where-Object {
+                $_.title -eq $collectionTitle -and @(@($_.library_id) + @($_.library_ids) | Where-Object { $_ -in $libraryIds }).Count -gt 0
+            })
+            if ($collections.Count -eq 1) {
+                Send-SiloCollectionArtwork -CollectionId $collections[0].id -ImagePath $PosterImage
+            } else {
+                Write-Entry -Message 'Silo collection upload skipped: no unique collection in the selected library.' -Path $global:configLogging -Color Yellow -log Warning
+            }
+        }
         elseif ($Upload2Plex -eq 'true' -or $UseJellyfin -eq 'true' -or $UseEmby -eq 'true' -or $UseSilo -eq 'true') {
             Write-Entry -Message "Manual Mode: Updating Media Server artwork..." -Path $global:configLogging -Color Cyan -log Info
 

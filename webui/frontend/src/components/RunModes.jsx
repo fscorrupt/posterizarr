@@ -35,6 +35,7 @@ import TestingModeModal from "./modals/TestingModeModal";
 import { useToast } from "../context/ToastContext";
 import { BLUEPRINTS } from "./Blueprints";
 import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice, { useSiloEnabled } from "./SiloSupportNotice";
 
 const API_URL = "/api";
 
@@ -502,6 +503,7 @@ const TMDBPosterSearchModal = React.memo(
 );
 
 function RunModes() {
+  const siloEnabled = useSiloEnabled();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { showSuccess, showError, showInfo } = useToast();
@@ -606,6 +608,7 @@ function RunModes() {
   const [autoRedirectTesting, setAutoRedirectTesting] = useState(true);
   const [showJellyfinSyncModal, setShowJellyfinSyncModal] = useState(false);
   const [showEmbySyncModal, setShowEmbySyncModal] = useState(false);
+  const [showSiloSyncModal, setShowSiloSyncModal] = useState(false);
   const [showBackupModeModal, setShowBackupModeModal] = useState(false);
   const [showRestoreModeModal, setShowRestoreModeModal] = useState(false);
   const [showLogoUpdaterModal, setShowLogoUpdaterModal] = useState(false);
@@ -1678,7 +1681,7 @@ const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status,
 
   return (
     <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <Cloud className="w-6 h-6 mr-3 text-white" />
@@ -1877,6 +1880,7 @@ const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t
             <p className="text-orange-200 font-medium mb-2">{t("runModes.backup.info")}</p>
             <p className="text-orange-100 text-sm">{t("runModes.backup.description")}</p>
           </div>
+          <SiloSupportNotice scope="backup" />
           <div className="space-y-3">
             <h4 className="font-semibold text-theme-primary text-lg">{t("runModes.backup.benefitsTitle")}</h4>
             <ul className="space-y-3 text-theme-text">
@@ -2055,7 +2059,7 @@ const LogoUpdaterModal = React.memo(({
 
   return (
     <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-lg w-full shadow-2xl animate-in fade-in duration-200">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-lg w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <ImageIcon className="w-6 h-6 mr-3 text-white" />
@@ -2071,6 +2075,7 @@ const LogoUpdaterModal = React.memo(({
             <p className="text-blue-200 font-medium mb-2">{t("runModes.logoUpdater.info")}</p>
             <p className="text-blue-100 text-sm">{t("runModes.logoUpdater.subtitle")}</p>
           </div>
+          <SiloSupportNotice scope="logos" />
 
           {/* Process All Libraries Toggle */}
           <div className="flex items-center justify-between p-3 bg-theme-bg/50 border border-theme rounded-lg transition-all cursor-pointer" onClick={() => setProcessAll(!processAll)}>
@@ -2193,8 +2198,18 @@ const LogoUpdaterModal = React.memo(({
         onClose={() => setResetConfirm(false)}
         onConfirm={handleResetConfirm}
         title={t("runModes.reset.confirmTitle")}
-        message={t("runModes.reset.confirmMessage", { library: resetLibrary })}
+        message={siloEnabled ? `${resetLibrary}\n\n${t("silo.support.reset")}` : t("runModes.reset.confirmMessage", { library: resetLibrary })}
         type="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={showSiloSyncModal}
+        onClose={() => setShowSiloSyncModal(false)}
+        onConfirm={() => runScript("syncsilo")}
+        title={t("silo.syncTitle")}
+        message={t("silo.support.mirror")}
+        confirmText={t("silo.syncTitle")}
+        type="warning"
       />
 
       <NormalModeModal
@@ -2390,6 +2405,7 @@ const LogoUpdaterModal = React.memo(({
           </div>
         )}
       </WorkspaceHeader>
+      <SiloSupportNotice enabled={siloEnabled} />
 
       {/* Stop Button (shown when running) */}
       {status.running && (
@@ -2527,6 +2543,16 @@ const LogoUpdaterModal = React.memo(({
             <p className="text-sm text-theme-muted text-center">
               {t("runModes.quickRun.syncEmby.description")}
             </p>
+          </button>
+
+          <button
+            onClick={() => setShowSiloSyncModal(true)}
+            disabled={loading || status.running}
+            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
+          >
+            <RefreshCw className="w-8 h-8 text-emerald-400 mb-3" />
+            <h3 className="font-semibold text-theme-text mb-1">{t("silo.syncTitle")}</h3>
+            <p className="text-sm text-theme-muted text-center">{t("silo.syncDescription")}</p>
           </button>
 
           {/* Logo Updater Mode */}
@@ -3478,6 +3504,7 @@ const LogoUpdaterModal = React.memo(({
 
       {/* Reset Posters */}
       <div className="bg-red-950/40 rounded-xl p-6 border-2 border-red-600/50">
+        <SiloSupportNotice enabled={siloEnabled} scope="reset" />
         <div className="flex items-center mb-4">
           <div className="p-2 rounded-lg bg-red-600/20 mr-3">
             <RotateCcw className="w-6 h-6 text-red-300" />

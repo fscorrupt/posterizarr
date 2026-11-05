@@ -19,6 +19,7 @@
         $Upload2Plex = 'true'
         Write-Entry -Subtext "Arr Mode forces direct Plex upload for generated assets." -Path $global:configLogging -Color Cyan -log Info
     }
+    if ($UseSilo -ne 'true') {
     switch ($arrplatform) {
         'Sonarr' {
             Write-Entry -Message "Processing Sonarr trigger" -Path $global:configLogging -Color Yellow -log Info
@@ -284,8 +285,19 @@
         }
         default { Write-Entry -Message "Unknown platform: $arrplatform" -Path $global:configLogging -Color Red -log Error }
     }
+    }
     $Libraries = [System.Collections.Generic.List[object]]::new()
-    if ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
+    if ($UseSilo -eq 'true') {
+        foreach ($entry in @(Get-SiloArrEntries -Trigger $arrTriggers)) {
+            $Libraries.Add($entry)
+            if ($entry.'Library Type' -eq 'Movie') {
+                Invoke-MoviePosterCreation -entry $entry
+            } else {
+                Invoke-ShowPosterCreation -entry $entry
+            }
+        }
+    }
+    elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
         $PreferredMetadataLanguage = (Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/System/Configuration" -Headers $global:OtherMediaServerHeaders).PreferredMetadataLanguage ?? "en"
         foreach ($Movie in $AllMovies.Items) {
             $Resolution = $null
@@ -1461,7 +1473,7 @@
         try {
             $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
             $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
-            $overlayServer = if ($UseEmby -eq 'true') { 'emby' } elseif ($UseJellyfin -eq 'true') { 'jellyfin' } else { 'plex' }
+            $overlayServer = if ($UseSilo -eq 'true') { 'silo' } elseif ($UseEmby -eq 'true') { 'emby' } elseif ($UseJellyfin -eq 'true') { 'jellyfin' } else { 'plex' }
             $overlayTargets = @(foreach ($overlayItem in $Libraries) {
                 $overlayId = if ($overlayServer -eq 'plex') { $overlayItem.ratingKey } else { $overlayItem.Id }
                 if ($overlayId -and $overlayItem.'Library Name') {
@@ -1492,6 +1504,8 @@
             }
         } catch {}
     }
+
+    if ($UseSilo -eq 'true') { Complete-SiloRun }
 
 
 

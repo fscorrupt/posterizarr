@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronRight, ChevronLeft, Save, Server, Key, Settings, Bell, Rocket, Shield, Activity, HardDrive, Database, ExternalLink, Loader2, Clock, Calendar, Zap, RefreshCw, Grid, X, Eye, EyeOff } from "lucide-react";
+import SiloSupportNotice from "./SiloSupportNotice";
 
 const ClearableInput = ({ value, onChange, placeholder, isPassword }) => {
   const { t } = useTranslation();
@@ -103,6 +104,7 @@ const runModes = [
   { id: "normal", label: "Normal Run" },
   { id: "syncjelly", label: "Sync Jellyfin" },
   { id: "syncemby", label: "Sync Emby" },
+  { id: "syncsilo", label: t("silo.syncTitle") },
   { id: "backup", label: "System Backup" },
   { id: "logoupdater", label: "Logo Updater" },
 ];
@@ -545,6 +547,7 @@ const runModes = [
             </div>
 
             <div className="flex-1 flex flex-col min-h-0">
+              <SiloSupportNotice enabled={primaryServer === "silo"} />
               {primaryServer && renderServerForm(primaryServer)}
             </div>
 

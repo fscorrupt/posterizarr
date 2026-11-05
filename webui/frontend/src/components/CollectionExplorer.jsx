@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
 import { useTranslation } from "react-i18next";
 import {
   Folder,
@@ -198,6 +199,11 @@ const CollectionExplorer = () => {
       if (String(usePlex) === "true") availableServers.push({ id: "plex", name: "Plex", url: plexUrl, token: plexToken });
       if (String(useJellyfin) === "true") availableServers.push({ id: "jellyfin", name: "Jellyfin", url: jellyfinUrl, token: jellyfinToken });
       if (String(useEmby) === "true") availableServers.push({ id: "emby", name: "Emby", url: embyUrl, token: embyToken });
+      const siloConfig = config.SiloPart || {};
+      if (String(config.UseSilo ?? siloConfig.UseSilo) === "true") availableServers.push({
+        id: "silo", name: t("silo.name"), url: config.SiloUrl || siloConfig.SiloUrl,
+        token: config.SiloAPIKey || config.ApiPart?.SiloAPIKey
+      });
 
       setServers(availableServers);
       if (availableServers.length > 0) {
@@ -226,6 +232,7 @@ const CollectionExplorer = () => {
         if (server.id === "plex") exclusions = appConfig.using_flat_structure ? (appConfig.PlexLibstoExclude || []) : (appConfig.PlexPart?.LibstoExclude || []);
         if (server.id === "jellyfin") exclusions = appConfig.using_flat_structure ? (appConfig.JellyfinLibstoExclude || []) : (appConfig.JellyfinPart?.LibstoExclude || []);
         if (server.id === "emby") exclusions = appConfig.using_flat_structure ? (appConfig.EmbyLibstoExclude || []) : (appConfig.EmbyPart?.LibstoExclude || []);
+        if (server.id === "silo") exclusions = appConfig.SiloLibstoExclude || appConfig.SiloPart?.LibstoExclude || [];
       }
 
       const res = await fetch(`${API_URL}/libraries/${server.id}/cached`);
@@ -240,7 +247,7 @@ const CollectionExplorer = () => {
           setActiveLibrary(filteredLibs[0]);
         } else {
             // Fallback to all if everything is excluded somehow
-            if (data.libraries.length > 0) {
+            if (server.id !== "silo" && data.libraries.length > 0) {
                 setLibraries(data.libraries);
                 setActiveLibrary(data.libraries[0]);
             }
@@ -857,6 +864,7 @@ const CollectionExplorer = () => {
 
         {/* Scrollable Grid Area */}
         <div ref={gridContainerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          <SiloSupportNotice enabled={activeServer?.id === "silo"} scope="collections" />
           {checkingPlexLogos ? (
             <div className="flex flex-col items-center justify-center h-full text-theme-muted">
               <Loader2 className="w-12 h-12 animate-spin mb-4 text-theme-primary" />

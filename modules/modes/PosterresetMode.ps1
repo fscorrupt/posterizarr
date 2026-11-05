@@ -1,5 +1,12 @@
 #region Posterreset Mode
-    if ($UsePlex -eq 'true' -and $null -ne $LibraryToReset) {
+    if ($UseSilo -eq 'true' -and $LibraryToReset) {
+        foreach ($item in $global:SiloItems.Values) {
+            if ($item.SiloLibraryName -eq $LibraryToReset -and $item.SiloLibraryName -notin $LibstoExclude -and $item.Type -in @('Movie', 'Series')) {
+                Reset-SiloArtwork -ItemId $item.Id -Type poster
+            }
+        }
+    }
+    elseif ($UsePlex -eq 'true' -and $null -ne $LibraryToReset) {
         Write-Entry -Message "Poster reset requested for library: $LibraryToReset" -Path "$global:configLogging" -Color Yellow -log Warning
         Write-Entry -Subtext "This action will reset all posters and cannot be undone." -Path "$global:configLogging" -Color Red -log Warning
         Write-Entry -Subtext "Starting in 20 seconds... Press Ctrl+C to cancel." -Path "$global:configLogging" -Color Cyan -log Info

@@ -8607,6 +8607,7 @@ async def run_script(mode: str):
             "restore": [ps_command, "-File", str(SCRIPT_PATH), "-Restore"],
             "syncjelly": [ps_command, "-File", str(SCRIPT_PATH), "-SyncJelly"],
             "syncemby": [ps_command, "-File", str(SCRIPT_PATH), "-SyncEmby"],
+            "syncsilo": [ps_command, "-File", str(SCRIPT_PATH), "-SyncSilo"],
         }
 
         if mode not in commands:
@@ -10666,7 +10667,7 @@ async def get_backup_assets_gallery():
         # Determine configured libraries from server_libraries_db
         configured_libraries = set()
         if SERVER_LIBRARIES_DB_AVAILABLE and server_libraries_db is not None:
-            for srv_type in ["plex", "jellyfin", "emby"]:
+            for srv_type in ["plex", "jellyfin", "emby", "silo"]:
                 try:
                     res = server_libraries_db.get_media_server_libraries(srv_type)
                     if res.get("success"):
@@ -17945,6 +17946,24 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                             "logoUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/clearLogo')}"
                         })
 
+            elif request.server_type == "silo":
+                from silo_client import SiloClient, get_silo_credentials
+
+                config = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+                credentials = get_silo_credentials(config)
+                if url != credentials["url"].rstrip("/"):
+                    raise ValueError("Silo URL does not match configured server")
+                silo = SiloClient(client, url, credentials["api_key"], credentials["profile_id"])
+                catalog = [row for row in await silo.catalog(request.library_id) if row.get("type") in ("movie", "series")]
+                total = len(catalog)
+                for row in catalog[max(0, request.start):max(0, request.start) + max(1, request.limit)]:
+                    detail = await silo.item(row["content_id"])
+                    reference = detail.get("logo_url")
+                    logo_url = url + reference if reference and reference.startswith("/api/v2/") else urllib.parse.urljoin(url + "/", reference or "")
+                    items.append({"title": row.get("title", ""), "year": row.get("year"),
+                                  "type": "show" if row["type"] == "series" else "movie", "ratingKey": str(row["content_id"]),
+                                  "hasLogo": bool(reference), "logoUrl": f"/api/media-server/image?server_type=silo&url={urllib.parse.quote(logo_url)}" if reference else None})
+
             elif request.server_type in ["jellyfin", "emby"]:
                 auth_header = "Authorization"
                 request.token = f'MediaBrowser Token="{request.token}"'
@@ -18068,7 +18087,7 @@ async def proxy_media_server_image(
 ):
     """Proxies images from the media server with local disk caching to prevent polling on every reload"""
     server_type = server_type.lower().strip()
-    if server_type not in ["plex", "jellyfin", "emby"]:
+    if server_type not in ["plex", "jellyfin", "emby", "silo"]:
         raise HTTPException(status_code=400, detail="Invalid server_type")
 
     # Guard against URL-based traversal and SSRF
@@ -18089,6 +18108,9 @@ async def proxy_media_server_image(
         base_server_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
     elif server_type == "emby":
         base_server_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
+    elif server_type == "silo":
+        from silo_client import get_silo_credentials
+        base_server_url = get_silo_credentials(config)["url"]
 
     if not base_server_url:
         raise HTTPException(status_code=400, detail="Requested media server is not configured")
@@ -18109,7 +18131,8 @@ async def proxy_media_server_image(
     allowed_prefixes = {
         "plex": ("/library/metadata/", "/photo/", "/thumb/"),
         "jellyfin": ("/Items/", "/Images/"),
-        "emby": ("/Items/", "/Images/")
+        "emby": ("/Items/", "/Images/"),
+        "silo": (parsed_base.path.rstrip("/") + "/api/v2/artwork/",)
     }
     valid_prefixes = allowed_prefixes.get(server_type, ())
     if not any(target_path.startswith(prefix) for prefix in valid_prefixes):
@@ -18301,6 +18324,7 @@ async def upload_media_server_logo(request: UploadLogoRequest):
     import subprocess
     import shutil
 
+    temp_logo = None
     try:
         url = request.url.rstrip('/')
 
@@ -18320,6 +18344,13 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 config.get("EmbyPart", {}).get("EmbyUrl")
             ]
         valid_urls = [u for u in valid_urls if u]
+        from silo_client import get_silo_credentials
+        silo_credentials = get_silo_credentials(config)
+        if silo_credentials["url"]:
+            valid_urls.append(silo_credentials["url"])
+
+        if request.server_type == "silo" and url != silo_credentials["url"].rstrip("/"):
+            return {"success": False, "error": "Target URL is not the configured Silo server."}
 
         if not any(url.startswith(v.rstrip('/')) for v in valid_urls):
             return {"success": False, "error": "Target URL is not a configured media server."}
@@ -18392,7 +18423,17 @@ async def upload_media_server_logo(request: UploadLogoRequest):
         # Upload Logo
         async with httpx.AsyncClient(timeout=30.0) as client:
             safe_item_id = "".join(c for c in str(request.item_id) if c.isalnum() or c in "-_")
-            if request.server_type == "plex":
+            if request.server_type == "silo":
+                from silo_client import SiloClient
+                silo = SiloClient(client, url, silo_credentials["api_key"], silo_credentials["profile_id"])
+                catalog = await silo.catalog(item_id=request.item_id)
+                native_item = next((row for row in catalog if str(row.get("content_id")) == request.item_id), {})
+                if native_item.get("type") not in ("movie", "series"):
+                    raise ValueError("Silo logo upload requires a movie or series")
+                await silo.upload(request.item_id, Path(temp_logo).read_bytes(), "logo", native_item["type"])
+                Path(temp_logo).unlink(missing_ok=True)
+                return {"success": True}
+            elif request.server_type == "plex":
                 upload_url = f"{url}/library/metadata/{safe_item_id}/clearLogos"
                 headers = {"X-Plex-Token": request.token, "Content-Type": "image/jpeg"}
                 with open(temp_logo, "rb") as f:
@@ -18418,6 +18459,9 @@ async def upload_media_server_logo(request: UploadLogoRequest):
     except Exception as e:
         logger.error(f"Error uploading logo: {e}", exc_info=True)
         return {"success": False, "error": "Failed to upload logo. Check server logs."}
+    finally:
+        if temp_logo:
+            Path(temp_logo).unlink(missing_ok=True)
 
 
 
@@ -18558,7 +18602,7 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
     """Fetch collections from media server"""
     try:
         server_type = request.server_type.lower().strip()
-        if server_type not in ["plex", "jellyfin", "emby"]:
+        if server_type not in ["plex", "jellyfin", "emby", "silo"]:
             raise HTTPException(status_code=400, detail="Invalid server_type")
 
         clean_lib_id = "".join(c for c in str(request.library_id) if c.isalnum() or c in "-_").strip()
@@ -18574,6 +18618,29 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
+
+        if server_type == "silo":
+            from silo_client import SiloClient, get_silo_credentials
+            credentials = get_silo_credentials(config)
+            if url != credentials["url"].rstrip("/"):
+                raise HTTPException(status_code=403, detail="Silo URL does not match configured server")
+            if request.library_id in (credentials["excluded"] or []):
+                return {"success": True, "items": [], "total": 0}
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                silo = SiloClient(client, url, credentials["api_key"], credentials["profile_id"])
+                libraries = await silo.libraries()
+                included = {library["id"] for library in libraries if library["name"] not in (credentials["excluded"] or [])}
+                rows = [row for row in await silo.collections(request.library_id)
+                        if included.intersection(str(identifier) for identifier in [row.get("library_id"), *(row.get("library_ids") or [])])]
+            entries = []
+            for row in rows[max(0, request.start):max(0, request.start) + max(1, request.limit)]:
+                reference = row.get("poster_url")
+                poster_url = url + reference if reference and reference.startswith("/api/v2/") else urllib.parse.urljoin(url + "/", reference or "")
+                entries.append({"title": row.get("title", ""), "ratingKey": str(row["id"]), "type": "collection",
+                                "summary": row.get("description", ""), "childCount": row.get("item_count", 0), "itemCount": row.get("item_count", 0),
+                                "hasPoster": bool(reference), "posterUrl": f"/api/media-server/image?server_type=silo&url={urllib.parse.quote(poster_url)}" if reference else None,
+                                "hasLocalAsset": False, "syncStatus": "missing_local"})
+            return {"success": True, "items": entries, "total": len(rows)}
 
         expected_url = None
         if server_type == "plex":
@@ -18963,6 +19030,23 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
+
+        if request.server_type == "silo":
+            from silo_client import SiloClient, get_silo_credentials
+            credentials = get_silo_credentials(config)
+            if server_url != credentials["url"].rstrip("/"):
+                raise HTTPException(status_code=403, detail="Silo URL does not match configured server")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                silo = SiloClient(client, server_url, credentials["api_key"], credentials["profile_id"])
+                collection = next((row for row in await silo.collections() if str(row.get("id")) == request.rating_key), None)
+                if collection is None:
+                    return {"success": False, "error": "Silo collection not found"}
+                libraries = await silo.libraries()
+                included = {library["id"] for library in libraries if library["name"] not in (credentials["excluded"] or [])}
+                if not included.intersection(str(identifier) for identifier in [collection.get("library_id"), *(collection.get("library_ids") or [])]):
+                    return {"success": False, "error": "Silo collection is not in an included library"}
+                await silo.upload_collection(request.rating_key, data)
+            return {"success": True}
 
         expected_url = None
         if request.server_type == "plex":

@@ -82,6 +82,10 @@ Else {
         $RunMode = "SyncEmby"
         Write-Entry -Message "SyncEmby running file created..." -Path $global:configLogging -Color White -log Info
     }
+    Elseif ($SyncSilo) {
+        $RunMode = "syncsilo"
+        Write-Entry -Message "Silo mirror running file created..." -Path $global:configLogging -Color White -log Info
+    }
     Elseif ($Backup) {
         $RunMode = "Backup"
         Write-Entry -Message "Backup running file created..." -Path $global:configLogging -Color White -log Info
@@ -326,7 +330,7 @@ if (-not $module) {
 }
 
 # Only connect if DisableOnlineAssetFetch is not set to false, and not running a mode that skips online search
-if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby -and !$Backup -and !$Manual -and !$PosterReset -and !$Restore) {
+if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby -and !$SyncSilo -and !$Backup -and !$Manual -and !$PosterReset -and !$Restore) {
     if ($global:UseCustomProviderOrder) {
         $activeProviders = @($global:ProviderOrder)
         if ($global:ProviderPriorityMode -eq 'PerMediaType') {

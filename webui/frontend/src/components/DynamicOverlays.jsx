@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
 import ConfirmDialog from "./ConfirmDialog";
 import ImdbDatasetPanel from "./ImdbDatasetPanel";
 import { useNavigate } from "react-router-dom";
@@ -2342,10 +2343,15 @@ export default function DynamicOverlays() {
   };
 
   const handleSelectMediaServer = (serverType) => {
-    if (!animetafillConfig) return;
+    if (!animetafillConfig || animetafillConfig.media_server === serverType) return;
+    const selectedServer = (animetafillConfig.available_servers || []).find(server => server.id === serverType);
+    setAnimetafillLibraries([]);
     setAnimetafillConfig(prev => ({
       ...prev,
-      media_server: serverType
+      media_server: serverType,
+      server_url: selectedServer?.url || "",
+      target_libraries: [],
+      plex_libraries: []
     }));
     fetchMediaServerLibraries(serverType);
   };
@@ -4911,6 +4917,7 @@ export default function DynamicOverlays() {
             )}
           </div>
         </WorkspaceHeader>
+        <SiloSupportNotice enabled={enabledServers.some(server => server.id === "silo")} scope="artwork" />
 
         {/* WELCOME ONBOARDING BANNER (NEW USER COMPANION) */}
         {featureSettings?.enabled && !hasCompletedWizard && (
@@ -10878,6 +10885,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {featureSettings?.enabled && activeTab === "anime" && (
         <div className="space-y-6 animate-in fade-in duration-300">
+          <SiloSupportNotice enabled={animetafillConfig?.media_server === "silo"} scope="anime" />
           {/* HEADER HERO */}
           <div className="p-5 rounded-xl bg-theme-card border border-theme flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
             <div className="flex items-start gap-3.5">
@@ -11024,7 +11032,7 @@ export default function DynamicOverlays() {
                 </span>
               </div>
 
-              {/* 1. MEDIA SERVER SELECTION (PLEX / JELLYFIN / EMBY) */}
+              {/* 1. MEDIA SERVER SELECTION */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-theme-text flex items-center gap-1.5">
@@ -11036,11 +11044,12 @@ export default function DynamicOverlays() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {[
                     { id: "plex", name: "Plex", icon: Tv },
                     { id: "jellyfin", name: "Jellyfin", icon: Film },
-                    { id: "emby", name: "Emby", icon: HardDrive }
+                    { id: "emby", name: "Emby", icon: HardDrive },
+                    { id: "silo", name: t("silo.name"), icon: Server }
                   ].map(srv => {
                     const isSelected = (animetafillConfig?.media_server || "plex") === srv.id;
                     const SrvIcon = srv.icon;
@@ -12851,7 +12860,7 @@ export default function DynamicOverlays() {
                 autoFocus
               />
               <p className="text-[11px] text-theme-muted">
-                Must match your Plex / Jellyfin / Emby library name to apply overlays automatically.
+                Must match your media server library name to apply overlays automatically.
               </p>
             </div>
 
@@ -14002,6 +14011,7 @@ export default function DynamicOverlays() {
               </button>
             </div>
 
+            <SiloSupportNotice enabled={enabledServers.some(server => server.id === "silo")} scope="ratings" />
             <ImdbDatasetPanel entry={episodeImdbEntry} onClose={() => setEpisodeImdbEntry(null)}
               onSaved={() => fetchRatingsCacheItems(ratingsCachePage)} disabled={ratingsRefreshJob?.running || isOverlaySyncRunning} />
 
@@ -14431,15 +14441,15 @@ export default function DynamicOverlays() {
                           <td className="py-3 px-4 align-middle text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button type="button" onClick={() => handleRefreshRatings(entry)}
-                                disabled={isActing || ratingsRefreshSubmitting || ratingsRefreshJob?.running}
-                                title="Refresh ratings now" aria-label={`Refresh ratings for ${entry.title || entry.item_id}`}
+                                disabled={isActing || ratingsRefreshSubmitting || ratingsRefreshJob?.running || (entry.server_type === "silo" && entry.media_type === "episode")}
+                                title={entry.server_type === "silo" && entry.media_type === "episode" ? t("silo.support.ratings") : "Refresh ratings now"} aria-label={`Refresh ratings for ${entry.title || entry.item_id}`}
                                 className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text disabled:opacity-50">
                                 <RefreshCw className="w-4 h-4" />
                               </button>
                               {entry.media_type === "episode" && (
                                 <button type="button" onClick={() => setEpisodeImdbEntry(entry)}
-                                  disabled={isActing || ratingsRefreshJob?.running || isOverlaySyncRunning}
-                                  title={t("imdbDataset.mapping")} aria-label={`${t("imdbDataset.mapping")}: ${entry.title || entry.item_id}`}
+                                  disabled={isActing || ratingsRefreshJob?.running || isOverlaySyncRunning || entry.server_type === "silo"}
+                                  title={entry.server_type === "silo" ? t("silo.support.ratings") : t("imdbDataset.mapping")} aria-label={`${t("imdbDataset.mapping")}: ${entry.title || entry.item_id}`}
                                   className="p-1.5 rounded-lg hover:bg-theme-hover text-theme-muted hover:text-theme-text disabled:opacity-50">
                                   <Sliders className="w-4 h-4" />
                                 </button>

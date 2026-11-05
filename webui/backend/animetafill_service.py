@@ -354,7 +354,11 @@ def _get_posterizarr_config() -> Dict[str, Any]:
 
 def _detect_configured_server() -> str:
     """Detect which media server is actively enabled in Posterizarr config.json."""
+    from silo_client import get_silo_credentials
+
     pj_config = _get_posterizarr_config()
+    if get_silo_credentials(pj_config)["enabled"]:
+        return "silo"
     plex_part = pj_config.get("PlexPart", {})
     jf_part = pj_config.get("JellyfinPart", {})
     emby_part = pj_config.get("EmbyPart", {})
@@ -381,7 +385,7 @@ def _get_defaults() -> Dict[str, Any]:
     server = _detect_configured_server()
     return {
         "enabled": False,
-        "media_server": server,  # plex, jellyfin, or emby
+        "media_server": server,
         "target_libraries": ["Anime Shows"],
         "overlay_categories": ["canon", "filler", "mixed"],
         "overlay_threshold_mode": "none",
@@ -419,7 +423,7 @@ def get_animetafill_config() -> Dict[str, Any]:
     """
     Returns stored AniMetaFill configuration.
     Sonarr credentials, SIMKL ID, and UI preferences are strictly read from config.db.
-    Plex/Jellyfin/Emby credentials are read from config.json (single source of truth for media servers).
+    Media server credentials are read from config.json (single source of truth for media servers).
     """
     defaults = _get_defaults()
     app_cfg = {}
@@ -439,7 +443,7 @@ def get_animetafill_config() -> Dict[str, Any]:
     merged["colors"] = {**defaults.get("colors", {}), **app_cfg.get("colors", {}), **db_cfg.get("colors", {})}
     primary_server = _detect_configured_server()
     user_chosen_server = db_cfg.get("media_server") or app_cfg.get("media_server")
-    if user_chosen_server and str(user_chosen_server).lower().strip() in ("plex", "jellyfin", "emby"):
+    if user_chosen_server and str(user_chosen_server).lower().strip() in ("plex", "jellyfin", "emby", "silo"):
         media_server = str(user_chosen_server).lower().strip()
     else:
         media_server = primary_server
@@ -452,7 +456,10 @@ def get_animetafill_config() -> Dict[str, Any]:
     merged["target_libraries"] = target_libs
 
     # Pull media server credentials dynamically from config.json
+    from silo_client import get_silo_credentials
+
     pj_config = _get_posterizarr_config()
+    silo = get_silo_credentials(pj_config)
     plex_part = pj_config.get("PlexPart", {})
     api_part = pj_config.get("ApiPart", {})
     jf_part = pj_config.get("JellyfinPart", {})
@@ -474,7 +481,10 @@ def get_animetafill_config() -> Dict[str, Any]:
     mal_enabled = bool(merged.get("mal_enabled", True))
 
     # Attach active server URL & Token
-    if media_server == "jellyfin":
+    if media_server == "silo":
+        current_server_url = silo["url"] or ""
+        current_server_token = silo["api_key"] or ""
+    elif media_server == "jellyfin":
         current_server_url = jf_url
         current_server_token = jf_key
     elif media_server == "emby":
@@ -486,6 +496,7 @@ def get_animetafill_config() -> Dict[str, Any]:
 
     merged["server_url"] = current_server_url
     merged["server_token"] = current_server_token
+    merged["server_profile_id"] = silo.get("profile_id") if media_server == "silo" else None
     merged["sonarr_url"] = sonarr_url
     merged["sonarr_api_key"] = sonarr_api_key
     merged["simkl_client_id"] = simkl_client_id
@@ -500,6 +511,7 @@ def get_animetafill_config() -> Dict[str, Any]:
         {"id": "plex", "name": "Plex Media Server", "configured": bool(plex_url), "url": plex_url},
         {"id": "jellyfin", "name": "Jellyfin", "configured": bool(jf_url), "url": jf_url},
         {"id": "emby", "name": "Emby", "configured": bool(emby_url), "url": emby_url},
+        {"id": "silo", "name": "Silo", "configured": bool(silo["url"] and silo["api_key"]), "url": silo["url"]},
     ]
 
     return merged
@@ -902,6 +914,7 @@ def run_animetafill_sync_task(force: bool = False, runtime_overrides: Optional[D
                     "type": srv_type,
                     "url": srv_url,
                     "token": srv_token,
+                    "profile_id": cfg.get("server_profile_id"),
                     "libraries": target_libs
                 },
                 "media_server": srv_type,

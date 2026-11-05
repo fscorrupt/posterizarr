@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Save,
@@ -672,6 +673,7 @@ function ConfigEditor() {
   return (
         <div className="workspace-page space-y-6">
             <WorkspaceHeader title="Configuration" subtitle={activeTab} />
+            <SiloSupportNotice enabled={String(config?.UseSilo ?? config?.SiloPart?.UseSilo).toLowerCase() === "true"} />
       {/* Header */}
             <div className="workspace-toolbar sticky top-16 z-30 bg-theme-card flex-col md:flex-row items-start md:items-center justify-between">
         <div className="relative w-full md:w-96">

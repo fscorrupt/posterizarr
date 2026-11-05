@@ -10,6 +10,12 @@ In Configuration > Media Servers, enable **Use Silo (Experimental)**, enter
 Only one primary server may be enabled. Existing configurations receive disabled
 Silo fields in the editor; Silo is never enabled automatically.
 
+Silo-only capability notices appear in configuration/onboarding, run dialogs,
+Logo Browser, Collection Explorer, Dynamic Overlays, AniMetaFill, Ratings Cache,
+the scheduler and Asset Overview. Unsupported and partially supported actions are
+explained in English, German, French, Italian and Portuguese. Technical logs and
+PowerShell output keep their existing English format.
+
 - `SiloPart.UseSilo`: `"true"` to select Silo as the primary server.
 - `SiloPart.SiloUrl`: Native server URL, preserving any reverse-proxy path prefix.
     For containers sharing a network, an internal address such as `http://silo:8080`
@@ -30,11 +36,37 @@ targeted overlay sync, and movie/show change detection. Technical overlay inputs
 come from the selected file's actual audio/video/subtitle tracks. Explicitly scoped
 show/season rules can aggregate episode stream metadata.
 
-Episode artwork uploads are unsupported by Silo and are blocked; locally generated
-titlecards remain local. Collection editing, logo-browser workflows, artwork reset,
-backup/restore and Plex-mirror sync are not certified for Silo in this initial
-integration. Native upload transport understands logo slots, but this does not add
-Silo to those separate user-facing workflows.
+AniMetaFill's **Media Server & Integration Settings** also supports Silo. Select
+Silo, choose the target anime show libraries, and save. Credentials come from the
+same Silo configuration above; switching servers clears the previous library
+selection. Show discovery and native episode-coordinate matching are read-only.
+Ratings Cache refresh uses native Silo metadata for movies, shows, and opted-in
+anime seasons. Silo episode ratings refresh is excluded for now.
+
+Additional native Silo workflows are available in PowerShell and the UI:
+
+- Radarr/Sonarr triggers select catalog movies/shows and seasons without using the
+    Jellyfin compatibility API. Ambiguous external IDs or paths are not guessed.
+- Logo Browser and Logo Updater list movie/show logos and upload selected PNGs.
+- Collection Explorer lists existing collections in included libraries and uploads
+    posters. Manual collection generation can upload to a unique existing collection.
+- Backup/Restore downloads and restores movie/show posters, backgrounds, logos,
+    season posters and collection posters/backgrounds using the configured backup
+    layout and library/item/type filters.
+- Poster Reset and Logo Revert select the first matching provider image returned by
+    Silo. They do not delete uploaded images or recover an unknown previous selection.
+    If no provider candidate exists, the current image is retained.
+- **Sync Silo** in Run Modes, or `Posterizarr.ps1 -SyncSilo`, mirrors Plex artwork to
+    matched Silo movies/shows/seasons. Configure Plex URL/token while leaving Silo as
+    the enabled primary server. Matches require a unique external ID; identical bytes
+    are skipped. This can replace existing Silo artwork and is also schedulable.
+
+Episode artwork uploads and episode ratings refresh remain excluded; locally
+generated titlecards remain local. Native episode metadata is read only for anime
+matching and show/season aggregation. Silo has no native image-delete or full-server
+backup endpoint in the checked contract; artwork backup is not a Silo database backup.
+The Asset Overview server-side skip-tag action is unavailable for Silo because the
+native metadata contract has no writable tags field.
 
 Uploads use multipart image data, at most 10 MiB, and are not automatically retried
 after a connection failure with an uncertain outcome. Silo applies its artwork
@@ -46,7 +78,10 @@ Validation included live read-only discovery in both Python and PowerShell and o
 live movie-poster upload using the existing image, followed by selected-image and
 pixel checks. Series/season upload routing is covered by isolated worker tests,
 not live writes. A complete scheduled PowerShell generation run was not executed
-against the test server.
+against the test server. The additional workflows above are covered by isolated
+HTTP and executable PowerShell tests, not live Silo artwork mutations. Their native
+routes were checked against the upstream API v2 contract; pre-release API changes
+may require adapter updates.
 
 ## Settings
 

@@ -443,6 +443,7 @@ class PosterizarrScheduler:
                 "normal": ["-UISchedule"],
                 "syncjelly": ["-UISchedule", "-SyncJelly"],
                 "syncemby": ["-UISchedule", "-SyncEmby"],
+                "syncsilo": ["-UISchedule", "-SyncSilo"],
                 "backup": ["-UISchedule", "-Backup"],
                 "logoupdater": ["-UISchedule", "-LogoUpdater"]
             }

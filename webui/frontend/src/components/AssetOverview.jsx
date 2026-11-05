@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
 import {
   AlertTriangle,
   Globe,
@@ -1834,6 +1835,7 @@ const AssetOverview = () => {
   return (
     <div className="workspace-page space-y-6" aria-busy={loading}>
       <WorkspaceHeader title={t("assetOverview.title")} />
+      <SiloSupportNotice scope="skipTags" />
       {/* Tabs */}
       <div className="flex border-b border-theme-muted/30">
         <button

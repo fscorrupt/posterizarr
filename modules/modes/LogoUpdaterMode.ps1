@@ -9,9 +9,12 @@
 
 
 
-    $isOtherServer = ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true')
+    $isOtherServer = ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true' -or $UseSilo -eq 'true')
     $AllLibs = $null
-    if ($isOtherServer) {
+    if ($UseSilo -eq 'true') {
+        $AllLibs = $global:SiloLibraries
+    }
+    elseif ($isOtherServer) {
         $allLibsquery = "$($OtherMediaServerUrl.TrimEnd('/'))/Library/VirtualFolders"
         try {
             $AllLibs = Invoke-RestMethod -Method Get -Uri $allLibsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
@@ -123,7 +126,11 @@
             $libId = $SelectedLib.ItemId
             $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$libId&Recursive=true&Fields=ProviderIds,OriginalTitle,ImageTags,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie,Series&CollapseBoxSetItems=false"
             try {
-                $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
+                $Querytemp = if ($UseSilo -eq 'true') {
+                    [pscustomobject]@{ Items = @($global:SiloItems.Values | Where-Object { $_.SiloLibraryId -eq $libId -and $_.Type -in @('Movie', 'Series') }) }
+                } else {
+                    Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
+                }
                 if ($Querytemp.Items) {
                     foreach ($item in $Querytemp.Items) {
                         $allItems.Add($item)
@@ -146,7 +153,11 @@
                         Write-Entry -Message "[$title] Logo exists. Attempting Revert..." -Path $global:configLogging -Color Yellow -log Info
                         $deleteUrl = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
                         try {
-                            Invoke-RestMethod -Method Delete -Uri $deleteUrl -Headers $global:OtherMediaServerHeaders
+                            if ($UseSilo -eq 'true') {
+                                Reset-SiloArtwork -ItemId $ratingKey -Type logo
+                            } else {
+                                Invoke-RestMethod -Method Delete -Uri $deleteUrl -Headers $global:OtherMediaServerHeaders
+                            }
                             Write-Entry -Subtext "[$title] Successfully deleted via API." -Path $global:configLogging -Color Green -log Info
                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
                         } catch {
@@ -159,6 +170,7 @@
                     }
                     elseif ($LogoExifCheck -or $global:LogoExifCheck -eq $true -or "$($global:LogoExifCheck)".ToLower() -eq 'true') {
                         $existingLogoUrl = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
+                        if ($UseSilo -eq 'true') { $existingLogoUrl = $item.ImageTags.Logo }
                         $safeFileName = $ratingKey -replace '[^a-zA-Z0-9]', '_'
                         $checkLogoPath = Join-Path $global:ScriptRoot -ChildPath "temp\check_logo_$safeFileName.png"
                         $hasPosterizarrExif = $false
@@ -166,7 +178,11 @@
                             $tempDir = Join-Path $global:ScriptRoot -ChildPath "temp"
                             if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
 
-                            Invoke-WebRequest -Uri $existingLogoUrl -Headers $global:OtherMediaServerHeaders -OutFile $checkLogoPath -TimeoutSec 15 -ErrorAction Stop
+                            if ($UseSilo -eq 'true') {
+                                Invoke-WebRequest -Uri $existingLogoUrl -OutFile $checkLogoPath -MaximumRedirection 0 -TimeoutSec 15 -ErrorAction Stop
+                            } else {
+                                Invoke-WebRequest -Uri $existingLogoUrl -Headers $global:OtherMediaServerHeaders -OutFile $checkLogoPath -TimeoutSec 15 -ErrorAction Stop
+                            }
                             if (Test-IsPosterizarrAsset -Path $checkLogoPath) {
                                 $hasPosterizarrExif = $true
                             }
@@ -221,7 +237,8 @@
                     Write-Entry -Subtext "[$title] Found Logo URL: $global:LogoUrl" -Path $global:configLogging -Color Green -log Info
                     $global:matched++
                     
-                    $tempLogo = Join-Path $global:ScriptRoot -ChildPath "temp\logo_$ratingKey.png"
+                    $safeLogoId = $ratingKey -replace '[^a-zA-Z0-9_-]', '_'
+                    $tempLogo = Join-Path $global:ScriptRoot -ChildPath "temp\logo_$safeLogoId.png"
                     try {
                         Invoke-WebRequest -Uri $global:LogoUrl -OutFile $tempLogo -ErrorAction Stop
                         
@@ -233,10 +250,14 @@
                         $uploadUri = "$OtherMediaServerUrl/Items/$ratingKey/Images/Logo"
                         Write-Entry -Subtext "[$title] Uploading Logo to Jellyfin/Emby..." -Path $global:configLogging -Color DarkMagenta -log Info
                         
-                        $base64Logo = [Convert]::ToBase64String([IO.File]::ReadAllBytes($tempLogo))
-                        Invoke-RestMethod -Method Post -Uri $uploadUri -Headers $global:OtherMediaServerHeaders -Body $base64Logo -ContentType "image/png"
+                        if ($UseSilo -eq 'true') {
+                            Send-SiloArtwork -ItemId $ratingKey -ImageType 'Logo' -ImagePath $tempLogo
+                        } else {
+                            $base64Logo = [Convert]::ToBase64String([IO.File]::ReadAllBytes($tempLogo))
+                            Invoke-RestMethod -Method Post -Uri $uploadUri -Headers $global:OtherMediaServerHeaders -Body $base64Logo -ContentType "image/png"
+                        }
                         Write-Entry -Subtext "[$title] Logo uploaded successfully!" -Path $global:configLogging -Color Green -log Info
-                        $global:UploadCount = Increment-GlobalStat 'UploadCount'
+                        if ($UseSilo -ne 'true') { $global:UploadCount = Increment-GlobalStat 'UploadCount' }
                         
                     } catch {
                         Write-Entry -Subtext "[$title] Processing failed: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error

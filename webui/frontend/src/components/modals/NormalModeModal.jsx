@@ -1,5 +1,6 @@
 import React from "react";
 import { Play, X, ExternalLink } from "lucide-react";
+import SiloSupportNotice from "../SiloSupportNotice";
 
 /**
  * NormalModeModal
@@ -18,7 +19,7 @@ const NormalModeModal = React.memo(({ show, onClose, onStart, loading, status, t
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl animate-in fade-in duration-200">
         {/* Header */}
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
@@ -38,6 +39,7 @@ const NormalModeModal = React.memo(({ show, onClose, onStart, loading, status, t
 
         {/* Content */}
         <div className="p-6 space-y-4">
+          <SiloSupportNotice scope="artwork" />
           <div className="bg-theme-primary/10 border-l-4 border-theme-primary p-4 rounded">
             <p className="text-theme-primary font-medium mb-1">
               {t("runModes.normal.info", "Run Posterizarr across configured media libraries")}

@@ -34,6 +34,7 @@ import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import { formatDateTimeInTimezone, sortSchedulesByTime } from "../utils/timeUtils";
 import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
 
 const API_URL = "/api";
 
@@ -150,11 +151,22 @@ const SchedulerSettings = () => {
     return (String(useEmby).toLowerCase() === "true" || useEmby === true) && Boolean(embyUrl);
   };
 
+  const isSiloConfigured = () => {
+    if (!appConfig) return false;
+    return String(appConfig.UseSilo ?? appConfig.SiloPart?.UseSilo).toLowerCase() === "true" &&
+      Boolean(appConfig.SiloUrl || appConfig.SiloPart?.SiloUrl);
+  };
+
+  const canMirrorSilo = () => isSiloConfigured() && Boolean(
+    (appConfig?.PlexUrl || appConfig?.PlexPart?.PlexUrl) && (appConfig?.PlexToken || appConfig?.ApiPart?.PlexToken)
+  );
+
   const isAnyServerConfigured = () => {
-    return isPlexConfigured() || isJellyfinConfigured() || isEmbyConfigured();
+    return isPlexConfigured() || isJellyfinConfigured() || isEmbyConfigured() || isSiloConfigured();
   };
 
   const getActiveLogoServerType = () => {
+    if (isSiloConfigured()) return "silo";
     if (isPlexConfigured()) return "plex";
     if (isJellyfinConfigured()) return "jellyfin";
     if (isEmbyConfigured()) return "emby";
@@ -163,6 +175,7 @@ const SchedulerSettings = () => {
 
   const getActiveLogoServerName = () => {
     const type = getActiveLogoServerType();
+    if (type === "silo") return t("silo.name");
     if (type === "plex") return "Plex";
     if (type === "jellyfin") return "Jellyfin";
     if (type === "emby") return "Emby";
@@ -300,6 +313,7 @@ const SchedulerSettings = () => {
     { id: "normal", label: t("schedulerSettings.modes.normal") },
     ...(isJellyfinConfigured() ? [{ id: "syncjelly", label: t("schedulerSettings.modes.syncjelly") }] : []),
     ...(isEmbyConfigured() ? [{ id: "syncemby", label: t("schedulerSettings.modes.syncemby") }] : []),
+    ...(canMirrorSilo() ? [{ id: "syncsilo", label: t("silo.syncTitle") }] : []),
     { id: "backup", label: t("schedulerSettings.modes.backup") },
     ...(isAnyServerConfigured() ? [{ id: "logoupdater", label: t("schedulerSettings.modes.logoupdater") }] : []),
     ...(isPlexConfigured() ? [{ id: "plexsync", label: t("schedulerSettings.modes.plexsync") }] : []),
@@ -316,6 +330,7 @@ const SchedulerSettings = () => {
       if (newMode === "logoupdater" && !isAnyServerConfigured()) setNewMode("normal");
       if (newMode === "syncjelly" && !isJellyfinConfigured()) setNewMode("normal");
       if (newMode === "syncemby" && !isEmbyConfigured()) setNewMode("normal");
+      if (newMode === "syncsilo" && !canMirrorSilo()) setNewMode("normal");
     }
   }, [appConfig, newMode]);
 
@@ -335,6 +350,7 @@ const SchedulerSettings = () => {
     normal: { icon: Clock, color: "text-theme-primary", bgColor: "bg-theme-primary/10", label: t("schedulerSettings.modes.normal") },
     syncjelly: { icon: RefreshCw, color: "text-blue-400", bgColor: "bg-blue-400/10", label: t("schedulerSettings.modes.syncjelly") },
     syncemby: { icon: RefreshCw, color: "text-green-500", bgColor: "bg-green-500/10", label: t("schedulerSettings.modes.syncemby") },
+    syncsilo: { icon: RefreshCw, color: "text-emerald-500", bgColor: "bg-emerald-500/10", label: t("silo.syncTitle") },
     backup: { icon: Database, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.backup") },
     logoupdater: { icon: Grid, color: "text-purple-400", bgColor: "bg-purple-400/10", label: t("schedulerSettings.modes.logoupdater") },
     plexsync: { icon: Zap, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.plexsync") },
@@ -816,6 +832,9 @@ const SchedulerSettings = () => {
       />
 
       <WorkspaceHeader icon={Calendar} title={t("sidebar.scheduler", "Scheduler")} subtitle={timezone} />
+      <SiloSupportNotice enabled={isSiloConfigured()} />
+      {newMode === "syncsilo" && <SiloSupportNotice enabled scope="mirror" />}
+      {newMode === "logoupdater" && <SiloSupportNotice enabled={isSiloConfigured()} scope="logos" />}
 
       <div className="workspace-notice">
         <div className="flex items-start gap-3">

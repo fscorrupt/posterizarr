@@ -199,6 +199,17 @@ class SiloClient:
         rows = await self.catalog(library["id"], library["type"], item_id)
         return [await self.normalized_item(row, library["name"], library["id"]) for row in rows]
 
+    async def collections(self, library_id=None):
+        rows = await self.collection("/admin/collections", {"limit": 200})
+        return [row for row in rows if library_id in (None, "all") or str(library_id) in
+                {str(identifier) for identifier in [row.get("library_id"), *(row.get("library_ids") or [])]}]
+
+    async def upload_collection(self, collection_id, content, image_type="poster"):
+        if image_type not in ("poster", "backdrop") or not content or len(content) > 10 * 1024 * 1024:
+            raise SiloError("Silo collection artwork requires a poster/backdrop of at most 10 MiB")
+        return await self.request("PUT", f"/admin/collections/{quote(str(collection_id), safe='')}/{image_type}",
+                                  files={"image": ("artwork.jpg", content, "image/jpeg")})
+
     async def upload(self, item_id, content, image_type="poster", media_type="movie"):
         if media_type not in ("movie", "show", "series", "season"):
             raise SiloError("Silo does not support episode artwork uploads")

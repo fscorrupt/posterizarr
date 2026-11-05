@@ -8,6 +8,7 @@ param (
     [switch]$dev, # Required for trigger dev branch
     [switch]$SyncJelly, # Required for Jellyfin Sync trigger
     [switch]$SyncEmby, # Required for Emby Sync trigger
+    [switch]$SyncSilo,
     [switch]$PosterReset, # Required for Poster Reset trigger
     [switch]$SeasonPoster, # Required for Manual Trigger
     [switch]$TitleCard, # Required for Manual Trigger
@@ -160,6 +161,9 @@ elseif ($Backup) {
 }
 elseif ($Restore) {
     . "$PSScriptRoot\modules\modes\RestoreMode.ps1"
+}
+elseif ($SyncSilo) {
+    Invoke-SiloPlexMirror
 }
 elseif ($SyncJelly -or $SyncEmby) {
     . "$PSScriptRoot\modules\modes\SyncMode.ps1"
