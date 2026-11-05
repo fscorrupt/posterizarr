@@ -611,11 +611,6 @@ class RatingsCacheManager:
         where_clauses = []
         params = []
 
-        if search and search.strip():
-            s = f"%{search.strip()}%"
-            where_clauses.append("(title LIKE ? OR imdb_id LIKE ? OR item_id LIKE ? OR show_status LIKE ?)")
-            params.extend([s, s, s, s])
-
         if server_type and server_type.strip().lower() not in ("all", ""):
             where_clauses.append("server_type = ?")
             params.append(server_type.strip().lower())
@@ -637,13 +632,33 @@ class RatingsCacheManager:
                 where_clauses.append("expires_at <= ?")
                 params.append(now_iso)
 
-        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-
-
         with self.lock:
             try:
                 conn = self._get_connection()
                 cur = conn.cursor()
+                overlay_columns = set()
+                overlay_table = cur.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dynamic_overlay_cache'"
+                ).fetchone()
+                if overlay_table:
+                    overlay_columns = {row[1] for row in cur.execute("PRAGMA table_info(dynamic_overlay_cache)")}
+
+                if search and search.strip():
+                    search_value = f"%{search.strip()}%"
+                    search_clause = "title LIKE ? OR imdb_id LIKE ? OR item_id LIKE ? OR show_status LIKE ?"
+                    params.extend([search_value] * 4)
+                    if {"server_type", "item_id", "asset_type", "item_title"}.issubset(overlay_columns):
+                        search_clause += """ OR EXISTS (
+                            SELECT 1 FROM dynamic_overlay_cache AS artwork
+                            WHERE artwork.server_type = media_ratings_cache.server_type
+                              AND artwork.item_id = media_ratings_cache.item_id
+                              AND artwork.asset_type = CASE media_ratings_cache.media_type
+                                  WHEN 'episode' THEN 'titlecard' WHEN 'season' THEN 'season' ELSE 'poster' END
+                              AND artwork.item_title LIKE ?
+                        )"""
+                        params.append(search_value)
+                    where_clauses.append(f"({search_clause})")
+                where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
                 # Get total matching count
                 cur.execute(f"SELECT COUNT(*) FROM media_ratings_cache {where_sql}", tuple(params))
@@ -666,11 +681,7 @@ class RatingsCacheManager:
                     for row in rows
                 ]
                 if overlay_keys:
-                    overlay_table = cur.execute(
-                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dynamic_overlay_cache'"
-                    ).fetchone()
                     if overlay_table:
-                        overlay_columns = {row[1] for row in cur.execute("PRAGMA table_info(dynamic_overlay_cache)")}
                         required_columns = {"server_type", "item_id", "asset_type"}
                         if required_columns.issubset(overlay_columns):
                             title_column = "item_title" if "item_title" in overlay_columns else "NULL"
