@@ -22,6 +22,8 @@
     "seriesId": "IMDb-ID der Serie",
     "targetSeason": "IMDb-Staffel",
     "episodeOffset": "Episodenversatz (+/-)",
+    "continueSeasons": "Über IMDb-Staffelgrenzen fortsetzen",
+    "seasonLengthsMissing": "Staffelgrößen fehlen. IMDb-Datensatz herunterladen und aktualisieren.",
     "status": "Status",
     "search": "Episodentitel oder IMDb-ID",
     "assignment": "Zuordnung",

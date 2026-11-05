@@ -21165,6 +21165,7 @@ class EpisodeImdbMappingRequest(BaseModel):
     scope: str = Field(default="episode", pattern=r"^(episode|season)$")
     target_season: int = Field(default=1, ge=0)
     episode_offset: int = 0
+    continue_seasons: bool = False
 
 
 @app.get("/api/dynamic-overlays/ratings-cache/imdb-dataset")
@@ -21196,7 +21197,7 @@ def _get_episode_imdb_entry(entry_id):
 
 
 @app.get("/api/dynamic-overlays/ratings-cache/episode/{entry_id}/imdb")
-def get_episode_imdb_mapping(entry_id: int, query: str = Query("", max_length=250)):
+def get_episode_imdb_mapping(entry_id: int, query: str = Query("", max_length=250), series_id: str = Query("", max_length=14)):
     from ratings_service import imdb_dataset
     item = _get_episode_imdb_entry(entry_id)
     context = {"episode_title": item.get("title"), "file_path": (item.get("_overlay") or {}).get("media_file_path")}
@@ -21208,8 +21209,10 @@ def get_episode_imdb_mapping(entry_id: int, query: str = Query("", max_length=25
         current = imdb_dataset.search(match["imdb_id"])
         if not query.strip():
             candidates = current
+    season_mapping = imdb_dataset.season_mapping(item["server_type"], context)
     return {"success": True, "mapping": match, "context": context, "candidates": candidates,
-            "season_mapping": imdb_dataset.season_mapping(item["server_type"], context)}
+            "season_mapping": season_mapping,
+            "season_lengths": imdb_dataset.season_lengths(series_id or (season_mapping or {}).get("imdb_id"))}
 
 
 @app.post("/api/dynamic-overlays/ratings-cache/episode/{entry_id}/imdb")
@@ -21225,7 +21228,7 @@ def save_episode_imdb_mapping(entry_id: int, req: EpisodeImdbMappingRequest):
     try:
         if req.scope == "season":
             context = imdb_dataset.context(item["server_type"], item["item_id"])
-            imdb_dataset.save_season_mapping(item["server_type"], context, req.imdb_id, req.target_season, req.episode_offset)
+            imdb_dataset.save_season_mapping(item["server_type"], context, req.imdb_id, req.target_season, req.episode_offset, req.continue_seasons)
             updated = ratings_cache.apply_imdb_season_mapping(imdb_dataset, item["server_type"], context)
             return {"success": True, "updated": updated,
                     "mapping": imdb_dataset.resolve(item["server_type"], item["item_id"])}

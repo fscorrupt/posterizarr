@@ -65,6 +65,7 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
   const [seriesId, setSeriesId] = useState("");
   const [targetSeason, setTargetSeason] = useState(1);
   const [episodeOffset, setEpisodeOffset] = useState(0);
+  const [continueSeasons, setContinueSeasons] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -76,7 +77,7 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
     setLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const result = await request(`${path}?query=${encodeURIComponent(query)}`, { signal: controller.signal });
+        const result = await request(`${path}?query=${encodeURIComponent(query)}&series_id=${encodeURIComponent(seriesId.trim())}`, { signal: controller.signal });
         if (controller.signal.aborted) return;
         if (!initialized.current) {
           const currentId = result.mapping?.imdb_id;
@@ -88,6 +89,7 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
           setSeriesId(season?.imdb_id || "");
           setTargetSeason(season?.target_season ?? 1);
           setEpisodeOffset(season?.episode_offset ?? 0);
+          setContinueSeasons(Boolean(season?.continue_seasons));
           initialized.current = true;
         }
         setData(result);
@@ -99,7 +101,7 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
       }
     }, 250);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [path, query]);
+  }, [path, query, seriesId]);
 
   const save = async event => {
     event.preventDefault();
@@ -115,6 +117,7 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
     try {
       await request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         imdb_id: imdbId, scope, target_season: Number(targetSeason), episode_offset: Number(episodeOffset),
+        continue_seasons: continueSeasons,
       }) });
       onSaved();
       onClose();
@@ -123,6 +126,18 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
       setSaving(false);
     }
   };
+
+  let previewSeason = Number(targetSeason);
+  let previewEpisode = Number(data?.context?.episode_number) + Number(episodeOffset);
+  if (continueSeasons) {
+    while (previewEpisode > 0) {
+      const length = data?.season_lengths?.find(row => row.season === previewSeason)?.episodes;
+      if (!length) { previewEpisode = null; break; }
+      if (previewEpisode <= length) break;
+      previewEpisode -= length;
+      previewSeason += 1;
+    }
+  }
 
   return (
     <div className="app-dialog-backdrop fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-3"
@@ -166,8 +181,12 @@ function EpisodeImdbDialog({ entry, onClose, onSaved, disabled }) {
                   className="mt-1 w-full min-w-0 border border-theme rounded-lg bg-theme-bg px-3 py-2 text-sm disabled:opacity-50" />
               </label>
             </div>
+            <label className="flex items-start gap-2 text-sm text-theme-text"><input type="checkbox" className="mt-1 shrink-0" disabled={!seasonEnabled}
+              checked={continueSeasons} onChange={event => setContinueSeasons(event.target.checked)} />{t("imdbDataset.continueSeasons")}</label>
+            {seasonEnabled && continueSeasons && !loading && !data?.season_lengths?.length && <p role="status" className="text-xs text-theme-muted">{t("imdbDataset.seasonLengthsMissing")}</p>}
             {seasonEnabled && data?.context?.episode_number != null && <output className="block text-xs text-theme-muted break-words">
-              S{data.context.season_number} E{data.context.episode_number}{" -> "}S{targetSeason} E{Number(data.context.episode_number) + Number(episodeOffset)}
+              S{data.context.season_number} E{data.context.episode_number}{" -> "}
+              {loading ? t("imdbDataset.loading") : previewEpisode > 0 ? `S${previewSeason} E${previewEpisode}` : t("imdbDataset.states.unmapped")}
             </output>}
           </fieldset> : <>
           <label className="block text-xs text-theme-text">{t("imdbDataset.search")}

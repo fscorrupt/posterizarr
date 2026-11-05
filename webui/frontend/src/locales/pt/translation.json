@@ -22,6 +22,8 @@
     "seriesId": "ID IMDb da série",
     "targetSeason": "Temporada IMDb",
     "episodeOffset": "Desfasamento dos episódios (+/-)",
+    "continueSeasons": "Continuar nas temporadas IMDb seguintes",
+    "seasonLengthsMissing": "Número de episódios por temporada indisponível. Transfira e atualize os dados IMDb.",
     "status": "Estado",
     "search": "Título do episódio ou ID IMDb",
     "assignment": "Associação",

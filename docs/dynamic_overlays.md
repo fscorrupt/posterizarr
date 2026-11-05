@@ -157,7 +157,8 @@ and imported in bounded batches, not loaded entirely into RAM.
 The index and explicit episode mappings are stored in
 `database/imdb_dataset.db` under the normal application data directory. Only
 rated episodes and series titles are indexed for matching; ratings are available
-by IMDb ID for movies and shows too. Import runs in a background thread. A failed
+by IMDb ID for movies and shows too. Season lengths are additionally derived from
+the complete episode list, including unrated episodes. Import runs in a background thread. A failed
 import keeps the previous published index and manual choices. After the first
 successful manual import, the background ratings scheduler checks for an update
 every 24 hours while Dynamic Overlays and this source are enabled. Failed
@@ -203,6 +204,20 @@ The target episode number is the local episode number plus the offset: local
 episode 13 with an offset of -12 becomes IMDb episode 1. The dialog previews
 the numbering for the selected episode. Refresh episode ratings first if the
 series/season context is missing and the season option is disabled.
+
+If one local season spans multiple IMDb seasons, enable **Continue across IMDb
+seasons**. Numbering then continues through consecutive IMDb seasons starting
+at the selected target season. For example, with 25 episodes in IMDb season 1
+and an offset of 0, local S20E25 maps to S01E25 and S20E26 maps to S02E01;
+the same rule can continue through S03 and later seasons. Specials (season 0)
+are not included unless explicitly selected as the starting season. Missing
+season boundaries or target episodes are not guessed. The local media-server
+season number remains unchanged.
+
+After updating from a version without this option, run **Download & Update**
+once to populate complete season lengths, then enable continuation and save
+the mapping again. Existing mappings remain fixed to their chosen target season
+until continuation is enabled. The preview uses the same imported season lengths.
 
 Saving updates IMDb IDs/ratings for already indexed episodes of that season
 on the same server; future episode lookups use the saved rule too. Individual

@@ -56,6 +56,9 @@ class ImdbDataset:
                     server TEXT NOT NULL, series TEXT NOT NULL, season INTEGER NOT NULL,
                     imdb_id TEXT NOT NULL, target_season INTEGER NOT NULL, episode_offset INTEGER NOT NULL,
                     PRIMARY KEY(server, series, season));
+                CREATE TABLE IF NOT EXISTS season_lengths (
+                    parent_id TEXT NOT NULL, season INTEGER NOT NULL, episodes INTEGER NOT NULL,
+                    PRIMARY KEY(parent_id, season));
                 CREATE TABLE IF NOT EXISTS ratings (imdb_id TEXT PRIMARY KEY, rating REAL, votes INTEGER);
                 CREATE TABLE IF NOT EXISTS titles (
                     imdb_id TEXT PRIMARY KEY, title TEXT, original_title TEXT, normalized TEXT,
@@ -63,6 +66,9 @@ class ImdbDataset:
                 CREATE TABLE IF NOT EXISTS episodes (
                     imdb_id TEXT PRIMARY KEY, parent_id TEXT, season INTEGER, episode INTEGER);
             """)
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(season_mappings)")}
+            if "continue_seasons" not in columns:
+                connection.execute("ALTER TABLE season_mappings ADD COLUMN continue_seasons INTEGER NOT NULL DEFAULT 0")
 
     def status(self):
         result = {"enabled": False, "updated_at": None, "last_attempt": None, "ratings": 0, "episodes": 0, "job": dict(self.job)}
@@ -128,12 +134,25 @@ class ImdbDataset:
             season_mapping = self.season_mapping(server, context)
             if media_type == "episode" and not manual and season_mapping:
                 target_episode = int(context.get("episode_number") or 0) + season_mapping["episode_offset"]
+                target_season = season_mapping["target_season"]
+                if season_mapping.get("continue_seasons"):
+                    lengths = self.season_lengths(season_mapping["imdb_id"])
+                    while target_episode > 0:
+                        length = next((row["episodes"] for row in lengths if row["season"] == target_season), None)
+                        if length is None:
+                            target_episode = 0
+                            break
+                        if target_episode <= length:
+                            break
+                        target_episode -= length
+                        target_season += 1
                 rows = connection.execute("""
                     SELECT e.imdb_id, r.rating, r.votes FROM episodes e
                     LEFT JOIN ratings r USING(imdb_id)
                     WHERE e.parent_id=? AND e.season=? AND e.episode=? LIMIT 2
-                """, (season_mapping["imdb_id"], season_mapping["target_season"], target_episode)).fetchall()
-                result = {"mode": "season", "season_mapping": season_mapping, "context": context}
+                """, (season_mapping["imdb_id"], target_season, target_episode)).fetchall()
+                result = {"mode": "season", "season_mapping": season_mapping, "context": context,
+                          "resolved_season": target_season, "resolved_episode": target_episode}
                 if context.get("episode_number") is not None and target_episode > 0 and len(rows) == 1:
                     return {**result, **dict(rows[0]), "status": "matched"}
                 return {**result, "status": "unmapped", "candidates": []}
@@ -198,7 +217,16 @@ class ImdbDataset:
                                      (server, str(series), int(season))).fetchone()
             return dict(row) if row else None
 
-    def save_season_mapping(self, server, context, imdb_id, target_season=1, episode_offset=0):
+    def season_lengths(self, imdb_id):
+        if not imdb_id or not self.path.exists():
+            return []
+        with self.lock, closing(self.connect()) as connection:
+            if not connection.execute("SELECT 1 FROM sqlite_master WHERE name='season_lengths'").fetchone():
+                return []
+            return [dict(row) for row in connection.execute(
+                "SELECT season, episodes FROM season_lengths WHERE parent_id=? ORDER BY season", (imdb_id,))]
+
+    def save_season_mapping(self, server, context, imdb_id, target_season=1, episode_offset=0, continue_seasons=False):
         self.initialize()
         series = context.get("series_title") or context.get("parent_imdb_id")
         season = context.get("season_number")
@@ -212,8 +240,10 @@ class ImdbDataset:
                 if (not IMDB_ID.fullmatch(imdb_id) or target_season < 0 or not connection.execute(
                         "SELECT 1 FROM titles WHERE imdb_id=? AND kind IN ('tvSeries', 'tvMiniSeries')", (imdb_id,)).fetchone()):
                     raise ValueError("Select a series present in the local IMDb dataset and a valid target season")
-                connection.execute("INSERT OR REPLACE INTO season_mappings VALUES (?, ?, ?, ?, ?, ?)",
-                                   (server, str(series), int(season), imdb_id, int(target_season), int(episode_offset)))
+                if continue_seasons and not any(row["season"] == target_season for row in self.season_lengths(imdb_id)):
+                    raise ValueError("Download and update the IMDb dataset first to load complete season lengths")
+                connection.execute("INSERT OR REPLACE INTO season_mappings (server, series, season, imdb_id, target_season, episode_offset, continue_seasons) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                   (server, str(series), int(season), imdb_id, int(target_season), int(episode_offset), int(continue_seasons)))
 
     def save_mapping(self, server, item, imdb_id):
         self.initialize()
@@ -277,6 +307,7 @@ class ImdbDataset:
                 "ratings": "imdb_id TEXT PRIMARY KEY, rating REAL, votes INTEGER",
                 "episodes": "imdb_id TEXT PRIMARY KEY, parent_id TEXT, season INTEGER, episode INTEGER",
                 "titles": "imdb_id TEXT PRIMARY KEY, title TEXT, original_title TEXT, normalized TEXT, original_normalized TEXT, kind TEXT, year INTEGER",
+                "season_lengths": "parent_id TEXT NOT NULL, season INTEGER NOT NULL, episodes INTEGER NOT NULL, PRIMARY KEY(parent_id, season)",
             }
             for name, schema in schemas.items():
                 with connection:
@@ -292,6 +323,8 @@ class ImdbDataset:
             for name, headers, statement in imports:
                 self.job["phase"] = f"importing_{name}"
                 batch = []
+                lengths = {}
+                length_statement = "INSERT INTO next_season_lengths VALUES (?, ?, ?) ON CONFLICT(parent_id, season) DO UPDATE SET episodes=MAX(episodes, excluded.episodes)"
                 with gzip.open(files[name], "rt", encoding="utf-8", newline="") as source:
                     reader = csv.DictReader(source, delimiter="\t", quoting=csv.QUOTE_NONE)
                     if not set(headers).issubset(reader.fieldnames or []):
@@ -308,6 +341,9 @@ class ImdbDataset:
                         elif name == "episode":
                             values = (identifier, row["parentTconst"], None if row["seasonNumber"] == "\\N" else int(row["seasonNumber"]),
                                       None if row["episodeNumber"] == "\\N" else int(row["episodeNumber"]), identifier)
+                            if values[2] is not None and values[2] >= 0 and values[3] is not None and values[3] > 0:
+                                coordinate = (values[1], values[2])
+                                lengths[coordinate] = max(lengths.get(coordinate, 0), values[3])
                         else:
                             if row["titleType"] not in ("tvSeries", "tvMiniSeries", "tvEpisode"):
                                 continue
@@ -318,16 +354,19 @@ class ImdbDataset:
                         if len(batch) >= 5000:
                             with connection:
                                 connection.executemany(statement, batch)
+                                connection.executemany(length_statement, [(*coordinate, length) for coordinate, length in lengths.items()])
                             batch.clear()
+                            lengths.clear()
                     if batch:
                         with connection:
                             connection.executemany(statement, batch)
+                            connection.executemany(length_statement, [(*coordinate, length) for coordinate, length in lengths.items()])
             counts = {name: connection.execute(f"SELECT COUNT(*) FROM next_{name}").fetchone()[0] for name in ("ratings", "episodes", "titles")}
             if not all(counts.values()):
                 raise ValueError("Empty IMDb dataset; previous index preserved")
             with self.lock, connection:
                 connection.execute("BEGIN IMMEDIATE")
-                for name in ("ratings", "episodes", "titles"):
+                for name in schemas:
                     connection.execute(f"DROP TABLE {name}")
                     connection.execute(f"ALTER TABLE next_{name} RENAME TO {name}")
                 connection.execute("CREATE INDEX imdb_episode_parent ON episodes(parent_id, season, episode)")

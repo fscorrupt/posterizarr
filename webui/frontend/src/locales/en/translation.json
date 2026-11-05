@@ -22,6 +22,8 @@
     "seriesId": "IMDb series ID",
     "targetSeason": "IMDb season",
     "episodeOffset": "Episode offset (+/-)",
+    "continueSeasons": "Continue across IMDb seasons",
+    "seasonLengthsMissing": "Season lengths unavailable. Download and update the IMDb dataset.",
     "status": "Status",
     "search": "Episode title or IMDb ID",
     "assignment": "Assignment",
