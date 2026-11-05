@@ -1,0 +1,3147 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://fscorrupt.github.io/posterizarr/dynamic_overlays/">
+      
+      
+      
+        <link rel="prev" href="../action_center/">
+      
+      
+        <link rel="next" href="../blueprints/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../images/webhook.png">
+      <meta name="generator" content="zensical-0.0.74">
+    
+    
+      
+        <title>Dynamic Overlays - Posterizarr</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../assets/stylesheets/classic/main.94dd801d.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../assets/stylesheets/classic/palette.813d4b3f.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,500,500i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
+    <div data-md-component="skip">
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="./.." title="Posterizarr" class="md-header__button md-logo" aria-label="Posterizarr" data-md-component="logo">
+      
+  <img src="../images/logo_banner.png" alt="Posterizarr">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+      <span class="md-visually-hidden">Navigation</span>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Posterizarr
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Dynamic Overlays
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+          <span class="md-visually-hidden">Search</span>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/fscorrupt/posterizarr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fscorrupt/posterizarr
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="./.." title="Posterizarr" class="md-nav__button md-logo" aria-label="Posterizarr" data-md-component="logo">
+      
+  <img src="../images/logo_banner.png" alt="Posterizarr">
+
+    </a>
+    Posterizarr
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fscorrupt/posterizarr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fscorrupt/posterizarr
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Start Here
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_2">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Start Here
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  First-time setup
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Requirements
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choose an installation method
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Manual PowerShell walkthrough
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../uiinstallation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Run the Web UI from source
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Use Posterizarr
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+            <label class="md-nav__title" for="__nav_3">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Use Posterizarr
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  What Posterizarr does
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../showcase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Artwork showcase
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Run modes and automation
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../action_center/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Action Center
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+        <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Dynamic Overlays
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Dynamic Overlays
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Overview
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-from-the-web-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Quick Start From the Web UI
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start From the Web UI">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#share-a-complete-overlay-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Share a Complete Overlay Bundle
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#importing-an-existing-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Importing an Existing Configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-ratings-and-score-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Provider Ratings and Score Layout
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simkl-catalog-ratings" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SIMKL Catalog Ratings
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-imdb-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Local IMDb Dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#omdb-run-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        OMDb Run Protection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anime-season-ratings" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Anime Season Ratings
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automatic-retry-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Automatic Retry Schedule
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rule-artwork-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Rule Artwork Targets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#episode-ratings" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Episode Ratings
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#language-priority-and-parent-video-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Language Priority and Parent Video Formats
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#folder-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Folder Layout
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kometa-compatibility-and-attribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Kometa Compatibility and Attribution
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-overlay-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported Overlay Types
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-ui-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Web UI Features
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web UI Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#background-change-detection-dry-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Background Change Detection &amp; Dry Run
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0-guided-onboarding-setup-wizard" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        0. Guided Onboarding Setup Wizard
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-importer-pre-flight-validator" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Importer &amp; Pre-flight Validator
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-active-libraries-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. Active Libraries &amp; Rules
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Active Libraries &amp; Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recommended-defaults-level-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Recommended Defaults &amp; Level Guide
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-live-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Live Preview
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-169-backdrop-multi-source-ratings-overlays" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. 16:9 Backdrop &amp; Multi-Source Ratings Overlays
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-cache-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Cache &amp; Sync
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-regional-streaming-availability" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Regional Streaming Availability
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Security Architecture
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-source-attribution-license" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Open Source Attribution &amp; License
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blueprints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Blueprints and recipes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../namingconvention/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Manual asset naming
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plex_image_cleanup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Plex Image Cleanup (ImageMaid)
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Servers & Integrations
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_4">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Servers & Integrations
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agregarrintegration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Agregarr Integration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../jellyfin_plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Jellyfin Plugin
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../emby_plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Emby Plugin
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../homepage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Homepage API integration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kometaintegration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Optional Kometa Compatibility
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration & Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_5">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Configuration & Reference
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../searchorder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Artwork search order
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platformandtools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Platform & Tools
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Networking
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faqs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  FAQs and troubleshooting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  API Endpoints
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Privacy and telemetry
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Developer Guide
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_6">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Developer Guide
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs_preview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Documentation preview workflow
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../powershell_scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  PowerShell Scripts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backend_python/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Backend Python
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frontend_components/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Frontend Components
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../llms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  LLM Architecture Guide
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Overview
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-from-the-web-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Quick Start From the Web UI
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start From the Web UI">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#share-a-complete-overlay-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Share a Complete Overlay Bundle
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#importing-an-existing-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Importing an Existing Configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-ratings-and-score-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Provider Ratings and Score Layout
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simkl-catalog-ratings" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SIMKL Catalog Ratings
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-imdb-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Local IMDb Dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#omdb-run-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        OMDb Run Protection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anime-season-ratings" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Anime Season Ratings
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automatic-retry-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Automatic Retry Schedule
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rule-artwork-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Rule Artwork Targets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#episode-ratings" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Episode Ratings
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#language-priority-and-parent-video-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Language Priority and Parent Video Formats
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#folder-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Folder Layout
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kometa-compatibility-and-attribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Kometa Compatibility and Attribution
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-overlay-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported Overlay Types
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-ui-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Web UI Features
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web UI Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#background-change-detection-dry-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Background Change Detection &amp; Dry Run
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0-guided-onboarding-setup-wizard" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        0. Guided Onboarding Setup Wizard
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-importer-pre-flight-validator" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Importer &amp; Pre-flight Validator
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-active-libraries-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. Active Libraries &amp; Rules
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Active Libraries &amp; Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recommended-defaults-level-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Recommended Defaults &amp; Level Guide
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-live-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Live Preview
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-169-backdrop-multi-source-ratings-overlays" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. 16:9 Backdrop &amp; Multi-Source Ratings Overlays
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-cache-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Cache &amp; Sync
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-regional-streaming-availability" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Regional Streaming Availability
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Security Architecture
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-source-attribution-license" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Open Source Attribution &amp; License
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
+                
+                  
+
+  
+  
+
+
+<h1 id="dynamic-overlays-kometa-compatible">Dynamic Overlays (Kometa-Compatible)</h1>
+<p><strong>Posterizarr's native in-memory dynamic overlay engine.</strong>
+It uses a Pillow (<code>PIL</code>) compositor and can read a supported subset of Kometa-compatible configuration and assets. It does not run Kometa.</p>
+<hr />
+<h2 id="overview">Overview</h2>
+<p>Kometa (formerly Plex Meta Manager) is a separate application. Posterizarr's Dynamic Overlays provides a native alternative for supported overlay rules, without requiring a Kometa container or routing artwork through Plex.</p>
+<p><strong>Dynamic Overlays</strong> in Posterizarr solves this natively:</p>
+<ol>
+<li><strong>In-Memory Compositing (Clean Assets Preserved):</strong>
+   Clean posters and titlecards stored in <code>/assets</code> remain <strong>100% untouched and clean on disk</strong>. Compositing happens entirely in RAM before pushing directly to the media server API.</li>
+<li><strong>True Multi-Media Server Support:</strong>
+   Pushes overlaid artwork directly to <strong>Plex</strong>, <strong>Jellyfin</strong>, and <strong>Emby</strong> via their respective REST APIs.</li>
+<li><strong>Change-Detection Fingerprint Cache:</strong>
+   Tracks clean artwork, metadata, overlay recipes, and verified artwork identity to avoid unnecessary renders and uploads. Incremental runs still enumerate items, evaluate rules, and may perform media-server verification requests. Changed metadata, rules, artwork selection, and explicit full/forced runs can require rendering or uploads.</li>
+<li><strong>Predictable File Layout:</strong>
+   Configurations, downloaded defaults, and custom overlay assets are stored under <code>Overlayfiles/dynamic_overlays/</code> in the writable application data directory.</li>
+</ol>
+<hr />
+<h2 id="quick-start-from-the-web-ui">Quick Start From the Web UI</h2>
+<ol>
+<li>Open <strong>Builders &gt; Dynamic Overlays</strong>. Use <strong>Setup Wizard</strong> for a guided first
+   setup, or import your supported Kometa-style YAML in <strong>Config &amp; YAML Files</strong>.</li>
+<li>Keep <strong>Dry Run</strong> enabled while testing. Check the Master Switch and confirm
+   which libraries and artwork formats are in scope before running a sync.</li>
+<li>In <strong>Libraries &amp; Rules</strong>, review the imported rules. Check readiness and fetch
+   any required official templates, fonts, or images before previewing.</li>
+<li>Open <strong>Visual Badges</strong> or <strong>Live Preview</strong>, choose the library and format, and
+   adjust the badges. <strong>Save Layout</strong> persists the layout; a preview alone does
+   not update media-server artwork.</li>
+<li>Run a dry-run sync in <strong>Sync &amp; Cache</strong> and review the log and cache results.
+   Turn off Dry Run only when you intend to upload artwork to the selected server.</li>
+<li>For a smaller test, use <strong>Select Movie / Show</strong> in <strong>Sync &amp; Cache</strong> instead of
+   processing an entire library. Avoid <strong>Force Reapply</strong> unless you deliberately
+   want to reapply artwork.</li>
+</ol>
+<p><img alt="Live Preview showing sample artwork, resolution and score badges, placement controls and alignment guides" src="../images/ui-dynamic-overlays.png" /></p>
+<p><em>Development-build screenshot with example library names. The artwork and badge
+metadata are preview samples, not the result of a media-server sync. The visible
+configuration is an example, not the installation defaults.</em></p>
+<div class="admonition warning">
+<p class="admonition-title">Kometa compatibility is selective</p>
+<p>Importing a syntactically valid Kometa configuration does not mean every
+Kometa builder, collection rule, or overlay is implemented. Review imported
+rules and readiness before applying them. Posterizarr renders supported
+overlays itself; it does not start Kometa.</p>
+</div>
+<h3 id="share-a-complete-overlay-bundle">Share a Complete Overlay Bundle</h3>
+<p>Use <strong>Export bundle</strong> in the Dynamic Overlays header to download
+<code>posterizarr-overlays.zip</code>. This is separate from Blueprint exports and raw
+YAML uploads. It contains the available local overlay YAML, images (including
+custom resolution badges), fonts, visual layouts, rating-source selections,
+and portable feature settings such as AniMetaFill styling and enablement.
+Shared <code>Overlayfiles</code>, <code>overlays</code>, and <code>fonts</code> resources are included when
+available locally. Cache, backup, and temporary preview directories are excluded.</p>
+<p>API keys, tokens, passwords, media-server connections, and the main application
+configuration are not exported. Import does not replace existing provider keys
+with blank or null values and does not change the destination media server.
+Credentials required by imported features must already be configured locally.</p>
+<p>To import a bundle:</p>
+<ol>
+<li>Select <strong>Import bundle</strong> and choose the ZIP. Inspection alone changes nothing.</li>
+<li>Map each source profile to an existing library on the destination server, or
+   leave it at <strong>Skip this profile</strong>. Foreign library names are never created
+   automatically; movie/show types must match.</li>
+<li>Choose <strong>AniMetaFill</strong> and <strong>Season ratings</strong> for the mapped show libraries.
+   <strong>Restore feature settings</strong> also restores the exported rating sources,
+   styles, and enabled states. Leave it off to import layouts/assets without
+   replacing shared feature preferences.</li>
+<li>Review any conflicting shared YAML/assets. Replacing them requires explicit
+   confirmation and can affect other libraries using those same files. Changed
+   files are backed up under <code>dynamic_overlays/bundle_backups/</code>; each backup has
+   an <code>index.json</code> recording its original destination paths.</li>
+<li>Confirm <strong>Import bundle</strong>. Review the imported layout in preview and Dry Run
+   before deliberately enabling uploads. The import itself uploads no artwork
+   and always sets change detection to <strong>Dry Run</strong>, including when shared
+   feature settings are not restored.</li>
+</ol>
+<p>The import review preserves the local server selection and only lists libraries
+available from that server. Refresh the server's library list first if it is
+empty. An active overlay or AniMetaFill run blocks imports.</p>
+<div class="admonition note">
+<p class="admonition-title">Portable settings, not a database clone</p>
+<p>Ratings caches, IMDb indexes, server item IDs, and manual episode/season
+mappings are not transferred. The local IMDb feature flag can be restored,
+but its datasets must be downloaded separately. AniMetaFill classification
+can be regenerated against the mapped local libraries. Remote-only or missing
+dependencies are not downloaded during export; use readiness checks after
+import. Only share fonts and artwork you have permission to redistribute,
+and only import bundles from sources you trust.</p>
+</div>
+<p>Bundles are limited to 128 MiB compressed, 256 MiB expanded, and 2,048 files.
+Archive paths, checksums, file types, and library mappings are validated before
+files are written. A failed file-replacement step restores the prior files.</p>
+<h3 id="importing-an-existing-configuration">Importing an Existing Configuration</h3>
+<p>Upload <code>config.yml</code> or <code>config.yaml</code> together with any referenced custom overlay
+YAML files. Readiness reports missing dependencies separately from YAML syntax
+errors. Blank optional <code>libraries</code>, <code>overlay_files</code>, and <code>template_variables</code>
+sections are accepted by the current importer as empty containers. Existing
+nonempty values are retained, and uploading does not rewrite the YAML bytes.</p>
+<p>If an older build reports <code>argument of type 'NoneType' is not iterable</code>, upgrade
+the backend. As a workaround for a blank variables block, use
+<code>template_variables: {}</code>. Never replace a populated variables block with an empty
+one; its values define the overlay's behavior.</p>
+<h3 id="provider-ratings-and-score-layout">Provider Ratings and Score Layout</h3>
+<p>Provider badges support IMDb (<code>imdb</code>), Rotten Tomatoes critics (<code>tomatoes</code>),
+Rotten Tomatoes audience (<code>tomatoesaudience</code>), TMDb (<code>tmdb</code>), Trakt (<code>trakt</code>),
+Metacritic (<code>metacritic</code>), Letterboxd (<code>letterboxd</code>), SIMKL (<code>simkl</code>), and
+MyAnimeList (<code>mal</code>). Choose providers in
+<strong>Visual Badges</strong> or <strong>Live Preview</strong>. The initial IMDb/RT Critics/TMDb selection
+is a default, not a three-provider limit. Cached ratings are independent of this
+selection; cached values do not automatically enable their badges.
+Live Preview uses sample values, not the selected item's cached ratings.
+Incremental episode overlay syncs reuse unexpired ratings caches even when some
+selected provider scores are missing. Missing scores alone do not trigger another
+provider lookup or extend the cache expiry. Use <strong>Ratings Cache &amp; Refresh</strong> to
+explicitly fetch missing scores; automatic refresh keeps its existing candidate
+selection and retry policy. Expired or absent caches and full syncs still resolve
+ratings, reusing the episode's cached IMDb ID when native metadata omits it.
+When provider ratings are available, the built-in provider layout suppresses the
+legacy <code>rating_high</code> / <code>user_rating</code> audience badges from imported overlay files,
+so the old audience score is not drawn a second time.</p>
+<p>Provider score controls are saved with the library and artwork-format layout:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Automatic fixed slots (<code>score_size_mode: auto</code>)</td>
+<td>Reserve provider-specific score space so changing scores does not move the logo.</td>
+</tr>
+<tr>
+<td>Custom fixed width (<code>score_size_mode: fixed</code>)</td>
+<td>Set <code>score_width</code> from 16 to 600 reference-canvas pixels; narrower slots shrink only the number to fit.</td>
+</tr>
+<tr>
+<td>Fit score content (<code>score_size_mode: content</code>)</td>
+<td>Fit the backdrop to the current score while keeping the logo anchored.</td>
+</tr>
+<tr>
+<td>Number side (<code>score_position</code>)</td>
+<td>Place the number to the <code>left</code> or <code>right</code> of its provider logo.</td>
+</tr>
+<tr>
+<td>Number alignment (<code>score_alignment</code>)</td>
+<td>Align the number <code>left</code>, <code>center</code>, or <code>right</code> within automatic/custom fixed slots. Not used in content mode.</td>
+</tr>
+<tr>
+<td>Automatic logo size</td>
+<td>Provider logos grow proportionally with <code>font_size</code>. Standard font sizes retain their existing logo proportions. Increasing pill width or padding alone does not enlarge the logo.</td>
+</tr>
+<tr>
+<td>Fixed logo height (<code>scale_height</code>)</td>
+<td>An explicit value in the rating rule's <code>template_variables</code> fixes the logo height in reference-canvas pixels. Remove this override to restore automatic sizing with the font.</td>
+</tr>
+</tbody>
+</table>
+<p>Widths scale from the portrait 1000 x 1500 or landscape 1920 x 1080 reference
+canvas to the output artwork. These controls affect multi-provider badges, not
+the compact single-score badge. Previewing and saving do not upload artwork;
+existing configurations without the new fields retain their legacy rendering.
+DynamicOverlaysSync.log.oldDynamicOverlaysSync.log.old</p>
+<h3 id="simkl-catalog-ratings">SIMKL Catalog Ratings</h3>
+<p>Open <strong>Visual Badges &gt; Overlay Engine, Concurrency &amp; Provider Settings</strong> and
+enter the optional <strong>SIMKL Client ID</strong> beside the MDBList/OMDb credentials.
+Use <strong>Test</strong> to verify it. This setting is independent of AniMetaFill: no
+AniMetaFill setup, user login, or OAuth token is required for these public
+catalog lookups. The same Client ID used in AniMetaFill can be entered here,
+but it is not copied automatically and entering it does not enable AniMetaFill.
+Create a Client ID at <a href="https://simkl.com/settings/developer/">SIMKL developer settings</a>.</p>
+<p>The resolver reads existing server ratings and TMDb/MDBList first, then uses
+SIMKL for missing selected IMDb/SIMKL/MAL values before the OMDb fallback.
+OMDb is queried only for selected missing scores it can supply. External IMDb,
+TMDb, or TVDb IDs are resolved through SIMKL's <code>/redirect</code> without following
+the HTML redirect, then the matching movie/TV/anime detail endpoint is read.
+SIMKL does not replace valid scores already resolved in the same lookup.</p>
+<p>Select <strong>SIMKL</strong> or <strong>MyAnimeList</strong> in the provider selectors to display those
+distinct scores. A newly selected missing SIMKL/MAL value can be fetched even
+when other scores are already cached. Scores and their SIMKL source link are
+saved in the existing ratings cache; expired cached SIMKL/MAL sources are also
+refreshed by the ratings-refresh job. Missing optional logo images use explicit
+<code>SIMKL</code>/<code>MAL</code> text labels; custom image overrides remain available.
+The MAL badge uses the official <code>rating/MAL.png</code> asset. After selecting
+MyAnimeList, use <strong>Config &amp; YAML Files &gt; Download All Available</strong> if that logo
+is listed as missing/fetchable. Existing custom <code>MyAnimeList.png</code> files are
+also supported. With the logo present, the badge shows the logo and numerical
+score separately; the logo follows the configured font size unless a fixed
+<code>scale_height</code> overrides it.</p>
+<p>SIMKL title ratings are never used as episode ratings. The documented TV/anime
+episode-list responses do not contain rating fields. Missing title/provider
+scores remain absent; zero or invalid scores are ignored. The cache browser
+links to the specific SIMKL title for attribution. API calls identify Posterizarr
+and do not log the Client ID or request URLs. Existing cache TTLs still apply;
+refreshing cached scores does not itself upload artwork.</p>
+<p>See <a href="https://api.simkl.org/api-reference/ratings.md">SIMKL ratings</a>,
+<a href="https://api.simkl.org/resources/rate-limits.md">rate limits</a>, and
+<a href="https://api.simkl.org/api-rules.md">API rules</a>.</p>
+<h3 id="local-imdb-dataset">Local IMDb Dataset</h3>
+<p>Open <strong>Builders &gt; Dynamic Overlays &gt; Sync &amp; Cache &gt; Browse Ratings</strong> to open
+<strong>Ratings Cache &amp; Refresh</strong>. Enable <strong>Local IMDb Dataset</strong>,
+then select <strong>Download &amp; Update</strong> and confirm the import. This optional source is
+disabled by default. It downloads the official <code>title.ratings.tsv.gz</code>,
+<code>title.episode.tsv.gz</code>, and <code>title.basics.tsv.gz</code> files from
+<a href="https://datasets.imdbws.com/">IMDb</a>. IMDb permits these datasets for
+<a href="https://data.imdb.com/non-commercial-datasets/">non-commercial use only</a>.
+Downloads can exceed 1 GB compressed; allow several GB of free disk space and
+time for the initial indexing, especially on a NAS. Files are streamed to disk
+and imported in bounded batches, not loaded entirely into RAM.</p>
+<p><img alt="Local IMDb Dataset showing an imported ratings index, Download and Update, and expanded matching guidance" src="../images/ui-imdb-dataset.png" /></p>
+<p><em>Read-only capture of an existing imported index. Its count and timestamp are
+installation-specific, not download requirements or a performance benchmark.</em></p>
+<p>The index and explicit episode mappings are stored in
+<code>database/imdb_dataset.db</code> under the normal application data directory. Only
+rated episodes and series titles are indexed for matching; ratings are available
+by IMDb ID for movies and shows too. Season lengths are additionally derived from
+the complete episode list, including unrated episodes. Import runs in a background thread. A failed
+import keeps the previous published index and manual choices. After the first
+successful manual import, the background ratings scheduler checks for an update
+every 24 hours while Dynamic Overlays and this source are enabled. Failed
+automatic attempts wait 24 hours; <strong>Download &amp; Update</strong> can retry sooner.</p>
+<p>When IMDb is selected as a rating source, the resolver uses the local index
+before external providers to fill a missing IMDb rating. A known episode IMDb
+ID is preferred. Otherwise, matching is restricted to the identified IMDb
+series and requires an exact normalized episode-title match (case and
+punctuation ignored). A cached parent IMDb ID or a unique series title, optionally
+qualified by the series year, identifies the series. TRaSH-style filenames such
+as <code>One Piece (1999) - S21E83 - 974 - Oden Wouldnt Be Oden If It Wasnt Boiled! [German].mkv</code>
+provide the English title and absolute number independently of the Plex display
+language. For anime, include the absolute episode number in the filename; see the
+<a href="https://trash-guides.info/Sonarr/Sonarr-recommended-naming-scheme/?h=naming#episode-format">TRaSH Guides recommended anime naming scheme</a>.
+The year disambiguates same-name remakes. In the recognized TRaSH-style filename,
+the resolver converts the absolute number across consecutive IMDb seasons using
+the complete imported season lengths, so it does not depend on TVDB season order.
+Specials are excluded from the absolute count. Before accepting a rated absolute
+candidate, its normalized IMDb title must match the episode title or filename
+title. Articles may differ anywhere in the title, but all other words must match
+in the same order. A content-word conflict or translated title is
+shown for manual review instead of being used as a confirmed rating. If the
+absolute number does not point to a rated episode, the same conservative title
+matching is still tried.
+Ambiguous series/titles are not automatically assigned. This is not limited to
+anime, but does not guarantee matches for every language or filename format.</p>
+<p>For unclear cases, filter the cache to <strong>Episodes</strong> and select the row's
+<strong>Episode IMDb Mapping</strong> sliders icon. Search the local index by episode title
+or IMDb ID, review the candidate's series and IMDb numbering, and save a candidate
+or enter a rated episode's IMDb ID. <strong>Automatic</strong> removes the manual override.
+Saving updates only the row's IMDb ID/rating; other source scores and cache TTL
+are retained. Explicit manual choices take precedence even during a forced
+refresh. Search and save do not call rating-provider APIs or upload artwork.
+An ordinary ratings refresh can collect missing filename/series context; an
+overlay sync applies the updated ratings to artwork afterwards.
+With this source enabled, completely scoreless episodes encountered by the
+resolver receive an expired cache placeholder, so they can be corrected in the
+same dialog without being presented as successfully refreshed. The dataset
+panel and episode dialog both include an expandable <strong>How matching works</strong>
+section explaining IMDb IDs, conservative title matching, absolute numbering,
+and the precedence of manual choices.</p>
+<p>For TVDB seasons that belong to a separate IMDb series (for example an anime
+continuation), open an episode's mapping dialog and select <strong>Entire season</strong>.
+Enable <strong>Override IMDb series for this season</strong>, enter the continuation's
+<strong>IMDb series ID</strong>, and set its <strong>IMDb season</strong> and <strong>Episode offset (+/-)</strong>.
+The target episode number is the local episode number plus the offset: local
+episode 13 with an offset of -12 becomes IMDb episode 1. The dialog previews
+the numbering for the selected episode. Refresh episode ratings first if the
+series/season context is missing and the season option is disabled.</p>
+<p>If one local season spans multiple IMDb seasons, enable <strong>Continue across IMDb
+seasons</strong>. Numbering then continues through consecutive IMDb seasons starting
+at the selected target season. For example, with 25 episodes in IMDb season 1
+and an offset of 0, local S20E25 maps to S01E25 and S20E26 maps to S02E01;
+the same rule can continue through S03 and later seasons. Specials (season 0)
+are not included unless explicitly selected as the starting season. Missing
+season boundaries or target episodes are not guessed. The local media-server
+season number remains unchanged.</p>
+<p>After updating from a version without this option, run <strong>Download &amp; Update</strong>
+once to populate complete season lengths, then enable continuation and save
+the mapping again. Existing mappings remain fixed to their chosen target season
+until continuation is enabled. The preview uses the same imported season lengths.</p>
+<p>Saving updates IMDb IDs/ratings for already indexed episodes of that season
+on the same server; future episode lookups use the saved rule too. Individual
+episode overrides still take priority. Missing target episodes are not guessed
+from another series. Disable the season override and save to return to automatic
+matching. Rules survive dataset updates and restarts. Other rating sources,
+cache expiry and artwork are unchanged; sync overlays to update artwork.</p>
+<p>Successful local lookups avoid OMDb requests when IMDb is the only remaining
+score needed. OMDb or other configured providers may still be used for missing
+Rotten Tomatoes/Metacritic/etc. values or unresolved IMDb titles. Importing the
+dataset does not rewrite every ratings-cache row or automatically resync artwork.</p>
+<h3 id="omdb-run-protection">OMDb Run Protection</h3>
+<p>Each ratings-refresh job and overlay-sync run has its own OMDb request guard,
+shared across that run's items, servers, episodes, and parallel sync workers:</p>
+<ul>
+<li>A confirmed quota/limit response, an explicitly invalid/unauthorized API key,
+   or HTTP 429 disables further OMDb requests for the remainder of that run.</li>
+<li>Otherwise, three consecutive technical failures (such as an unexplained HTTP
+   401, HTTP 5xx, or transport failure) disable OMDb for the remainder of the run.
+   A successful response resets this consecutive-error counter.</li>
+<li>A missing title or a response without usable scores does not open the guard.</li>
+</ul>
+<p>Requests already in flight can finish; new OMDb requests are skipped once the
+guard opens. Other providers and normal cache fallback continue. Skipped OMDb
+requests remain visible in provider diagnostics rather than pretending that a
+missing score was successfully refreshed. Failed lookups do not clear existing
+scores or renew their expiry. A partial lookup can still save fresh values from
+other providers using the normal cache behavior.</p>
+<p>The next run starts with a fresh guard and retries OMDb; the block is neither a
+persistent setting nor a permanent key rejection. <code>RatingsRefresh.log</code> records
+the reason when OMDb is disabled. Refresh-job results contain an <code>omdb</code> summary
+with <code>requests</code>, <code>skipped</code>, <code>suppressed</code>, and <code>reason</code>; the overlay-sync log also
+includes an OMDb run summary. OMDb JSON error bodies are interpreted on HTTP
+errors too, so a documented quota response is distinguishable from an invalid
+key. Raw provider error messages and API keys are not written to these diagnostics.</p>
+<h3 id="anime-season-ratings">Anime Season Ratings</h3>
+<p>Season rules can display real SIMKL/MAL ratings for the corresponding native
+anime entry. They do not synthesize a season average. For example:</p>
+<p>First select the allowed libraries under <strong>Visual Badges &gt; Overlay Engine,
+Concurrency &amp; Provider Settings &gt; Libraries for Anime Season Ratings</strong>, next
+to the SIMKL Client ID. This is a multi-selection and defaults to empty.
+Entering a SIMKL Client ID alone does not enable season mapping. Names match
+exactly, ignoring case and surrounding whitespace; selecting <code>Anime</code> does not
+select <code>Anime Shows</code>. The same selected library name applies across configured
+servers. Saved names remain visible so an old or renamed selection can be removed.
+Show/episode ratings and inherited show-score fallbacks are independent of this
+opt-in. Running jobs use their settings snapshot; selection changes apply to
+subsequent jobs.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ratings</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">   </span><span class="l l-Scalar l-Scalar-Plain">template_variables</span><span class="p p-Indicator">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">      </span><span class="nt">builder_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">season</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">      </span><span class="nt">sources</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">imdb</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">simkl</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">mal</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Automatic mapping uses the parent show's TVDb ID and compares the local season's
+episode numbers with the anime's TVDb episode coordinates. It requires one
+native anime entry covering exactly that whole season. Multiple cours, incomplete
+episode coverage, missing mappings, or an incomplete catalog lookup do not result
+in a guessed selection. This assumes the media server uses the corresponding
+TVDb episode ordering; use a manual mapping when its ordering differs.</p>
+<p><strong>Show scores remain as fallbacks per provider.</strong> A confirmed MAL season value
+replaces the inherited MAL value, but an IMDb show score remains until an actual
+IMDb season source exists (this integration currently keeps the IMDb show fallback).
+Missing season values never erase the inherited show
+scores. The season ratings cache contains only the season's own SIMKL/MAL values,
+not copies of the fallbacks used for rendering.</p>
+<p>In <strong>Sync &amp; Cache &gt; Ratings Cache &amp; Refresh</strong>, select <strong>Seasons</strong>, then use the
+row's <strong>Season rating mapping</strong> action. Choose a discovered anime/cour entry,
+enter a positive <strong>SIMKL Anime ID</strong>, or restore <strong>Automatic (exact season match)</strong>.
+The linked MAL ID is read from that anime entry. Saving starts a ratings-only
+refresh; existing season values are invalidated when the choice changes so scores
+from different entries are not mixed. Mapping changes are refused while a sync or
+ratings-refresh job is active. The next appropriate overlay sync applies the
+updated values to artwork; saving the mapping itself does not upload images.</p>
+<p>Mappings and selected SIMKL/MAL IDs survive restarts, separately from the ratings
+cache. With a configured SIMKL Client ID and an explicitly selected library,
+hourly ratings refresh includes expired season entries, missing season entries already represented in the overlay cache,
+and season entries with incomplete SIMKL/MAL scores. Related-title catalog data is
+reused within a run. Discovery is limited to 32 anime entries; an unfinished lookup
+requires manual selection rather than guessing. A provider outage preserves any
+previously confirmed season scores and their expiry instead of renewing or
+deleting them.</p>
+<h3 id="automatic-retry-schedule">Automatic Retry Schedule</h3>
+<p>While a ratings-refresh job is active, the desktop navbar shows <strong>RATINGS REFRESH</strong>.
+Click the badge to open <code>RatingsRefresh.log</code>, or use its <strong>Stop</strong> action to cancel
+only that refresh job. The badge disappears after completion or cancellation.
+This status is independent of the main Posterizarr script and does not change
+startup scheduling. The existing navbar polling checks every 15 seconds when
+idle and every 5 seconds while a task is active.</p>
+<p>The hourly ratings-refresh job selects candidates locally before querying media
+servers or external providers. It does not retry every unavailable score on every
+run:</p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Automatic retry</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Episode aired within the last 14 days, with missing selected IMDb/TMDb scores</td>
+<td>Next hourly run, when the server reports its release date.</td>
+</tr>
+<tr>
+<td>Older episode, unknown release date, unavailable scores, missing title/IDs, or metadata HTTP 404</td>
+<td>No sooner than 24 hours after the attempt.</td>
+</tr>
+<tr>
+<td>Missing/incomplete/unavailable anime season mapping</td>
+<td>No sooner than 24 hours after the attempt, and only in opted-in libraries.</td>
+</tr>
+<tr>
+<td>Ambiguous season/cour mapping</td>
+<td>Wait for manual selection or relevant locally recorded metadata/mapping changes.</td>
+</tr>
+<tr>
+<td>Complete, unexpired scores</td>
+<td>Existing score-cache expiry rules apply.</td>
+</tr>
+</tbody>
+</table>
+<p>The retry schedule is stored separately from scores in <code>ratings_refresh_retry</code>
+and survives backend restarts without renewing score timestamps or expiry.
+Relevant locally cached metadata changes, mapping-choice changes, or credentials
+for providers used by that media type can release a hold. Selecting another anime
+library does not restart unrelated episode retries. Provider credentials are
+represented only by a hash in retry fingerprints, never stored in the retry record.
+Automatic jobs report a <strong>Deferred</strong> count and log retry decisions.</p>
+<p>Explicit manual refreshes, including <strong>Refresh ratings now</strong> and the manual bulk
+action, bypass retry holds; <strong>Mark expired</strong> also clears the item's hold. Library
+opt-in is still required for manual season refresh/mapping changes. Refreshing or
+changing a mapping does not itself upload artwork. Old failed entries without a
+saved retry decision can be checked once after upgrading before their hold is
+recorded. Normal overlay-sync provider lookups are separate; an explicitly forced
+sync can still query providers.</p>
+<p>When the media server itself returns metadata HTTP 404, Posterizarr removes that
+server/item's ratings, retry and season-mapping records, all cached overlay assets,
+orphaned layer snapshots, and skipped-item record across <code>overlay_cache.db</code> and
+<code>imagechoices.db</code>. Provider-side 404 responses do not trigger this cleanup.
+Media-export history and provider caches keyed by shared TMDb IDs are retained.</p>
+<h3 id="rule-artwork-targets">Rule Artwork Targets</h3>
+<p>In the rule's <strong>Visual Settings</strong>, use <strong>Artwork Type</strong> to choose <strong>Both</strong>,
+<strong>Posters / Titlecards Only</strong>, or <strong>Backgrounds Only</strong>. This applies to native
+<code>default:</code> rules and custom <code>file:</code> rules. In YAML, set <code>artwork_type</code> in
+<code>template_variables</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">overlay_files</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">   </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">config/network_logos.yml</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">      </span><span class="l l-Scalar l-Scalar-Plain">template_variables</span><span class="p p-Indicator">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">         </span><span class="nt">builder_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">show</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">         </span><span class="nt">artwork_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">backdrop</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">   </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">config/format_badges.yml</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="l l-Scalar l-Scalar-Plain">template_variables</span><span class="p p-Indicator">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">         </span><span class="nt">builder_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">show</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">         </span><span class="nt">artwork_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">poster</span>
+</code></pre></div>
+<p>Allowed values are <code>both</code> (the default), <code>poster</code>, and <code>backdrop</code>.
+<code>builder_level</code> still selects the media item level independently; <code>poster</code>
+includes episode titlecards when the builder level is <code>episode</code>. Legacy
+<code>builder_level: backdrop</code> also works for background-only custom file rules.
+The global background-overlays switch must still be enabled to sync backgrounds.</p>
+<h3 id="episode-ratings">Episode Ratings</h3>
+<p>Episode rules use episode ratings, never the parent show's scores. Plex sync
+reads episode-detail metadata for provider-labeled ratings and episode IMDb IDs.
+TMDb lookup uses the show's TMDb ID plus the episode's season and episode
+numbers, not the show's rating. When an IMDb ID is missing, TMDb episode external
+IDs can resolve it for OMDb lookup. OMDb requires its configured API key.
+Jellyfin and Emby use the episode's own provider IDs for external lookup.</p>
+<p>The movie/show MDBList lookup is not used for episodes. The separate
+<code>mdblist_episode</code> source can request MDBList's episode score when configured.
+An unavailable episode/provider score is omitted instead of substituting
+a show score or labeling an unidentifiable server score as IMDb. Consequently,
+not every episode has every selected provider badge. After updating, run a full
+overlay sync for the affected show to replace previously rendered titlecards.</p>
+<p>Selecting only IMDb does not use a TMDb score when IMDb is missing. Enable TMDb
+as an additional provider to display its available episode scores under its own logo.</p>
+<h3 id="language-priority-and-parent-video-formats">Language Priority and Parent Video Formats</h3>
+<p>Movie and episode language flags follow the configured <code>languages</code> order before applying
+<code>overlay_limit</code>. For example, <code>[de, ja, en]</code> with a limit of two selects German
+and Japanese when all three audio languages are present. Imported language
+templates use their explicit language codes rather than their English overlay names.</p>
+<p>Across movie, episode, show, season, and background artwork, selected flags are
+displayed in configured priority order from top to bottom, even when the group
+is anchored at the bottom. For <code>[de, en, ja]</code>, German is above English, then
+Japanese if all three are selected. Frequency or hybrid rules still decide which
+languages fit the limit; this display ordering does not add or replace selected
+languages. Group position and spacing are preserved. Horizontal queues retain
+their existing layout.</p>
+<p>Show and season flags default to <strong>Preferred language, then frequency</strong>. The
+<strong>Show / Season Flag Selection</strong> control in the visual language editor can switch
+back to <strong>Most frequent</strong>. The default behavior is also available explicitly in YAML:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">languages</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">   </span><span class="l l-Scalar l-Scalar-Plain">template_variables</span><span class="p p-Indicator">:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">      </span><span class="nt">builder_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">episode</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="nt">aggregate_parent_streams</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="nt">languages</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">de</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">en</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ja</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="nt">overlay_limit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">      </span><span class="nt">parent_language_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">preferred_then_frequency</span>
+</code></pre></div>
+<p>This selection mode does not enable additional artwork targets. Show or season
+flags must already be explicitly configured with <code>builder_level: show</code>,
+<code>builder_level: season</code>, or <code>builder_level: all</code>. An episode rule can explicitly
+include parent artwork with <code>aggregate_parent_streams: true</code>, as in the example.
+Episode-only rules without that opt-in remain episode-only, even when the hybrid
+selection mode is enabled or other rules aggregate episode metadata.
+The first configured language gets the first flag slot as soon as at least one
+episode has it. Remaining slots follow frequency, then configured priority for
+ties. With JA:40, EN:20, DE:1, the result is DE + JA; with DE:0 it displays EN + JA;
+with JA:40, EN:40, DE:1 it is DE + EN. A flag means the language is available on
+at least one episode, not necessarily the complete season or show. Missing
+preferred languages are never fabricated. Omitting the option enables this hybrid
+selection, including for existing rules. Set <code>parent_language_mode: frequency</code> to
+disable the preference and rank by frequency, using configured priority for ties.
+An explicitly saved <code>frequency</code> choice is preserved. Episode and background
+selection rules are unchanged; their vertical display follows the same priority order.</p>
+<p>Show and season resolution badges use the most common complete episode video
+format: resolution, Dolby Vision, and HDR together. Each episode contributes one
+format, so HDR-only and Dolby-Vision-only episodes do not create a combined badge.
+Ties prefer the higher resolution, then Dolby Vision, then HDR. Corner badges use
+the corresponding variant artwork when available, otherwise the plain resolution
+artwork; portrait tier banners retain their existing resolution-only design.
+Unrecognized Plex resolution labels fall back to reported video dimensions to
+identify 4K, 1080p, 720p, or SD without depending on the codec/profile description.
+After updating, run a full overlay sync for the affected shows and seasons.</p>
+<h2 id="folder-layout">Folder Layout</h2>
+<p>The canonical location is <code>Overlayfiles/dynamic_overlays/</code> under the writable application data directory. In Docker this is normally <code>/config/Overlayfiles/dynamic_overlays/</code>; local installations use the application data/project root.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Overlayfiles/
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>├── (asset-creation fonts and frame overlays, when configured)
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>└── dynamic_overlays/
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>   ├── configs/        # YAML configuration files (config.yml, anime_overlays.yml, etc.)
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>   ├── defaults/       # Downloaded Kometa-compatible YAML templates
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>   │   └── images/     # Images downloaded for those templates
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>   ├── assets/         # Custom/local overlay images
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>   └── fonts/          # Custom/local overlay fonts
+</code></pre></div>
+<p>Place Dynamic Overlays configuration and assets in <code>Overlayfiles/dynamic_overlays/</code>.</p>
+<h2 id="kometa-compatibility-and-attribution">Kometa Compatibility and Attribution</h2>
+<p><strong>Is Kometa built into Posterizarr as a plugin? No.</strong> Dynamic Overlays is implemented and run by Posterizarr. It does not embed, launch, or require Kometa, and it is not a Kometa plugin. Posterizarr parses supported Kometa-style YAML itself and renders overlays through its own code. This is compatibility with selected configuration formats and rendering behavior, not full Kometa feature parity.</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Posterizarr implementation</th>
+<th>Kometa source / relationship</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Coordinate placement and text/backdrop composition</td>
+<td><a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_engine.py"><code>overlay_engine.py</code></a> (<code>get_coordinates</code>, <code>draw_backdrop_and_text</code>)</td>
+<td>Adapted from the coordinate and backdrop-rendering methods in <a href="https://github.com/Kometa-Team/Kometa/blob/master/modules/overlay.py">Kometa <code>modules/overlay.py</code></a>. The Posterizarr module is an adaptation, not Kometa's runtime or a copy of the complete module.</td>
+</tr>
+<tr>
+<td>Kometa-style config and defaults</td>
+<td><a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_resolver.py"><code>overlay_resolver.py</code></a></td>
+<td>Posterizarr reads and validates YAML itself. Downloaded default templates are upstream data from <a href="https://github.com/Kometa-Team/Kometa/tree/master/defaults/overlays">Kometa <code>defaults/overlays</code></a>; they are not executable Kometa code.</td>
+</tr>
+<tr>
+<td>Default overlay artwork and fonts</td>
+<td><a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_resolver.py"><code>overlay_resolver.py</code></a>, <a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_engine.py"><code>overlay_engine.py</code></a></td>
+<td>Images and official fonts may be fetched from <a href="https://github.com/Kometa-Team/Kometa/tree/master/defaults/overlays/images">Kometa's overlay images</a> and <a href="https://github.com/Kometa-Team/Kometa/tree/master/fonts">fonts directory</a>. Custom assets remain supported.</td>
+</tr>
+<tr>
+<td>Sync, media-server APIs, preview, and cache</td>
+<td><a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_sync_service.py"><code>overlay_sync_service.py</code></a>, <a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_preview.py"><code>overlay_preview.py</code></a>, <a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_cache.py"><code>overlay_cache.py</code></a></td>
+<td>Posterizarr-native code; it renders and uploads directly to configured Plex, Jellyfin, and Emby servers. It does not call Kometa to perform these operations.</td>
+</tr>
+</tbody>
+</table>
+<p>The rendering adaptations are attributed under the MIT License below. Upstream templates, images, and fonts remain Kometa project assets; see their source repository for the applicable project license and notices.</p>
+<hr />
+<h2 id="supported-overlay-types">Supported Overlay Types</h2>
+<table>
+<thead>
+<tr>
+<th>Overlay Type</th>
+<th>Target Level</th>
+<th>Source Metadata</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>4K Quality Banner</strong></td>
+<td>Movie Posters &amp; Titlecards</td>
+<td>Stream video resolution (<code>width &gt;= 3840</code> or <code>4K</code>)</td>
+<td>Diagonal top banner on posters or corner badge on episode cards.</td>
+</tr>
+<tr>
+<td><strong>Audience Rating</strong></td>
+<td>Movies &amp; Shows</td>
+<td>Audience / critic score (IMDb, TMDb, Plex)</td>
+<td>Color-tiered badge (High $\ge 6.5$, Mid $4.5-6.4$, Low $&lt;4.5$) + formatted score text.</td>
+</tr>
+<tr>
+<td><strong>Series Status</strong></td>
+<td>Shows</td>
+<td>Series status (<code>Airing</code>, <code>Returning</code>, <code>Ended</code>, <code>Canceled</code>)</td>
+<td>Optical centered status banner with status colors (<code>Colus-Regular.ttf</code>).</td>
+</tr>
+<tr>
+<td><strong>Runtime</strong></td>
+<td>Movies &amp; Titlecards</td>
+<td>Stream duration (<code>RunTimeTicks</code> / <code>duration</code>)</td>
+<td>Clean duration badge (e.g. <code>124 min</code>, <code>24 min</code>).</td>
+</tr>
+<tr>
+<td><strong>Audio Languages</strong></td>
+<td>Movies &amp; Titlecards</td>
+<td>Audio streams present in media item</td>
+<td>Square badges or flags for audio languages (e.g. <code>de</code>, <code>en</code>, <code>ja</code>).</td>
+</tr>
+<tr>
+<td><strong>Subtitle Languages</strong></td>
+<td>Movies &amp; Titlecards</td>
+<td>Subtitle streams reported by the media server</td>
+<td>Reuses the audio-language flag images, with independent placement and language selection.</td>
+</tr>
+<tr>
+<td><strong>Aspect Ratio</strong></td>
+<td>Movies &amp; Titlecards</td>
+<td>Video display aspect ratio, or video width/height as a fallback</td>
+<td>Kometa aspect badges such as <code>1.78</code> and <code>2.35</code>; unknown ratios do not receive a badge.</td>
+</tr>
+<tr>
+<td><strong>Audio Codec</strong></td>
+<td>Movies &amp; Titlecards; Shows &amp; Seasons with parent stream aggregation</td>
+<td>Audio codec, stream profile, track title, and filename</td>
+<td>Dolby Atmos, TrueHD, DTS-HD MA, DTS:X, AAC, and other codec badges.</td>
+</tr>
+<tr>
+<td><strong>Video Source</strong></td>
+<td>Movies &amp; Titlecards</td>
+<td>Media filename/path</td>
+<td>WEB-DL/WEBRip, Blu-ray, Remux, HDTV, DVD, and similar source labels. This is separate from resolution and HDR.</td>
+</tr>
+<tr>
+<td><strong>Studio Logos</strong></td>
+<td>Movies &amp; Shows</td>
+<td>Studio metadata reported by the media server</td>
+<td>Studio branding using <code>default: studio</code>.</td>
+</tr>
+<tr>
+<td><strong>Streaming Services</strong></td>
+<td>Movies &amp; Shows; optionally Seasons &amp; Titlecards</td>
+<td>Regional TMDb / JustWatch availability</td>
+<td>Multiple service logos, separate from studios and networks. Subscription availability is the default.</td>
+</tr>
+<tr>
+<td><strong>Anime Filler Tag</strong></td>
+<td>Anime Episodes</td>
+<td><code>anime_overlays.yml</code> episode regex match</td>
+<td>"Canon" (Green), "Filler" (Red), or "Mixed" (Orange) badge on episode titlecards.</td>
+</tr>
+<tr>
+<td><strong>Network Logos</strong></td>
+<td>Seasons</td>
+<td>Studio / TV Network</td>
+<td>Official network logo (e.g., Netflix, HBO, Disney+, Apple TV+).</td>
+</tr>
+<tr>
+<td><strong>Common Sense Media</strong></td>
+<td>Movies</td>
+<td>Common Sense Media age rating</td>
+<td>Age rating badge (e.g., 10+, 14+, 18+).</td>
+</tr>
+</tbody>
+</table>
+<p>Generated AniMetaFill episode regexes include a numeric boundary so an episode such as <code>S21E16</code> cannot accidentally match <code>S21E161</code>. After upgrading a version that fixes older generated regexes, run AniMetaFill sync to regenerate <code>anime_overlays.yml</code>, then run Dynamic Overlays sync to update existing titlecards.</p>
+<hr />
+<h2 id="web-ui-features">Web UI Features</h2>
+<p>Navigate to <strong>Builders $\to$ Dynamic Overlays</strong> in the Posterizarr Web UI:</p>
+<h3 id="background-change-detection-dry-run">Background Change Detection &amp; Dry Run</h3>
+<ul>
+<li><strong>Background Checking</strong> controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.</li>
+<li><strong>Automatic Overlay Resync</strong> controls whether detected changes start the overlay render pipeline.</li>
+<li><strong>Dry Run</strong> is enabled by default. Syncs still evaluate rules and render changed artwork, but never upload it to a media server or mark it synced in the cache. This applies to automatic and manual syncs.</li>
+<li>Turn off <strong>Background Checking</strong> as well to stop periodic change scans entirely.</li>
+<li>The <strong>Master Switch</strong> is the hard stop: when disabled, background detection and sync processing do not run. Switching it off also stops the detector and cancels active sync work before any subsequent upload.</li>
+</ul>
+<h3 id="0-guided-onboarding-setup-wizard">0. Guided Onboarding Setup Wizard</h3>
+<ul>
+<li><strong>Zero Confusion Onboarding:</strong> A friendly 4-step visual wizard guides new users through the engine's core concepts, eliminating manual reading.</li>
+<li><strong>1-Click Turnkey Configuration:</strong> Instantly applies battle-tested overlay presets for Movies (4K badges, ratings, runtime, age ratings), TV Shows (status banners, network logos, episode runtimes), and 16:9 Backdrops.</li>
+<li><strong>Direct Multi-Config Upload:</strong> Migrating from Kometa or PMM? Directly select or drag-and-drop multiple YAML config files at once (<code>config.yml</code>, <code>overlays_tv.yml</code>, <code>overlays_movies.yml</code>, <code>anime_overlays.yml</code>, etc.). Posterizarr automatically validates YAML syntax, imports API keys, and maps rules to your media libraries.</li>
+<li><strong>Interactive Visual Studio Tour:</strong> Introduces the live preview canvas, drag-and-drop badge movement, rule-of-thirds guides, and per-format customization (keeping show posters and episode titlecard resolution badges safely isolated).</li>
+<li><strong>Always Accessible:</strong> Reopenable anytime via the <strong>Setup Wizard</strong> button on the Dynamic Overlays header.</li>
+</ul>
+<h3 id="1-importer-pre-flight-validator">1. Importer &amp; Pre-flight Validator</h3>
+<ul>
+<li><strong>Config Scanner:</strong> Detects YAML files in <code>Overlayfiles/dynamic_overlays/configs/</code>.</li>
+<li><strong>Readiness Checklist:</strong> Automatically lists every font, image, and template required by your YAML files.</li>
+<li><strong>1-Click Remote Fetch:</strong> Automatically downloads missing templates and badges from official GitHub repositories.</li>
+<li><strong>Import Kometa Defaults (from GitHub):</strong> Download official Kometa default overlay templates directly from GitHub into <code>Overlayfiles/dynamic_overlays/defaults/</code>.</li>
+<li><strong>Scheduled Auto-Updates (GitHub Sync):</strong> Automatically keeps templates up to date via the Scheduler (<code>kometadefaults</code> run mode). The scheduler queries GitHub's API to discover newly added defaults and updates existing templates with upstream improvements. Can be scheduled on daily, weekly, or custom cron intervals, or enabled via 1-click Quick Schedule directly from the Dynamic Overlays page.</li>
+<li><strong>Direct Asset Uploader:</strong> Easily drop custom fonts (<code>.ttf</code>, <code>.otf</code>) or badge PNGs directly into the UI.</li>
+<li><strong>Per-variant Asset Overrides:</strong> Select a local image for a Kometa default and variant key (for example <code>resolution / 1080p</code> or <code>audio_codec / truehd_atmos</code>). Existing <code>file_&lt;key&gt;</code> values are imported from Kometa YAML; selections are written back to Kometa-compatible YAML and the Visual Config. The picker lists local assets from <code>assets/</code> and <code>defaults/images/</code>; import official images or upload custom artwork first. Custom/default names can also be entered for imported or hand-written rules.</li>
+</ul>
+<h3 id="2-active-libraries-rules">2. Active Libraries &amp; Rules</h3>
+<ul>
+<li><strong>Interactive Rule Management:</strong> View, add, edit, or remove overlay rules directly on each library card.</li>
+<li><strong>Add Library:</strong> Click <strong>+ Add Library</strong> on the toolbar to register new server libraries (e.g., <em>Anime Shows</em>, <em>4K Movies</em>, <em>Kids TV</em>) into <code>config.yml</code>.</li>
+<li><strong>Remove Library / Rules:</strong> One-click removal with confirmation and automated <code>.bak</code> backup generation.</li>
+<li><strong>Visual Variable Editor:</strong> Customize <code>builder_level</code> (Movie, Show, Season, Titlecard), horizontal/vertical offsets, alignments, and transparent/solid back colors without writing code.</li>
+<li><strong>Raw JSON &amp; YAML Mode:</strong> Switch tabs to edit raw template variables, or click <strong>Edit Raw config.yml</strong> to modify the complete YAML configuration with instant syntax validation.</li>
+</ul>
+<h4 id="recommended-defaults-level-guide">Recommended Defaults &amp; Level Guide</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Overlay Need</th>
+<th style="text-align: left;">Recommended Source</th>
+<th style="text-align: left;">Target <code>builder_level</code></th>
+<th style="text-align: left;">Purpose / Appearance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Media Runtime</strong></td>
+<td style="text-align: left;"><code>default: runtimes</code></td>
+<td style="text-align: left;"><code>episode</code> or <code>movie</code></td>
+<td style="text-align: left;">Display duration badge (e.g., <code>124 min</code>, <code>24 min</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Audio Languages</strong></td>
+<td style="text-align: left;"><code>default: languages</code></td>
+<td style="text-align: left;"><code>episode</code> or <code>movie</code></td>
+<td style="text-align: left;">Language stream flags / pills (e.g., <code>DE</code>, <code>EN</code>, <code>JA</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Subtitle Languages</strong></td>
+<td style="text-align: left;"><code>default: languages</code>, <code>use_subtitles: true</code></td>
+<td style="text-align: left;"><code>episode</code> or <code>movie</code></td>
+<td style="text-align: left;">Separate subtitle flags using the same flag artwork as audio languages.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Aspect Ratio</strong></td>
+<td style="text-align: left;"><code>default: aspect</code></td>
+<td style="text-align: left;"><code>episode</code> or <code>movie</code></td>
+<td style="text-align: left;">Display aspect ratio, separate from pixel resolution.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Studio Logo</strong></td>
+<td style="text-align: left;"><code>default: studio</code></td>
+<td style="text-align: left;"><code>movie</code> or <code>show</code></td>
+<td style="text-align: left;">Studio branding, separate from TV network logos.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Ratings</strong></td>
+<td style="text-align: left;"><code>default: ratings</code></td>
+<td style="text-align: left;"><code>movie</code> or <code>show</code></td>
+<td style="text-align: left;">Audience / Critic ratings (IMDb, RT, TMDB, Metacritic).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>TV Network</strong></td>
+<td style="text-align: left;"><code>default: network</code></td>
+<td style="text-align: left;"><code>season</code></td>
+<td style="text-align: left;">Network logo on season posters (HBO, Netflix, Disney+).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Series Status</strong></td>
+<td style="text-align: left;"><code>default: status</code></td>
+<td style="text-align: left;"><code>show</code></td>
+<td style="text-align: left;">Airing, Returning, Ended, or Canceled banner on shows.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Common Sense Media</strong></td>
+<td style="text-align: left;"><code>default: commonsense</code></td>
+<td style="text-align: left;"><code>movie</code></td>
+<td style="text-align: left;">Age rating badge (e.g., <code>10+</code>, <code>14+</code>, <code>18+</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>4K Quality Ribbon</strong></td>
+<td style="text-align: left;"><code>default: resolution</code> or <code>file: config/overlays_movies.yml</code></td>
+<td style="text-align: left;"><code>movie</code> or <code>episode</code></td>
+<td style="text-align: left;">4K UHD, 1080p, HDR badges/ribbons.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Anime Filler Tag</strong></td>
+<td style="text-align: left;"><code>file: config/anime_overlays.yml</code></td>
+<td style="text-align: left;"><code>episode</code></td>
+<td style="text-align: left;">Canon / Filler / Mixed tag on anime episode titlecards.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Corner Ribbon</strong></td>
+<td style="text-align: left;"><code>default: ribbon</code></td>
+<td style="text-align: left;"><code>movie</code></td>
+<td style="text-align: left;">Corner ribbon badge for resolution or editions.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Streaming Platform</strong></td>
+<td style="text-align: left;"><code>default: streaming</code></td>
+<td style="text-align: left;"><code>show</code> or <code>movie</code></td>
+<td style="text-align: left;">Streaming service badge (Netflix, Prime, Max, etc.).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Audio Codec</strong></td>
+<td style="text-align: left;"><code>default: audio_codec</code></td>
+<td style="text-align: left;"><code>movie</code> or <code>episode</code></td>
+<td style="text-align: left;">Audio codec badge (Dolby Atmos, TrueHD, DTS:X).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3-live-preview">3. Live Preview</h3>
+<ul>
+<li>Live, interactive canvas preview for both Movie Posters (1000 $\times$ 1500) and Titlecards / Backdrops (1920 $\times$ 1080).</li>
+<li>Real-time adjustment of ratings, resolution, series status, runtimes, and anime tags.</li>
+<li><strong>Runtime text:</strong> Duration-only is the default. The Label field can add an optional prefix, while Format selects hours/minutes or total minutes. These values are also available in Visual Badges and survive Save Layout, including for new libraries.</li>
+<li><strong>Language text:</strong> Audio and subtitle flags each have a separate Show Language Codes checkbox. Flags-only is the default; enable codes to add EN/DE/etc. Language-to-country flag aliases are resolved for both local files and on-demand downloads.</li>
+<li><strong>Optional badges:</strong> Subtitle flags, aspect ratio, studio, and streaming services have explicit enable checkboxes. Enabling one creates a temporary preview rule even if the selected library has not saved that badge yet. Save Layout persists the rule.</li>
+<li><strong>Resolution style:</strong> The top-banner choice is part of the production recipe. Portrait banners use matching local <code>4K_banner.png</code>, <code>1080p_banner.png</code>, <code>720p_banner.png</code>, <code>576p_banner.png</code>, or <code>480p_banner.png</code> artwork when present; otherwise they render a full-width tier label. Variant asset overrides can select another local image. Landscape/titlecard formats retain corner badges. The banner can coexist with single-score/provider ratings and audio-codec badges.</li>
+<li><strong>Corner badge sizing:</strong> Resolution images fit proportionally inside their configured pill/container instead of allowing wide quality/HDR artwork to extend outside it or be clipped at an edge. Positions remain configurable; this does not automatically resolve overlaps caused by custom positions of separate badges. Imported YAML resolution images do not receive an extra backdrop unless one is configured.</li>
+<li>Banner and corner styles are mutually exclusive, including when legacy movie/TV overlay files are configured. Full-poster transparent banner artwork keeps its original canvas positioning instead of being centered inside the small corner-badge box. Corner badges use the separate resolution badge assets and the displayed contrast settings. Saving an explicit style retains its native rule without re-enabling the competing legacy banner or overwriting another format's rule. A number such as <code>8.4</code> is a separately enabled rating overlay, not part of the resolution image.</li>
+<li>Subtitle languages, aspect ratio, and studio have separate sample values and position controls. Audio and subtitle flags use independent queues. Their metadata must be available at the chosen target level; a show poster does not automatically aggregate streams from all episodes.</li>
+<li>Positions, alignments, offsets, fonts, sizes, and supported template/background variables can be tuned per rule and format. An exact match to another poster still depends on its artwork, fonts, and layout; templates are not an automatic recreation of an arbitrary reference image.</li>
+<li><strong>Incremental sync impact:</strong> Changing an asset override changes the rendered layer and its recipe hash when that default variant is used. The next incremental sync may re-render and upload those affected items; unrelated variants remain unchanged.</li>
+<li><strong>AniMetaFill titlecards:</strong> When AniMetaFill is enabled, selecting one of its target libraries and the Titlecard format automatically shows a sample Canon badge using its saved label, color, font, size, and placement. The anime controls can preview Filler, Mixed, or Off. This is sample classification data, not a lookup of a particular episode; unrelated libraries and other asset formats do not receive the automatic badge.</li>
+<li><strong>Matching badge artwork:</strong> Drag &amp; Drop uses transparent PNG layers rendered by the same Pillow compositor and recipe builder used for media-server uploads. Badge sizes, fonts, plates, shadows, and overlapping layer order are no longer approximated with HTML/CSS. Drag handles and alignment guides use the rendered pixel bounds, including compound badges such as a rating plate plus score.</li>
+<li><strong>Preview request isolation:</strong> Preview and sample-image rendering run in FastAPI worker threads, not on the API event loop, so blocking image processing or asset loading does not directly stall unrelated asynchronous API requests. Sprite-only requests skip loading, processing, and encoding the background image. Individual render time still depends on hardware, artwork, fonts, and asset availability; this is not a fixed preview-latency guarantee.</li>
+<li>Select the target library to preview its saved upload recipe. Without a selected library, the renderer uses standard default rules. Preview metadata (ratings, status, languages, etc.) is sample data; actual item metadata and filters can select different badges during sync. Upload the generated clean asset as custom test artwork to compare against the same base image. Missing required assets or fonts produce an error instead of a visually different fallback badge.</li>
+<li>Without a selected library, all five preview formats are available: movie poster, show poster, season poster, titlecard, and background. Existing libraries retain their movie/TV-specific format choices.</li>
+<li><strong>Asset boundaries:</strong> Enabled by default in both Drag &amp; Drop and Final Render. Dashed, shaded boxes show the configured title/logo reservation, season title, optional show title on season posters, and separate episode title and season/episode text areas. A dashed rose outline marks the inner border edge when borders are enabled.</li>
+<li><strong>Legend:</strong> Shown below the canvas in both preview modes and updated for the selected format and visible guides. Yellow dashed boxes reserve the primary title/logo area; cyan dashed boxes reserve the additional show title or season/episode text area. The rose/red dashed outline marks the border's inner edge. Solid amber lines mark badge alignment; green lines mark magnetic snapping while dragging.</li>
+<li>Boundaries use the saved asset-creation configuration (<code>MaxWidth</code>, <code>MaxHeight</code>, <code>text_offset</code>, and <code>borderwidth</code>), scaled from 2000 $\times$ 3000 posters or 3840 $\times$ 2160 landscape assets. As in testing mode, text-box reservations remain visible for textless assets.</li>
+<li>Use the refresh icon beside <strong>Asset boundaries</strong> after saving configuration changes. Guides are preview-only: they do not move badges automatically, change saved layouts, or appear in uploaded artwork. They show reserved boxes rather than exact font, logo, or static-overlay rendering; upload a generated asset as custom artwork to inspect those details.</li>
+</ul>
+<h3 id="4-169-backdrop-multi-source-ratings-overlays">4. 16:9 Backdrop &amp; Multi-Source Ratings Overlays</h3>
+<ul>
+<li><strong>Rating mode:</strong> Preview explicitly selects Single Score or Provider Scores. Single Score saves a <code>single_rating</code> rule and produces one score badge; Provider Scores saves a <code>ratings</code> rule and displays the selected providers. Embedded audience-rating rules in custom movie/TV files are disabled when saving an explicit mode to prevent duplicates. Disabled sections are accepted by the save API.</li>
+<li><strong>One provider-rating recipe:</strong> Visual Badges and the live preview use the same provider sources, theme, orientation, spacing, and saved position. Provider ratings also work when no other overlays are enabled.</li>
+<li><strong>Rating themes:</strong> <code>dark</code> uses the contrast-box setting; <code>brand</code> uses provider colors; <code>score</code> colors badges green, yellow, or red by score. Set <strong>Badge Theme</strong> in Visual Badges or preview. Save Layout retains the provider theme and geometry, including for a new library.</li>
+<li><strong>Stable provider alignment:</strong> Provider logos and scores use reserved score slots with left-aligned contents, so decimal digits and percentage widths do not shift the whole badge. Vertical provider rows share a width. Single-score badges retain compact sizing; preview existing custom layouts after an upgrade because provider row widths can change.</li>
+<li><strong>Backdrop Overlay Pipeline:</strong> Overlays dynamic rating badges directly onto 16:9 movie/show background fanart and uploads to Plex (<code>/library/metadata/{id}/arts</code>) or Jellyfin/Emby (<code>/Items/{id}/Images/Backdrop</code>).</li>
+<li><strong>Pristine Clean Assets Protected:</strong> Original <code>background.jpg</code> / <code>fanart.jpg</code> on disk remain 100% untouched.</li>
+<li><strong>Supported Rating Providers:</strong></li>
+<li><strong>IMDb</strong> (<code>IMDb.png</code>)</li>
+<li><strong>Rotten Tomatoes Critics</strong> (<code>RT-Crit-Fresh.png</code> / <code>RT-Crit-Rotten.png</code>)</li>
+<li><strong>Rotten Tomatoes Audience</strong> (<code>RT-Aud-Fresh.png</code> / <code>RT-Aud-Rotten.png</code>)</li>
+<li><strong>TMDb</strong> (<code>TMDb.png</code>)</li>
+<li><strong>Trakt</strong> (<code>Trakt.png</code>)</li>
+<li><strong>Letterboxd</strong> (<code>Letterboxd.png</code>)</li>
+<li><strong>Metacritic</strong> (<code>Metacritic.png</code>)</li>
+<li><strong>Zero-Quota Native Resolution:</strong> Transparently reads Plex <code>&lt;Rating&gt;</code> XML tags and local TMDb token first, eliminating external quota burn.</li>
+<li><strong>Optional External APIs:</strong> MDBList and OMDb API keys are strictly optional.</li>
+<li><strong>Tiered Auto-Update TTL (SQLite):</strong></li>
+<li>Media released &lt; 180 days: <strong>3-day refresh</strong></li>
+<li>Media released &lt; 2 years: <strong>14-day refresh</strong></li>
+<li>Classic media (&gt; 2 years): <strong>30-day refresh</strong></li>
+<li>When ratings change during scheduled syncs, updated backdrops are automatically re-rendered and pushed to media servers.</li>
+</ul>
+<h3 id="5-cache-sync">5. Cache &amp; Sync</h3>
+<ul>
+<li><strong>Automatic newly created artwork:</strong> automatic targets retain their artwork scope. A new episode titlecard such as <code>S38E05</code> selects only that episode, not the show's poster, backgrounds, season posters, or other titlecards. Batched events process the union of their explicit artwork targets. A newly created season poster selects only that season poster; a newly created background selects only the background. Manual movie/show scans retain the broader behavior described below.</li>
+<li><strong>Sync log rotation:</strong> output is written to <code>UILogs/DynamicOverlaysSync.log</code>. When the previous active log exceeds 10 MiB, it is moved to <code>DynamicOverlaysSync.log.old</code> before opening the new active writer. The <code>.old</code> file is the previous log, not the current run's output.</li>
+<li><strong>Single movie/show sync:</strong> in <strong>Sync &amp; Cache</strong>, choose <strong>Select Movie / Show</strong>, select a server/library, search by title, and select the matching result by year, library, and server ID. <strong>Scan Selected Item</strong> fetches that exact item directly instead of crawling the library, reevaluates configured overlays, and skips unchanged artwork. A show includes its configured season posters and episode titlecards, not other shows. <strong>Force Reapply</strong> explicitly reapplies the selected item's artwork. The usual sync queue, progress, logs, stop controls, and clean-asset requirements still apply. Search is server-backed (not cache-only), bounded to 30 results, and respects configured/excluded libraries.</li>
+<li><strong>Ratings Cache &amp; Refresh:</strong> use <strong>Refresh Missing &amp; Expired</strong> to refresh expired movie/show/episode ratings and backfill missing ratings for posters and episode titlecards already in the overlay cache. Episodes with missing selected IMDb/TMDb scores are retried even when another provider's cached score is still valid. The action applies across all servers, independently of the table filters and overlay rules. A row's <strong>Refresh ratings now</strong> action forces just that entry. Both run in the background without rendering, uploading, or selecting artwork; overlay artwork is updated by the next appropriate overlay sync. The cache browser includes an <strong>Episodes</strong> type filter.</li>
+<li><strong>Automatic ratings refresh:</strong> while Dynamic Overlays is enabled, <strong>Ratings Cache &amp; Refresh</strong> checks expired movie/show/episode ratings independently of the overlay scheduler and rule configuration. It also picks up uncached episode titlecards already in the overlay cache and retries missing selected IMDb/TMDb episode scores. When an episode is due and <strong>MDBList Episodes</strong> is selected, supporter accounts use MDBList's show endpoint with <code>append_to_response=episode_ratings</code>; the per-season episode matrix is cached once per TMDb show for one day, then matched by season and episode number. The dedicated <code>mdblist_rating</code> field is not relabeled as IMDb or TMDb. MDBList's documented daily/short-window limits are respected with a 2-requests/second process-wide pacer; a 429 stops further MDBList calls for the run, and three consecutive server errors open a run-level circuit breaker. Provider quota/rate/server failures receive a daily retry cooldown. Valid episodes missing only optional MDBList scores are not all bulk-queried immediately; they are checked on expiry or by a manual bulk refresh, avoiding a large first-run request burst. Missing movie/show poster entries still require the manual bulk action. Episode metadata supplies the episode IMDb ID and season/episode numbers; the parent show's TMDb ID is used only for the TMDb episode endpoint or MDBList's episode matrix, never to substitute the show's score. SIMKL/MAL are series/season sources, not episode sources. Refreshes are sequential, with parent metadata reused within each refresh job to limit provider traffic. Automatic refresh is enabled by default and can be disabled or configured for 1-8,760 hours (1 hour, 24 hours daily, 168 hours weekly, or 720 hours per 30 days are common choices). The first run waits for the selected interval after backend startup; an overdue run is deferred rather than triggered immediately on container restart. The interval and last automatic attempt persist across restarts. Automatic refresh does not render or upload artwork. Only one ratings refresh job runs at a time. Cancel stops further processing; completed items remain saved.</li>
+<li><strong>Episode cache context:</strong> episode rows display the titlecard cache's full series/season/episode title and library name when available, alongside the rating-cache item title.</li>
+<li><strong>Refresh results:</strong> the cache browser shows job progress, trigger, completion time, success/partial/failure counts, and the latest 20 issues. Each rating row stores its last attempt time, status, and sanitized per-provider results. These diagnostics survive backend restarts; interrupted jobs are marked interrupted. <strong>Logs &gt; RatingsRefresh.log</strong> contains <code>[Ratings]</code> provider outcomes and <code>[RatingsRefresh]</code> job summaries. The file is stored at <code>UILogs/RatingsRefresh.log</code> (normally <code>/config/UILogs/RatingsRefresh.log</code> in Docker), appends across backend restarts, and rotates at 10 MiB with one backup, <code>RatingsRefresh.log.1</code>. It records INFO-level ratings diagnostics independently of the global backend log level, without request URLs or API keys. The usual <code>BackendServer.log</code> output is retained at the configured global level.</li>
+<li><strong>Expiry is not provider health:</strong> a successful refresh means fresh scores were saved, not that every score changed. Partial means some fresh scores were saved but another attempted provider failed or returned no scores. Failed lookups preserve existing scores, <code>cached_at</code>, and expiry, allowing stale scores to remain usable. A valid TTL alone does not prove every configured provider succeeded. The table's <strong>Refresh list</strong> button only reloads records; <strong>Mark expired</strong> does not immediately fetch them. Custom Plex audience-rating overlays still read Plex metadata directly; rendering them does not by itself populate the multi-source cache.</li>
+<li><strong>Provider cache fallback during full sync:</strong> fresh scores take priority, but provider values already cached for the same item remain available to artwork rendering when that provider cannot refresh, including a partial forced/full refresh where another provider succeeds. For example, a fresh TMDb score does not hide a cached IMDb show badge after an OMDb quota failure. The refresh status still reflects the actual provider failures; cached values are not reported as freshly fetched. No episode-to-show score substitution is performed, and missing values without a cache entry are not invented. Keep the existing ratings cache when updating for this behavior.</li>
+<li>Repeated uploads can leave old alternatives in Plex's metadata directory. The separate <a href="../plex_image_cleanup/">scheduled Plex Image Cleanup</a> task can report, quarantine, or remove old unselected uploads. It is never invoked automatically by overlay sync or preview.</li>
+<li>View cached items in <code>database/overlay_cache.db</code> (<code>media_ratings_cache</code> table and fingerprint tables).</li>
+<li>Movie and episode cache rows store the server-reported video file in <code>media_file_path</code>; <code>clean_asset_path</code> remains the original poster/titlecard image path. Filename-derived <code>detected_video_source</code> stores labels such as <code>WEB</code>, <code>BLU-RAY</code>, and <code>REMUX</code>, independently of <code>detected_resolution</code>. The legacy <code>detected_video_format</code> field retains the server-provided codec profile when available; it is not the video source.</li>
+<li>These columns are added automatically to existing databases and filled as items are evaluated or successfully synced. Matching cached items can refresh these diagnostic fields without uploading artwork or changing the last-upload timestamp. Detection uses the video filename, not source-like words in parent directory names.</li>
+<li>Resolved layer definitions are stored once in <code>overlay_layer_snapshots</code>; per-item attribute snapshots refer to them through <code>_overlay_layers_ref</code>. Older inline snapshots migrate automatically without changing recipe hashes, artwork identities, or upload timestamps. A one-time database compaction follows migration, and unused definitions are pruned after sync; SQLite can still retain reusable space or temporary WAL files during normal operation.</li>
+<li>Font recipe hashes use the font file's SHA-256 contents rather than its absolute path. Identical files in different directories produce the same recipe; changed contents invalidate it even when the filename is unchanged. Digests are held in a bounded cache keyed by file identity, size, and high-resolution modification/change times, avoiding repeated font reads for each episode. Render layers and diagnostic snapshots retain their actual paths.</li>
+<li><strong>First-run font migration:</strong> existing entries migrate lazily during normal evaluation, for posters, season posters, titlecards, and backgrounds on every supported server. If the clean artwork, metadata, and original path-based recipe still match, only the recipe hash and layer snapshot are updated. Migration itself does not render or upload artwork and preserves the last-upload timestamp and artwork identity. Font hashes use the renderer's local candidate order: the requested file first, then valid same-name files in its font directories. Missing or corrupt preferred files can therefore use the same local font as the renderer, without downloading or repairing files during hashing. A prior path change can also migrate when its saved recipe is verifiable and both old/current requests resolve to byte-identical valid fonts. Unresolvable or different fonts do not qualify, and the cache-miss reason identifies unresolved fonts. Failed database migrations fail the item rather than falling through to an upload. Do not clear the cache for this upgrade.</li>
+<li>Legacy recipes did not record historical font contents. An unchanged legacy recipe therefore establishes the currently installed font as its initial content baseline; a font replacement that happened before this first migration cannot be identified retrospectively from that recipe alone. After migration, font content changes are detected normally. Real artwork, metadata, rule, or selection changes still use the normal sync workflow; full/forced runs retain their explicit reapply behavior.</li>
+<li>Metadata-only refreshes preserve the saved layer reference and verified artwork identity, so an up-to-date poster check does not erase the previous recipe diagnostics. Incremental Plex movie/show poster processing also compares rendered bytes with the selected upload before uploading; an identical selected image refreshes fingerprints without another upload. Full/forced sync continues to upload explicitly requested artwork.</li>
+<li>Plex movie/show poster cache hits verify the actual item thumbnail bytes, not just the recipe hash or the poster list's <code>selected</code> flag. This also applies when the thumbnail URL is unchanged, including separate library entries for the same movie. If the displayed poster already matches the rendered bytes, fingerprints are refreshed without uploading. Successful poster uploads always issue an explicit selection request for the target item, then verify its displayed thumbnail before the cache is marked synced. Pre-upload verification failures leave server artwork untouched; an upload whose selection cannot be confirmed is not marked synced.</li>
+<li>Verified Plex episode stream metadata is reused on incremental runs only when the episode timestamp and media path still match. The first run builds this metadata cache; full/targeted runs and changed or incomplete metadata still perform fresh detail queries. Artwork-selection verification and overlay-rule evaluation remain active.</li>
+<li>Show/season audio-codec badges use the same image resolver as other artwork, including imported <code>defaults/images/audio_codec/...</code> files and explicit <code>file_dts</code> / <code>file_ma</code> image overrides. They are not limited to <code>assets/audio_codec/...</code>. Parent audio-codec rules also accept <code>builder_level: [show, season]</code> or <code>builder_level: "show, season"</code> as well as a single level. An existing image in the defaults directory does not need to be downloaded or copied again.</li>
+<li>Parent audio-codec aggregation retains the selected/default episode audio stream's profile and track title. This distinguishes a <code>dts</code>/<code>dca</code> base codec with a DTS-HD MA profile from plain DTS on show and season posters. Codec/profile variants are counted separately when selecting the common format, and stale parent track-title aliases are cleared when the aggregate is applied. Existing DTS/DCA stream-cache entries without profile fields are reread once; unrelated verified codec entries remain reusable. No cache clear is required. The audio-codec rule must target <code>show</code>, <code>season</code>, or <code>all</code>, or explicitly opt into <code>aggregate_parent_streams</code>; the matching badge image must be available.</li>
+<li>After updating the backend, a normal targeted sync of an affected show reevaluates its show and season codec badges; Force Apply and cache clearing are not required for the DTS-MA profile handoff fix. The selected aggregate codec, profile, and both track-title fields are applied together to show metadata before poster recipes are built. A codec present only in a minority of selected/default episode streams may not be the common show or season format; forcing does not override that selection or enable an unconfigured badge.</li>
+<li>Incremental sync still enumerates media-server items, checks clean source files, evaluates recipes, and verifies artwork where required; an <code>Up-to-date</code> result is not just a database lookup. A bounded candidate cache excludes overlay rules restricted to other show titles, while retaining per-episode filters and queue/group processing. Candidate keys include expanded rule inputs and title, so template, variable, and YAML changes invalidate them. This optimization does not change recipe hashes or require a cache reset.</li>
+<li>Explicit font requests never silently substitute another font family. Font directories created after engine initialization are discovered on subsequent evaluations; a missing required custom font fails rendering instead of uploading a differently styled image. Existing images previously rendered with a substitute font may require one corrective sync to the configured font.</li>
+<li>Missing or corrupt official fonts are repaired with size-limited downloads that Pillow validates before atomic replacement. Concurrent render workers share a repair lock, and failed repairs have a short retry cooldown; HTML/error responses are never installed as fonts. Invalid custom fonts require a valid replacement from the user. Legacy cache migration runs in bounded batches, with cache initialization offloaded from the async event loop.</li>
+<li>Inspect recently synchronized media items across Plex, Jellyfin, and Emby.</li>
+<li>Clear rating or asset caches on demand.</li>
+<li><strong>Plex titlecard confirmation:</strong> A successful upload HTTP response is not sufficient. Sync locates the uploaded image by its content hash, explicitly selects it for the target item, and verifies the selection before recording success. Missing/unselected uploads remain failed and are retried on a later sync.</li>
+<li><strong>Plex episode artwork drift:</strong> When a thumbnail URL changes, incremental sync checks the selected upload identity before deciding that artwork was replaced. An already-selected, byte-identical rendered titlecard can refresh its cache without uploading again, including legacy rows. Plex shows with titlecards enumerate their children rather than trusting only the parent show timestamp.</li>
+<li><strong>Generated-asset targets:</strong> Season and episode CSV rows resolve to their parent show using TVDb/TMDb/IMDb IDs, including IDs in asset-folder tags. Decorated season/episode titles are not treated as parent-show titles. Older rows without IDs use exact parent-title or root-folder matching rather than broad substring matching.</li>
+<li><strong>Overlapping triggers:</strong> Targeted Arr/Tautulli and automatic asset-creation requests are queued while another overlay sync is active. Compatible pending batches are merged and identical targets deduplicated; each batch runs serially after the active sync. Stop cancels pending batches. This queue is in memory and does not survive a backend restart. Manual untargeted full-sync requests are still rejected while busy.</li>
+<li><strong>Compound rating previews:</strong> A separate rating plate and score are moved as one group, preserving their original internal alignment and transparency when changing badge alignment or dragging.</li>
+</ul>
+<h3 id="6-regional-streaming-availability">6. Regional Streaming Availability</h3>
+<ul>
+<li>Enable <strong>Streaming Services</strong> in Visual Badges, or add <code>default: streaming</code>. A configured TMDb API key/read token and a TMDb ID for the movie/show are required.</li>
+<li>Select the two-letter country code, such as <code>US</code>, <code>DE</code>, or <code>GB</code>. Availability is regional and is not inferred from the studio, network, filename, or the user's subscriptions.</li>
+<li><code>availability_types</code> defaults to <code>[flatrate]</code> (subscription). Optional values are <code>free</code>, <code>ads</code>, <code>rent</code>, and <code>buy</code>. An empty list produces no logos. Multiple matching services can be displayed with configurable count, spacing, direction, position, and color/white artwork.</li>
+<li>Successful provider responses, including empty availability, are cached for 24 hours in the overlay database. Failed requests do not overwrite the cache; expired data is reused after an API failure when available. Without cached data, lookup failures leave that item's artwork untouched and report a failure.</li>
+<li>Preview streaming values are sample provider keys, such as <code>netflix,disney,hulu</code>, not a live availability lookup. Season/titlecard rules use their parent show's availability, not individual episode purchase availability.</li>
+<li>Availability data is supplied by TMDb / <a href="https://www.justwatch.com/">JustWatch</a>. Playback progress bars and media-client status icons are not generated by this overlay engine.</li>
+</ul>
+<hr />
+<h2 id="security-architecture">Security Architecture</h2>
+<p>Posterizarr enforces strict security controls for dynamic overlay file operations. The active root is <code>Overlayfiles/dynamic_overlays/</code>:</p>
+<ul>
+<li><strong>Path Traversal Mitigation:</strong> Configuration and asset file operations are confined to the active overlay root. Traversal patterns (<code>..</code>, <code>~</code>), null bytes (<code>\x00</code>), and path escapes are blocked.</li>
+<li><strong>Strict Extension Whitelisting:</strong> Only safe configuration (<code>.yml</code>, <code>.yaml</code>), image (<code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>), and font (<code>.ttf</code>, <code>.otf</code>) extensions are permitted.</li>
+<li><strong>SSRF Mitigation:</strong> All remote asset downloads strictly enforce HTTPS, resolve hostnames against public IP ranges, and block loopback (<code>127.0.0.1</code>), link-local (<code>169.254.x.x</code>), private IP ranges, and multicast targets.</li>
+</ul>
+<hr />
+<h2 id="open-source-attribution-license">Open Source Attribution &amp; License</h2>
+<p>The coordinate placement and text/backdrop rendering algorithms in <a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_engine.py"><code>webui/backend/overlay_engine.py</code></a> are adapted from <a href="https://github.com/Kometa-Team/Kometa/blob/master/modules/overlay.py">Kometa's <code>modules/overlay.py</code></a>, by <strong>meisnate12</strong> and the Kometa team, under the <strong>MIT License</strong>. Posterizarr's YAML handling, media-server integration, preview, sync, and cache are separate Posterizarr implementations; see the source map above.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>MIT License
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Copyright (c) 2026 meisnate12
+</code></pre></div>
+<p>We extend deep gratitude to the Kometa community for their contributions to media server automation.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../action_center/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Action Center">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Action Center
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../blueprints/" class="md-footer__link md-footer__link--next" aria-label="Next: Blueprints and recipes">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Blueprints and recipes
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 fscorrupt
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/fscorrupt" target="_blank" rel="noopener" title="GitHub Profile" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/fYyJQSGt54" target="_blank" rel="noopener" title="Discord Server" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://ko-fi.com/R6R81S6SC" target="_blank" rel="noopener" title="Support on Ko-fi" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Ko-fi</title><path d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog" role="status" aria-atomic="true">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      
+      
+        
+        
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["navigation.sections","navigation.top","search.suggest","search.highlight","content.code.annotate","content.code.copy","navigation.instant","navigation.tracking","navigation.footer","header.autohide","search.share","content.tabs.link","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d31f0ffa.min.js"></script>
+      
+        <script src="../gallery.js"></script>
+      
+    
+  </body>
+</html>
