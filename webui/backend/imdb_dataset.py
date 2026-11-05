@@ -16,10 +16,21 @@ import httpx
 
 logger = logging.getLogger("ratings_service")
 IMDB_ID = re.compile(r"tt\d{7,12}\Z")
+ARTICLES = frozenset(("a", "an", "the", "der", "die", "das", "ein", "eine", "le", "la", "les", "un", "une", "el", "los", "las", "il", "lo", "gli", "o", "os", "as", "um", "uma"))
 
 
 def normalized_title(value):
     return "".join(character for character in unicodedata.normalize("NFKC", value or "").casefold() if character.isalnum())
+
+
+def matching_title_keys(value):
+    normalized = unicodedata.normalize("NFKC", value or "").casefold().strip()
+    keys = {normalized_title(normalized)}
+    words = re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
+    without_articles = "".join(word for word in words if word not in ARTICLES)
+    if without_articles and len(without_articles) != len(normalized_title(normalized)):
+        keys.add(without_articles)
+    return keys - {""}
 
 
 def filename_episode(value):
@@ -186,21 +197,31 @@ class ImdbDataset:
             if not parent_id:
                 return {"status": "missing_series", "mode": "auto", "context": context, "candidates": []}
             absolute, file_title = filename_episode(context.get("file_path"))
-            names = {normalized_title(context.get(key)) for key in ("episode_title", "original_title")}
-            names.add(normalized_title(file_title))
-            names.discard("")
+            names = set().union(*(matching_title_keys(context.get(key)) for key in ("episode_title", "original_title", "file_title")))
+            names.update(matching_title_keys(file_title))
             rows = connection.execute("""
                 SELECT t.imdb_id, t.title, t.original_title, t.normalized, t.original_normalized,
                        e.parent_id, e.season, e.episode, r.rating, r.votes
                 FROM episodes e JOIN titles t USING(imdb_id) JOIN ratings r USING(imdb_id)
                 WHERE e.parent_id=? ORDER BY e.season, e.episode
             """, (parent_id,)).fetchall()
-            matches = [dict(row) for row in rows if names.intersection((row["normalized"], row["original_normalized"]))]
-            if len(matches) > 1 and absolute is not None:
-                matches = [row for row in matches if row["season"] == 1 and row["episode"] == absolute]
+            absolute_coordinates = self.absolute_episode_coordinates(parent_id, absolute)
+            absolute_matches = [dict(row) for row in rows if absolute_coordinates == (row["season"], row["episode"])]
+            matches = [dict(row) for row in rows if names.intersection(
+                matching_title_keys(row["title"]) | matching_title_keys(row["original_title"]))]
+            if absolute_coordinates is not None:
+                if len(absolute_matches) == 1 and names.intersection(
+                        matching_title_keys(absolute_matches[0]["title"]) | matching_title_keys(absolute_matches[0]["original_title"])):
+                    return {**absolute_matches[0], "status": "matched", "mode": "absolute", "parent_id": parent_id}
+                candidates = {row["imdb_id"]: row for row in [*absolute_matches, *matches]}
+                if candidates:
+                    return {"status": "ambiguous", "mode": "absolute_unverified", "parent_id": parent_id,
+                            "context": context, "candidates": list(candidates.values())[:30]}
+            if len(matches) > 1 and absolute_coordinates is not None:
+                matches = [row for row in matches if absolute_coordinates == (row["season"], row["episode"])]
             if len(matches) == 1:
                 return {**matches[0], "status": "matched", "mode": "auto", "parent_id": parent_id}
-            candidates = matches or [dict(row) for row in rows if absolute is not None and row["season"] == 1 and row["episode"] == absolute]
+            candidates = matches or absolute_matches
             return {"status": "ambiguous" if len(matches) > 1 else "unmapped", "mode": "auto", "parent_id": parent_id,
                     "context": context, "candidates": candidates[:30]}
 
@@ -225,6 +246,18 @@ class ImdbDataset:
                 return []
             return [dict(row) for row in connection.execute(
                 "SELECT season, episodes FROM season_lengths WHERE parent_id=? ORDER BY season", (imdb_id,))]
+
+    def absolute_episode_coordinates(self, imdb_id, absolute_episode):
+        if absolute_episode is None or absolute_episode < 1:
+            return None
+        remaining = int(absolute_episode)
+        for season in self.season_lengths(imdb_id):
+            if season["season"] < 1:
+                continue
+            if remaining <= season["episodes"]:
+                return season["season"], remaining
+            remaining -= season["episodes"]
+        return None
 
     def save_season_mapping(self, server, context, imdb_id, target_season=1, episode_offset=0, continue_seasons=False):
         self.initialize()

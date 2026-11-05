@@ -174,9 +174,16 @@ as `One Piece (1999) - S21E83 - 974 - Oden Wouldnt Be Oden If It Wasnt Boiled! [
 provide the English title and absolute number independently of the Plex display
 language. For anime, include the absolute episode number in the filename; see the
 [TRaSH Guides recommended anime naming scheme](https://trash-guides.info/Sonarr/Sonarr-recommended-naming-scheme/?h=naming#episode-format).
-The year disambiguates same-name remakes. Absolute numbering is used
-to distinguish otherwise identical title candidates in IMDb season 1; a number
-alone is only a suggestion, never proof that two numbering schemes agree.
+The year disambiguates same-name remakes. In the recognized TRaSH-style filename,
+the resolver converts the absolute number across consecutive IMDb seasons using
+the complete imported season lengths, so it does not depend on TVDB season order.
+Specials are excluded from the absolute count. Before accepting a rated absolute
+candidate, its normalized IMDb title must match the episode title or filename
+title. Articles may differ anywhere in the title, but all other words must match
+in the same order. A content-word conflict or translated title is
+shown for manual review instead of being used as a confirmed rating. If the
+absolute number does not point to a rated episode, the same conservative title
+matching is still tried.
 Ambiguous series/titles are not automatically assigned. This is not limited to
 anime, but does not guarantee matches for every language or filename format.
 

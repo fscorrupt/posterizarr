@@ -5,7 +5,7 @@
       "idTitle": "1. Primeiro o ID IMDb",
       "idBody": "Quando o ID IMDb do episódio é conhecido, a avaliação é consultada diretamente na base de dados local.",
       "titleTitle": "2. Comparar a série e o título",
-      "titleBody": "Sem ID, o mesmo título é procurado apenas numa série identificada sem ambiguidade. Maiúsculas e pontuação são ignoradas. Um título inglês no nome do ficheiro também ajuda quando o Plex usa outro idioma.",
+      "titleBody": "Sem ID, o mesmo título é procurado apenas numa série identificada sem ambiguidade. Maiúsculas, pontuação e artigos comuns (como a, an, the) são ignorados; todas as outras palavras têm de manter a mesma ordem. Um título inglês no nome do ficheiro também ajuda quando o Plex usa outro idioma.",
       "manualTitle": "3. Em caso de dúvida, decide",
       "manualBody": "Resultados ambíguos nunca são selecionados automaticamente. A escolha manual tem prioridade até selecionar novamente Automática.",
       "filename": "Exemplo com número absoluto do episódio",

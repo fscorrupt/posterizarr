@@ -5,7 +5,7 @@
       "idTitle": "1. IMDb ID first",
       "idBody": "When the episode's IMDb ID is known, its rating is looked up directly in the local database.",
       "titleTitle": "2. Compare the series and title",
-      "titleBody": "Without an ID, the same episode title is searched within a uniquely identified series. Case and punctuation are ignored. An English title in the filename also helps when Plex uses another language.",
+      "titleBody": "Without an ID, the same episode title is searched within a uniquely identified series. Case, punctuation and common articles (such as a, an, the) are ignored; all other words must remain in the same order. An English filename title can help when Plex uses another language.",
       "manualTitle": "3. You decide when unclear",
       "manualBody": "Ambiguous matches are never selected automatically. A manual choice takes priority until you select Automatic again.",
       "filename": "Example with an absolute episode number",

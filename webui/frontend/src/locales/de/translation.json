@@ -5,7 +5,7 @@
       "idTitle": "1. IMDb-ID zuerst",
       "idBody": "Ist die IMDb-ID der Episode bekannt, wird die Bewertung direkt in der lokalen Datenbank nachgeschlagen.",
       "titleTitle": "2. Serie und Titel vergleichen",
-      "titleBody": "Ohne ID wird innerhalb der eindeutig erkannten Serie nach demselben Episodentitel gesucht. Großschreibung und Satzzeichen spielen keine Rolle. Ein englischer Titel im Dateinamen hilft auch bei deutscher Plex-Sprache.",
+      "titleBody": "Ohne ID wird innerhalb der eindeutig erkannten Serie nach demselben Episodentitel gesucht. Groß-/Kleinschreibung, Satzzeichen und gängige Artikel (z. B. a, an, the) werden ignoriert; alle übrigen Wörter müssen in derselben Reihenfolge stehen. Ein englischer Dateititel hilft auch bei deutscher Plex-Sprache.",
       "manualTitle": "3. Im Zweifel selbst entscheiden",
       "manualBody": "Mehrdeutige Treffer werden nicht automatisch übernommen. Eine manuelle Auswahl hat Vorrang, bis du wieder Automatisch auswählst.",
       "filename": "Beispiel mit absoluter Episodennummer",

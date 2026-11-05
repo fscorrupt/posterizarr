@@ -5,7 +5,7 @@
       "idTitle": "1. L’ID IMDb en priorité",
       "idBody": "Si l’ID IMDb de l’épisode est connu, sa note est recherchée directement dans la base locale.",
       "titleTitle": "2. Comparer la série et le titre",
-      "titleBody": "Sans ID, le même titre d’épisode est recherché dans une série identifiée sans ambiguïté. La casse et la ponctuation sont ignorées. Un titre anglais dans le nom du fichier aide aussi si Plex utilise une autre langue.",
+      "titleBody": "Sans ID, le même titre d’épisode est recherché dans une série identifiée sans ambiguïté. La casse, la ponctuation et les articles courants (comme a, an, the) sont ignorés ; tous les autres mots doivent rester dans le même ordre. Un titre anglais dans le nom du fichier aide aussi si Plex utilise une autre langue.",
       "manualTitle": "3. À vous de choisir en cas de doute",
       "manualBody": "Les résultats ambigus ne sont jamais sélectionnés automatiquement. Votre choix manuel reste prioritaire jusqu’au retour au mode Automatique.",
       "filename": "Exemple avec un numéro d’épisode absolu",
