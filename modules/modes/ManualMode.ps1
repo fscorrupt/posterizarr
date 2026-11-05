@@ -1058,7 +1058,10 @@
         if ($global:DynamicOverlaysEnabled -eq $true -or $DynamicOverlaysEnabled -eq $true) {
             Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct media server upload in Manual Mode. Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
         }
-        elseif ($Upload2Plex -eq 'true' -or $UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
+        elseif ($UseSilo -eq 'true' -and $TitleCard) {
+            Write-Entry -Message "Manual Mode: Silo does not support episode artwork uploads. Title card was created locally only (no media server upload)." -Path $global:configLogging -Color Yellow -log Warning
+        }
+        elseif ($Upload2Plex -eq 'true' -or $UseJellyfin -eq 'true' -or $UseEmby -eq 'true' -or $UseSilo -eq 'true') {
             Write-Entry -Message "Manual Mode: Updating Media Server artwork..." -Path $global:configLogging -Color Cyan -log Info
 
             $FinalTargetID = $null
@@ -1069,31 +1072,50 @@
             $SearchTerm = $Titletext
             if ([string]::IsNullOrWhiteSpace($SearchTerm) -or $SeasonPoster -or $TitleCard) {
                 # Titletext is the poster text, not the show name (or it's empty). Derive show name from FolderName.
-                if ($FolderName -match "^([^\(]+?)\s*(?:\(\d{4}\)|$)") {
+                if ($FolderName -match "^(.+?)\s*\(\d{4}\)") {
                     $SearchTerm = $Matches[1].Trim()
                 } else {
-                    $SearchTerm = $FolderName
+                    $SearchTerm = ($FolderName -replace '\s*[\{\[][^\}\]]*[\}\]]', '').Trim()
                 }
                 Write-Entry -Subtext "Derived Media Server Search Term from FolderName: '$SearchTerm' (Titletext was '$Titletext')" -Path $global:configLogging -Color Cyan -log Debug
             }
 
             if ($UsePlex -eq 'true') {
-                $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($SearchTerm))"
+                $baseItem = $null
 
-                Write-Entry -Subtext "Plex Search URI: $(RedactMediaServerUrl -url $searchUrl)" -Path $global:configLogging -Color Cyan -log Debug
-
-                [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
-
-                if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) {
-                    $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                # Resolve by folder name (titles can differ from Arr-sanitized folder names)
+                try {
+                    $baseItem = Resolve-PlexItemByFolder -LibraryName $LibraryName -FolderName $FolderName
                 }
-                else {
-                    $baseItem = $searchXml.MediaContainer.directory | Where-Object { $_.type -eq 'show' -and $_.librarySectionTitle -eq $LibraryName }
+                catch {
+                    Write-Entry -Subtext "Plex folder path lookup failed: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    $baseItem = $null
                 }
 
-                if (-not $baseItem -and -not ($MoviePosterCard)) {
-                    Write-Entry -Subtext "Plex match failed for Show '$SearchTerm'. Retrying search as 'movie' type..." -Path $global:configLogging -Color Yellow -log Info
-                    $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                if (-not $baseItem) {
+                    Write-Entry -Subtext "Falling back to Plex title search..." -Path $global:configLogging -Color Yellow -log Info
+                    $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($SearchTerm))"
+
+                    Write-Entry -Subtext "Plex Search URI: $(RedactMediaServerUrl -url $searchUrl)" -Path $global:configLogging -Color Cyan -log Debug
+
+                    [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
+
+                    if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) {
+                        $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                    }
+                    else {
+                        $baseItem = $searchXml.MediaContainer.directory | Where-Object { $_.type -eq 'show' -and $_.librarySectionTitle -eq $LibraryName }
+                    }
+
+                    if (-not $baseItem -and -not ($MoviePosterCard)) {
+                        Write-Entry -Subtext "Plex match failed for Show '$SearchTerm'. Retrying search as 'movie' type..." -Path $global:configLogging -Color Yellow -log Info
+                        $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                    }
+
+                    if (@($baseItem).Count -gt 1) {
+                        Write-Entry -Message "Plex title search for '$SearchTerm' returned $(@($baseItem).Count) items in library '$LibraryName'. Aborting upload to avoid applying artwork to the wrong item." -Path $global:configLogging -Color Red -log Error
+                        $baseItem = $null
+                    }
                 }
 
                 if ($baseItem) {
@@ -1102,39 +1124,73 @@
                 }
                 else {
                     Write-Entry -Message "No Plex match found for '$SearchTerm' in library '$LibraryName'." -Path $global:configLogging -Color Red -log Error
+                    if ($FolderName -notmatch '[\{\[](tvdb|tmdb|imdb)(id)?-') {
+                        Write-Entry -Subtext "Action required: Folder '$FolderName' has no {tvdb-...}/{tmdb-...}/{imdb-...} tag and its name does not match the Plex title. Add an ID tag (and year) to the folder name in Sonarr/Radarr, then rerun to upload." -Path $global:configLogging -Color Yellow -log Warning
+                    }
+                    else {
+                        Write-Entry -Subtext "Action required: Folder '$FolderName' could not be matched to a Plex item in '$LibraryName'. Check that Plex has scanned this folder and that its ID tag matches the Plex metadata, then rerun to upload." -Path $global:configLogging -Color Yellow -log Warning
+                    }
                     $FinalTargetID = $null
                 }
             }
-            elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
+            elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true' -or $UseSilo -eq 'true') {
                 $SearchType = if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) { "Movie" } else { "Series" }
-                $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=$SearchType&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false"
-
-                Write-Entry -Subtext "JF/Emby Search URI: $(RedactMediaServerUrl -url $searchUri)" -Path $global:configLogging -Color Cyan -log Debug
-                $results = Invoke-RestMethod -Uri $searchUri -Headers $global:OtherMediaServerHeaders
-
-                $baseItem = $results.Items | Where-Object { $_.Path -match [regex]::Escape($FolderName) }
-
-                if (-not $baseItem -and $SearchType -eq "Series") {
-                    Write-Entry -Subtext "Precision match failed for Series '$FolderName'. Retrying search as 'Movie' type..." -Path $global:configLogging -Color Yellow -log Info
-
-                    $retrySearchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Fields=Path&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false"
-                    $retryResults = Invoke-RestMethod -Uri $retrySearchUri -Headers $global:OtherMediaServerHeaders
-                    $baseItem = $retryResults.Items | Where-Object { $_.Path -match [regex]::Escape($FolderName) }
-
-                    if ($baseItem) {
-                        Write-Entry -Subtext "Successfully recovered! Found precise Movie match: $($baseItem.Name)" -Path $global:configLogging -Color Green -log Info
-                        $SearchType = "Movie"
-                    }
+                # Series Path is the show folder, Movie Path is the video file inside the movie folder
+                $folderMatches = {
+                    param($item)
+                    $p = ("$($item.Path)" -replace '\\', '/').TrimEnd('/')
+                    if (-not $p) { return $false }
+                    $leafName = ($p -split '/')[-1]
+                    $parentName = (($p -replace '/[^/]*$', '') -split '/')[-1]
+                    return ($leafName -eq $FolderName) -or ($item.Type -eq 'Movie' -and $parentName -eq $FolderName)
                 }
-                if (-not $baseItem) {
-                    Write-Entry -Message "No precise path match found for '$FolderName' as Series or Movie." -Path $global:configLogging -Color Red -log Error
-                    Write-Entry -Subtext "Aborting upload to prevent applying artwork to incorrect media item." -Path $global:configLogging -Color Yellow -log Warning
 
-                    $FinalTargetID = $null
+                if ($UseSilo -eq 'true') {
+                    $baseItem = @($global:SiloItems.Values | Where-Object { $_.Type -in @('Movie', 'Series') -and $_.SiloLibraryName -eq $LibraryName -and (& $folderMatches $_) })
                 }
                 else {
+                    # The same folder name can exist in several libraries (e.g. 'TV Shows' and '4K TV Shows')
+                    $libraryFilter = ''
+                    try {
+                        $virtualFolders = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Library/VirtualFolders" -Headers $global:OtherMediaServerHeaders
+                        $libraryId = ($virtualFolders | Where-Object { $_.Name -eq $LibraryName } | Select-Object -First 1).ItemId
+                        if ($libraryId) { $libraryFilter = "&ParentId=$libraryId" }
+                    }
+                    catch {
+                        Write-Entry -Subtext "Could not resolve library '$LibraryName' on media server: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    }
+
+                    $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Series,Movie&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false$libraryFilter"
+                    Write-Entry -Subtext "JF/Emby Search URI: $(RedactMediaServerUrl -url $searchUri)" -Path $global:configLogging -Color Cyan -log Debug
+                    $results = Invoke-RestMethod -Uri $searchUri -Headers $global:OtherMediaServerHeaders
+                    $baseItem = @($results.Items | Where-Object { & $folderMatches $_ })
+
+                    if ($baseItem.Count -eq 0) {
+                        Write-Entry -Subtext "Title search did not return folder '$FolderName'. Scanning all Series/Movies by path..." -Path $global:configLogging -Color Yellow -log Info
+                        $allUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Series,Movie&Fields=Path&Recursive=true&CollapseBoxSetItems=false$libraryFilter"
+                        $allResults = Invoke-RestMethod -Uri $allUri -Headers $global:OtherMediaServerHeaders
+                        $baseItem = @($allResults.Items | Where-Object { & $folderMatches $_ })
+                    }
+                }
+
+                if ($baseItem.Count -eq 1) {
+                    $baseItem = $baseItem[0]
+                    if ($baseItem.Type -ne $SearchType) {
+                        Write-Entry -Subtext "Folder '$FolderName' resolved to a $($baseItem.Type) instead of a $SearchType." -Path $global:configLogging -Color Yellow -log Info
+                        $SearchType = $baseItem.Type
+                    }
                     $FinalTargetID = $baseItem.Id
                     Write-Entry -Subtext "Base Item Found: $($baseItem.Name) (ID: $FinalTargetID)" -Path $global:configLogging -Color Cyan -log Debug
+                }
+                else {
+                    if ($baseItem.Count -gt 1) {
+                        Write-Entry -Message "Folder '$FolderName' matched $($baseItem.Count) items on the media server." -Path $global:configLogging -Color Red -log Error
+                    }
+                    else {
+                        Write-Entry -Message "No precise path match found for '$FolderName' as Series or Movie." -Path $global:configLogging -Color Red -log Error
+                    }
+                    Write-Entry -Subtext "Action required: Make sure the media server has scanned folder '$FolderName' (in library '$LibraryName') and that only one item points to it, then rerun to upload." -Path $global:configLogging -Color Yellow -log Warning
+                    $FinalTargetID = $null
                 }
             }
 
@@ -1145,6 +1201,9 @@
                         $drillUri = "$PlexUrl/library/metadata/$FinalTargetID/children"
                         [xml]$children = (Invoke-PlexWebRequest -Uri $drillUri -Headers $extraPlexHeaders).content
                         $FinalTargetID = ($children.MediaContainer.Directory | Where-Object { [int]$_.index -eq [int]$global:SeasonNumber }).ratingKey
+                    }
+                    elseif ($UseSilo -eq 'true') {
+                        $FinalTargetID = $global:SiloSeasons["$($FinalTargetID):$([int]$global:SeasonNumber)"].content_id
                     }
                     else {
                         $drillUri = "$OtherMediaServerUrl/Items?ParentId=$FinalTargetID&IncludeItemTypes=Season&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams"
@@ -1190,8 +1249,14 @@
                     }
                     else {
                         Write-Entry -Subtext "Calling UploadOtherMediaServerArtwork for ID $FinalTargetID" -Path $global:configLogging -Color Cyan -log Debug
-                        UploadOtherMediaServerArtwork -itemId $FinalTargetID -imageType $FinalImageType -imagePath $PosterImage
-                        $global:UploadCount = Increment-GlobalStat 'UploadCount'
+                        try {
+                            UploadOtherMediaServerArtwork -itemId $FinalTargetID -imageType $FinalImageType -imagePath $PosterImage
+                            # Send-SiloArtwork counts its own uploads
+                            if ($UseSilo -ne 'true') { $global:UploadCount = Increment-GlobalStat 'UploadCount' }
+                        }
+                        catch {
+                            Write-Entry -Subtext "Manual media server upload failed: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        }
                     }
                 }
             }

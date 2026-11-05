@@ -9,10 +9,23 @@ function Invoke-SiloApi {
     }
     $requestHeaders = @{ Authorization = "Bearer $OtherMediaServerApiKey" }
     if ($Profile) { $requestHeaders['X-Profile-Id'] = $global:SiloProfileId }
-    try {
-        Invoke-RestMethod -Uri $uri -Headers $requestHeaders -Method Get -MaximumRedirection 0 -TimeoutSec 45 -ErrorAction Stop
-    } catch {
-        throw "Silo API read failed at $Path ($($_.Exception.Response.StatusCode)); verify access and server availability."
+    $attempt = 0
+    while ($true) {
+        try {
+            return Invoke-RestMethod -Uri $uri -Headers $requestHeaders -Method Get -MaximumRedirection 0 -TimeoutSec 45 -ErrorAction Stop
+        } catch {
+            $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+            # Reads are idempotent, so rate-limited requests can be retried safely
+            if ($status -eq 429 -and $attempt -lt 5) {
+                $attempt++
+                $retryAfter = $_.Exception.Response.Headers.RetryAfter.Delta.TotalSeconds
+                $delay = if ($retryAfter -gt 0) { [Math]::Min([int][Math]::Ceiling($retryAfter), 60) } else { 2 * $attempt }
+                Write-Entry -Subtext "Silo rate limit hit at $Path. Retrying in ${delay}s... (Attempt $attempt/5)" -Path $global:configLogging -Color Yellow -log Warning
+                Start-Sleep -Seconds $delay
+                continue
+            }
+            throw "Silo API read failed at $Path ($($_.Exception.Response.StatusCode)); verify access and server availability."
+        }
     }
 }
 
@@ -38,7 +51,8 @@ function Resolve-SiloArtworkUrl {
     $base = [uri]($OtherMediaServerUrl.TrimEnd('/') + '/')
     $resolved = [uri]::new($base, $Reference)
     if ($resolved.Authority -ne $base.Authority -or $resolved.Scheme -ne $base.Scheme -or $resolved.UserInfo) {
-        throw 'Silo artwork must be served by the configured server.'
+        Write-Entry -Subtext "Ignoring Silo artwork reference that is not served by the configured server (host: $($resolved.Authority))." -Path $global:configLogging -Color Yellow -log Warning
+        return $null
     }
     return $resolved.AbsoluteUri
 }

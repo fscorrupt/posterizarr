@@ -155,6 +155,89 @@ function GetPlexArtworkUrl {
     }
 }
 
+function Resolve-PlexItemByFolder {
+    <#
+    .SYNOPSIS
+        Finds the Plex movie/show in a library whose on-disk folder name equals FolderName. Returns the item node or $null.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$LibraryName,
+        [Parameter(Mandatory = $true)][string]$FolderName
+    )
+
+    $leaf = { param($p) (($p -replace '\\', '/').TrimEnd('/') -split '/')[-1] }
+
+    [xml]$sectionsXml = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections" -Headers $extraPlexHeaders).content
+    $section = $sectionsXml.MediaContainer.Directory | Where-Object { $_.title -eq $LibraryName } | Select-Object -First 1
+    if (-not $section) {
+        Write-Entry -Subtext "Plex library '$LibraryName' not found." -Path $global:configLogging -Color Yellow -log Warning
+        return $null
+    }
+
+    $reqHeaders = if ($extraPlexHeaders) { $extraPlexHeaders.Clone() } else { @{} }
+    $reqHeaders['X-Plex-Container-Size'] = '2000'
+    $start = 0
+    $sectionItems = [System.Collections.Generic.List[object]]::new()
+    do {
+        $reqHeaders['X-Plex-Container-Start'] = [string]$start
+        [xml]$sectionXml = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($section.key)/all?includeGuids=1" -Headers $reqHeaders).content
+        $page = if ($section.type -eq 'movie') { @($sectionXml.MediaContainer.Video) } else { @($sectionXml.MediaContainer.Directory) }
+        $page | Where-Object { $_ } | ForEach-Object { $sectionItems.Add($_) }
+        $start += 2000
+    } while ($page.Count -gt 0 -and $start -lt [int]$sectionXml.MediaContainer.totalSize)
+
+    if ($section.type -eq 'movie') {
+        $hits = @($sectionItems | Where-Object {
+                @($_.Media.Part.file) | Where-Object { $_ -and (& $leaf (($_ -replace '\\', '/') -replace '/[^/]*$', '')) -eq $FolderName }
+            })
+    }
+    else {
+        # Section listings omit Location for shows, so narrow candidates by external ID, title, year or search, then verify via item metadata
+        $shows = @($sectionItems)
+        $verify = {
+            param($items)
+            @($items | Sort-Object ratingKey -Unique | Where-Object {
+                    [xml]$meta = (Invoke-PlexWebRequest -Uri "$PlexUrl/library/metadata/$($_.ratingKey)" -Headers $extraPlexHeaders).content
+                    @($meta.MediaContainer.Directory.Location.path) | Where-Object { $_ -and (& $leaf $_) -eq $FolderName }
+                })
+        }
+        $normalize = { param($s) ($s -replace '[^\p{L}\p{N}]', '').ToLowerInvariant() }
+        $folderYear = if ($FolderName -match '\((\d{4})\)') { $Matches[1] } else { $null }
+        $folderTitle = (($FolderName -replace '\s*\(\d{4}\).*$', '') -replace '\s*[\{\[][^\}\]]*[\}\]]', '').Trim()
+        $folderBase = & $normalize $folderTitle
+
+        $hits = @()
+        $guids = [regex]::Matches($FolderName, '[\{\[](tvdb|tmdb|imdb)(?:id)?-(tt\d+|\d+)[\}\]]', 'IgnoreCase') | ForEach-Object { "$($_.Groups[1].Value.ToLower())://$($_.Groups[2].Value)" }
+        if ($guids) {
+            $hits = & $verify ($shows | Where-Object { $ids = @($_.Guid.id); $guids | Where-Object { $ids -contains $_ } })
+        }
+        if (-not $hits) {
+            $hits = & $verify ($shows | Where-Object {
+                    $t = & $normalize $_.title
+                    $o = & $normalize $_.originalTitle
+                    ($t -and $t -eq $folderBase) -or ($o -and $o -eq $folderBase) -or
+                    ($t.Length -ge 3 -and ($folderBase.StartsWith($t) -or $t.StartsWith($folderBase)) -and (-not $folderYear -or $_.year -eq $folderYear))
+                })
+        }
+        if (-not $hits -and $folderYear) {
+            $byYear = @($shows | Where-Object { $_.year -eq $folderYear })
+            if ($byYear.Count -le 50) { $hits = & $verify $byYear }
+        }
+        if (-not $hits -and $folderTitle) {
+            [xml]$searchXml = (Invoke-PlexWebRequest -Uri "$PlexUrl/search?query=$([uri]::EscapeDataString($folderTitle))" -Headers $extraPlexHeaders).content
+            $hits = & $verify ($searchXml.MediaContainer.Directory | Where-Object { $_.type -eq 'show' -and $_.librarySectionTitle -eq $LibraryName })
+        }
+    }
+
+    $hits = @($hits)
+    if ($hits.Count -eq 1) {
+        Write-Entry -Subtext "Plex item resolved by folder path: $($hits[0].title) (RatingKey: $($hits[0].ratingKey))" -Path $global:configLogging -Color Cyan -log Debug
+        return $hits[0]
+    }
+    Write-Entry -Subtext "Plex folder path match returned $($hits.Count) items for '$FolderName'." -Path $global:configLogging -Color Yellow -log Info
+    return $null
+}
+
 function Get-PlexSectionSeasonsBulk {
     <#
     .SYNOPSIS
