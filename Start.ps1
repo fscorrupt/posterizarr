@@ -243,7 +243,7 @@ function ScriptSchedule {
 }
 function GetLatestScriptVersion {
     try {
-        return Invoke-RestMethod -Uri "https://github.com/fscorrupt/posterizarr/raw/main/Release.txt" -Method Get -ErrorAction Stop
+        return Invoke-RestMethod -Uri "https://github.com/fscorrupt/posterizarr/raw/main/Release.txt" -Method Get -TimeoutSec 30 -ErrorAction Stop
     }
     catch {
         Write-Host "Could not query latest script version, Error: $($_.Exception.Message)"
@@ -412,7 +412,7 @@ function CheckJson {
     try {
         $AttributeChanged = $null
         # Download the default configuration JSON file from the URL
-        $defaultConfig = Invoke-RestMethod -Uri $jsonExampleUrl -Method Get -ErrorAction Stop
+        $defaultConfig = Invoke-RestMethod -Uri $jsonExampleUrl -Method Get -TimeoutSec 30 -ErrorAction Stop
 
         # Read the existing configuration file if it exists
         if (Test-Path $jsonFilePath) {

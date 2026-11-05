@@ -454,7 +454,7 @@ function InvokeIMChecks {
     if ($global:OSType -eq "Docker") {
         #$OSVersionTag = (Get-Content /etc/os-release | Select-String -Pattern "^PRETTY_NAME=").ToString().Split('=')[1].Trim('"').replace('Alpine Linux ', '')
         $Url = "https://pkgs.alpinelinux.org/package/edge/community/x86_64/imagemagick"
-        $response = Invoke-WebRequest -Uri $url
+        $response = Invoke-WebRequest -Uri $url -TimeoutSec 30
         $htmlContent = $response.Content
         $regexPattern = '<th class="header">Version<\/th>\s*<td>\s*<strong[^>]*>([\d\.]+-r\d+)<\/strong>'
         $Versionmatching = [regex]::Matches($htmlContent, $regexPattern)
@@ -477,7 +477,7 @@ function InvokeIMChecks {
     Elseif ($global:OSType -eq "Win32NT") {
         try {
             $Url = "https://imagemagick.org/archive/binaries/?C=M;O=D"
-            $result = Invoke-WebRequest -Uri $Url -ErrorAction Stop
+            $result = Invoke-WebRequest -Uri $Url -TimeoutSec 30 -ErrorAction Stop
 
             $global:LatestImagemagickversion = ($result.links.href |
                 Where-Object { $_ -like '*portable-Q16-HDRI-x64.zip' } |
@@ -486,11 +486,11 @@ function InvokeIMChecks {
         catch {
             # Fallback to GitHub API if direct access is forbidden or fails
             Write-Entry -Subtext "Primary method failed. Falling back to GitHub API..." -Path $global:configLogging -Color Yellow -log Debug
-            $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get).tag_name
+            $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get -TimeoutSec 30).tag_name
         }
     }
     Else {
-        $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get).tag_name
+        $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get -TimeoutSec 30).tag_name
     }
     if ($global:LatestImagemagickversion) {
         $global:LatestImagemagickversiontemp = $global:LatestImagemagickversion
@@ -506,7 +506,7 @@ function InvokeIMChecks {
             if ($global:OSType -ne "Docker") {
                 Write-Entry -Subtext "Downloading the latest Imagemagick portable version for you..." -Path $global:configLogging -Color Cyan -log Info
                 $magickUrl = "https://imagemagick.org/archive/binaries/magick"
-                Invoke-WebRequest -Uri $magickUrl -OutFile "$global:ScriptRoot/magick"
+                Invoke-WebRequest -Uri $magickUrl -OutFile "$global:ScriptRoot/magick" -TimeoutSec 300
                 chmod +x "$global:ScriptRoot/magick"
                 Write-Entry -Subtext "Made the portable Magick executable..." -Path $global:configLogging -Color Green -log Info
             }
@@ -1353,7 +1353,7 @@ function CheckJson {
     try {
         $AttributeChanged = $null
         # Download the default configuration JSON file from the URL
-        $defaultConfig = Invoke-RestMethod -Uri $jsonExampleUrl -Method Get -ErrorAction Stop
+        $defaultConfig = Invoke-RestMethod -Uri $jsonExampleUrl -Method Get -TimeoutSec 30 -ErrorAction Stop
 
         # Read the existing configuration file if it exists
         if (Test-Path $jsonFilePath) {
@@ -1579,7 +1579,7 @@ function Get-Platform {
 }
 function Get-LatestScriptVersion {
     try {
-        return Invoke-RestMethod -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/Release.txt" -Method Get -ErrorAction Stop
+        return Invoke-RestMethod -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/Release.txt" -Method Get -TimeoutSec 30 -ErrorAction Stop
     }
     catch {
         Write-Entry -Subtext "Could not query latest script version, Error: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
@@ -1623,7 +1623,7 @@ function CheckConfigFile {
 
     if (!(Test-Path (Join-Path $ScriptRoot 'config.json'))) {
         Write-Entry -Message "Config File missing, downloading it for you..." -Path $global:configLogging -Color White -log Info
-        Invoke-WebRequest -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/config.example.json" -OutFile "$ScriptRoot\config.json"
+        Invoke-WebRequest -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/config.example.json" -OutFile "$ScriptRoot\config.json" -TimeoutSec 30
         Write-Entry -Subtext "Config File downloaded here: '$ScriptRoot\config.json'" -Path $global:configLogging -Color White -log Info
         Write-Entry -Subtext "Please configure the config file according to GitHub, Exit script now..." -Path $global:configLogging -Color Yellow -log Warning
         # Clear Running File
@@ -1637,7 +1637,7 @@ function Test-And-Download {
     )
 
     if (!(Test-Path $destination)) {
-        Invoke-WebRequest -Uri $url -OutFile $destination
+        Invoke-WebRequest -Uri $url -OutFile $destination -TimeoutSec 300
     }
 }
 function RedactMediaServerUrl {

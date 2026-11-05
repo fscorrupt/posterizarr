@@ -103,7 +103,7 @@ if (-not (Test-Path -Path "$PSScriptRoot\modules\core\Variables.ps1")) {
 
     try {
         Write-Host "Downloading latest $branch modules..." -ForegroundColor Cyan
-        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -ErrorAction Stop
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -TimeoutSec 300 -ErrorAction Stop
 
         Write-Host "Extracting..." -ForegroundColor Cyan
         Expand-Archive -Path $zipPath -DestinationPath $tempExtractPath -Force -ErrorAction Stop
