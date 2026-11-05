@@ -29,6 +29,7 @@
     "tooLarge": "Overlay bundles must be smaller than 128 MiB.",
     "types": {"movie": "Movies", "show": "Shows", "mixed": "Mixed"},
     "errors": {
+      "officialCatalogUnavailable": "The official Kometa catalog could not be verified. Retry when GitHub is reachable.",
       "requestFailed": "The bundle request failed. Check your connection and the server log.",
       "invalidBundle": "The bundle is invalid, unsafe, or incomplete. Check the archive and its configuration files.",
       "busy": "An overlay task or import is running or still stopping. Try again after it finishes.",
@@ -42,6 +43,7 @@
       "unsupportedBundle": "This overlay bundle format or version is not supported."
     },
     "warnings": {
+      "officialDependencies": "Official Kometa files are not included. Download missing defaults, images, and fonts from the configuration view before syncing.",
       "simklRequired": "AniMetaFill needs a SIMKL Client ID configured on this installation.",
       "imdbDownload": "Download the local IMDb dataset separately; its index is not included.",
       "noLibraries": "No destination libraries are available. Refresh the libraries for your configured media server first.",

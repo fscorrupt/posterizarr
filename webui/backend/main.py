@@ -21064,7 +21064,8 @@ async def export_dynamic_overlay_bundle():
             "Content-Disposition": 'attachment; filename="posterizarr-overlays.zip"', "Cache-Control": "no-store",
         })
     except BundleError as error:
-        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+        raise HTTPException(status_code=503 if error.code == "officialCatalogUnavailable" else 400,
+                            detail={"code": error.code, "message": str(error)})
     except Exception:
         logger.exception("Overlay bundle export failed")
         raise HTTPException(status_code=500, detail="Could not export the overlay bundle.")
@@ -21079,6 +21080,9 @@ async def preview_dynamic_overlay_bundle(file: UploadFile = File(...)):
         summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
         warnings = []
         warning_codes = []
+        if summary.get("official_dependency_count"):
+            warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
+            warning_codes.append("officialDependencies")
         if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
             warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
             warning_codes.append("simklRequired")

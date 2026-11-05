@@ -55,16 +55,28 @@ configuration is an example, not the installation defaults.*
 
 Use **Export bundle** in the Dynamic Overlays header to download
 `posterizarr-overlays.zip`. This is separate from Blueprint exports and raw
-YAML uploads. It contains the available local overlay YAML, images (including
-custom resolution badges), fonts, visual layouts, rating-source selections,
-and portable feature settings such as AniMetaFill styling and enablement.
-Shared `Overlayfiles`, `overlays`, and `fonts` resources are included when
-available locally. Cache, backup, and temporary preview directories are excluded.
+YAML uploads. It contains custom overlay YAML, required custom images (including
+resolution badges), fonts, visual layouts, rating-source selections, and portable
+feature settings such as AniMetaFill styling and enablement. Required custom
+resources are collected from the active overlay directory and shared
+`Overlayfiles`, `overlays`, and `fonts` folders. Unused asset catalogs, caches,
+backups, and temporary previews are excluded.
+
+Official Kometa files are identified against the public repository's file
+checksums. Byte-identical, downloadable defaults, images, and fonts are recorded
+as dependencies rather than copied into the ZIP. Locally modified files remain
+included even if they use a standard filename. Export needs access to GitHub
+to verify the official catalog; it does not download the default asset files.
+After import, use readiness checks to download missing official dependencies
+before syncing.
 
 API keys, tokens, passwords, media-server connections, and the main application
 configuration are not exported. Import does not replace existing provider keys
-with blank or null values and does not change the destination media server.
+with blank, null, or masked values and does not change the destination media server.
 Credentials required by imported features must already be configured locally.
+Known credential values found in ordinary exported text are replaced with
+`[REDACTED]` instead of aborting the export. Binary assets are never blindly
+rewritten; an asset containing credential data still requires metadata cleanup.
 
 To import a bundle:
 

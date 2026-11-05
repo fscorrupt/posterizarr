@@ -16,7 +16,7 @@ The following API endpoints are available.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/dynamic-overlays/bundle/export` | Download a ZIP of local YAML, assets, fonts, visual layouts, and portable feature settings, excluding credentials and media-server connections. |
+| `GET /api/dynamic-overlays/bundle/export` | Download custom YAML and required custom assets/fonts plus layouts and portable settings. Official downloadable Kometa files are dependency references, not ZIP payloads. Credential fields and media-server connections are excluded; known credentials in text are masked. |
 | `POST /api/dynamic-overlays/bundle/preview` | Multipart `file` upload. Returns source profiles, existing destination libraries/server, features, file counts, conflicts, and warnings without applying the bundle. |
 | `POST /api/dynamic-overlays/bundle/import` | Multipart upload with `file`, JSON-string `mapping`, JSON-string `anime_libraries`/`season_libraries`, and boolean `import_settings`/`replace_files`. Applies validated mappings and starts in Dry Run, without uploading artwork. |
 
@@ -28,12 +28,16 @@ are rejected. `replace_files=true` explicitly approves conflicting shared files;
 existing files are backed up before replacement.
 
 Local credentials and media-server selections are preserved even if an uploaded
-bundle contains credential fields with blank/null values. Invalid bundles return
+bundle contains credential fields with blank/null/masked values. Invalid bundles return
 `400`; validation failures include `detail.code` and a readable `detail.message`
 so clients can translate the error. Preview responses also include
 `warning_codes` alongside the existing readable `warnings` list. An active
 sync/classification/import returns `409`. See the
 [bundle workflow and limits](dynamic_overlays.md#share-a-complete-overlay-bundle).
+
+`official_dependency_count` in the preview reports omitted downloadable defaults.
+Export returns `503` with code `officialCatalogUnavailable` if the official
+Kometa catalog cannot be verified; it does not silently export the whole catalog.
 
 ### `POST /api/dynamic-overlays/sync`
 

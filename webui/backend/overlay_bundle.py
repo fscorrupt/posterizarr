@@ -1,17 +1,20 @@
 import io
+import fnmatch
 import hashlib
 import json
 import os
 import re
 import stat
 import threading
+import time
 import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
 
 import yaml
+import httpx
 
 SCHEMA_VERSION = 1
 MAX_BUNDLE_BYTES = 128 * 1024 * 1024
@@ -38,12 +41,60 @@ ANIME_FIELDS = {
 }
 LIBRARY_FIELDS = {"overlay_files", "overlays", "template_variables", "remove_overlays", "reapply_overlays", "reset_overlays"}
 IMPORT_LOCK = threading.Lock()
+OFFICIAL_CATALOG_LOCK = threading.Lock()
+OFFICIAL_CATALOG_CACHE = None
+KOMETA_RAW = "https://raw.githubusercontent.com/Kometa-Team/Kometa/master/"
 
 
 class BundleError(ValueError):
     def __init__(self, message, code="invalidBundle"):
         super().__init__(message)
         self.code = code
+
+
+def official_local_path(source):
+    try:
+        path = bundle_path(source)
+    except BundleError:
+        return None
+    prefix = "defaults/overlays/images/"
+    if source.startswith(prefix) and path.suffix.lower() in ASSET_EXTENSIONS:
+        return "assets/" + source[len(prefix):]
+    if source.startswith("fonts/") and path.suffix.lower() in {".ttf", ".otf"}:
+        return source
+    prefix = "defaults/overlays/"
+    if source.startswith(prefix) and path.suffix.lower() in {".yml", ".yaml"}:
+        return "defaults/" + source[len(prefix):]
+    return None
+
+
+def load_official_catalog():
+    global OFFICIAL_CATALOG_CACHE
+    with OFFICIAL_CATALOG_LOCK:
+        if OFFICIAL_CATALOG_CACHE and time.monotonic() - OFFICIAL_CATALOG_CACHE[0] < 900:
+            return OFFICIAL_CATALOG_CACHE[1]
+        try:
+            response = httpx.get(
+                "https://api.github.com/repos/Kometa-Team/Kometa/git/trees/master?recursive=1",
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "Posterizarr-overlay-bundle"},
+                timeout=30, follow_redirects=False,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if data.get("truncated") or not isinstance(data.get("tree"), list):
+                raise ValueError("Incomplete official file catalog")
+            catalog = {entry["path"]: entry["sha"] for entry in data["tree"]
+                       if entry.get("type") == "blob" and official_local_path(entry["path"])}
+            if not catalog:
+                raise ValueError("Empty official file catalog")
+        except (httpx.HTTPError, ValueError, KeyError) as error:
+            raise BundleError("The official Kometa catalog could not be verified. Retry when GitHub is reachable.", "officialCatalogUnavailable") from error
+        OFFICIAL_CATALOG_CACHE = (time.monotonic(), catalog)
+        return catalog
+
+
+def git_blob_hash(payload):
+    return hashlib.sha1(b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload).hexdigest()
 
 
 def private_key(key):
@@ -74,8 +125,13 @@ def sanitize(value, secrets=(), depth=0):
             query = [(key, child) for key, child in parse_qsl(parsed.query, keep_blank_values=True)
                      if not private_key(key) and key.lower() not in {"key", "auth", "access_token"}]
             value = urlunsplit((parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, urlencode(query), ""))
-        if any(secret and len(str(secret)) >= 4 and str(secret) in value for secret in secrets):
-            raise BundleError("A configuration value contains a credential. Remove it before exporting.", "credentials")
+        candidates = {
+            variant for secret in secrets if secret and len(str(secret)) >= 4
+            for variant in (str(secret), quote(str(secret), safe=""), quote_plus(str(secret)))
+        }
+        if candidates:
+            pattern = "|".join(re.escape(secret) for secret in sorted(candidates, key=lambda secret: (-len(secret), secret)))
+            value = re.sub(pattern, lambda match: "[REDACTED]", value)
     return value
 
 
@@ -182,11 +238,18 @@ def credential_values(value):
     return result
 
 
-def export_profile(config_root, overlays_dir, settings, visual, anime, library_types=None, imdb_enabled=False, private_config=None):
+def export_profile(config_root, overlays_dir, settings, visual, anime, library_types=None, imdb_enabled=False, private_config=None, official_catalog=None):
     config_root, overlays_dir = Path(config_root).resolve(), Path(overlays_dir).resolve()
     primary = overlays_dir / "configs" / "config.yml"
     if not primary.is_file():
         raise BundleError("No overlay config.yml exists to export.", "missingConfig")
+    catalog = load_official_catalog() if official_catalog is None else official_catalog
+    official_by_hash, official_by_local = {}, {}
+    for source, checksum in sorted(catalog.items()):
+        local = official_local_path(source)
+        if local:
+            official_by_hash.setdefault(checksum, []).append(source)
+            official_by_local[local] = source
     secrets = credential_values([settings, anime, private_config or {}])
     sources = {}
     roots = [(overlays_dir, "")]
@@ -210,8 +273,6 @@ def export_profile(config_root, overlays_dir, settings, visual, anime, library_t
             if folder != overlays_dir and path.is_relative_to(overlays_dir):
                 continue
             sources[prefix + relative.as_posix()] = path
-    if len(sources) > MAX_FILES - 1:
-        raise BundleError("Too many overlay files. Remove unused assets before exporting.", "sizeLimit")
     aliases, basenames = {}, {}
     for relative, path in sources.items():
         aliases[path.as_posix()] = relative
@@ -225,23 +286,130 @@ def export_profile(config_root, overlays_dir, settings, visual, anime, library_t
             aliases["/config/" + root_relative] = relative
         basenames.setdefault(path.name, []).append(relative)
 
-    def portable_reference(value):
+    selected, replacements, official_dependencies, documents = set(), {}, {}, {}
+    pending = []
+
+    def official_reference(source):
+        local = official_local_path(source)
+        official_dependencies[local] = {"source": source, "sha": catalog[source]}
+        return "kometa://" + local
+
+    def include(relative):
+        if relative in replacements:
+            return replacements[relative]
+        path = sources[relative]
+        payload = path.read_bytes()
+        matches = official_by_hash.get(git_blob_hash(payload), []) if relative != "configs/config.yml" else []
+        if matches:
+            source = min(matches, key=lambda source: (official_local_path(source) != relative, source))
+            reference = official_reference(source)
+        else:
+            selected.add(relative)
+            reference = "bundle://" + relative
+        replacements[relative] = reference
+        if path.suffix.lower() in {".yml", ".yaml"}:
+            documents[relative] = sanitize(read_document(path), secrets)
+            pending.append(relative)
+        return reference
+
+    def referenced_official(text):
+        candidates = [text, "assets/" + text]
+        for marker in ("assets/", "fonts/", "defaults/"):
+            if "/" + marker in text:
+                candidates.append(marker + text.rsplit("/" + marker, 1)[1])
+        if PurePosixPath(text).suffix.lower() in {".ttf", ".otf"}:
+            candidates.append("fonts/" + PurePosixPath(text).name)
+        if "/" not in text:
+            candidates.extend(("defaults/" + text, "assets/resolution/" + text))
+        return next((official_by_local[name] for name in candidates if name in official_by_local), None)
+
+    def select_reference(value):
         text = value.replace("\\", "/")
+        if text.startswith(("http://", "https://")):
+            return value
         if text in aliases:
-            return "bundle://" + aliases[text]
-        if "<<" in text:
-            prefix = text[:text.index("<<")].rsplit("/", 1)[0] + "/"
+            return include(aliases[text])
+        if "<<" in text and "/" in text:
+            pattern = re.sub(r"<<[^>]+>>", "*", text)
+            patterns = [pattern] if PurePosixPath(pattern).suffix else [pattern + extension for extension in (".png", ".yml", ".yaml")]
             for alias, relative in aliases.items():
-                if alias.startswith(prefix):
-                    return "bundle://" + relative[:len(relative) - len(alias) + len(prefix)] + text[len(prefix):]
-        if not text.startswith(("http://", "https://")):
+                if any(fnmatch.fnmatchcase(alias, candidate) or fnmatch.fnmatchcase(alias, "*/" + candidate) for candidate in patterns):
+                    include(relative)
+            return value
+        if PurePosixPath(text).suffix.lower() in ASSET_EXTENSIONS | {".yml", ".yaml"}:
             candidates = basenames.get(PurePosixPath(text).name, [])
             if len(candidates) == 1:
-                return "bundle://" + candidates[0]
-            if (text.startswith("/") or re.match(r"^[A-Za-z]:/", text)) and PurePosixPath(text).suffix.lower() in ASSET_EXTENSIONS | {".yaml", ".yml"}:
+                return include(candidates[0])
+            source = referenced_official(text)
+            if source:
+                return official_reference(source)
+            if text.startswith("/") or re.match(r"^[A-Za-z]:/", text):
                 raise BundleError("A local asset reference is outside the exportable overlay folders or is missing.", "missingAsset")
         return value
 
+    native_families = set()
+
+    def select_defaults(value):
+        if isinstance(value, dict):
+            default = value.get("default")
+            if isinstance(default, str) and re.fullmatch(r"[a-zA-Z0-9_-]+", default):
+                native_families.add({"ratings": "rating", "single_rating": "rating", "languages": "flag"}.get(default, default))
+                local = next((name for name in (f"defaults/{default}.yml", f"defaults/{default}.yaml") if name in sources), None)
+                if local:
+                    include(local)
+                else:
+                    select_reference(default + ".yml")
+            for child in value.values():
+                select_defaults(child)
+        elif isinstance(value, list):
+            for child in value:
+                select_defaults(child)
+
+    for relative, path in sources.items():
+        if path.suffix.lower() in {".yml", ".yaml"} and "defaults" not in PurePosixPath(relative).parts:
+            include(relative)
+    for metadata in (settings, visual, anime):
+        transform_strings(sanitize(metadata, secrets), select_reference)
+    while pending:
+        relative = pending.pop()
+        document = documents[relative]
+        transform_strings(document, select_reference)
+        select_defaults(document)
+    if settings.get("rating_sources"):
+        native_families.add("rating")
+    for relative, path in sources.items():
+        parts = set(PurePosixPath(relative).parts)
+        if path.suffix.lower() in ASSET_EXTENSIONS and (parts & native_families):
+            include(relative)
+        elif path.name == "Inter-Bold.ttf" and native_families:
+            include(relative)
+
+    def portable_reference(value):
+        text = value.replace("\\", "/")
+        if text in aliases and aliases[text] in replacements:
+            return replacements[aliases[text]]
+        if "<<" in text and "/" in text:
+            prefix = text[:text.index("<<")].rsplit("/", 1)[0] + "/"
+            for alias, relative in aliases.items():
+                if alias.startswith(prefix) and relative in selected:
+                    local = relative[:len(relative) - len(alias) + len(prefix)] + text[len(prefix):]
+                    return "bundle://" + local
+            for alias, relative in aliases.items():
+                if alias.startswith(prefix) and relative in replacements:
+                    suffix = alias[len(prefix):]
+                    replacement = replacements[relative]
+                    if suffix and replacement.endswith(suffix):
+                        return replacement[:-len(suffix)] + text[len(prefix):]
+            return value
+        candidates = basenames.get(PurePosixPath(text).name, [])
+        if not text.startswith(("http://", "https://")) and len(candidates) == 1 and candidates[0] in replacements:
+            return replacements[candidates[0]]
+        source = referenced_official(text)
+        return official_reference(source) if source else value
+
+    sources = {relative: path for relative, path in sources.items() if relative in selected}
+    if len(sources) > MAX_FILES - 1:
+        raise BundleError("Custom overlay dependencies exceed the bundle file-count limit.", "sizeLimit")
     files = {}
     expanded = 0
     for relative, path in sources.items():
@@ -249,7 +417,7 @@ def export_profile(config_root, overlays_dir, settings, visual, anime, library_t
         if expanded > MAX_EXPANDED_BYTES:
             raise BundleError("Overlay files exceed the 256 MiB expanded-size limit.", "sizeLimit")
         if path.suffix.lower() in {".yml", ".yaml"}:
-            document = transform_strings(sanitize(read_document(path), secrets), portable_reference)
+            document = transform_strings(documents[relative], portable_reference)
             files["files/" + relative] = yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode("utf-8")
         else:
             payload = path.read_bytes()
@@ -278,6 +446,7 @@ def export_profile(config_root, overlays_dir, settings, visual, anime, library_t
         "visual": transform_strings(sanitize(visual, secrets), portable_reference),
         "animetafill": transform_strings(portable_anime, portable_reference),
         "imdb_dataset": bool(imdb_enabled),
+        "official_dependencies": official_dependencies,
         "checksums": {name: hashlib.sha256(payload).hexdigest() for name, payload in files.items()},
     }
     return pack_bundle(manifest, files)
@@ -285,6 +454,12 @@ def export_profile(config_root, overlays_dir, settings, visual, anime, library_t
 
 def inspect_profile(payload, overlays_dir, local_libraries):
     manifest, files = unpack_bundle(payload)
+    dependencies = manifest.get("official_dependencies") or {}
+    if not isinstance(dependencies, dict):
+        raise BundleError("Official dependency metadata is invalid.")
+    for local, dependency in dependencies.items():
+        if not isinstance(dependency, dict) or official_local_path(dependency.get("source", "")) != local or not re.fullmatch(r"[a-f0-9]{40}", str(dependency.get("sha", ""))):
+            raise BundleError("Official dependency metadata is invalid.")
     primary = files.get("files/configs/config.yml")
     if primary is None:
         raise BundleError("Bundle has no primary overlay configuration.")
@@ -305,6 +480,7 @@ def inspect_profile(payload, overlays_dir, local_libraries):
     return {
         "libraries": profiles, "local_libraries": local_libraries,
         "file_count": len(files), "asset_count": sum(PurePosixPath(name).suffix.lower() in ASSET_EXTENSIONS for name in files),
+        "official_dependency_count": len(dependencies),
         "conflicts": conflicts,
         "features": {
             "dynamic_overlays": bool((manifest.get("settings") or {}).get("enabled")),
@@ -346,6 +522,16 @@ def prepare_import(payload, overlays_dir, local_libraries, mapping, anime_librar
     root = Path(overlays_dir).resolve()
 
     def local_reference(value):
+        if value.startswith("kometa://"):
+            relative = bundle_path(value[len("kometa://"):])
+            dependencies = manifest.get("official_dependencies") or {}
+            pattern = re.sub(r"<<[^>]+>>", "*", relative.as_posix())
+            if relative.as_posix() not in dependencies and not ("<<" in value and any(fnmatch.fnmatchcase(name, pattern) for name in dependencies)):
+                raise BundleError("An official dependency reference is missing from the bundle manifest.", "missingAsset")
+            destination = root / relative
+            if not destination.resolve().is_relative_to(root):
+                raise BundleError("An official dependency points outside the overlay directory.")
+            return destination.as_posix()
         if not value.startswith("bundle://"):
             text = value.replace("\\", "/")
             if (text.startswith("/") or re.match(r"^[A-Za-z]:/", text)) and PurePosixPath(text).suffix.lower() in ASSET_EXTENSIONS | {".yaml", ".yml"}:

@@ -29,6 +29,7 @@
     "tooLarge": "Les paquets de superpositions doivent faire moins de 128 Mio.",
     "types": {"movie": "Films", "show": "Séries", "mixed": "Mixte"},
     "errors": {
+      "officialCatalogUnavailable": "Le catalogue officiel Kometa n'a pas pu être vérifié. Réessayez lorsque GitHub sera accessible.",
       "requestFailed": "La requête a échoué. Vérifiez la connexion et le journal du serveur.",
       "invalidBundle": "Le paquet est invalide, non sécurisé ou incomplet. Vérifiez l'archive et ses fichiers de configuration.",
       "busy": "Une tâche de superposition ou une importation est en cours ou en cours d'arrêt. Réessayez ensuite.",
@@ -42,6 +43,7 @@
       "unsupportedBundle": "Ce format ou cette version de paquet de superpositions n'est pas pris en charge."
     },
     "warnings": {
+      "officialDependencies": "Les fichiers officiels Kometa ne sont pas inclus. Téléchargez les modèles, images et polices manquants depuis la configuration avant la synchronisation.",
       "simklRequired": "AniMetaFill nécessite un identifiant client SIMKL configuré sur cette installation.",
       "imdbDownload": "Téléchargez séparément le jeu de données IMDb local ; son index n'est pas inclus.",
       "noLibraries": "Aucune bibliothèque de destination disponible. Actualisez d'abord les bibliothèques de votre serveur multimédia.",

@@ -29,6 +29,7 @@
     "tooLarge": "Overlay-Pakete müssen kleiner als 128 MiB sein.",
     "types": {"movie": "Filme", "show": "Serien", "mixed": "Gemischt"},
     "errors": {
+      "officialCatalogUnavailable": "Der offizielle Kometa-Katalog konnte nicht geprüft werden. Versuche es erneut, sobald GitHub erreichbar ist.",
       "requestFailed": "Die Paketanfrage ist fehlgeschlagen. Prüfe deine Verbindung und das Serverprotokoll.",
       "invalidBundle": "Das Paket ist ungültig, unsicher oder unvollständig. Prüfe das Archiv und seine Konfigurationsdateien.",
       "busy": "Eine Overlay-Aufgabe oder ein Import läuft oder wird noch beendet. Versuche es danach erneut.",
@@ -42,6 +43,7 @@
       "unsupportedBundle": "Dieses Overlay-Paketformat oder diese Version wird nicht unterstützt."
     },
     "warnings": {
+      "officialDependencies": "Offizielle Kometa-Dateien sind nicht enthalten. Lade fehlende Defaults, Bilder und Schriftarten vor der Synchronisierung über die Konfigurationsansicht nach.",
       "simklRequired": "Für AniMetaFill muss auf dieser Installation eine SIMKL Client ID eingerichtet sein.",
       "imdbDownload": "Lade den lokalen IMDb-Datensatz separat herunter; sein Index ist nicht enthalten.",
       "noLibraries": "Es sind keine Zielbibliotheken verfügbar. Aktualisiere zuerst die Bibliotheken deines Medienservers.",
