@@ -6397,7 +6397,7 @@
 <tbody>
 <tr>
 <td><code>GET /api/dynamic-overlays/bundle/export</code></td>
-<td>Download a ZIP of local YAML, assets, fonts, visual layouts, and portable feature settings, excluding credentials and media-server connections.</td>
+<td>Download custom YAML and required custom assets/fonts plus layouts and portable settings. Official downloadable Kometa files are dependency references, not ZIP payloads. Credential fields and media-server connections are excluded; known credentials in text are masked.</td>
 </tr>
 <tr>
 <td><code>POST /api/dynamic-overlays/bundle/preview</code></td>
@@ -6416,12 +6416,15 @@ names. Duplicate destinations, nonexistent libraries, and movie/show mismatches
 are rejected. <code>replace_files=true</code> explicitly approves conflicting shared files;
 existing files are backed up before replacement.</p>
 <p>Local credentials and media-server selections are preserved even if an uploaded
-bundle contains credential fields with blank/null values. Invalid bundles return
+bundle contains credential fields with blank/null/masked values. Invalid bundles return
 <code>400</code>; validation failures include <code>detail.code</code> and a readable <code>detail.message</code>
 so clients can translate the error. Preview responses also include
 <code>warning_codes</code> alongside the existing readable <code>warnings</code> list. An active
 sync/classification/import returns <code>409</code>. See the
 <a href="../dynamic_overlays/#share-a-complete-overlay-bundle">bundle workflow and limits</a>.</p>
+<p><code>official_dependency_count</code> in the preview reports omitted downloadable defaults.
+Export returns <code>503</code> with code <code>officialCatalogUnavailable</code> if the official
+Kometa catalog cannot be verified; it does not silently export the whole catalog.</p>
 <h3 id="post-apidynamic-overlayssync"><code>POST /api/dynamic-overlays/sync</code></h3>
 <p>Starts a background overlay sync. Without <code>target_items</code>, <code>library</code> and <code>target_server</code> select the libraries and servers to scan. <code>scope: "incremental"</code> skips unchanged artwork; <code>scope: "all"</code> forces uploads.</p>
 <p>For an item-only request, supply its media-server ID, server, and library:</p>
