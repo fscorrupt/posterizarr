@@ -182,9 +182,18 @@ and response formats are in the [API reference](endpoints.md).
 
 *Choose **Live Preview** to inspect sample artwork and adjust badge placement. Previewing does not upload artwork.*
 
-![Dynamic Overlays Sync and Cache](images/22-overlay-sync-cache.png)
+![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
 
-*Choose **Sync & Cache** to run a Dry Run or sync, inspect logs, and browse overlay and ratings caches.*
+*Choose **Sync & Maintenance** for the separate **Synchronize**, **Media Changes**,
+**Episode Title Review**, **Overlay Cache**, and **Ratings Cache** views. The
+screenshot shows Synchronize with Dry Run on and illustrative library counts.*
+
+![Episode Title Review with historical title differences and eligibility](images/45-episode-title-review.png)
+
+*Episode Title Review compares existing titlecards with current episode titles.
+The initial scan does not recreate artwork. These are sample review records;
+single, selected, and all-eligible recreation require confirmation and use the
+existing asset queue.*
 
 ![AniMetaFill settings](images/23-animetafill.png)
 

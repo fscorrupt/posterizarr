@@ -18535,7 +18535,8 @@ async def process_queued_episode_title(item):
 
     monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
     candidate_id = item.get("overlay_params", {}).get("episode_title_candidate_id")
-    job = await asyncio.to_thread(monitor.candidate_job, candidate_id)
+    force_unknown_text = item.get("overlay_params", {}).get("force_unknown_text") is True
+    job = await asyncio.to_thread(monitor.candidate_job, candidate_id, force_unknown_text=force_unknown_text)
     if job is None:
         raise ValueError("episode_title_candidate_unavailable")
     try:
@@ -20819,6 +20820,7 @@ class EpisodeTitleRebuildRequest(BaseModel):
     all_eligible: bool = False
     search: str = Field(default="", max_length=200)
     confirmed: bool = False
+    force_unknown_text: bool = False
 
 
 def ensure_episode_title_review_idle():
@@ -20874,6 +20876,7 @@ async def rebuild_episode_title_changes(request: EpisodeTitleRebuildRequest):
         job = await episode_title_review.start_rebuild(
             BASE_DIR, CONFIG_PATH, candidate_ids=request.candidate_ids,
             all_eligible=request.all_eligible, search=request.search,
+            force_unknown_text=request.force_unknown_text,
         )
         return {"success": True, "job": job}
     except ValueError as error:

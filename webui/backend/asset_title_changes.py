@@ -76,6 +76,16 @@ def _same_title_snapshot(previous, current):
         _same_episode_title(old, new) for old, new in zip(previous_values, current_values))
 
 
+def _can_force_unknown_text(job):
+    if job.get("reason") != "unknown_text" or not job.get("source_textless") or _placeholder(str(job.get("title") or "")):
+        return False
+    try:
+        source = urlsplit(str(job.get("source") or "").strip())
+        return bool(source.scheme in ("http", "https") and source.hostname and not source.username and not source.password)
+    except ValueError:
+        return False
+
+
 class AssetTitleChanges:
     def __init__(self, base_dir, assets_dir, library_folders=True):
         self.base_dir = Path(base_dir)
@@ -186,6 +196,7 @@ class AssetTitleChanges:
                              "server_url": server_url.rstrip("/"),
                              "item_id": str(item["id"]), "asset_path": str(path), "titles": titles,
                              "source": source, "library": library_name,
+                             "source_textless": str(record.get("Language") or "").casefold() == "textless",
                              "folder": str(record["Rootfolder"]), "media_type": "episode",
                              "parent_id": str(item.get("parent_id") or item["id"]),
                              "poster_type": "titlecard",
@@ -215,15 +226,18 @@ class AssetTitleChanges:
         rows = [row for row in rows if not _same_episode_title(row.get("old_title"), row.get("title")) and
             (not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold())]
         return {"total": len(rows), "eligible": sum(row["status"] == "ready" for row in rows),
-                "entries": [{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")}
+                "entries": [{**{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")},
+                             "force_recreatable": _can_force_unknown_text(row)}
                             for row in rows[offset:offset + limit]]}
 
-    def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False):
+    def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False, force_unknown_text=False):
         with closing(sqlite3.connect(self.database)) as connection:
             rows = [json.loads(row[0]) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
         selected = set(candidate_ids or [])
         search = search.strip().casefold()
-        return [row for row in rows if row["status"] == "ready" and not _same_episode_title(row.get("old_title"), row.get("title")) and
+        return [{**row, "force_unknown_text": bool(force_unknown_text and row["status"] != "ready")} for row in rows
+            if (row["status"] == "ready" or (force_unknown_text and row["candidate_id"] in selected and _can_force_unknown_text(row)))
+            and not _same_episode_title(row.get("old_title"), row.get("title")) and
                 (row["candidate_id"] in selected or (all_eligible and (not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold())))]
 
     def record_failure(self, job, reason):
@@ -234,11 +248,12 @@ class AssetTitleChanges:
                 payload["last_error"] = reason
                 connection.execute("UPDATE episode_title_candidates SET payload = ? WHERE candidate_id = ?", (json.dumps(payload), job["candidate_id"]))
 
-    def candidate_job(self, candidate_id):
+    def candidate_job(self, candidate_id, force_unknown_text=False):
         with closing(sqlite3.connect(self.database)) as connection:
-            row = connection.execute("SELECT payload FROM episode_title_candidates WHERE candidate_id = ? AND status = 'ready'", (candidate_id,)).fetchone()
+            row = connection.execute("SELECT payload FROM episode_title_candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
         job = json.loads(row[0]) if row else None
-        return job if job and not _same_episode_title(job.get("old_title"), job.get("title")) else None
+        eligible = job and (job["status"] == "ready" or (force_unknown_text and _can_force_unknown_text(job)))
+        return job if eligible and not _same_episode_title(job.get("old_title"), job.get("title")) else None
 
     def acknowledge(self, job):
         with closing(sqlite3.connect(self.database)) as connection, connection:
@@ -470,7 +485,7 @@ class EpisodeTitleReview:
             self._update(running=False)
             self.operation_lock.release()
 
-    async def start_rebuild(self, base_dir, config_path, candidate_ids=None, all_eligible=False, search=""):
+    async def start_rebuild(self, base_dir, config_path, candidate_ids=None, all_eligible=False, search="", force_unknown_text=False):
         from dynamic_overlays_service import get_dynamic_overlays_settings
 
         settings = get_dynamic_overlays_settings()
@@ -480,28 +495,30 @@ class EpisodeTitleReview:
             raise ValueError("rebuild_disabled")
         if bool(candidate_ids) == bool(all_eligible):
             raise ValueError("invalid_selection")
+        if force_unknown_text and (all_eligible or len(candidate_ids or []) != 1):
+            raise ValueError("invalid_selection")
         if _review_queue is None or _review_queue_runner is None:
             raise RuntimeError("unavailable")
         self._reserve("scanning")
         try:
             monitor = await asyncio.to_thread(create_title_monitor, base_dir, config_path)
-            selected = await asyncio.to_thread(monitor.candidate_jobs, candidate_ids, search, all_eligible)
+            selected = await asyncio.to_thread(monitor.candidate_jobs, candidate_ids, search, all_eligible, force_unknown_text)
             if not selected:
                 raise ValueError("nothing_selected")
             self._update(total=len(selected))
-            self.task = asyncio.create_task(self._run_rebuild(base_dir, config_path, [row["candidate_id"] for row in selected]))
+            self.task = asyncio.create_task(self._run_rebuild(base_dir, config_path, [row["candidate_id"] for row in selected], force_unknown_text))
             return self.status()
         except Exception:
             self._update(running=False, phase="failed")
             self.operation_lock.release()
             raise
 
-    async def _run_rebuild(self, base_dir, config_path, candidate_ids):
+    async def _run_rebuild(self, base_dir, config_path, candidate_ids, force_unknown_text=False):
         from dynamic_overlays_service import get_dynamic_overlays_settings
 
         try:
             monitor, automatic, scanned, errors = await _scan_title_changes(base_dir, config_path)
-            jobs = await asyncio.to_thread(monitor.candidate_jobs, candidate_ids)
+            jobs = await asyncio.to_thread(monitor.candidate_jobs, candidate_ids, force_unknown_text=force_unknown_text)
             jobs = [job for job in jobs if job["server_key"] in scanned]
             self._update(phase="rebuilding", scan_errors=errors, skipped=len(candidate_ids) - len(jobs))
 

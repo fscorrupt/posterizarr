@@ -56,9 +56,9 @@ conservatively, and let you correct episode IDs or season numbering locally.
 Successful local lookups avoid per-item provider requests; other sources and
 unresolved items can still need external providers.
 
-![Dynamic Overlays Sync and Cache controls](images/22-overlay-sync-cache.png)
+![Dynamic Overlays Ratings Cache view](images/47-overlay-ratings-cache.png)
 
-*Navigate to **Builders > Dynamic Overlays > Sync & Cache**, then choose **Browse Ratings** to open the local IMDb dataset and ratings cache.*
+*Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open the local IMDb dataset and ratings cache. The screenshot uses illustrative cache counts.*
 
 [Set up the local IMDb dataset](dynamic_overlays.md#local-imdb-dataset).
 The datasets are optional, require disk space for indexing, and are licensed by

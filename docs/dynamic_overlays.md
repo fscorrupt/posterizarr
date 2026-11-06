@@ -259,12 +259,13 @@ Downloads can exceed 1 GB compressed; allow several GB of free disk space and
 time for the initial indexing, especially on a NAS. Files are streamed to disk
 and imported in bounded batches, not loaded entirely into RAM.
 
-![Dynamic Overlays Sync and Cache controls](images/22-overlay-sync-cache.png)
+![Dynamic Overlays Ratings Cache view](images/47-overlay-ratings-cache.png)
 
 *Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open Local IMDb Dataset and the ratings cache.*
 
-*Read-only capture of an existing imported index. Its count and timestamp are
-installation-specific, not download requirements or a performance benchmark.*
+*Development-build screenshot with illustrative cache counts. The local IMDb
+dataset controls are inside **Browse Ratings**, not on this overview. The counts
+shown are example data, not download requirements or a performance benchmark.*
 
 The index and explicit episode mappings are stored in
 `database/imdb_dataset.db` under the normal application data directory. Only
@@ -634,7 +635,7 @@ Generated AniMetaFill episode regexes include a numeric boundary so an episode s
 
 Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 
-### Background Change Detection & Dry Run
+### Sync & Maintenance Views
 The former **Sync & Cache** page is split into **Sync & Maintenance** views:
 
 | View | Contents | Direct Link |
@@ -647,6 +648,20 @@ The former **Sync & Cache** page is split into **Sync & Maintenance** views:
 
 The selected view is retained in the URL and local preference. The legacy
 `tab=cache` link opens Overlay Cache. Changing views does not stop running jobs.
+
+![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
+
+*The Synchronize view contains sync controls, automatic application to new
+media, and the sync log. These development-build screenshots use illustrative
+libraries and counts; no live artwork jobs were run to create them.*
+
+#### Background Change Detection & Dry Run
+
+![Media Changes view showing background checks, interval, and Dry Run](images/44-overlay-media-changes.png)
+
+*Open **Sync & Maintenance > Media Changes** for Background Checking, its check
+interval, Automatic Overlay Resync, and Dry Run. The background-check description
+also covers optional episode-titlecard recreation.*
 
 - **Background Checking** controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.
 - **Automatic Overlay Resync** controls whether detected changes start the overlay render pipeline.
@@ -680,6 +695,24 @@ and unknown or truncated historical text cannot be safely recreated automaticall
 Missing sources, textful sources, and placeholder titles remain visible with a
 blocking reason. Unmatched episodes and missing image files are not guessed.
 
+If only the previous image text is unknown, the row can offer **Force recreate
+this episode titlecard**. This explicit single-episode action requires a stored
+HTTP(S) source marked **Textless** and a current non-placeholder episode title.
+Its separate warning confirms that the old text cannot be verified and that the
+existing titlecard will be replaced. It does not bypass missing/textful sources,
+Dry Run, the Master Switch, or episode/server validation. Unknown-text rows remain
+excluded from automatic recreation and ordinary selected/all-eligible actions.
+The explicit override is retained in the existing queue if the job is resumed.
+After updating from an earlier version, run **Compare titles** once to refresh
+source eligibility for already cached review entries.
+
+![Episode Title Review showing previous and current titles and eligibility reasons](images/45-episode-title-review.png)
+
+*Illustrative review records show one eligible title change, one missing source,
+and one placeholder title. Artwork thumbnails are existing published showcase
+examples, not results from a live title scan. Dry Run is on, so recreation actions
+are disabled while comparison remains available.*
+
 Title comparisons ignore uppercase/lowercase differences, including accented
 characters. Existing case-only candidates are hidden and removed by the next
 successful scan without rendering or uploading artwork. Displayed titles and
@@ -691,6 +724,11 @@ checkboxes, or choose **All eligible matches**. The all action includes every
 eligible result of the current search, not just the current page. Each action
 requires confirmation. Manual recreation does not require the automatic title
 option or Background Checking, but the Master Switch must be on and Dry Run off.
+
+![Confirmation dialog before recreating a selected episode titlecard](images/48-episode-title-recreate-confirmation.png)
+
+*With Dry Run off, single, selected, and all-eligible recreation actions require
+confirmation. This screenshot shows the dialog only; the example job was cancelled.*
 
 Confirmed recreation uses the existing **Asset Queue** and queue processor,
 not a separate rendering worker. The queue contains a dedicated episode-title
@@ -732,6 +770,15 @@ compatibility but now applies exclusively to episode titlecards.
 Progress is logged under `[TitleChanges]` in the backend log;
 rendering uses the existing manual-run log and targeted overlays use
 `DynamicOverlaysSync.log`.
+
+#### Overlay Cache View
+
+![Separate Overlay Cache view with cache statistics and recently updated artwork](images/46-overlay-cache.png)
+
+*Open **Sync & Maintenance > Overlay Cache** to inspect cache statistics,
+**Browse Cache**, and recently updated artwork. Ratings use the separate
+**Ratings Cache** view shown in the [Local IMDb Dataset](#local-imdb-dataset)
+section. Counts and listed updates in these screenshots are illustrative.*
 
 ### 0. Guided Onboarding Setup Wizard
 - **Zero Confusion Onboarding:** A friendly 4-step visual wizard guides new users through the engine's core concepts, eliminating manual reading.

@@ -188,9 +188,12 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                   {entry.reason ? text(`reasons.${entry.reason}`) : text("ready")}</p>
                   <p className="mt-1 text-theme-muted">{entry.requires_review ? text("historical") : text("future")}</p>
                   {entry.last_error && <p className="mt-1 text-red-500">{text("errors.not_completed")}</p>}</td>
-                <td className="px-2 py-3"><button type="button" className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-text hover:bg-theme-hover disabled:opacity-40"
-                  aria-label={text("rebuildOne")} title={text("rebuildOne")} disabled={!canRebuild || entry.status !== "ready"}
-                  onClick={() => setConfirmation({ candidate_ids: [entry.candidate_id], count: 1 })}><RotateCcw className="h-4 w-4" /></button></td>
+                <td className="px-2 py-3"><button type="button" className={`flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-theme-hover disabled:opacity-40 ${entry.force_recreatable ? "border-amber-500/60 text-amber-500" : "border-theme text-theme-text"}`}
+                  aria-label={text(entry.force_recreatable ? "forceOne" : "rebuildOne")} title={text(entry.force_recreatable ? "forceOne" : "rebuildOne")}
+                  disabled={!canRebuild || (entry.status !== "ready" && !entry.force_recreatable)}
+                  onClick={() => setConfirmation({ candidate_ids: [entry.candidate_id], count: 1,
+                    force_unknown_text: Boolean(entry.force_recreatable), episode: `${entry.parent_title || entry.folder} ${coordinates}`, title: entry.title })}>
+                  <RotateCcw className="h-4 w-4" /></button></td>
               </tr>;
             })}
             {!data.entries.length && <tr><td colSpan={7} className="p-8 text-center text-theme-muted">{loading ? text("loading") : text("empty")}</td></tr>}
@@ -205,10 +208,11 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         </div>
       </div>
       <ConfirmDialog isOpen={Boolean(confirmation)} onClose={() => setConfirmation(null)} type="warning"
-        title={text("confirmTitle")} message={text("confirmMessage", { count: confirmation?.count || 0 })}
-        confirmText={text("confirmAction")} onConfirm={() => {
+        title={text(confirmation?.force_unknown_text ? "forceTitle" : "confirmTitle")}
+        message={confirmation?.force_unknown_text ? text("forceMessage", { episode: confirmation.episode, title: confirmation.title }) : text("confirmMessage", { count: confirmation?.count || 0 })}
+        confirmText={text(confirmation?.force_unknown_text ? "forceAction" : "confirmAction")} onConfirm={() => {
           if (!confirmation || !canRebuild) return;
-          const { count, ...selection } = confirmation;
+          const { count, episode, title, ...selection } = confirmation;
           post("rebuild", { ...selection, confirmed: true });
         }} />
     </section>

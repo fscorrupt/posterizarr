@@ -70,12 +70,17 @@ class QueueManager:
                             AND json_extract(overlay_params, '$.episode_title_candidate_id') = ?
                             ORDER BY id LIMIT 1""", (job["candidate_id"],)).fetchone()
                         if existing:
+                            if job.get("force_unknown_text") is True:
+                                conn.execute("""UPDATE queue_items SET overlay_params =
+                                    json_set(overlay_params, '$.force_unknown_text', json('true'))
+                                    WHERE id = ? AND status = 'pending'""", (existing[0],))
                             item_ids.append(existing[0])
                             continue
                         parameters = {"episode_title_candidate_id": job["candidate_id"], "asset_type": "titlecard",
                                       "title_text": job["title"], "episode_title": job["title"],
                                       "library_name": job["library"], "folder_name": job["folder"],
                                       "season_number": job["season"], "episode_number": job["episode"],
+                                      "force_unknown_text": job.get("force_unknown_text") is True,
                                       "process_with_overlays": True}
                         cursor = conn.execute("""INSERT INTO queue_items
                             (asset_path, source_type, source_data, overlay_params, status)
