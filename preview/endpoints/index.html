@@ -6513,11 +6513,11 @@
 </tr>
 <tr>
 <td><code>POST /api/dynamic-overlays/episode-title-changes/rebuild</code></td>
-<td>Confirmed queue recreation. <code>candidate_ids</code> or <code>all_eligible</code> with <code>search</code> and the same filters selects candidates.</td>
+<td>Confirmed queue recreation. <code>candidate_ids</code> or <code>all_eligible</code> with <code>search</code> and the same filters selects candidates. Optional <code>force_unknown_text: true</code> includes safe uncertain-text candidates in either selection.</td>
 </tr>
 <tr>
 <td><code>POST /api/dynamic-overlays/episode-title-changes/fast-normal-run</code></td>
-<td>Confirmed Fast Normal Run over <code>candidate_ids</code> or <code>all_eligible</code>, using the same search and filters.</td>
+<td>Confirmed Fast Normal Run over <code>candidate_ids</code> or <code>all_eligible</code>, using the same search and filters. Optional <code>force_unknown_text: true</code> includes safe uncertain-text candidates.</td>
 </tr>
 </tbody>
 </table>
