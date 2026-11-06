@@ -1899,6 +1899,8 @@
 </ul>
 <h3 id="monitoring-status">Monitoring &amp; Status</h3>
 <ul>
+<li><strong><code>DynamicOverlays.jsx</code></strong>: Sync &amp; Maintenance has separate URL-addressable views for synchronization, media changes, episode title review, overlay cache, and ratings cache. Only the active view is rendered; shared settings, sync state, dialogs, and background jobs remain intact. Navigation supports keyboard arrows/Home/End, saved view selection, and legacy <code>tab=cache</code> links.</li>
+<li><strong><code>EpisodeTitleReview.jsx</code></strong>: Historical ImageChoices title comparison with existing-artwork previews, eligibility reasons, filtered paging, and confirmed single/selected/all recreation. Recreation uses the existing asset queue rather than a separate renderer.</li>
 <li><strong><code>LogViewer.jsx</code></strong>: A real-time terminal-like component that connects to the backend WebSocket to stream Posterizarr execution logs.</li>
 <li><strong><code>QueueView.jsx</code></strong>: Displays backend task queue states (running, pending, completed, failed) with abort controls.</li>
 <li><strong><code>RuntimeStats.jsx</code> &amp; <code>RuntimeHistory.jsx</code></strong>: Charts and tables displaying historical execution metrics, processing durations, and asset counts.</li>
