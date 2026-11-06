@@ -3269,14 +3269,8 @@ class OverlayConfigEngine:
             targets = {str(value).strip().casefold() for value in (v if isinstance(v, list) else [v]) if value}
             return bool(candidates.intersection(targets))
         if k in ("studio", "network"):
-            raw_vals = []
-            if meta.get("network"):
-                raw_vals.append(str(meta.get("network")))
-            if meta.get("networks"):
-                for n in meta.get("networks", []):
-                    raw_vals.append(str(n))
-            if meta.get("studio"):
-                raw_vals.append(str(meta.get("studio")))
+            raw_values = meta.get("studio") if k == "studio" else (meta.get("networks") or meta.get("network"))
+            raw_vals = raw_values if isinstance(raw_values, list) else [raw_values]
             val_strs = [r.strip().lower() for r in raw_vals if r]
             targets = [str(x).strip().lower() for x in (v if isinstance(v, list) else [v])]
             return any(t in s or s in t for t in targets for s in val_strs)

@@ -3094,9 +3094,9 @@ export default function DynamicOverlays() {
     return () => { active = false; clearInterval(timer); };
   }, [isRatingsCacheModalOpen, ratingsRefreshJob?.started_at, ratingsCachePage, ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit]);
 
-  const handleDeleteRatingsCacheEntry = async (entry) => {
+  const handleResetRatingsCacheEntry = async (entry) => {
     const title = entry.title || entry.item_id || "item";
-    if (!window.confirm(`Remove cached ratings for "${title}"?\n\nUse Refresh Missing & Expired to fetch them again.`)) {
+    if (!window.confirm(`Reset cached ratings and overlay metadata for "${title}"?\n\nThe next overlay sync will fetch the metadata again and may reapply its artwork.`)) {
       return;
     }
     try {
@@ -3104,7 +3104,7 @@ export default function DynamicOverlays() {
       const res = await fetch(`/api/dynamic-overlays/ratings-cache/entry/${entry.id}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
-        showSuccess(`Deleted cached ratings for "${title}".`);
+        showSuccess(`Reset cached data for "${title}". It will be refreshed on the next overlay sync.`);
         fetchRatingsCacheItems(ratingsCachePage, ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit);
         fetchRatingsCacheStats();
       } else {
@@ -14562,10 +14562,10 @@ export default function DynamicOverlays() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteRatingsCacheEntry(entry)}
+                                onClick={() => handleResetRatingsCacheEntry(entry)}
                                 disabled={isActing || ratingsRefreshJob?.running}
                                 className="p-1.5 rounded-lg hover:bg-red-500/10 text-theme-muted hover:text-red-400 transition-all border border-transparent hover:border-red-500/30 disabled:opacity-50"
-                                title="Delete rating from cache completely"
+                                title="Reset this item's ratings and overlay cache"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>

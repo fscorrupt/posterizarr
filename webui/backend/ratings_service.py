@@ -778,31 +778,46 @@ class RatingsCacheManager:
             updated += 1
         return updated
 
-    def delete_entry(self, entry_id: int) -> bool:
-        """Delete a single cached rating record by ID."""
+    def reset_entry(self, entry_id: int) -> Optional[Dict[str, Any]]:
+        """Reset one item's ratings and overlay metadata cache without changing mappings."""
         with self.lock:
             try:
                 conn = self._get_connection()
                 with conn:
                     row = conn.execute(
-                        "SELECT server_type, item_id FROM media_ratings_cache WHERE id = ?", (int(entry_id),)
+                        "SELECT * FROM media_ratings_cache WHERE id = ?", (int(entry_id),)
                     ).fetchone()
-                    cur = conn.execute("DELETE FROM media_ratings_cache WHERE id = ?", (int(entry_id),))
-                    deleted = cur.rowcount > 0
-                    if deleted and row:
-                        retry_table = conn.execute(
-                            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ratings_refresh_retry'"
-                        ).fetchone()
-                        if retry_table:
+                    item = dict(row) if row else None
+                    if item:
+                        conn.execute("DELETE FROM media_ratings_cache WHERE id = ?", (int(entry_id),))
+                        tables = {table[0] for table in conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type = 'table'"
+                        )}
+                        if "ratings_refresh_retry" in tables:
                             conn.execute(
                                 "DELETE FROM ratings_refresh_retry WHERE server_type = ? AND item_id = ?",
-                                (row["server_type"], row["item_id"]),
+                                (item["server_type"], item["item_id"]),
                             )
+                        if "dynamic_overlay_cache" in tables:
+                            conn.execute(
+                                "DELETE FROM dynamic_overlay_cache WHERE server_type = ? AND item_id = ?",
+                                (item["server_type"], item["item_id"]),
+                            )
+                            if "overlay_layer_snapshots" in tables:
+                                conn.execute(
+                                    "DELETE FROM overlay_layer_snapshots WHERE digest NOT IN ("
+                                    "SELECT json_extract(attr_snapshot, '$._overlay_layers_ref') FROM dynamic_overlay_cache "
+                                    "WHERE json_valid(attr_snapshot) AND json_type(attr_snapshot, '$._overlay_layers_ref') = 'text')"
+                                )
                 conn.close()
-                return deleted
+                return item
             except Exception as e:
-                logger.error(f"[RatingsCache] Error deleting entry {entry_id}: {e}")
-                return False
+                logger.error(f"[RatingsCache] Error resetting entry {entry_id}: {e}")
+                return None
+
+    def delete_entry(self, entry_id: int) -> bool:
+        """Delete a single cached rating record and its associated overlay metadata."""
+        return self.reset_entry(entry_id) is not None
 
     def delete_item(self, server_type: str, item_id: str) -> bool:
         """Delete cached state for a media item confirmed missing by its server."""

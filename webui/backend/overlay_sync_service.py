@@ -1277,6 +1277,13 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
 _TMDB_SHOW_CACHE: Dict[str, Dict[str, Any]] = {}
 _TMDB_MOVIE_CR_CACHE: Dict[str, Optional[str]] = {}
 
+
+def invalidate_tmdb_show_cache(tmdb_id: Optional[str]) -> None:
+    clean_id = str(tmdb_id).strip() if tmdb_id else ""
+    if clean_id:
+        _TMDB_SHOW_CACHE.pop(clean_id, None)
+
+
 async def resolve_tmdb_show_info(
     tmdb_id: Optional[str],
     tmdb_token: Optional[str],

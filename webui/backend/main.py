@@ -21754,12 +21754,15 @@ async def cancel_ratings_refresh():
 
 @app.delete("/api/dynamic-overlays/ratings-cache/entry/{entry_id}")
 async def delete_dynamic_overlays_ratings_cache_entry(entry_id: int):
-    """Delete a single cached rating record."""
+    """Reset one item's ratings and overlay metadata cache."""
     try:
         from ratings_service import ratings_cache
-        deleted = ratings_cache.delete_entry(entry_id)
-        if deleted:
-            return {"success": True, "message": "Rating record deleted from cache."}
+        item = ratings_cache.reset_entry(entry_id)
+        if item:
+            if item.get("tmdb_id"):
+                from overlay_sync_service import invalidate_tmdb_show_cache
+                invalidate_tmdb_show_cache(item["tmdb_id"])
+            return {"success": True, "message": "Item cache reset."}
         return {"success": False, "error": "Entry not found or already deleted."}
     except Exception as e:
         logger.error(f"Error deleting rating entry {entry_id}: {e}", exc_info=True)
