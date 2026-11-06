@@ -15,6 +15,7 @@ Features:
 import os
 import re
 import json
+import copy
 import shutil
 import logging
 from pathlib import Path, PurePosixPath
@@ -26,6 +27,14 @@ logger = logging.getLogger("dynamic_overlays_service")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 ASSET_OVERRIDE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+VISUAL_MANAGED_OVERLAY_DEFAULTS = {
+    "aspect", "audio_codec", "audiocodec", "commonsense", "content_rating", "content_rating_au",
+    "content_rating_de", "content_rating_nz", "content_rating_uk", "content_rating_us_movie",
+    "content_rating_us_show", "languages", "network", "ratings", "rating", "resolution",
+    "runtimes", "runtime", "single_rating", "status", "streaming", "studio", "video_format",
+    "videoformat", "format"
+}
+VISUAL_MANAGED_OVERLAY_FILES = ("overlays_movies.yml", "overlays_tv.yml", "anime_overlays.yml")
 
 
 def _normalize_asset_overrides(value: Any) -> Dict[str, Dict[str, str]]:
@@ -821,6 +830,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             continue
 
         overlay_files = lib_data.get("overlay_files") or lib_data.get("overlays") or []
+        preserved_overlay_files = []
+        managed_overlay_count = 0
         asset_overrides = _normalize_asset_overrides(
             saved_libs.get(lib_name, {}).get("asset_overrides") if isinstance(saved_libs.get(lib_name), dict) else {}
         )
@@ -979,6 +990,16 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
             default_name = str(entry.get("default", "")).lower()
             file_name = str(entry.get("file", "")).lower()
+            is_managed_rule = default_name in VISUAL_MANAGED_OVERLAY_DEFAULTS or any(
+                managed_file in file_name for managed_file in VISUAL_MANAGED_OVERLAY_FILES
+            )
+            if is_managed_rule:
+                managed_overlay_count += 1
+            else:
+                preserved_overlay_files.append({
+                    "position": managed_overlay_count,
+                    "rule": copy.deepcopy(entry)
+                })
             vars_dict = entry.get("template_variables") or {}
             asset_family = default_name or (
                 "resolution" if any(name in file_name for name in ("overlays_movies.yml", "overlays_tv.yml")) else ""
@@ -1089,7 +1110,10 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 }
 
             # 5a. Age Rating (Common Sense Media / Content Rating)
-            elif default_name in ("commonsense", "content_rating"):
+            elif default_name in (
+                "commonsense", "content_rating", "content_rating_de", "content_rating_uk",
+                "content_rating_au", "content_rating_nz", "content_rating_us_movie", "content_rating_us_show"
+            ):
                 h_pos = vars_dict.get("horizontal_position") or vars_dict.get("horizontal_align", "left")
                 v_pos = vars_dict.get("vertical_position") or vars_dict.get("vertical_align", "bottom")
                 badges["age_rating"] = {
@@ -1260,7 +1284,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             "media_type": media_type,
             "enabled": True,
             "badges": badges,
-            "asset_overrides": asset_overrides
+            "asset_overrides": asset_overrides,
+            "preserved_overlay_files": preserved_overlay_files
         }
 
     return {"libraries": visual_libs}
@@ -1283,10 +1308,14 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
 
         media_type = lib_info.get("media_type", "movie")
         badges = lib_info.get("badges", {})
+        preserved_overlay_files = lib_info.get("preserved_overlay_files") or []
         overlay_files: List[Dict[str, Any]] = []
 
         # 1a. Age / Content Rating (Common Sense Media)
-        b_age = badges.get("age_rating") or (badges.get("rating", {}) if badges.get("rating", {}).get("source") in ("commonsense", "content_rating") else None)
+        b_age = badges.get("age_rating") or (badges.get("rating", {}) if badges.get("rating", {}).get("source") in (
+            "commonsense", "content_rating", "content_rating_de", "content_rating_uk", "content_rating_au",
+            "content_rating_nz", "content_rating_us_movie", "content_rating_us_show"
+        ) else None)
         if b_age and b_age.get("enabled"):
             h, v = _split_unified_position(b_age.get("position", "top-right"))
             age_vars: Dict[str, Any] = {
@@ -1597,6 +1626,34 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             overlay_files.append(entry)
 
         apply_asset_overrides_to_rules(overlay_files, lib_info.get("asset_overrides"))
+        if isinstance(preserved_overlay_files, list) and preserved_overlay_files:
+            anchored_rules = []
+            for record in preserved_overlay_files:
+                if not isinstance(record, dict):
+                    continue
+                if isinstance(record.get("rule"), dict):
+                    rule = copy.deepcopy(record["rule"])
+                    position = record.get("position", len(overlay_files))
+                else:
+                    rule = copy.deepcopy(record)
+                    position = len(overlay_files)
+                try:
+                    position = max(0, min(int(position), len(overlay_files)))
+                except (TypeError, ValueError):
+                    position = len(overlay_files)
+                anchored_rules.append((position, rule))
+
+            if anchored_rules:
+                anchored_rules.sort(key=lambda item: item[0])
+                generated_rules = overlay_files
+                overlay_files = []
+                anchor_index = 0
+                for position in range(len(generated_rules) + 1):
+                    while anchor_index < len(anchored_rules) and anchored_rules[anchor_index][0] <= position:
+                        overlay_files.append(anchored_rules[anchor_index][1])
+                        anchor_index += 1
+                    if position < len(generated_rules):
+                        overlay_files.append(generated_rules[position])
 
         libraries_dict[lib_name] = {
             "media_type": media_type,

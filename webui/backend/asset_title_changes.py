@@ -293,7 +293,7 @@ class AssetTitleChanges:
             if not row:
                 return False
             job = _with_source_safety(json.loads(row[0]))
-            if job.get("reason") != "media_server_source":
+            if job.get("reason") not in {"media_server_source", "unknown_text"}:
                 return False
             connection.execute("INSERT OR IGNORE INTO episode_title_candidate_dismissals (candidate_id, fingerprint, dismissed_at) VALUES (?, ?, ?)",
                                (candidate_id, _dismissal_fingerprint(job), datetime.now().isoformat()))

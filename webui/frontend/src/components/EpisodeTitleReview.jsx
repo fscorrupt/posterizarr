@@ -331,7 +331,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                   disabled={!canRebuild || (entry.status !== "ready" && !entry.force_recreatable)}
                   onClick={() => setConfirmation({ candidate_ids: [entry.candidate_id], count: 1,
                     force_unknown_text: Boolean(entry.force_recreatable), episode: `${entry.parent_title || entry.folder} ${coordinates}`, title: entry.title })}>
-                  <RotateCcw className="h-4 w-4" /></button>}{entry.reason === "media_server_source" && <button type="button"
+                  <RotateCcw className="h-4 w-4" /></button>}{["media_server_source", "unknown_text"].includes(entry.reason) && <button type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-muted hover:bg-theme-hover hover:text-theme-text disabled:opacity-40"
                   aria-label={text("dismissCandidate")} title={text("dismissCandidate")} disabled={pending || busy || loading || search !== query}
                   onClick={() => post("dismiss", { candidate_id: entry.candidate_id })}><EyeOff className="h-4 w-4" /></button>}</div></td>

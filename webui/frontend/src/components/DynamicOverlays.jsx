@@ -213,6 +213,15 @@ const DEFAULT_OVERLAY_PRESETS = [
   { id: "content_rating_us_movie", label: "US Content Rating (Movie)", desc: "MPAA age rating (G, PG, PG-13, R, NC-17)", level: "movie", category: "Content Ratings" },
   { id: "content_rating_us_show", label: "US Content Rating (TV)", desc: "TV Parental Guidelines (TV-MA, TV-14, TV-PG)", level: "show", category: "Content Ratings" },
   { id: "content_rating_de", label: "German FSK Rating", desc: "FSK 0, 6, 12, 16, 18 badges", level: "movie", category: "Content Ratings" },
+  { id: "content_rating_au", label: "Australian Content Rating", desc: "Australian classification badges", level: "movie", category: "Content Ratings" },
+  { id: "content_rating_nz", label: "New Zealand Content Rating", desc: "New Zealand classification badges", level: "movie", category: "Content Ratings" },
+  { id: "content_rating_uk", label: "UK Content Rating", desc: "BBFC classification badges", level: "movie", category: "Content Ratings" },
+  { id: "direct_play", label: "Direct Play", desc: "Direct-play compatibility overlay", level: "all", category: "Core Overlays" },
+  { id: "episode_info", label: "Episode Info", desc: "Episode information overlay", level: "episode", category: "Core Overlays" },
+  { id: "language_count", label: "Language Count", desc: "Count of available audio languages", level: "all", category: "Core Overlays" },
+  { id: "mediastinger", label: "Media Stinger", desc: "Media stinger indicator", level: "all", category: "Core Overlays" },
+  { id: "templates", label: "Templates", desc: "Kometa overlay template definitions", level: "all", category: "Core Overlays" },
+  { id: "versions", label: "Versions", desc: "Media version badges", level: "movie", category: "Core Overlays" },
 ];
 
 const ASSET_OVERRIDE_DEFAULTS = [
