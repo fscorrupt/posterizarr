@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, ImagePlus, List, Loader2, RotateCcw, Search, StopCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, EyeOff, ImagePlus, List, Loader2, RotateCcw, Search, StopCircle, Zap } from "lucide-react";
 import ConfirmDialog from "./ConfirmDialog";
 import AssetReplacer from "./AssetReplacer";
 
@@ -19,6 +19,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [revision, setRevision] = useState(0);
   const [confirmation, setConfirmation] = useState(null);
   const [replacementAsset, setReplacementAsset] = useState(null);
@@ -67,6 +68,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   }, [selectedOnPage, allOnPage]);
 
   const busy = Boolean(data.job?.running);
+  const showRebuildProgress = busy && data.job?.phase === "rebuilding";
   const total = Math.max(0, Number(data.job?.total) || 0);
   const processed = Math.max(0, (Number(data.job?.processed) || 0) + (Number(data.job?.skipped) || 0));
   const progress = total ? Math.min(100, Math.round(processed / total * 100)) : 0;
@@ -78,6 +80,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   const post = async (action, body = {}) => {
     setPending(true);
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch(`${endpoint}/${action}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
@@ -87,8 +90,13 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         const known = ["busy", "master_off", "rebuild_disabled", "nothing_selected", "unavailable"];
         throw new Error(known.includes(result.detail) ? result.detail : "request_failed");
       }
-      setData(current => ({ ...current, job: result.job }));
+      setData(current => ({ ...current, job: result.job || current.job }));
       if (action === "rebuild") setSelected(new Set());
+      if (action === "fast-normal-run") {
+        setSelected(new Set());
+        setNotice(text("fastRunStarted", { count: result.count }));
+      }
+      if (action === "dismiss") setSelected(current => { const next = new Set(current); next.delete(body.candidate_id); return next; });
       setRevision(value => value + 1);
     } catch (failure) {
       setError(failure.message || "request_failed");
@@ -127,10 +135,11 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
       {!enabled && <p className="text-xs text-theme-muted">{text("errors.master_off")}</p>}
       {enabled && dryRun && <p className="text-xs text-amber-500">{text("errors.rebuild_disabled")}</p>}
       {error && <p role="alert" className="flex items-center gap-2 text-sm text-red-500"><AlertTriangle className="h-4 w-4 shrink-0" />{text(`errors.${error}`)}</p>}
+      {notice && <p role="status" className="flex items-center gap-2 text-sm text-emerald-500"><CheckCircle2 className="h-4 w-4 shrink-0" />{notice}</p>}
       {data.job.error && <p role="alert" className="text-sm text-red-500">{text(`errors.${data.job.error}`)}</p>}
       {data.job.scan_errors?.length > 0 && <p role="alert" className="text-xs text-amber-500">{text("partialScan", { servers: data.job.scan_errors.join(", ") })}</p>}
 
-      {data.job.phase && data.job.phase !== "idle" && (
+      {showRebuildProgress && (
         <div role="status" aria-live="polite" aria-atomic="true" className={`space-y-4 border-y-2 px-4 py-4 sm:px-5 ${progressTone}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -179,6 +188,10 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         <button type="button" className={actionClass} disabled={!canRebuild || !data.eligible} onClick={() => setConfirmation({ all_eligible: true, search: query, count: data.eligible })}>
           <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildAll", { count: data.eligible })}
         </button>
+        <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !data.eligible}
+          onClick={() => setConfirmation({ fast_normal_run: true, all_eligible: true, search: query, count: data.eligible })}>
+          <Zap className="h-4 w-4 shrink-0" />{text("fastRun", { count: data.eligible })}
+        </button>
       </div>
 
       <div className="relative max-w-full overflow-x-auto rounded-lg border border-theme" aria-busy={loading}>
@@ -192,7 +205,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
               <th className="px-2 py-3">{text("previous")}</th>
               <th className="px-2 py-3">{text("current")}</th>
               <th className="w-36 px-2 py-3">{text("status")}</th>
-              <th className="w-12"><span className="sr-only">{text("rebuildOne")}</span></th>
+              <th className="w-20"><span className="sr-only">{text("rebuildOne")}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -217,7 +230,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                   {entry.reason ? text(`reasons.${entry.reason}`) : text("ready")}</p>
                   <p className="mt-1 text-theme-muted">{entry.requires_review ? text("historical") : text("future")}</p>
                   {entry.last_error && <p className="mt-1 text-red-500">{text("errors.not_completed")}</p>}</td>
-                <td className="px-2 py-3">{needsProvider ? <button type="button"
+                <td className="px-2 py-3"><div className="flex items-center gap-1">{needsProvider ? <button type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-primary hover:bg-theme-hover disabled:opacity-40"
                   aria-label={text("chooseProviderImage")} title={text("chooseProviderImage")} disabled={!canRebuild}
                   onClick={() => setReplacementAsset({
@@ -234,7 +247,10 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                   disabled={!canRebuild || (entry.status !== "ready" && !entry.force_recreatable)}
                   onClick={() => setConfirmation({ candidate_ids: [entry.candidate_id], count: 1,
                     force_unknown_text: Boolean(entry.force_recreatable), episode: `${entry.parent_title || entry.folder} ${coordinates}`, title: entry.title })}>
-                  <RotateCcw className="h-4 w-4" /></button>}</td>
+                  <RotateCcw className="h-4 w-4" /></button>}{entry.reason === "media_server_source" && <button type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-muted hover:bg-theme-hover hover:text-theme-text disabled:opacity-40"
+                  aria-label={text("dismissCandidate")} title={text("dismissCandidate")} disabled={pending || busy || loading || search !== query}
+                  onClick={() => post("dismiss", { candidate_id: entry.candidate_id })}><EyeOff className="h-4 w-4" /></button>}</div></td>
               </tr>;
             })}
             {!data.entries.length && <tr><td colSpan={7} className="p-8 text-center text-theme-muted">{loading ? text("loading") : text("empty")}</td></tr>}
@@ -252,11 +268,20 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         onClose={() => { setReplacementAsset(null); setRevision(value => value + 1); }}
         onSuccess={() => setRevision(value => value + 1)} />}
       <ConfirmDialog isOpen={Boolean(confirmation)} onClose={() => setConfirmation(null)} type="warning"
-        title={text(confirmation?.force_unknown_text ? "forceTitle" : "confirmTitle")}
-        message={confirmation?.force_unknown_text ? text("forceMessage", { episode: confirmation.episode, title: confirmation.title }) : text("confirmMessage", { count: confirmation?.count || 0 })}
-        confirmText={text(confirmation?.force_unknown_text ? "forceAction" : "confirmAction")} onConfirm={() => {
+        title={text(confirmation?.fast_normal_run ? "fastRunTitle" : confirmation?.force_unknown_text ? "forceTitle" : "confirmTitle")}
+        message={confirmation?.fast_normal_run ? text("fastRunMessage", { count: confirmation.count })
+          : confirmation?.force_unknown_text ? text("forceMessage", { episode: confirmation.episode, title: confirmation.title })
+            : text("confirmMessage", { count: confirmation?.count || 0 })}
+        confirmText={text(confirmation?.fast_normal_run ? "fastRunAction" : confirmation?.force_unknown_text ? "forceAction" : "confirmAction")} onConfirm={() => {
           if (!confirmation || !canRebuild) return;
+          if (confirmation.fast_normal_run) {
+            const { fast_normal_run, ...selection } = confirmation;
+            setConfirmation(null);
+            post("fast-normal-run", { ...selection, confirmed: true });
+            return;
+          }
           const { count, episode, title, ...selection } = confirmation;
+          setConfirmation(null);
           post("rebuild", { ...selection, confirmed: true });
         }} />
     </section>

@@ -10763,7 +10763,8 @@ export default function DynamicOverlays() {
 
           {activeTab === "episode-titles" && (<>
             <label className="flex items-center justify-between gap-3 border-b border-theme pb-3 text-sm text-theme-text">
-              <span>{t("dynamicOverlays.changeDetection.regenerateTitles")}</span>
+              <span className="min-w-0"><span className="block">{t("dynamicOverlays.changeDetection.regenerateTitles")}</span>
+                <span className="mt-1 block text-xs text-theme-muted">{t("dynamicOverlays.changeDetection.regenerateTitlesDescription")}</span></span>
               <input type="checkbox" role="switch" checked={featureSettings?.regenerate_assets_on_title_change === true}
                 onChange={event => handleUpdateDynamicSettings({ regenerate_assets_on_title_change: event.target.checked })}
                 className="h-4 w-4 shrink-0 accent-theme-primary" />

@@ -272,7 +272,8 @@
       "status": "Stato:",
       "autoResyncEnabled": "Risincronizzazione automatica attiva",
       "manualSyncOnly": "Solo sincronizzazione manuale",
-      "regenerateTitles": "Ricrea le immagini degli episodi quando cambiano i titoli"
+      "regenerateTitles": "Ricrea le immagini degli episodi quando cambiano i titoli",
+      "regenerateTitlesDescription": "I controlli automatici seguono l’intervallo configurato. Le voci ImageChoices già in revisione non vengono ricreate automaticamente."
     },
     "episodeTitles": {
       "title": "Confronto titoli degli episodi",
@@ -281,8 +282,14 @@
       "search": "Cerca serie, libreria o titolo",
       "rebuildSelected": "Ricrea selezione ({{count}})",
       "rebuildAll": "Tutti i risultati idonei ({{count}})",
+      "fastRun": "Rapido: esecuzione normale ({{count}})",
+      "fastRunTitle": "Rimuovere le immagini locali e avviare l’esecuzione normale?",
+      "fastRunMessage": "{{count}} immagini locali degli episodi verranno rimosse temporaneamente. Le immagini sul server multimediale non cambiano. La modalità normale verrà eseguita sulle librerie configurate e potrebbe creare anche altri asset mancanti. Se non viene generata una nuova immagine locale, il file precedente verrà ripristinato. Annulla e usa la coda per un’elaborazione individuale più lenta.",
+      "fastRunAction": "Rimuovi e avvia esecuzione normale",
+      "fastRunStarted": "Esecuzione normale avviata. Verifica di {{count}} immagini locali.",
       "rebuildOne": "Ricrea questa immagine episodio",
       "chooseProviderImage": "Scegli un’immagine del provider in Asset Replacer",
+      "dismissCandidate": "Nascondi definitivamente questa voce di revisione",
       "forceOne": "Forza la ricreazione di questa immagine episodio",
       "forceTitle": "Ricreare con il testo precedente sconosciuto?",
       "forceMessage": "Il testo precedente dell’immagine di {{episode}} è sconosciuto. Forzare la ricreazione dalla fonte senza testo registrata con il titolo attuale \"{{title}}\"? L’immagine esistente sarà sostituita.",

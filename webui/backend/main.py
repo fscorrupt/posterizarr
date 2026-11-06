@@ -20826,6 +20826,17 @@ class EpisodeTitleRebuildRequest(BaseModel):
     force_unknown_text: bool = False
 
 
+class EpisodeTitleDismissRequest(BaseModel):
+    candidate_id: str = Field(..., min_length=1, max_length=128)
+
+
+class EpisodeTitleFastRunRequest(BaseModel):
+    candidate_ids: List[str] = Field(default_factory=list, max_length=10000)
+    all_eligible: bool = False
+    search: str = Field(default="", max_length=200)
+    confirmed: bool = False
+
+
 def ensure_episode_title_review_idle():
     from overlay_sync_service import is_overlay_sync_running
     from plex_image_cleanup import is_cleanup_running
@@ -20886,6 +20897,83 @@ async def rebuild_episode_title_changes(request: EpisodeTitleRebuildRequest):
         raise HTTPException(status_code=400, detail=str(error)) from None
     except RuntimeError as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/dismiss")
+async def dismiss_episode_title_change(request: EpisodeTitleDismissRequest):
+    from asset_title_changes import create_title_monitor, episode_title_review
+
+    if not episode_title_review.operation_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="busy")
+    try:
+        monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+        dismissed = await asyncio.to_thread(monitor.dismiss_candidate, request.candidate_id)
+        if not dismissed:
+            raise HTTPException(status_code=404, detail="candidate_not_found")
+        return {"success": True, "job": episode_title_review.status()}
+    finally:
+        episode_title_review.operation_lock.release()
+
+
+async def _finish_episode_title_normal_run(monitor, backup_dir, entries, process):
+    from asset_title_changes import episode_title_review
+
+    try:
+        return_code = await asyncio.to_thread(process.wait)
+        completed = await asyncio.to_thread(monitor.finish_detached_candidate_assets,
+                                             backup_dir, entries, return_code == 0)
+        logger.info("[TitleChanges] Normal run finished with %s; %s/%s local titlecards recreated.",
+                    return_code, completed, len(entries))
+    except Exception:
+        logger.exception("[TitleChanges] Could not finalize fast titlecard normal run; restoring local assets.")
+        await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+    finally:
+        episode_title_review.task = None
+        episode_title_review.operation_lock.release()
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/fast-normal-run")
+async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequest):
+    from asset_title_changes import create_title_monitor, episode_title_review, title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+
+    if not request.confirmed:
+        raise HTTPException(status_code=400, detail="confirmation_required")
+    if bool(request.candidate_ids) == bool(request.all_eligible):
+        raise HTTPException(status_code=400, detail="invalid_selection")
+    settings = get_dynamic_overlays_settings()
+    if not settings.get("enabled"):
+        raise HTTPException(status_code=400, detail="master_off")
+    if not title_regeneration_allowed(settings, manual=True):
+        raise HTTPException(status_code=400, detail="rebuild_disabled")
+    if not episode_title_review.operation_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="busy")
+
+    monitor = None
+    backup_dir = None
+    entries = []
+    try:
+        ensure_episode_title_review_idle()
+        monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+        jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
+                                      request.all_eligible, False)
+        if not jobs:
+            raise HTTPException(status_code=400, detail="nothing_selected")
+        backup_dir, entries = await asyncio.to_thread(monitor.detach_candidate_assets, jobs)
+        result = await run_script("normal")
+        episode_title_review.task = asyncio.create_task(_finish_episode_title_normal_run(monitor, backup_dir, entries, current_process))
+        return {"success": True, "message": "normal_run_started", "pid": result["pid"], "count": len(entries)}
+    except HTTPException:
+        if backup_dir and monitor:
+            await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review.operation_lock.release()
+        raise
+    except Exception as error:
+        if backup_dir and monitor:
+            await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review.operation_lock.release()
+        logger.exception("[TitleChanges] Could not start fast normal run")
+        raise HTTPException(status_code=500, detail="normal_run_failed") from error
 
 
 @app.post("/api/dynamic-overlays/episode-title-changes/cancel")

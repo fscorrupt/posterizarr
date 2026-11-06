@@ -272,7 +272,8 @@
       "status": "État :",
       "autoResyncEnabled": "Resynchronisation automatique activée",
       "manualSyncOnly": "Synchronisation manuelle uniquement",
-      "regenerateTitles": "Recréer les images des épisodes si les titres changent"
+      "regenerateTitles": "Recréer les images des épisodes si les titres changent",
+      "regenerateTitlesDescription": "Les vérifications automatiques suivent l’intervalle configuré. Les entrées ImageChoices déjà à vérifier ne sont pas recréées automatiquement."
     },
     "episodeTitles": {
       "title": "Vérification des titres des épisodes",
@@ -281,8 +282,14 @@
       "search": "Rechercher une série, une bibliothèque ou un titre",
       "rebuildSelected": "Recréer la sélection ({{count}})",
       "rebuildAll": "Tous les résultats admissibles ({{count}})",
+      "fastRun": "Rapide : exécution normale ({{count}})",
+      "fastRunTitle": "Supprimer les images locales et lancer l’exécution normale ?",
+      "fastRunMessage": "{{count}} images d’épisode locales seront temporairement retirées. Les images du serveur multimédia restent intactes. Le mode normal parcourt ensuite les bibliothèques configurées et peut aussi créer d’autres éléments manquants. Si aucune nouvelle image locale n’est générée, l’ancien fichier est restauré. Annulez et utilisez la file pour un traitement individuel plus lent.",
+      "fastRunAction": "Retirer et lancer l’exécution normale",
+      "fastRunStarted": "Exécution normale démarrée. Vérification de {{count}} images locales.",
       "rebuildOne": "Recréer cette image d’épisode",
       "chooseProviderImage": "Choisir une image de fournisseur dans Asset Replacer",
+      "dismissCandidate": "Masquer définitivement cette entrée de vérification",
       "forceOne": "Forcer la recréation de cette image d’épisode",
       "forceTitle": "Recréer malgré un ancien texte inconnu ?",
       "forceMessage": "L’ancien texte de l’image de {{episode}} est inconnu. Forcer la recréation depuis la source sans texte enregistrée avec le titre actuel \"{{title}}\" ? L’image existante sera remplacée.",

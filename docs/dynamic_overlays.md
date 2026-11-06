@@ -673,9 +673,12 @@ also covers optional episode-titlecard recreation.*
 
 **Sync & Maintenance > Episode Title Review > Recreate episode titlecards when titles change** is
 optional and off by default. With the Master Switch and Background Checking on,
-it compares titles at the configured background-check interval. It is independent
-of **Automatic Overlay Resync**. Keep **Dry Run** on to log eligible changes
-without recreating files or uploading artwork; turn it off to apply changes.
+it compares titles at the configured background-check interval. The default
+interval is 60 minutes, and the first check waits for that interval. Automatic
+recreation applies to later title changes; existing historical review candidates
+remain manual. It is independent of **Automatic Overlay Resync**. Keep **Dry Run**
+on to log eligible changes without recreating files or uploading artwork; turn it
+off to apply changes.
 
 The monitor supports only existing episode titlecards on Plex, Jellyfin, and
 Emby. Movie/show posters, season posters, backgrounds, and collection posters
@@ -718,6 +721,9 @@ workflow. The original media-server URL is never preselected as the new source.
 Opening or queueing a replacement does not acknowledge the review entry as
 completed. The Master Switch must be on and Dry Run off to open this replacement
 workflow from the review.
+Use **Hide this review entry** on a media-server-source row to dismiss it when no
+provider original exists. The dismissal persists across scans for that same title
+and source; a later title or source change can create a new review entry.
 
 If only the previous image text is unknown, the row can offer **Force recreate
 this episode titlecard**. This explicit single-episode action requires a stored
@@ -732,10 +738,9 @@ source eligibility for already cached review entries.
 
 ![Episode Title Review showing previous and current titles and eligibility reasons](images/45-episode-title-review.png)
 
-*Illustrative review records show one eligible title change, one missing source,
-and one placeholder title. Artwork thumbnails are existing published showcase
-examples, not results from a live title scan. Dry Run is on, so recreation actions
-are disabled while comparison remains available.*
+*Illustrative review records show two historical candidates and one
+media-server-source block. Artwork thumbnails are existing published showcase
+examples, not results from a live title scan.*
 
 Title comparisons ignore uppercase/lowercase differences, including accented
 characters. Existing case-only candidates are hidden and removed by the next
@@ -749,10 +754,23 @@ eligible result of the current search, not just the current page. Each action
 requires confirmation. Manual recreation does not require the automatic title
 option or Background Checking, but the Master Switch must be on and Dry Run off.
 
+For a one-time bulk rebuild, **Fast: Normal Run** temporarily backs up and removes
+the eligible local titlecard files matching the current search, then starts the
+ordinary parallel Normal Mode. Artwork on the media server is not deleted. The
+normal run scans configured libraries, so it may also create other missing assets.
+If the run fails or does not generate a replacement file, the previous local
+titlecard is restored. The existing queue action remains available for slower,
+per-episode processing without a full Normal Mode run.
+
 ![Confirmation dialog before recreating a selected episode titlecard](images/48-episode-title-recreate-confirmation.png)
 
 *With Dry Run off, single, selected, and all-eligible recreation actions require
 confirmation. This screenshot shows the dialog only; the example job was cancelled.*
+
+![Warning before temporarily removing local titlecards and starting Normal Mode](images/49-episode-title-fast-normal-run.png)
+
+*The fast action is limited to eligible local review assets. Media-server artwork
+is retained; the normal run may process other missing assets in configured libraries.*
 
 Confirmed recreation uses the existing **Asset Queue** and queue processor,
 not a separate rendering worker. The queue contains a dedicated episode-title

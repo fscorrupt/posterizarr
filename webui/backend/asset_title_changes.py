@@ -4,7 +4,9 @@ import json
 import logging
 import re
 import sqlite3
+import shutil
 import threading
+import tempfile
 import uuid
 from contextlib import closing
 from datetime import datetime
@@ -109,6 +111,11 @@ def _can_force_unknown_text(job):
         return False
 
 
+def _dismissal_fingerprint(job):
+    state = [job.get("reason"), job.get("old_title"), job.get("title"), job.get("source")]
+    return hashlib.sha256(json.dumps(state, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
+
+
 class AssetTitleChanges:
     def __init__(self, base_dir, assets_dir, library_folders=True):
         self.base_dir = Path(base_dir)
@@ -127,6 +134,9 @@ class AssetTitleChanges:
                 candidate_id TEXT PRIMARY KEY, server_key TEXT NOT NULL, asset_path TEXT NOT NULL,
                 library_name TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL,
                 scan_id TEXT NOT NULL)""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS episode_title_candidate_dismissals (
+                candidate_id TEXT NOT NULL, fingerprint TEXT NOT NULL, dismissed_at TEXT NOT NULL,
+                PRIMARY KEY(candidate_id, fingerprint))""")
 
     def _records(self):
         database = self.base_dir / "database" / "imagechoices.db"
@@ -169,6 +179,8 @@ class AssetTitleChanges:
                 "SELECT asset_path, item_id, titles, applied_titles FROM asset_title_baselines WHERE server_key = ?", (server_key,))}
             previous = {row[0]: json.loads(row[1]) for row in connection.execute(
                 "SELECT candidate_id, payload FROM episode_title_candidates WHERE server_key = ?", (server_key,))}
+            dismissed = set(connection.execute(
+                "SELECT candidate_id, fingerprint FROM episode_title_candidate_dismissals"))
             for record, kind, path in self._records():
                 library_name = record.get("LibraryName") or ""
                 if library_name.casefold() in exclusions or (library != "all" and library_name.casefold() != library.casefold()):
@@ -240,6 +252,8 @@ class AssetTitleChanges:
                              "preview_path": path.relative_to(self.assets.resolve()).as_posix()}
                 if _same_title_snapshot(prior.get("titles"), titles) and prior.get("source") == source and prior.get("last_error"):
                     job["last_error"] = prior["last_error"]
+                if (candidate_id, _dismissal_fingerprint(job)) in dismissed:
+                    continue
                 connection.execute("""INSERT INTO episode_title_candidates VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(candidate_id) DO UPDATE SET library_name = excluded.library_name,
                     status = excluded.status, payload = excluded.payload, scan_id = excluded.scan_id""",
@@ -249,6 +263,67 @@ class AssetTitleChanges:
             connection.execute("DELETE FROM episode_title_candidates WHERE server_key = ? AND scan_id != ? AND (? = 'all' OR library_name = ? COLLATE NOCASE)",
                                (server_key, scan_id, library, library))
         return jobs
+
+    def dismiss_candidate(self, candidate_id):
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            row = connection.execute("SELECT payload FROM episode_title_candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
+            if not row:
+                return False
+            job = _with_source_safety(json.loads(row[0]))
+            if job.get("reason") != "media_server_source":
+                return False
+            connection.execute("INSERT OR IGNORE INTO episode_title_candidate_dismissals (candidate_id, fingerprint, dismissed_at) VALUES (?, ?, ?)",
+                               (candidate_id, _dismissal_fingerprint(job), datetime.now().isoformat()))
+            connection.execute("DELETE FROM episode_title_candidates WHERE candidate_id = ?", (candidate_id,))
+        return True
+
+    def detach_candidate_assets(self, jobs):
+        backup_root = self.base_dir / "temp"
+        backup_root.mkdir(parents=True, exist_ok=True)
+        backup_dir = Path(tempfile.mkdtemp(prefix="episode-title-normal-run-", dir=backup_root))
+        entries = []
+        seen_paths = set()
+        try:
+            for index, job in enumerate(jobs):
+                target = Path(job["asset_path"]).resolve(strict=True)
+                if not target.is_relative_to(self.assets.resolve()) or not target.is_file():
+                    raise ValueError("unsafe_asset_path")
+                if target in seen_paths:
+                    raise ValueError("duplicate_asset_path")
+                seen_paths.add(target)
+                backup = backup_dir / f"{index}{target.suffix}"
+                shutil.copy2(target, backup)
+                entries.append({"job": job, "target": target, "backup": backup})
+            for entry in entries:
+                entry["target"].unlink()
+            return backup_dir, entries
+        except Exception:
+            for entry in entries:
+                if entry["backup"].is_file() and not entry["target"].exists():
+                    shutil.copy2(entry["backup"], entry["target"])
+            shutil.rmtree(backup_dir, ignore_errors=True)
+            raise
+
+    def finish_detached_candidate_assets(self, backup_dir, entries, run_success):
+        completed = 0
+        for entry in entries:
+            target, backup, job = entry["target"], entry["backup"], entry["job"]
+            if run_success and target.is_file():
+                try:
+                    self.acknowledge(job)
+                    backup.unlink(missing_ok=True)
+                    completed += 1
+                    continue
+                except Exception:
+                    logger.exception("[TitleChanges] Could not acknowledge normal-run asset %s", target.name)
+            try:
+                target.unlink(missing_ok=True)
+                if backup.is_file():
+                    shutil.copy2(backup, target)
+            except Exception:
+                logger.exception("[TitleChanges] Could not restore local titlecard %s", target.name)
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        return completed
 
     def candidates(self, search="", limit=50, offset=0):
         with closing(sqlite3.connect(self.database)) as connection:

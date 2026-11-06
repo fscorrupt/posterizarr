@@ -541,7 +541,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
 
   // Sync default type filter with current asset type
   useEffect(() => {
-    setTypeFilter(metadata.asset_type === "background" ? "backdrop" : "poster");
+    setTypeFilter(metadata.asset_type === "titlecard" ? "all" : metadata.asset_type === "background" ? "backdrop" : "poster");
   }, [metadata.asset_type]);
 
   // Check if Posterizarr is running on component mount

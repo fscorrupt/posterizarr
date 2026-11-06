@@ -272,7 +272,8 @@
       "status": "Status:",
       "autoResyncEnabled": "Auto-resync enabled",
       "manualSyncOnly": "Manual sync only",
-      "regenerateTitles": "Recreate episode titlecards when titles change"
+      "regenerateTitles": "Recreate episode titlecards when titles change",
+      "regenerateTitlesDescription": "Automatic checks run at the configured background interval. Existing ImageChoices review candidates are not recreated automatically."
     },
     "episodeTitles": {
       "title": "Episode Title Review",
@@ -281,8 +282,14 @@
       "search": "Search series, library or title",
       "rebuildSelected": "Recreate selected ({{count}})",
       "rebuildAll": "All eligible matches ({{count}})",
+      "fastRun": "Fast: Normal Run ({{count}})",
+      "fastRunTitle": "Remove local titlecards and start Normal Run?",
+      "fastRunMessage": "{{count}} local episode titlecards will be temporarily removed. Artwork on the media server is untouched. Normal Mode then runs across configured libraries and may create other missing assets too. If a replacement titlecard is not generated locally, the previous file is restored. Cancel and use the queue action for slower per-episode processing.",
+      "fastRunAction": "Remove and start Normal Run",
+      "fastRunStarted": "Normal Run started. Checking {{count}} local titlecards.",
       "rebuildOne": "Recreate this episode titlecard",
       "chooseProviderImage": "Choose a provider image in Asset Replacer",
+      "dismissCandidate": "Permanently hide this review entry",
       "forceOne": "Force recreate this episode titlecard",
       "forceTitle": "Recreate despite unknown previous text?",
       "forceMessage": "The previous image text for {{episode}} is unknown. Force recreation from the recorded textless source with the current title \"{{title}}\"? The existing titlecard will be replaced.",

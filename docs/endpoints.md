@@ -19,6 +19,7 @@ The following API endpoints are available.
 | `GET /api/dynamic-overlays/bundle/export` | Download custom YAML and required custom assets/fonts plus layouts and portable settings. Official downloadable Kometa files are dependency references, not ZIP payloads. Credential fields and media-server connections are excluded; known credentials in text are masked. |
 | `POST /api/dynamic-overlays/bundle/preview` | Multipart `file` upload. Returns source profiles, existing destination libraries/server, features, file counts, conflicts, and warnings without applying the bundle. |
 | `POST /api/dynamic-overlays/bundle/import` | Multipart upload with `file`, JSON-string `mapping`, JSON-string `anime_libraries`/`season_libraries`, and boolean `import_settings`/`replace_files`. Applies validated mappings and starts in Dry Run, without uploading artwork. |
+| `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed fast bulk recreation of eligible episode titlecards: backs up/removes local files, starts Normal Mode, restores files not regenerated, and acknowledges regenerated candidates. |
 
 `mapping` maps source profile names to existing destination library names, for
 example `{"Source TV":"My Shows","Source Movies":""}`. An empty value skips a

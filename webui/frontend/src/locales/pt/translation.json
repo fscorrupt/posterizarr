@@ -272,7 +272,8 @@
       "status": "Estado:",
       "autoResyncEnabled": "Ressincronização automática ativa",
       "manualSyncOnly": "Somente sincronização manual",
-      "regenerateTitles": "Recriar imagens dos episódios quando os títulos mudarem"
+      "regenerateTitles": "Recriar imagens dos episódios quando os títulos mudarem",
+      "regenerateTitlesDescription": "As verificações automáticas seguem o intervalo configurado. Os itens existentes do ImageChoices para revisão não são recriados automaticamente."
     },
     "episodeTitles": {
       "title": "Comparação dos títulos dos episódios",
@@ -281,8 +282,14 @@
       "search": "Pesquisar série, biblioteca ou título",
       "rebuildSelected": "Recriar seleção ({{count}})",
       "rebuildAll": "Todos os resultados elegíveis ({{count}})",
+      "fastRun": "Rápido: execução normal ({{count}})",
+      "fastRunTitle": "Remover imagens locais e iniciar a execução normal?",
+      "fastRunMessage": "{{count}} imagens locais dos episódios serão removidas temporariamente. As imagens no servidor de mídia não serão alteradas. O modo normal será executado nas bibliotecas configuradas e também poderá criar outros itens em falta. Se uma nova imagem local não for gerada, o ficheiro anterior será restaurado. Cancele e use a fila para um processamento individual mais lento.",
+      "fastRunAction": "Remover e iniciar execução normal",
+      "fastRunStarted": "Execução normal iniciada. A verificar {{count}} imagens locais.",
       "rebuildOne": "Recriar esta imagem do episódio",
       "chooseProviderImage": "Escolher uma imagem do fornecedor no Asset Replacer",
+      "dismissCandidate": "Ocultar permanentemente esta entrada de revisão",
       "forceOne": "Forçar a recriação desta imagem do episódio",
       "forceTitle": "Recriar com o texto anterior desconhecido?",
       "forceMessage": "O texto anterior da imagem de {{episode}} é desconhecido. Forçar a recriação a partir da fonte sem texto guardada com o título atual \"{{title}}\"? A imagem existente será substituída.",

@@ -272,7 +272,8 @@
       "status": "Status:",
       "autoResyncEnabled": "Auto-Resync aktiv",
       "manualSyncOnly": "Nur manuelle Syncs",
-      "regenerateTitles": "Episodenbilder bei Titeländerung neu erstellen"
+      "regenerateTitles": "Episodenbilder bei Titeländerung neu erstellen",
+      "regenerateTitlesDescription": "Automatische Prüfungen laufen im eingestellten Hintergrundintervall. Bereits vorhandene ImageChoices-Prüfkandidaten werden nicht automatisch neu erstellt."
     },
     "episodeTitles": {
       "title": "Episodentitel-Abgleich",
@@ -281,8 +282,14 @@
       "search": "Serie, Bibliothek oder Titel suchen",
       "rebuildSelected": "Auswahl neu erstellen ({{count}})",
       "rebuildAll": "Alle geeigneten Treffer ({{count}})",
+      "fastRun": "Schnell: Normal Run ({{count}})",
+      "fastRunTitle": "Lokale Episodenbilder löschen und Normal Run starten?",
+      "fastRunMessage": "{{count}} lokale Episodenbilder werden vorübergehend entfernt. Bilder auf dem Medienserver bleiben unverändert. Danach läuft Normal Mode über die konfigurierten Bibliotheken; dabei können auch andere fehlende Assets erstellt werden. Wenn keine neue lokale Titelkarte entsteht, wird die bisherige Datei wiederhergestellt. Für die langsamere Einzelverarbeitung abbrechen und die Queue-Option nutzen.",
+      "fastRunAction": "Löschen und Normal Run starten",
+      "fastRunStarted": "Normal Run gestartet. {{count}} lokale Titelkarten werden geprüft.",
       "rebuildOne": "Dieses Episodenbild neu erstellen",
       "chooseProviderImage": "Provider-Bild im Asset Replacer auswählen",
+      "dismissCandidate": "Diesen Eintrag dauerhaft aus der Prüfung ausblenden",
       "forceOne": "Neuerstellung dieses Episodenbilds erzwingen",
       "forceTitle": "Trotz unbekanntem bisherigen Text neu erstellen?",
       "forceMessage": "Der bisherige Bildtext von {{episode}} ist unbekannt. Neuerstellung aus der gespeicherten textlosen Quelle mit dem aktuellen Titel \"{{title}}\" erzwingen? Das vorhandene Episodenbild wird ersetzt.",
