@@ -6499,6 +6499,28 @@
   - <code>http://admin:posterizarr@YOUR_IP:8000/api/webhook/tautulli</code></p>
 <hr />
 <h2 id="dynamic-overlays">Dynamic Overlays</h2>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/dynamic-overlays/episode-title-changes</code></td>
+<td>Paged review candidates. Optional <code>search</code>, <code>limit</code>, <code>offset</code>, <code>status_filter</code> (<code>all</code>, <code>eligible</code>, <code>blocked</code>), <code>reason_filter</code> (<code>all</code>, <code>none</code>, or a blocking reason), and <code>review_type</code> (<code>all</code>, <code>historical</code>, <code>future</code>) filter the result set and eligible count.</td>
+</tr>
+<tr>
+<td><code>POST /api/dynamic-overlays/episode-title-changes/rebuild</code></td>
+<td>Confirmed queue recreation. <code>candidate_ids</code> or <code>all_eligible</code> with <code>search</code> and the same filters selects candidates.</td>
+</tr>
+<tr>
+<td><code>POST /api/dynamic-overlays/episode-title-changes/fast-normal-run</code></td>
+<td>Confirmed Fast Normal Run over <code>candidate_ids</code> or <code>all_eligible</code>, using the same search and filters.</td>
+</tr>
+</tbody>
+</table>
 <h3 id="overlay-bundles">Overlay Bundles</h3>
 <table>
 <thead>
@@ -6519,10 +6541,6 @@
 <tr>
 <td><code>POST /api/dynamic-overlays/bundle/import</code></td>
 <td>Multipart upload with <code>file</code>, JSON-string <code>mapping</code>, JSON-string <code>anime_libraries</code>/<code>season_libraries</code>, and boolean <code>import_settings</code>/<code>replace_files</code>. Applies validated mappings and starts in Dry Run, without uploading artwork.</td>
-</tr>
-<tr>
-<td><code>POST /api/dynamic-overlays/episode-title-changes/fast-normal-run</code></td>
-<td>Confirmed fast bulk recreation of eligible episode titlecards: backs up/removes local files, starts Normal Mode, restores files not regenerated, and acknowledges regenerated candidates.</td>
 </tr>
 </tbody>
 </table>
