@@ -1798,6 +1798,8 @@ def find_clean_asset(
         return None
 
     target_dir = target_dirs[0]
+    if asset_type == "directory":
+        return target_dir
 
     # Fast cached file scan within target_dir
     td_key = f"files_{target_dir.resolve()}"
@@ -3229,7 +3231,7 @@ def submit_overlay_sync_task(**options):
     request = dict(options)
     if targets is not None:
         request["target_items"] = [dict(target) for target in targets]
-    execution_keys = ("target_server", "scope", "library", "base_dir", "assets_dir", "config_path", "log_file_path")
+    execution_keys = ("target_server", "scope", "library", "base_dir", "assets_dir", "config_path", "log_file_path", "asset_type", "force_reapply")
     request_key = tuple(str(request.get(key) or "") for key in execution_keys)
     with _sync_condition:
         from plex_image_cleanup import is_cleanup_running
@@ -3720,6 +3722,10 @@ def _overlay_target_includes(item, targets, asset_type, season_number=None, epis
     return False
 
 
+def _asset_type_includes(selected_asset_type, asset_type):
+    return not selected_asset_type or selected_asset_type == asset_type
+
+
 async def _fetch_overlay_target_items(
     http_client, server_type, server_url, credentials, targets, library,
     excluded_libraries, library_rules_map, write_log,
@@ -3795,7 +3801,9 @@ async def run_overlay_sync_task(
     assets_dir: Optional[Path] = None,
     config_path: Optional[Path] = None,
     log_file_path: Optional[Path] = None,
-    target_items: Optional[List[Dict[str, Any]]] = None
+    target_items: Optional[List[Dict[str, Any]]] = None,
+    asset_type: Optional[str] = None,
+    force_reapply: bool = False
 ) -> Dict[str, Any]:
     global _is_sync_running
     try:
@@ -3814,7 +3822,7 @@ async def run_overlay_sync_task(
         return await _run_overlay_sync_task(
             target_server=target_server, scope=scope, library=library, base_dir=base_dir,
             assets_dir=assets_dir, config_path=config_path, log_file_path=log_file_path,
-            target_items=target_items,
+            target_items=target_items, asset_type=asset_type, force_reapply=force_reapply,
         )
     finally:
         with _sync_condition:
@@ -3830,7 +3838,9 @@ async def _run_overlay_sync_task(
     assets_dir: Optional[Path] = None,
     config_path: Optional[Path] = None,
     log_file_path: Optional[Path] = None,
-    target_items: Optional[List[Dict[str, Any]]] = None
+    target_items: Optional[List[Dict[str, Any]]] = None,
+    asset_type: Optional[str] = None,
+    force_reapply: bool = False
 ) -> Dict[str, Any]:
     """
     Main execution worker for Dynamic Overlay Sync.
@@ -3887,7 +3897,8 @@ async def _run_overlay_sync_task(
 
     # Fast targeted item handling
     is_target_mode = bool(target_items)
-    force_target_sync = is_target_mode and any(item.get("force_reapply", True) for item in target_items)
+    asset_type_filter = str(asset_type or "").strip().lower() or None
+    force_target_sync = bool(force_reapply) or (is_target_mode and any(item.get("force_reapply", True) for item in target_items))
     direct_id_targets = [item for item in (target_items or []) if item.get("id") or item.get("ratingKey")]
     target_libs = set()
     target_roots = set()
@@ -3933,6 +3944,10 @@ async def _run_overlay_sync_task(
         write_log("=" * 70)
         write_log("STARTING DYNAMIC OVERLAYS SYNC TASK")
         write_log(f"Target Server: {target_server.upper()} | Scope: {('TARGETED' if is_target_mode else scope).upper()} | Target Library: {library}")
+        if asset_type_filter:
+            write_log(f"Asset Type Filter: {asset_type_filter}")
+        if force_reapply:
+            write_log("Force Reapply: enabled for the selected asset type")
         if is_target_mode:
             write_log(f"Instant Target Mode Active: Processing {len(target_items)} target item(s).")
             if target_libs:
@@ -4286,8 +4301,8 @@ async def _run_overlay_sync_task(
                     ] if is_target_mode else None
                     if is_target_mode and not item_targets:
                         return
-                    process_poster = _overlay_target_includes(item, item_targets, "poster")
-                    process_background = _overlay_target_includes(item, item_targets, "background")
+                    process_poster = _asset_type_includes(asset_type_filter, "poster") and _overlay_target_includes(item, item_targets, "poster")
+                    process_background = _asset_type_includes(asset_type_filter, "background") and _overlay_target_includes(item, item_targets, "background")
                     episode_only_targets = bool(item_targets) and all(
                         str(target.get("asset_type") or target.get("Type") or "").lower() in ("episode", "titlecard")
                         for target in item_targets
@@ -4322,18 +4337,33 @@ async def _run_overlay_sync_task(
 
                     # Locate clean assets on disk (reuse known cached path or search disk with indexed dir_cache)
                     clean_asset = None
-                    if cached_entry and cached_entry.get("clean_asset_path"):
-                        c_p = Path(cached_entry["clean_asset_path"])
-                        if c_p.is_file():
-                            clean_asset = c_p
+                    asset_directory = None
+                    if _asset_type_includes(asset_type_filter, "poster"):
+                        if cached_entry and cached_entry.get("clean_asset_path"):
+                            c_p = Path(cached_entry["clean_asset_path"])
+                            if c_p.is_file():
+                                clean_asset = c_p
 
-                    if not clean_asset:
-                        clean_asset = find_clean_asset(
+                        if not clean_asset:
+                            clean_asset = find_clean_asset(
+                                assets_dir=real_asset_path,
+                                library_name=lib_name,
+                                root_folder=root_f,
+                                title=title,
+                                asset_type="poster",
+                                imdb_id=item.get("imdb_id"),
+                                tmdb_id=item.get("tmdb_id"),
+                                tvdb_id=item.get("tvdb_id"),
+                                year=item.get("year"),
+                                dir_cache=dir_cache
+                            )
+                    if m_type == "show" and asset_type_filter in ("season", "titlecard"):
+                        asset_directory = find_clean_asset(
                             assets_dir=real_asset_path,
                             library_name=lib_name,
                             root_folder=root_f,
                             title=title,
-                            asset_type="poster",
+                            asset_type="directory",
                             imdb_id=item.get("imdb_id"),
                             tmdb_id=item.get("tmdb_id"),
                             tvdb_id=item.get("tvdb_id"),
@@ -4342,7 +4372,7 @@ async def _run_overlay_sync_task(
                         )
 
                     clean_backdrop = None
-                    if backdrop_enabled:
+                    if backdrop_enabled and _asset_type_includes(asset_type_filter, "background"):
                         if cached_backdrop_entry and cached_backdrop_entry.get("clean_asset_path"):
                             cb_p = Path(cached_backdrop_entry["clean_asset_path"])
                             if cb_p.is_file():
@@ -4361,7 +4391,7 @@ async def _run_overlay_sync_task(
                                 dir_cache=dir_cache
                             )
 
-                    if not clean_asset and not clean_backdrop and s_type in ("plex", "jellyfin", "emby") and m_type == "show":
+                    if not clean_asset and not clean_backdrop and asset_type_filter not in ("season", "titlecard") and s_type in ("plex", "jellyfin", "emby") and m_type == "show":
                         try:
                             located_item = None
                             if s_type == "plex":
@@ -4405,7 +4435,7 @@ async def _run_overlay_sync_task(
                         except Exception as location_err:
                             logger.debug(f"[OverlaySync] Show location lookup failed for {title}: {location_err}")
 
-                    if not clean_asset and not clean_backdrop:
+                    if not clean_asset and not clean_backdrop and not (m_type == "show" and asset_type_filter in ("season", "titlecard") and asset_directory):
                         write_log(f"  [>] {w_tag}'{title}' ({lib_name}): No clean original asset found in '{real_asset_path}'. Skipping.")
                         await _inc_stats(skipped=1)
                         return  # No clean asset created yet by Posterizarr, skip
@@ -5177,8 +5207,8 @@ async def _run_overlay_sync_task(
                         return
 
                     # 7. If Show, also evaluate and sync Seasons & Titlecards if clean assets present on disk
-                    show_parent = (clean_asset.parent if clean_asset else (clean_backdrop.parent if clean_backdrop else None))
-                    if m_type == "show" and show_parent and show_parent.exists():
+                    show_parent = (clean_asset.parent if clean_asset else (clean_backdrop.parent if clean_backdrop else asset_directory))
+                    if m_type == "show" and show_parent and show_parent.exists() and (asset_type_filter is None or asset_type_filter in ("season", "titlecard")):
                         try:
                             # Fast disk scan: check if this show has any season posters or titlecards on disk
                             show_key = f"files_{show_parent.resolve()}"
@@ -5204,7 +5234,7 @@ async def _run_overlay_sync_task(
                                 return
 
                             # FAST-PATH: If show itself is up-to-date, server timestamp unchanged, and no clean artwork in show directory was modified since last sync:
-                            if scope in ("incremental", "changed") and not is_target_mode and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards) and not (needs_ratings and season_ratings_enabled_for_library(dyn_settings, lib_name)):
+                            if scope in ("incremental", "changed") and not is_target_mode and not force_target_sync and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards) and not (needs_ratings and season_ratings_enabled_for_library(dyn_settings, lib_name)):
                                 c_up = cached_entry.get("server_updated_at")
                                 s_up = item.get("server_updated_at")
                                 if c_up and s_up and str(c_up) == str(s_up):
@@ -5266,8 +5296,8 @@ async def _run_overlay_sync_task(
                                     return
                                 s_rk = s_info["id"]
                                 s_num = s_info["season_number"]
-                                process_season = _overlay_target_includes(item, item_targets, "season", s_num)
-                                process_titlecards = _overlay_target_includes(item, item_targets, "titlecard", s_num)
+                                process_season = _asset_type_includes(asset_type_filter, "season") and _overlay_target_includes(item, item_targets, "season", s_num)
+                                process_titlecards = _asset_type_includes(asset_type_filter, "titlecard") and _overlay_target_includes(item, item_targets, "titlecard", s_num)
                                 if s_type == "silo":
                                     process_titlecards = False
                                 if not process_season and not process_titlecards:

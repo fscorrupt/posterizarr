@@ -924,6 +924,8 @@ export default function DynamicOverlays() {
   const [syncServer, setSyncServer] = useState(""); // dynamically set based on enabledServers
   const [syncLibrary, setSyncLibrary] = useState(""); // dynamically set based on configuredLibraries
   const [isItemSyncPickerOpen, setIsItemSyncPickerOpen] = useState(false);
+  const [syncTargetMode, setSyncTargetMode] = useState("item");
+  const [syncAssetType, setSyncAssetType] = useState("season");
   const [syncItemQuery, setSyncItemQuery] = useState("");
   const [syncItemResults, setSyncItemResults] = useState([]);
   const [syncItemSearchLoading, setSyncItemSearchLoading] = useState(false);
@@ -1184,7 +1186,7 @@ export default function DynamicOverlays() {
     }
   };
 
-  const handleTriggerOverlaySync = async (targetScope = syncScope, targetServer = syncServer, targetLib = syncLibrary, targetItems = null) => {
+  const handleTriggerOverlaySync = async (targetScope = syncScope, targetServer = syncServer, targetLib = syncLibrary, targetItems = null, targetAssetType = null, forceReapply = false) => {
     if (configuredLibraries.length === 0) {
       showError("No libraries configured in Dynamic Overlays yet. Please configure a library before syncing.");
       return false;
@@ -1205,11 +1207,17 @@ export default function DynamicOverlays() {
           scope: targetScope,
           library: finalLib,
           ...(targetItems ? { target_items: targetItems } : {}),
+          ...(targetAssetType ? { asset_type: targetAssetType } : {}),
+          ...(forceReapply ? { force_reapply: true } : {}),
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showSuccess(targetItems ? `Started overlay scan for "${targetItems[0].title}".` : `Started Dynamic Overlay Sync (${targetScope.toUpperCase()}) for ${finalServer.toUpperCase()}!`);
+        showSuccess(targetItems ? (targetItems[0].force_reapply
+          ? `Started Force Reapply for "${targetItems[0].title}".`
+          : `Started overlay scan for "${targetItems[0].title}".`) : forceReapply && targetAssetType
+          ? `Started Force Reapply for ${targetAssetType} in ${finalLib === "all" ? "all libraries" : finalLib}.`
+          : `Started Dynamic Overlay Sync (${targetScope.toUpperCase()}) for ${finalServer.toUpperCase()}!`);
         setIsApplyModalOpen(false);
         fetchOverlaySyncStatus();
         return true;
@@ -1229,7 +1237,7 @@ export default function DynamicOverlays() {
     setSyncItemResults([]);
     setSyncItemSearchErrors([]);
     const query = syncItemQuery.trim();
-    if (!isItemSyncPickerOpen || query.length < 2) {
+    if (!isItemSyncPickerOpen || syncTargetMode !== "item" || query.length < 2) {
       setSyncItemSearchLoading(false);
       return;
     }
@@ -1252,14 +1260,23 @@ export default function DynamicOverlays() {
       }
     }, 350);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [isItemSyncPickerOpen, syncItemQuery, syncServer, syncLibrary]);
+  }, [isItemSyncPickerOpen, syncTargetMode, syncItemQuery, syncServer, syncLibrary]);
 
   const handleSyncSelectedItem = async () => {
-    if (!selectedSyncItem || syncItemSearchLoading || isOverlaySyncRunning) return;
-    const started = await handleTriggerOverlaySync(
-      forceSelectedItemSync ? "full" : "incremental", selectedSyncItem.server_type, selectedSyncItem.library_name,
-      [{ ...selectedSyncItem, force_reapply: forceSelectedItemSync }],
-    );
+    if (syncItemSearchLoading || isOverlaySyncRunning || (syncTargetMode === "item" && !selectedSyncItem)) return;
+    const targetAssetType = syncAssetType === "all" ? null : syncAssetType;
+    if (syncTargetMode === "all") {
+      const assetLabel = syncAssetType === "all" ? "all asset types" : ({ poster: "posters", background: "backgrounds", season: "season posters", titlecard: "episode titlecards" })[syncAssetType];
+      const serverLabel = syncServer === "all" ? "all configured servers" : (enabledServers.find((server) => server.id === syncServer)?.name || syncServer);
+      const libraryLabel = syncLibrary === "all" ? "all configured libraries" : syncLibrary;
+      if (!window.confirm(`Force reapply ${assetLabel} for ${serverLabel} in ${libraryLabel}?`)) return;
+    }
+    const started = syncTargetMode === "all"
+      ? await handleTriggerOverlaySync("incremental", syncServer, syncLibrary, null, targetAssetType, true)
+      : await handleTriggerOverlaySync(
+        forceSelectedItemSync ? "full" : "incremental", selectedSyncItem.server_type, selectedSyncItem.library_name,
+        [{ ...selectedSyncItem, force_reapply: forceSelectedItemSync }], targetAssetType,
+      );
     if (started) setIsItemSyncPickerOpen(false);
   };
 
@@ -10090,11 +10107,11 @@ export default function DynamicOverlays() {
                   <Sliders className="w-3.5 h-3.5 text-theme-primary" />
                   Sync Wizard
                 </button>
-                <button type="button" onClick={() => { setSyncItemQuery(""); setForceSelectedItemSync(false); setIsItemSyncPickerOpen(true); }}
+                <button type="button" onClick={() => { setSyncItemQuery(""); setForceSelectedItemSync(false); setSyncTargetMode("item"); setSyncAssetType("all"); setIsItemSyncPickerOpen(true); }}
                   disabled={isOverlaySyncRunning || configuredLibraries.length === 0 || enabledServers.length === 0}
                   className="flex items-center gap-2 px-3.5 py-2 rounded-lg border border-theme bg-theme-card hover:bg-theme-hover text-theme-text text-xs font-medium disabled:opacity-50">
                   <Search className="w-4 h-4 shrink-0" />
-                  Select Movie / Show
+                  Targeted Reapply
                 </button>
                 <button
                   onClick={() => handleTriggerOverlaySync()}
@@ -13997,15 +14014,26 @@ export default function DynamicOverlays() {
       />
       {featureSettings?.enabled && isItemSyncPickerOpen && (
         <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
-          <div role="dialog" aria-modal="true" aria-label="Sync Selected Movie or Show"
+          <div role="dialog" aria-modal="true" aria-label="Force Reapply by Asset Type"
             className="app-dialog-panel w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-theme-card border border-theme rounded-lg shadow-2xl">
             <div className="flex items-center justify-between gap-3 p-4 border-b border-theme">
-              <h2 className="text-base font-bold text-theme-text flex items-center gap-2"><Search className="w-5 h-5 shrink-0" />Sync Selected Movie or Show</h2>
+              <h2 className="text-base font-bold text-theme-text flex items-center gap-2"><Search className="w-5 h-5 shrink-0" />Force Reapply by Asset Type</h2>
               <button type="button" onClick={() => setIsItemSyncPickerOpen(false)} title="Close item picker" aria-label="Close item picker"
                 className="p-2 shrink-0 rounded-lg text-theme-muted hover:bg-theme-hover"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 border-b border-theme space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="text-xs text-theme-muted space-y-1"><span>Target</span>
+                  <select value={syncTargetMode} onChange={(event) => {
+                    setSyncTargetMode(event.target.value);
+                    setSelectedSyncItem(null);
+                    if (event.target.value === "all") setSyncAssetType("season");
+                  }}
+                    className="w-full min-w-0 bg-theme-bg border border-theme rounded-lg px-3 py-2 text-theme-text">
+                    <option value="item">One movie or series</option>
+                    <option value="all">All matching items</option>
+                  </select>
+                </label>
                 <label className="text-xs text-theme-muted space-y-1"><span className="flex items-center gap-1.5"><MediaServerLogo server={syncServer || "all"} className="w-4 h-4" />Media Server</span>
                   <select value={syncServer || "all"} onChange={(event) => setSyncServer(event.target.value)}
                     className="w-full min-w-0 bg-theme-bg border border-theme rounded-lg px-3 py-2 text-theme-text">
@@ -14021,14 +14049,26 @@ export default function DynamicOverlays() {
                   </select>
                 </label>
               </div>
-              <label className="block text-xs text-theme-muted space-y-1"><span>Movie or Show Title</span>
+              <label className="block text-xs text-theme-muted space-y-1"><span>Asset Type</span>
+                <select value={syncAssetType} onChange={(event) => setSyncAssetType(event.target.value)}
+                  className="w-full min-w-0 bg-theme-bg border border-theme rounded-lg px-3 py-2 text-theme-text">
+                  <option value="all">All asset types</option>
+                  <option value="poster">Movie / show posters</option>
+                  <option value="background">Backgrounds</option>
+                  <option value="season">Season posters</option>
+                  <option value="titlecard">Episode titlecards</option>
+                </select>
+              </label>
+              {syncTargetMode === "item" ? <label className="block text-xs text-theme-muted space-y-1"><span>Movie or Show Title</span>
                 <input autoFocus type="search" value={syncItemQuery} maxLength={150} onChange={(event) => setSyncItemQuery(event.target.value)}
                   placeholder="Search titles..." className="w-full min-w-0 px-3 py-2 rounded-lg border border-theme bg-theme-bg text-theme-text" />
-              </label>
+              </label> : null}
             </div>
             <div className="p-4 space-y-2">
-              {syncItemSearchErrors.map((error, index) => <p key={index} role="alert" className="text-xs text-red-400 break-words">{error}</p>)}
-              {syncItemSearchLoading ? (
+              {syncTargetMode === "item" && syncItemSearchErrors.map((error, index) => <p key={index} role="alert" className="text-xs text-red-400 break-words">{error}</p>)}
+              {syncTargetMode === "all" ? (
+                <p className="text-xs text-theme-muted py-6">Force Reapply will process the selected asset type in the selected library scope.</p>
+              ) : syncItemSearchLoading ? (
                 <div role="status" className="flex items-center gap-2 py-6 text-xs text-theme-muted"><Loader2 className="w-4 h-4 animate-spin" />Searching...</div>
               ) : syncItemResults.length ? (
                 <fieldset className="min-w-0"><legend className="text-xs text-theme-muted mb-2">Results ({syncItemResults.length}{syncItemResults.length === 30 ? "+" : ""})</legend>
@@ -14051,14 +14091,16 @@ export default function DynamicOverlays() {
               ) : <p className="text-xs text-theme-muted py-6">{syncItemQuery.trim().length >= 2 ? "No matching movies or shows." : "Movies & Shows"}</p>}
             </div>
             <div className="p-4 border-t border-theme flex flex-wrap justify-between items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-theme-text">
+              {syncTargetMode === "item" ? <label className="flex items-center gap-2 text-xs text-theme-text">
                 <input type="checkbox" checked={forceSelectedItemSync} onChange={(event) => setForceSelectedItemSync(event.target.checked)} />
                 Force Reapply
-              </label>
-              <button type="button" onClick={handleSyncSelectedItem} disabled={!selectedSyncItem || syncItemSearchLoading || isOverlaySyncRunning}
+              </label> : <span className="text-xs font-medium text-theme-text">Force Reapply</span>}
+              <button type="button" onClick={handleSyncSelectedItem} disabled={(syncTargetMode === "item" && !selectedSyncItem) || syncItemSearchLoading || isOverlaySyncRunning}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-theme-primary text-white text-xs font-semibold disabled:opacity-50">
                 {isOverlaySyncRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                {isOverlaySyncRunning ? "Starting..." : forceSelectedItemSync ? "Reapply Selected Item" : "Scan Selected Item"}
+                {isOverlaySyncRunning ? "Starting..." : syncTargetMode === "all"
+                  ? `Reapply ${syncAssetType === "all" ? "All Assets" : ({ poster: "Posters", background: "Backgrounds", season: "Season Posters", titlecard: "Titlecards" })[syncAssetType]}`
+                  : forceSelectedItemSync ? "Reapply Selected Item" : "Scan Selected Item"}
               </button>
             </div>
           </div>

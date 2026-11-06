@@ -20723,6 +20723,8 @@ class DynamicOverlaysSyncRequest(BaseModel):
     scope: str = "incremental"   # "incremental" (changes only) or "all" (all assets)
     library: str = "all"        # "all" or specific library name
     target_items: Optional[List[Dict[str, Any]]] = None
+    asset_type: Optional[str] = Field(default=None, pattern="^(poster|background|season|titlecard)$")
+    force_reapply: bool = False
 
 
 @app.post("/api/dynamic-overlays/sync")
@@ -20754,6 +20756,7 @@ async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
         target_server=req.target_server, scope=req.scope, library=req.library,
         base_dir=BASE_DIR, config_path=CONFIG_PATH,
         log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log", target_items=req.target_items,
+        asset_type=req.asset_type, force_reapply=req.force_reapply,
     )
     return {
         **result,
