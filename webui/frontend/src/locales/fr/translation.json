@@ -159,6 +159,21 @@
     "assetFetched": "Prêt : {{name}}",
     "batchSuccess": "{{count}} ressources téléchargées ou créées !",
     "yamlSaved": "YAML enregistré avec succès",
+    "forceReapplyConfirm": {
+      "title": "Confirmer la nouvelle application forcée",
+      "message": "Forcer la nouvelle application de {{assetType}} pour {{server}} dans {{library}} ? Les visuels de nombreux éléments peuvent être mis à jour.",
+      "confirm": "Réappliquer",
+      "cancel": "Annuler",
+      "allServers": "tous les serveurs configurés",
+      "allLibraries": "toutes les bibliothèques configurées",
+      "assetTypes": {
+        "all": "tous les types de ressources",
+        "poster": "les affiches",
+        "background": "les arrière-plans",
+        "season": "les affiches de saison",
+        "titlecard": "les images de titre des épisodes"
+      }
+    },
     "ratingsAutomaticRefresh": "Actualisation automatique",
     "ratingsRefreshEvery": "Toutes les",
     "ratingsRefreshIntervalHours": "heures",

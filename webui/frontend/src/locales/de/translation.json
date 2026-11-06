@@ -159,6 +159,21 @@
     "assetFetched": "Bereit: {{name}}",
     "batchSuccess": "{{count}} Assets heruntergeladen oder bereitgestellt!",
     "yamlSaved": "YAML erfolgreich gespeichert",
+    "forceReapplyConfirm": {
+      "title": "Erneutes Anwenden bestätigen",
+      "message": "{{assetType}} für {{server}} in {{library}} wirklich erneut anwenden? Dabei können die Artworks vieler Einträge aktualisiert werden.",
+      "confirm": "Erneut anwenden",
+      "cancel": "Abbrechen",
+      "allServers": "allen konfigurierten Servern",
+      "allLibraries": "allen konfigurierten Bibliotheken",
+      "assetTypes": {
+        "all": "alle Asset-Typen",
+        "poster": "Poster",
+        "background": "Hintergründe",
+        "season": "Staffelposter",
+        "titlecard": "Episoden-Titelkarten"
+      }
+    },
     "ratingsAutomaticRefresh": "Automatische Aktualisierung",
     "ratingsRefreshEvery": "Alle",
     "ratingsRefreshIntervalHours": "Stunden",

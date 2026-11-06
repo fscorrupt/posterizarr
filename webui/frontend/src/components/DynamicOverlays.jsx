@@ -932,6 +932,7 @@ export default function DynamicOverlays() {
   const [syncItemSearchErrors, setSyncItemSearchErrors] = useState([]);
   const [selectedSyncItem, setSelectedSyncItem] = useState(null);
   const [forceSelectedItemSync, setForceSelectedItemSync] = useState(false);
+  const [isForceAssetReapplyConfirmOpen, setIsForceAssetReapplyConfirmOpen] = useState(false);
   const [isOverlaySyncRunning, setIsOverlaySyncRunning] = useState(false);
   const [overlaySyncStatus, setOverlaySyncStatus] = useState(null);
   const [autoOverlaySync, setAutoOverlaySync] = useState(false);
@@ -1266,17 +1267,19 @@ export default function DynamicOverlays() {
     if (syncItemSearchLoading || isOverlaySyncRunning || (syncTargetMode === "item" && !selectedSyncItem)) return;
     const targetAssetType = syncAssetType === "all" ? null : syncAssetType;
     if (syncTargetMode === "all") {
-      const assetLabel = syncAssetType === "all" ? "all asset types" : ({ poster: "posters", background: "backgrounds", season: "season posters", titlecard: "episode titlecards" })[syncAssetType];
-      const serverLabel = syncServer === "all" ? "all configured servers" : (enabledServers.find((server) => server.id === syncServer)?.name || syncServer);
-      const libraryLabel = syncLibrary === "all" ? "all configured libraries" : syncLibrary;
-      if (!window.confirm(`Force reapply ${assetLabel} for ${serverLabel} in ${libraryLabel}?`)) return;
+      setIsForceAssetReapplyConfirmOpen(true);
+      return;
     }
-    const started = syncTargetMode === "all"
-      ? await handleTriggerOverlaySync("incremental", syncServer, syncLibrary, null, targetAssetType, true)
-      : await handleTriggerOverlaySync(
-        forceSelectedItemSync ? "full" : "incremental", selectedSyncItem.server_type, selectedSyncItem.library_name,
-        [{ ...selectedSyncItem, force_reapply: forceSelectedItemSync }], targetAssetType,
-      );
+    const started = await handleTriggerOverlaySync(
+      forceSelectedItemSync ? "full" : "incremental", selectedSyncItem.server_type, selectedSyncItem.library_name,
+      [{ ...selectedSyncItem, force_reapply: forceSelectedItemSync }], targetAssetType,
+    );
+    if (started) setIsItemSyncPickerOpen(false);
+  };
+
+  const handleConfirmForceAssetReapply = async () => {
+    const targetAssetType = syncAssetType === "all" ? null : syncAssetType;
+    const started = await handleTriggerOverlaySync("incremental", syncServer, syncLibrary, null, targetAssetType, true);
     if (started) setIsItemSyncPickerOpen(false);
   };
 
@@ -14010,6 +14013,24 @@ export default function DynamicOverlays() {
         message="Refresh missing and expired movie, show, season, and episode ratings across all configured servers?"
         confirmText="Refresh Ratings"
         cancelText="Cancel"
+        type="warning"
+      />
+      <ConfirmDialog
+        isOpen={Boolean(featureSettings?.enabled && isForceAssetReapplyConfirmOpen)}
+        onClose={() => setIsForceAssetReapplyConfirmOpen(false)}
+        onConfirm={handleConfirmForceAssetReapply}
+        title={t("dynamicOverlays.forceReapplyConfirm.title")}
+        message={t("dynamicOverlays.forceReapplyConfirm.message", {
+          assetType: t(`dynamicOverlays.forceReapplyConfirm.assetTypes.${syncAssetType}`),
+          server: syncServer === "all"
+            ? t("dynamicOverlays.forceReapplyConfirm.allServers")
+            : (enabledServers.find((server) => server.id === syncServer)?.name || syncServer),
+          library: syncLibrary === "all"
+            ? t("dynamicOverlays.forceReapplyConfirm.allLibraries")
+            : syncLibrary,
+        })}
+        confirmText={t("dynamicOverlays.forceReapplyConfirm.confirm")}
+        cancelText={t("dynamicOverlays.forceReapplyConfirm.cancel")}
         type="warning"
       />
       {featureSettings?.enabled && isItemSyncPickerOpen && (

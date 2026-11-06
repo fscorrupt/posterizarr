@@ -159,6 +159,21 @@
     "assetFetched": "Pronto: {{name}}",
     "batchSuccess": "{{count}} risorse scaricate o create!",
     "yamlSaved": "YAML salvato con successo",
+    "forceReapplyConfirm": {
+      "title": "Conferma la riapplicazione forzata",
+      "message": "Forzare la riapplicazione di {{assetType}} per {{server}} in {{library}}? Le immagini di molti elementi potrebbero essere aggiornate.",
+      "confirm": "Riapplica",
+      "cancel": "Annulla",
+      "allServers": "tutti i server configurati",
+      "allLibraries": "tutte le librerie configurate",
+      "assetTypes": {
+        "all": "tutti i tipi di risorse",
+        "poster": "i poster",
+        "background": "gli sfondi",
+        "season": "i poster delle stagioni",
+        "titlecard": "le title card degli episodi"
+      }
+    },
     "ratingsAutomaticRefresh": "Aggiornamento automatico",
     "ratingsRefreshEvery": "Ogni",
     "ratingsRefreshIntervalHours": "ore",

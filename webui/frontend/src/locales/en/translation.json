@@ -159,6 +159,21 @@
     "assetFetched": "Ready: {{name}}",
     "batchSuccess": "Downloaded or seeded {{count}} assets!",
     "yamlSaved": "YAML saved successfully",
+    "forceReapplyConfirm": {
+      "title": "Confirm force reapply",
+      "message": "Force reapply {{assetType}} for {{server}} in {{library}}? This may update artwork for many items.",
+      "confirm": "Reapply",
+      "cancel": "Cancel",
+      "allServers": "all configured servers",
+      "allLibraries": "all configured libraries",
+      "assetTypes": {
+        "all": "all asset types",
+        "poster": "posters",
+        "background": "backgrounds",
+        "season": "season posters",
+        "titlecard": "episode titlecards"
+      }
+    },
     "ratingsAutomaticRefresh": "Automatic Refresh",
     "ratingsRefreshEvery": "Every",
     "ratingsRefreshIntervalHours": "hours",
