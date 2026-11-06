@@ -6520,6 +6520,10 @@
 <td><code>POST /api/dynamic-overlays/bundle/import</code></td>
 <td>Multipart upload with <code>file</code>, JSON-string <code>mapping</code>, JSON-string <code>anime_libraries</code>/<code>season_libraries</code>, and boolean <code>import_settings</code>/<code>replace_files</code>. Applies validated mappings and starts in Dry Run, without uploading artwork.</td>
 </tr>
+<tr>
+<td><code>POST /api/dynamic-overlays/episode-title-changes/fast-normal-run</code></td>
+<td>Confirmed fast bulk recreation of eligible episode titlecards: backs up/removes local files, starts Normal Mode, restores files not regenerated, and acknowledges regenerated candidates.</td>
+</tr>
 </tbody>
 </table>
 <p><code>mapping</code> maps source profile names to existing destination library names, for

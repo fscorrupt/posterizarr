@@ -3079,9 +3079,12 @@ also covers optional episode-titlecard recreation.</em></p>
 <h4 id="recreate-episode-titlecards-when-titles-change">Recreate Episode Titlecards When Titles Change</h4>
 <p><strong>Sync &amp; Maintenance &gt; Episode Title Review &gt; Recreate episode titlecards when titles change</strong> is
 optional and off by default. With the Master Switch and Background Checking on,
-it compares titles at the configured background-check interval. It is independent
-of <strong>Automatic Overlay Resync</strong>. Keep <strong>Dry Run</strong> on to log eligible changes
-without recreating files or uploading artwork; turn it off to apply changes.</p>
+it compares titles at the configured background-check interval. The default
+interval is 60 minutes, and the first check waits for that interval. Automatic
+recreation applies to later title changes; existing historical review candidates
+remain manual. It is independent of <strong>Automatic Overlay Resync</strong>. Keep <strong>Dry Run</strong>
+on to log eligible changes without recreating files or uploading artwork; turn it
+off to apply changes.</p>
 <p>The monitor supports only existing episode titlecards on Plex, Jellyfin, and
 Emby. Movie/show posters, season posters, backgrounds, and collection posters
 are excluded from this title-change automation. Their normal generation and
@@ -3119,7 +3122,10 @@ confirmation. Choose an image and use the modal's normal recreation or queue
 workflow. The original media-server URL is never preselected as the new source.
 Opening or queueing a replacement does not acknowledge the review entry as
 completed. The Master Switch must be on and Dry Run off to open this replacement
-workflow from the review.</p>
+workflow from the review.
+Use <strong>Hide this review entry</strong> on a media-server-source row to dismiss it when no
+provider original exists. The dismissal persists across scans for that same title
+and source; a later title or source change can create a new review entry.</p>
 <p>If only the previous image text is unknown, the row can offer <strong>Force recreate
 this episode titlecard</strong>. This explicit single-episode action requires a stored
 HTTP(S) source marked <strong>Textless</strong> and a current non-placeholder episode title.
@@ -3131,10 +3137,9 @@ The explicit override is retained in the existing queue if the job is resumed.
 After updating from an earlier version, run <strong>Compare titles</strong> once to refresh
 source eligibility for already cached review entries.</p>
 <p><img alt="Episode Title Review showing previous and current titles and eligibility reasons" src="../images/45-episode-title-review.png" /></p>
-<p><em>Illustrative review records show one eligible title change, one missing source,
-and one placeholder title. Artwork thumbnails are existing published showcase
-examples, not results from a live title scan. Dry Run is on, so recreation actions
-are disabled while comparison remains available.</em></p>
+<p><em>Illustrative review records show two historical candidates and one
+media-server-source block. Artwork thumbnails are existing published showcase
+examples, not results from a live title scan.</em></p>
 <p>Title comparisons ignore uppercase/lowercase differences, including accented
 characters. Existing case-only candidates are hidden and removed by the next
 successful scan without rendering or uploading artwork. Displayed titles and
@@ -3145,9 +3150,19 @@ checkboxes, or choose <strong>All eligible matches</strong>. The all action incl
 eligible result of the current search, not just the current page. Each action
 requires confirmation. Manual recreation does not require the automatic title
 option or Background Checking, but the Master Switch must be on and Dry Run off.</p>
+<p>For a one-time bulk rebuild, <strong>Fast: Normal Run</strong> temporarily backs up and removes
+the eligible local titlecard files matching the current search, then starts the
+ordinary parallel Normal Mode. Artwork on the media server is not deleted. The
+normal run scans configured libraries, so it may also create other missing assets.
+If the run fails or does not generate a replacement file, the previous local
+titlecard is restored. The existing queue action remains available for slower,
+per-episode processing without a full Normal Mode run.</p>
 <p><img alt="Confirmation dialog before recreating a selected episode titlecard" src="../images/48-episode-title-recreate-confirmation.png" /></p>
 <p><em>With Dry Run off, single, selected, and all-eligible recreation actions require
 confirmation. This screenshot shows the dialog only; the example job was cancelled.</em></p>
+<p><img alt="Warning before temporarily removing local titlecards and starting Normal Mode" src="../images/49-episode-title-fast-normal-run.png" /></p>
+<p><em>The fast action is limited to eligible local review assets. Media-server artwork
+is retained; the normal run may process other missing assets in configured libraries.</em></p>
 <p>Confirmed recreation uses the existing <strong>Asset Queue</strong> and queue processor,
 not a separate rendering worker. The queue contains a dedicated episode-title
 operation referencing the persisted review candidate. Pending/processing
