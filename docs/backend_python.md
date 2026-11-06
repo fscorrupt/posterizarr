@@ -72,6 +72,15 @@ The backend handles the following core responsibilities:
 
 Backend/container startup does not delete or truncate logs. In Docker, `UILogs` lives under the persistent `/config` volume. `BackendServer.log` and `FrontendUI.log` append across restarts because they record continuous server activity rather than individual jobs.
 
+These two continuous logs rotate at approximately 10 MiB per active file and
+retain three numbered backups (`.log.1` through `.log.3`). Backend and browser
+entries in `FrontendUI.log` share the same thread-safe handler, including the
+single and batch UI-log endpoints. Individual formatted records are limited to
+32,768 characters with a truncation marker, so one large UI payload cannot grow
+the active log without bound. An already oversized log rotates on the next
+write; its full previous contents are initially retained in the first backup
+until normal backup rotation ages it out. No blanket startup cleanup is used.
+
 When a Python job actually starts, its previous active log is renamed to `Name.old.log` and the new run writes a fresh `Name.log`. One previous run is retained; the next rotation replaces that backup. This applies to Plex Sync, Dynamic Overlays Sync, Overlay Defaults, Ratings Refresh, AniMetaFill, and Plex Image Cleanup. Rejected/busy jobs do not rotate logs. If rotation fails, the existing log is retained and new output is appended rather than discarded. The `.old.log` files remain available in the log viewer.
 
 PowerShell runs keep their existing timestamped archive behavior under `RotatedLogs`; backend startup does not clear those archives.

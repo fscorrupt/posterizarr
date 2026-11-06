@@ -257,7 +257,7 @@
       "renderOnlyNoPush": "Nur Rendern · kein Server-Upload",
       "serverPushAllowed": "Server-Upload erlaubt",
       "backgroundChecking": "Hintergrundprüfung",
-      "backgroundDescription": "Prüft Medienserver regelmäßig auf neue Audiospuren, Editionen und Laufzeiten.",
+      "backgroundDescription": "Prüft Medienserver regelmäßig auf neue Audiospuren, Editionen und Laufzeiten. Bei aktivierter Titlecard-Neuerstellung werden auch Episodentitel geprüft und geeignete Titlecards bei Änderungen automatisch neu erstellt, sofern Dry Run ausgeschaltet ist.",
       "checkInterval": "Prüfintervall:",
       "every15Minutes": "Alle 15 Minuten",
       "every30Minutes": "Alle 30 Minuten",

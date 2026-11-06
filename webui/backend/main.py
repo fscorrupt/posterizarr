@@ -337,6 +337,7 @@ WEBUI_SETTINGS_PATH = UI_LOGS_DIR / "webui_settings.json"
 
 # Global queue listener for thread-safe logging
 queue_listener = None
+backend_ui_file_handler = None
 
 
 def load_webui_settings():
@@ -432,16 +433,10 @@ LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL_ENV, logging.INFO)
 logging.root.handlers.clear()
 
 # Create file handler for BackendServer.log
-file_handler = logging.FileHandler(
-    UI_LOGS_DIR / "BackendServer.log", mode="a", encoding="utf-8"
-)
+from log_rotation import create_continuous_log_handler, write_frontend_log
+
+file_handler = create_continuous_log_handler(UI_LOGS_DIR / "BackendServer.log")
 file_handler.setLevel(LOG_LEVEL)
-file_handler.setFormatter(
-    logging.Formatter(
-        "[%(asctime)s] [%(levelname)-8s] [%(name)s:%(funcName)s:%(lineno)d] - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-)
 
 # Configure root logger - ONLY file handler, no console
 logging.root.setLevel(LOG_LEVEL)
@@ -505,7 +500,7 @@ else:
 
 def setup_backend_ui_logger():
     """Setup backend logger to also write to FrontendUI.log"""
-    global queue_listener
+    global queue_listener, backend_ui_file_handler
     logger.info("Initializing backend UI logger")
     try:
         # Create UILogs directory if not exists
@@ -517,16 +512,8 @@ def setup_backend_ui_logger():
 
         # Create File Handler for FrontendUI.log with thread-safe queue
         logger.debug(f"Creating file handler for: {backend_log_path}")
-        backend_ui_file_handler = logging.FileHandler(
-            backend_log_path, encoding="utf-8", mode="a"
-        )
+        backend_ui_file_handler = create_continuous_log_handler(backend_log_path, frontend=True)
         backend_ui_file_handler.setLevel(LOG_LEVEL)  # Use configurable log level
-        backend_ui_file_handler.setFormatter(
-            logging.Formatter(
-                "[%(asctime)s] [%(levelname)-8s] [BACKEND:%(name)s:%(funcName)s:%(lineno)d] - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
         logger.debug("File handler formatter configured")
 
         # Use QueueHandler for thread-safe logging
@@ -2276,6 +2263,7 @@ async def lifespan(app: FastAPI):
                 assets_dir=ASSETS_DIR,
                 on_run_complete_callback=trigger_auto_overlay_sync,
             )
+            logs_watcher.title_regeneration_active_callback = lambda: bool(current_process and getattr(current_process, "posterizarr_title_regeneration", False))
             logs_watcher.start()
             logger.info(
                 "✓ Logs watcher started - monitoring for background process files"
@@ -5586,24 +5574,7 @@ async def receive_ui_log(log_entry: UILogEntry):
     Format matches backend logs for consistent viewing
     """
     try:
-        ui_log_path = UI_LOGS_DIR / "FrontendUI.log"
-
-        # Use server timestamp to avoid client/server time differences
-        from datetime import datetime
-
-        server_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        level = log_entry.level.upper()
-        component = log_entry.component
-        message = log_entry.message
-
-        # Format: [TIMESTAMP] [LEVEL] [UI:Component] - MESSAGE
-        # This matches backend format but with UI: prefix
-        log_line = f"[{server_timestamp}] [{level:8}] [UI:{component}] - {message}\n"
-
-        # Write to FrontendUI.log
-        with open(ui_log_path, "a", encoding="utf-8") as f:
-            f.write(log_line)
+        write_frontend_log(backend_ui_file_handler, log_entry.level, log_entry.component, log_entry.message)
 
         return {"success": True}
 
@@ -5619,26 +5590,8 @@ async def receive_ui_logs_batch(batch: UILogBatch):
     Uses server timestamps to ensure chronological consistency
     """
     try:
-        ui_log_path = UI_LOGS_DIR / "FrontendUI.log"
-
-        from datetime import datetime
-
-        log_lines = []
         for log_entry in batch.logs:
-            # Use server timestamp for all logs
-            server_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            level = log_entry.level.upper()
-            component = log_entry.component
-            message = log_entry.message
-
-            log_line = (
-                f"[{server_timestamp}] [{level:8}] [UI:{component}] - {message}\n"
-            )
-            log_lines.append(log_line)
-
-        # Batch write for better performance
-        with open(ui_log_path, "a", encoding="utf-8") as f:
-            f.writelines(log_lines)
+            write_frontend_log(backend_ui_file_handler, log_entry.level, log_entry.component, log_entry.message)
 
         return {"success": True, "count": len(batch.logs)}
 

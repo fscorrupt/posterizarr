@@ -18,6 +18,8 @@ import time
 import threading
 import asyncio
 import csv
+import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -964,7 +966,10 @@ class LogsWatcher:
                             pass
                         self.overlay_sync_timer = None
 
-                    if getattr(self, "on_run_complete_callback", None):
+                    managed_title_run = mode == "manual" and self._title_regeneration_metadata().get("Title regeneration") is True
+                    if managed_title_run:
+                        logger.info("[LogsWatcher] Episode title recreation owns its overlay sync; automatic completion sync skipped.")
+                    elif getattr(self, "on_run_complete_callback", None):
                         try:
                             logger.info(f"[LogsWatcher] Auto-triggering Dynamic Overlays sync after {mode} completion...")
                             with self.csv_broadcast_lock:
@@ -994,6 +999,24 @@ class LogsWatcher:
     def _row_signature(self, row: dict) -> str:
         """Create a compact fingerprint string for an ImageChoices row."""
         return f"{row.get('Title', '')}|{row.get('Rootfolder', '')}|{row.get('LibraryName', '')}|{row.get('Type', '')}|{row.get('Download Source', '')}"
+
+    def _title_regeneration_metadata(self):
+        try:
+            with open(self.logs_dir / "manual.json", encoding="utf-8-sig") as metadata_file:
+                metadata = json.load(metadata_file)
+            return metadata if isinstance(metadata, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _title_regeneration_owns_csv(self, csv_path):
+        callback = getattr(self, "title_regeneration_active_callback", None)
+        if callback and callback():
+            return True
+        metadata = self._title_regeneration_metadata()
+        digest = metadata.get("Managed ImageChoices SHA256")
+        if metadata.get("Title regeneration") is not True or not digest:
+            return False
+        return hashlib.sha256(csv_path.read_bytes()).hexdigest().casefold() == str(digest).casefold()
 
     def _process_new_imagechoices_and_broadcast(self):
         """Check ImageChoices.csv for new rows and broadcast real-time update events."""
@@ -1053,10 +1076,12 @@ class LogsWatcher:
 
                 if not hasattr(self, "pending_overlay_rows") or self.pending_overlay_rows is None:
                     self.pending_overlay_rows = []
-                self.pending_overlay_rows.extend(new_rows)
+                managed_title_run = self._title_regeneration_owns_csv(csv_path)
+                if not managed_title_run:
+                    self.pending_overlay_rows.extend(new_rows)
 
                 # Schedule debounced instant overlay sync for newly created media assets
-                if getattr(self, "on_run_complete_callback", None):
+                if not managed_title_run and getattr(self, "on_run_complete_callback", None):
                     def _trigger_instant_overlay():
                         with self.csv_broadcast_lock:
                             if not self.pending_overlay_rows:

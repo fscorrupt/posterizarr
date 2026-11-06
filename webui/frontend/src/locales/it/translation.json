@@ -257,7 +257,7 @@
       "renderOnlyNoPush": "Solo rendering · nessun invio al server",
       "serverPushAllowed": "Invio al server consentito",
       "backgroundChecking": "Controllo in background",
-      "backgroundDescription": "Controlla periodicamente nuovi flussi audio, edizioni e durate sui media server.",
+      "backgroundDescription": "Controlla periodicamente nuovi flussi audio, edizioni e durate sui media server. Se la ricreazione delle immagini degli episodi è attiva, verifica anche i titoli e ricrea automaticamente le immagini idonee quando cambiano, salvo in modalità simulazione.",
       "checkInterval": "Intervallo di controllo:",
       "every15Minutes": "Ogni 15 minuti",
       "every30Minutes": "Ogni 30 minuti",

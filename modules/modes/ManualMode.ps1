@@ -1323,6 +1323,8 @@
             Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
             Collections          = if ($collectionCount) { $collectionCount } Else { 0 }
             Mode                 = $Mode
+            "Title regeneration" = ($env:POSTERIZARR_TITLE_REGENERATION -eq '1')
+            "Managed ImageChoices SHA256" = $(if ($env:POSTERIZARR_TITLE_REGENERATION -eq '1' -and (Test-Path -LiteralPath "$global:ScriptRoot\Logs\ImageChoices.csv")) { (Get-FileHash -LiteralPath "$global:ScriptRoot\Logs\ImageChoices.csv" -Algorithm SHA256).Hash } else { "" })
             Runtime              = $($hours.ToString() + ":" + $minutes.ToString() + ":" + $seconds.ToString())
             Errors               = if ($errorCount) { $errorCount } Else { 0 }
             Fallbacks            = if ($FallbackCount) { $FallbackCount } Else { 0 }

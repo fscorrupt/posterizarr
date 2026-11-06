@@ -702,6 +702,12 @@ remaining queue entries stay pending and can be resumed from the queue. Failed
 entries retain their review candidate for retry. A successful render and server
 upload acknowledge the new title and remove its review entry.
 
+Queue-owned title recreation also owns its overlay handoff. Its runtime metadata
+marks that ownership and identifies the completed ImageChoices CSV, so the log
+watcher still imports/broadcasts the generated asset but does not start a second
+competing sync, including delayed file notifications. Ordinary manual runs keep
+their existing automatic overlay handoff.
+
 Only title metadata is stored in `overlay_cache.db`; no additional original-image
 cache or image backup is created. For an eligible change, the existing manual
 generator downloads the recorded `DownloadSource` again and uses the current

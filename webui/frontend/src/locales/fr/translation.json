@@ -257,7 +257,7 @@
       "renderOnlyNoPush": "Rendu uniquement · aucun envoi serveur",
       "serverPushAllowed": "Envoi vers le serveur autorisé",
       "backgroundChecking": "Vérification en arrière-plan",
-      "backgroundDescription": "Vérifie régulièrement les nouvelles pistes, éditions et durées sur les serveurs multimédias.",
+      "backgroundDescription": "Vérifie régulièrement les nouvelles pistes, éditions et durées sur les serveurs multimédias. Si la recréation des images d’épisodes est activée, vérifie aussi leurs titres et recrée automatiquement les images admissibles en cas de changement, sauf en mode simulation.",
       "checkInterval": "Intervalle de vérification :",
       "every15Minutes": "Toutes les 15 minutes",
       "every30Minutes": "Toutes les 30 minutes",
