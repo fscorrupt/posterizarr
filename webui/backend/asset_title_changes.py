@@ -62,6 +62,20 @@ def _recorded_episode_title(record):
     return match[1] if match and match[1] else None
 
 
+def _same_episode_title(previous, current):
+    if isinstance(previous, str) and isinstance(current, str):
+        return previous.casefold() == current.casefold()
+    return previous == current
+
+
+def _same_title_snapshot(previous, current):
+    if previous is None or current is None:
+        return False
+    previous_values, current_values = json.loads(previous), json.loads(current)
+    return len(previous_values) == len(current_values) and all(
+        _same_episode_title(old, new) for old, new in zip(previous_values, current_values))
+
+
 class AssetTitleChanges:
     def __init__(self, base_dir, assets_dir, library_folders=True):
         self.base_dir = Path(base_dir)
@@ -151,7 +165,7 @@ class AssetTitleChanges:
                 elif baseline[2] is None:
                     connection.execute("UPDATE asset_title_baselines SET applied_titles = ? WHERE server_key = ? AND asset_path = ?",
                                        (applied_titles, server_key, str(path)))
-                if applied_titles == titles:
+                if _same_title_snapshot(applied_titles, titles):
                     continue
                 source = str(record.get("DownloadSource") or "").strip()
                 parsed = urlsplit(source)
@@ -167,7 +181,7 @@ class AssetTitleChanges:
                     reason = "source_has_text"
                 candidate_id = hashlib.sha256(f"{server_key}\n{path}".encode()).hexdigest()
                 prior = previous.get(candidate_id, {})
-                requires_review = prior.get("requires_review", not baseline or baseline[1] == titles)
+                requires_review = prior.get("requires_review", not baseline or _same_title_snapshot(baseline[1], titles))
                 job = {"server_key": server_key, "server_type": server_type,
                              "server_url": server_url.rstrip("/"),
                              "item_id": str(item["id"]), "asset_path": str(path), "titles": titles,
@@ -182,7 +196,7 @@ class AssetTitleChanges:
                              "status": "ready" if reason is None else "blocked",
                              "checked_at": datetime.now().isoformat(),
                              "preview_path": path.relative_to(self.assets.resolve()).as_posix()}
-                if prior.get("titles") == titles and prior.get("source") == source and prior.get("last_error"):
+                if _same_title_snapshot(prior.get("titles"), titles) and prior.get("source") == source and prior.get("last_error"):
                     job["last_error"] = prior["last_error"]
                 connection.execute("""INSERT INTO episode_title_candidates VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(candidate_id) DO UPDATE SET library_name = excluded.library_name,
@@ -198,7 +212,8 @@ class AssetTitleChanges:
         with closing(sqlite3.connect(self.database)) as connection:
             rows = [json.loads(row[0]) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
         search = search.strip().casefold()
-        rows = [row for row in rows if not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold()]
+        rows = [row for row in rows if not _same_episode_title(row.get("old_title"), row.get("title")) and
+            (not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold())]
         return {"total": len(rows), "eligible": sum(row["status"] == "ready" for row in rows),
                 "entries": [{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")}
                             for row in rows[offset:offset + limit]]}
@@ -208,7 +223,7 @@ class AssetTitleChanges:
             rows = [json.loads(row[0]) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
         selected = set(candidate_ids or [])
         search = search.strip().casefold()
-        return [row for row in rows if row["status"] == "ready" and
+        return [row for row in rows if row["status"] == "ready" and not _same_episode_title(row.get("old_title"), row.get("title")) and
                 (row["candidate_id"] in selected or (all_eligible and (not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold())))]
 
     def record_failure(self, job, reason):
@@ -222,7 +237,8 @@ class AssetTitleChanges:
     def candidate_job(self, candidate_id):
         with closing(sqlite3.connect(self.database)) as connection:
             row = connection.execute("SELECT payload FROM episode_title_candidates WHERE candidate_id = ? AND status = 'ready'", (candidate_id,)).fetchone()
-        return json.loads(row[0]) if row else None
+        job = json.loads(row[0]) if row else None
+        return job if job and not _same_episode_title(job.get("old_title"), job.get("title")) else None
 
     def acknowledge(self, job):
         with closing(sqlite3.connect(self.database)) as connection, connection:
@@ -359,7 +375,7 @@ async def queued_episode_title_is_current(job, config_path):
                 return False
             item = items[0]
             title, parent, season, episode = item.get("Name"), item.get("SeriesId"), item.get("ParentIndexNumber"), item.get("IndexNumber")
-    return (str(title or "").strip() == job["title"].strip() and str(parent) == job["parent_id"]
+    return (_same_episode_title(str(title or "").strip(), job["title"].strip()) and str(parent) == job["parent_id"]
             and str(season) == str(job["season"]) and str(episode) == str(job["episode"]))
 
 

@@ -680,6 +680,12 @@ and unknown or truncated historical text cannot be safely recreated automaticall
 Missing sources, textful sources, and placeholder titles remain visible with a
 blocking reason. Unmatched episodes and missing image files are not guessed.
 
+Title comparisons ignore uppercase/lowercase differences, including accented
+characters. Existing case-only candidates are hidden and removed by the next
+successful scan without rendering or uploading artwork. Displayed titles and
+the original text in ImageChoices are preserved; actual wording changes still
+remain review candidates.
+
 Use the row's recreate action for one episode, select several entries with the
 checkboxes, or choose **All eligible matches**. The all action includes every
 eligible result of the current search, not just the current page. Each action
