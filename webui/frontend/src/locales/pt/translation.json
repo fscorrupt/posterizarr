@@ -282,6 +282,7 @@
       "rebuildSelected": "Recriar seleção ({{count}})",
       "rebuildAll": "Todos os resultados elegíveis ({{count}})",
       "rebuildOne": "Recriar esta imagem do episódio",
+      "chooseProviderImage": "Escolher uma imagem do fornecedor no Asset Replacer",
       "forceOne": "Forçar a recriação desta imagem do episódio",
       "forceTitle": "Recriar com o texto anterior desconhecido?",
       "forceMessage": "O texto anterior da imagem de {{episode}} é desconhecido. Forçar a recriação a partir da fonte sem texto guardada com o título atual \"{{title}}\"? A imagem existente será substituída.",
@@ -308,9 +309,12 @@
       "previousPage": "Página anterior",
       "nextPage": "Página seguinte",
       "progress": "{{processed}} / {{total}} · {{succeeded}} recriadas · {{failed}} falhadas · {{skipped}} ignoradas",
+      "progressRecreated": "Recriadas",
+      "progressFailed": "Falhadas",
+      "progressSkipped": "Ignoradas",
       "partialScan": "Verificação incompleta: {{servers}}",
       "phases": { "idle": "Pronto", "scanning": "A comparar títulos", "rebuilding": "A recriar imagens dos episódios", "complete": "Concluído", "cancelled": "Cancelado", "failed": "Falhou" },
-      "reasons": { "placeholder": "A aguardar o título definitivo", "missing_source": "Nenhuma fonte descarregável guardada", "source_has_text": "Fonte não confirmada sem texto", "unknown_text": "Texto anterior da imagem incerto" },
+      "reasons": { "placeholder": "A aguardar o título definitivo", "missing_source": "Nenhuma fonte descarregável guardada", "source_has_text": "Fonte não confirmada sem texto", "unknown_text": "Texto anterior da imagem incerto", "media_server_source": "O original veio do servidor de mídia e pode conter sobreposições. É necessário um original do fornecedor." },
       "errors": { "request_failed": "O pedido falhou. Tente novamente.", "busy": "Outra tarefa ainda está ativa.", "master_off": "O interruptor principal está desligado.", "rebuild_disabled": "A simulação bloqueia a recriação e os envios.", "nothing_selected": "Nenhuma entrada elegível selecionada.", "unavailable": "A recriação está indisponível neste momento.", "scan_failed": "A verificação falhou. As entradas existentes são mantidas.", "rebuild_failed": "A tarefa falhou. As entradas incompletas são mantidas.", "not_completed": "Recriação ou envio não concluído" }
     }
   },

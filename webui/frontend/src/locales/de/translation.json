@@ -282,6 +282,7 @@
       "rebuildSelected": "Auswahl neu erstellen ({{count}})",
       "rebuildAll": "Alle geeigneten Treffer ({{count}})",
       "rebuildOne": "Dieses Episodenbild neu erstellen",
+      "chooseProviderImage": "Provider-Bild im Asset Replacer auswählen",
       "forceOne": "Neuerstellung dieses Episodenbilds erzwingen",
       "forceTitle": "Trotz unbekanntem bisherigen Text neu erstellen?",
       "forceMessage": "Der bisherige Bildtext von {{episode}} ist unbekannt. Neuerstellung aus der gespeicherten textlosen Quelle mit dem aktuellen Titel \"{{title}}\" erzwingen? Das vorhandene Episodenbild wird ersetzt.",
@@ -308,9 +309,12 @@
       "previousPage": "Vorherige Seite",
       "nextPage": "Nächste Seite",
       "progress": "{{processed}} / {{total}} · {{succeeded}} erstellt · {{failed}} fehlgeschlagen · {{skipped}} übersprungen",
+      "progressRecreated": "Neu erstellt",
+      "progressFailed": "Fehlgeschlagen",
+      "progressSkipped": "Übersprungen",
       "partialScan": "Abgleich nicht vollständig: {{servers}}",
       "phases": { "idle": "Bereit", "scanning": "Titel werden abgeglichen", "rebuilding": "Episodenbilder werden erstellt", "complete": "Abgeschlossen", "cancelled": "Abgebrochen", "failed": "Fehlgeschlagen" },
-      "reasons": { "placeholder": "Noch kein endgültiger Titel", "missing_source": "Keine abrufbare Quelle gespeichert", "source_has_text": "Quelle nicht als textlos bestätigt", "unknown_text": "Bisheriger Bildtext nicht verlässlich bekannt" },
+      "reasons": { "placeholder": "Noch kein endgültiger Titel", "missing_source": "Keine abrufbare Quelle gespeichert", "source_has_text": "Quelle nicht als textlos bestätigt", "unknown_text": "Bisheriger Bildtext nicht verlässlich bekannt", "media_server_source": "Original stammt vom Medienserver und kann Overlays enthalten. Ein Provider-Original ist erforderlich." },
       "errors": { "request_failed": "Anfrage fehlgeschlagen. Bitte erneut versuchen.", "busy": "Ein anderer Auftrag ist noch aktiv.", "master_off": "Master Switch ist ausgeschaltet.", "rebuild_disabled": "Dry Run ist aktiv. Neuerstellung und Upload sind gesperrt.", "nothing_selected": "Keine geeigneten Einträge ausgewählt.", "unavailable": "Neuerstellung ist derzeit nicht verfügbar.", "scan_failed": "Titelabgleich fehlgeschlagen. Vorhandene Einträge bleiben erhalten.", "rebuild_failed": "Auftrag fehlgeschlagen. Nicht abgeschlossene Einträge bleiben erhalten.", "not_completed": "Neuerstellung oder Upload nicht abgeschlossen" }
     }
   },

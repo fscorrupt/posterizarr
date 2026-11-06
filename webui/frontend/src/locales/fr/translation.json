@@ -282,6 +282,7 @@
       "rebuildSelected": "Recréer la sélection ({{count}})",
       "rebuildAll": "Tous les résultats admissibles ({{count}})",
       "rebuildOne": "Recréer cette image d’épisode",
+      "chooseProviderImage": "Choisir une image de fournisseur dans Asset Replacer",
       "forceOne": "Forcer la recréation de cette image d’épisode",
       "forceTitle": "Recréer malgré un ancien texte inconnu ?",
       "forceMessage": "L’ancien texte de l’image de {{episode}} est inconnu. Forcer la recréation depuis la source sans texte enregistrée avec le titre actuel \"{{title}}\" ? L’image existante sera remplacée.",
@@ -308,9 +309,12 @@
       "previousPage": "Page précédente",
       "nextPage": "Page suivante",
       "progress": "{{processed}} / {{total}} · {{succeeded}} recréés · {{failed}} échoués · {{skipped}} ignorés",
+      "progressRecreated": "Recréés",
+      "progressFailed": "Échecs",
+      "progressSkipped": "Ignorés",
       "partialScan": "Analyse incomplète : {{servers}}",
       "phases": { "idle": "Prêt", "scanning": "Comparaison des titres", "rebuilding": "Recréation des images des épisodes", "complete": "Terminé", "cancelled": "Annulé", "failed": "Échec" },
-      "reasons": { "placeholder": "En attente du titre définitif", "missing_source": "Aucune source téléchargeable enregistrée", "source_has_text": "Source non confirmée sans texte", "unknown_text": "Ancien texte de l’image incertain" },
+      "reasons": { "placeholder": "En attente du titre définitif", "missing_source": "Aucune source téléchargeable enregistrée", "source_has_text": "Source non confirmée sans texte", "unknown_text": "Ancien texte de l’image incertain", "media_server_source": "L’original provient du serveur multimédia et peut contenir des superpositions. Une image originale du fournisseur est nécessaire." },
       "errors": { "request_failed": "Échec de la requête. Réessayez.", "busy": "Une autre tâche est active.", "master_off": "L’interrupteur principal est désactivé.", "rebuild_disabled": "Le mode simulation bloque la recréation et les envois.", "nothing_selected": "Aucune entrée admissible sélectionnée.", "unavailable": "Recréation indisponible actuellement.", "scan_failed": "Échec de l’analyse. Les entrées existantes sont conservées.", "rebuild_failed": "Échec de la tâche. Les entrées inachevées sont conservées.", "not_completed": "Recréation ou envoi non terminé" }
     }
   },

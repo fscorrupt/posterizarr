@@ -681,7 +681,12 @@ The monitor supports only existing episode titlecards on Plex, Jellyfin, and
 Emby. Movie/show posters, season posters, backgrounds, and collection posters
 are excluded from this title-change automation. Their normal generation and
 overlay workflows are unchanged. The monitor uses stable episode IDs after the
-initial match, so a title change does not rename asset folders. The first
+initial match, so a title change does not rename asset folders. Initial matching
+uses the library, season and episode together with the media server's show-folder
+name or provider IDs, including tags such as `[tvdb-452595]` in asset folder names.
+Plex show locations are fetched when bulk listings omit them; different mount
+prefixes and localized display titles do not prevent folder matching. Ambiguous
+matches are skipped. No previous overlay sync is required. The first
 successful scan also compares the episode title recorded in ImageChoices with
 the current server title. Existing differences become historical review
 candidates, including when an older version already established a baseline.
@@ -694,6 +699,25 @@ are explicitly review candidates: ImageChoices is not an exact rendering log,
 and unknown or truncated historical text cannot be safely recreated automatically.
 Missing sources, textful sources, and placeholder titles remain visible with a
 blocking reason. Unmatched episodes and missing image files are not guessed.
+
+Images originally taken from a media server are never reused for recreation,
+even when their URL is public or their stored language is Textless. The server
+may now return a titlecard with existing overlays rather than the original image.
+These rows show **Original was taken from a media server** and are excluded from
+normal, bulk, automatic, force, and resumed-queue recreation. The backend logs
+that a provider original is required; it does not fetch another media-server
+thumbnail or silently perform a provider search.
+
+For **media-server source** and **missing-source** entries, use the row's
+**Choose a provider image in Asset Replacer** action. It opens the existing
+Asset Replacer on its provider tab with the series, library, folder, season,
+episode, and current episode title prefilled. Available series provider IDs
+are carried into the lookup; a provider search starts only after its existing
+confirmation. Choose an image and use the modal's normal recreation or queue
+workflow. The original media-server URL is never preselected as the new source.
+Opening or queueing a replacement does not acknowledge the review entry as
+completed. The Master Switch must be on and Dry Run off to open this replacement
+workflow from the review.
 
 If only the previous image text is unknown, the row can offer **Force recreate
 this episode titlecard**. This explicit single-episode action requires a stored
@@ -749,7 +773,7 @@ their existing automatic overlay handoff.
 Only title metadata is stored in `overlay_cache.db`; no additional original-image
 cache or image backup is created. For an eligible change, the existing manual
 generator downloads the recorded `DownloadSource` again and uses the current
-rendering settings. The source must be a public HTTP(S) URL recorded as
+rendering settings. The source must be a public provider HTTP(S) URL recorded as
 **Textless** in ImageChoices. Missing/local sources, sources with existing text,
 ambiguous matches, and missing asset files are skipped. This is not a new artwork
 search and cannot translate text already baked into a provider image. Custom

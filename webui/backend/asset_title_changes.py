@@ -9,7 +9,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 from defusedxml.ElementTree import fromstring
@@ -25,6 +25,29 @@ def title_regeneration_enabled(settings):
 def title_regeneration_allowed(settings, manual=False):
     return bool(settings.get("enabled") and not settings.get("change_detection_dry_run", True)
                 and (manual or title_regeneration_enabled(settings)))
+
+
+def is_media_server_source(source, server_urls=()):
+    try:
+        parsed = urlsplit(str(source or "").strip())
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        origin = (parsed.scheme, parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+        for server_url in server_urls:
+            server = urlsplit(str(server_url or ""))
+            server_origin = (server.scheme, server.hostname, server.port or (443 if server.scheme == "https" else 80))
+            if origin == server_origin:
+                return True
+        native_image_path = r"/library/metadata/[^/]+/(?:thumb|art|file)(?:/|$)|/photo/:/transcode(?:/|$)|/items/[^/]+/images/(?:primary|backdrop|thumb)(?:/|$)"
+        return bool(re.search(native_image_path, unquote(parsed.path), re.I))
+    except ValueError:
+        return False
+
+
+def _with_source_safety(job):
+    if is_media_server_source(job.get("source"), [job.get("server_url")]):
+        return {**job, "status": "blocked", "reason": "media_server_source"}
+    return job
 
 
 def _record_kind(record):
@@ -77,7 +100,7 @@ def _same_title_snapshot(previous, current):
 
 
 def _can_force_unknown_text(job):
-    if job.get("reason") != "unknown_text" or not job.get("source_textless") or _placeholder(str(job.get("title") or "")):
+    if job.get("reason") != "unknown_text" or not job.get("source_textless") or _placeholder(str(job.get("title") or "")) or is_media_server_source(job.get("source"), [job.get("server_url")]):
         return False
     try:
         source = urlsplit(str(job.get("source") or "").strip())
@@ -126,13 +149,16 @@ class AssetTitleChanges:
         return result
 
     def plan(self, server_type, server_url, items, library="all", excluded=()):
+        from overlay_sync_service import _overlay_target_provider_ids
+
         server_key = server_type + ":" + hashlib.sha256(server_url.rstrip("/").encode()).hexdigest()
         items = [item for item in items if item.get("type") == "episode"]
         by_id = {str(item["id"]): item for item in items}
         index = {}
         for item in items:
             coordinates = (item["library"], item["type"], item.get("season"), item.get("episode"))
-            keys = [("root", item.get("root"))] + [(provider, str(value)) for provider, value in (item.get("provider_ids") or {}).items()]
+            keys = [("root", root) for root in [item.get("root"), *(item.get("roots") or [])] if root]
+            keys.extend((provider, str(value)) for provider, value in (item.get("provider_ids") or {}).items())
             for provider, value in keys:
                 index.setdefault((*coordinates, provider, value), {})[str(item["id"])] = item
         exclusions = {str(name).casefold() for name in excluded}
@@ -154,8 +180,8 @@ class AssetTitleChanges:
                     candidates = [current] if current and current["library"] == library_name and current.get("season") == season and current.get("episode") == episode else []
                 else:
                     matches = {}
-                    root = str(record.get("Rootfolder") or "").replace("\\", "/").split("/")[-1]
-                    keys = [("root", root)] + [(name, str(record.get(name + "id"))) for name in ("tmdb", "tvdb", "imdb") if str(record.get(name + "id") or "").lower() not in ("", "false", "n/a")]
+                    root = str(record.get("Rootfolder") or "").replace("\\", "/").rstrip("/").split("/")[-1]
+                    keys = [("root", root), *_overlay_target_provider_ids(record).items()]
                     for provider, value in keys:
                         matches.update(index.get((library_name, "episode", season, episode, provider, value), {}))
                     candidates = list(matches.values())
@@ -181,7 +207,9 @@ class AssetTitleChanges:
                 parsed = urlsplit(source)
                 old_title = json.loads(applied_titles)[0]
                 reason = None
-                if not old_title or str(record.get("TextTruncated") or "").lower() == "true":
+                if is_media_server_source(source, [server_url]):
+                    reason = "media_server_source"
+                elif not old_title or str(record.get("TextTruncated") or "").lower() == "true":
                     reason = "unknown_text"
                 elif _placeholder(render_title):
                     reason = "placeholder"
@@ -191,11 +219,14 @@ class AssetTitleChanges:
                     reason = "source_has_text"
                 candidate_id = hashlib.sha256(f"{server_key}\n{path}".encode()).hexdigest()
                 prior = previous.get(candidate_id, {})
+                if reason == "media_server_source" and prior.get("reason") != reason:
+                    logger.warning("[TitleChanges] Cannot recreate %s (%s): the original image was taken from a media server and may contain overlays; a provider original is required.", path.name, library_name)
                 requires_review = prior.get("requires_review", not baseline or _same_title_snapshot(baseline[1], titles))
                 job = {"server_key": server_key, "server_type": server_type,
                              "server_url": server_url.rstrip("/"),
                              "item_id": str(item["id"]), "asset_path": str(path), "titles": titles,
                              "source": source, "library": library_name,
+                             "provider_ids": item.get("provider_ids") or {},
                              "source_textless": str(record.get("Language") or "").casefold() == "textless",
                              "folder": str(record["Rootfolder"]), "media_type": "episode",
                              "parent_id": str(item.get("parent_id") or item["id"]),
@@ -221,7 +252,7 @@ class AssetTitleChanges:
 
     def candidates(self, search="", limit=50, offset=0):
         with closing(sqlite3.connect(self.database)) as connection:
-            rows = [json.loads(row[0]) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
+            rows = [_with_source_safety(json.loads(row[0])) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
         search = search.strip().casefold()
         rows = [row for row in rows if not _same_episode_title(row.get("old_title"), row.get("title")) and
             (not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold())]
@@ -232,7 +263,7 @@ class AssetTitleChanges:
 
     def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False, force_unknown_text=False):
         with closing(sqlite3.connect(self.database)) as connection:
-            rows = [json.loads(row[0]) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
+            rows = [_with_source_safety(json.loads(row[0])) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
         selected = set(candidate_ids or [])
         search = search.strip().casefold()
         return [{**row, "force_unknown_text": bool(force_unknown_text and row["status"] != "ready")} for row in rows
@@ -251,7 +282,9 @@ class AssetTitleChanges:
     def candidate_job(self, candidate_id, force_unknown_text=False):
         with closing(sqlite3.connect(self.database)) as connection:
             row = connection.execute("SELECT payload FROM episode_title_candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
-        job = json.loads(row[0]) if row else None
+        job = _with_source_safety(json.loads(row[0])) if row else None
+        if job and job["reason"] == "media_server_source":
+            logger.warning("[TitleChanges] Cannot recreate %s: the original was taken from a media server; a provider original is required.", Path(job["asset_path"]).name)
         eligible = job and (job["status"] == "ready" or (force_unknown_text and _can_force_unknown_text(job)))
         return job if eligible and not _same_episode_title(job.get("old_title"), job.get("title")) else None
 
@@ -290,22 +323,40 @@ async def fetch_title_items(client, server_type, credentials, library="all"):
                     if not page or start >= int(container.get("totalSize") or container.get("size") or len(page)):
                         break
             parents = {node.get("ratingKey"): node for node in nodes if node.get("type") == "show"}
+            folder_roots = {}
+            location_limit = asyncio.Semaphore(8)
+
+            async def locate_show(parent_id):
+                parent = parents[parent_id]
+                paths = [location.get("path") for location in parent.findall("Location") if location.get("path")]
+                if not paths:
+                    try:
+                        async with location_limit:
+                            response = await client.get(url + "/library/metadata/" + quote(str(parent_id), safe=""), headers=headers)
+                            response.raise_for_status()
+                        details = fromstring(response.content)
+                        paths = [location.get("path") for show in details.findall("Directory")
+                                 if show.get("ratingKey") == parent_id and show.get("type") == "show"
+                                 for location in show.findall("Location") if location.get("path")]
+                    except httpx.HTTPError:
+                        logger.warning("[TitleChanges] Could not retrieve folder metadata for Plex show %s; retaining identifier matching.", parent_id)
+                folder_roots[parent_id] = list(dict.fromkeys(
+                    path.replace("\\", "/").rstrip("/").split("/")[-1] for path in paths if path.rstrip("/\\")))
+
+            parent_ids = {node.get("grandparentRatingKey") for node in nodes if node.get("type") == "episode"}
+            await asyncio.gather(*(locate_show(parent_id) for parent_id in parent_ids if parent_id in parents))
             for node in nodes:
                 if node.get("type") != "episode":
                     continue
                 parent = parents.get(node.get("grandparentRatingKey"))
                 if parent is None:
                     continue
-                location = parent.find("Location")
-                part = parent.find(".//Part")
-                root = re.split(r"[\\/]", (location.get("path") if location is not None else "") or "")[-1]
-                if not root and part is not None:
-                    root = Path(part.get("file", "").replace("\\", "/")).parent.name
+                roots = folder_roots.get(parent.get("ratingKey"), [])
                 identifiers = {guid.get("id", "").split("://")[0]: guid.get("id", "").split("://")[-1] for guid in parent.findall("Guid")}
                 items.append({"id": node.get("ratingKey"), "library": name, "type": "episode",
                               "title": node.get("title", ""), "parent_title": parent.get("title", ""),
                               "parent_id": parent.get("ratingKey"),
-                              "root": root or parent.get("title", ""), "provider_ids": identifiers,
+                              "root": roots[0] if roots else parent.get("title", ""), "roots": roots, "provider_ids": identifiers,
                               "season": int(node.get("parentIndex")) if node.get("parentIndex") is not None else None,
                               "episode": int(node.get("index")) if node.get("index") is not None else None})
     elif server_type in ("jellyfin", "emby"):

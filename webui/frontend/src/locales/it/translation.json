@@ -282,6 +282,7 @@
       "rebuildSelected": "Ricrea selezione ({{count}})",
       "rebuildAll": "Tutti i risultati idonei ({{count}})",
       "rebuildOne": "Ricrea questa immagine episodio",
+      "chooseProviderImage": "Scegli un’immagine del provider in Asset Replacer",
       "forceOne": "Forza la ricreazione di questa immagine episodio",
       "forceTitle": "Ricreare con il testo precedente sconosciuto?",
       "forceMessage": "Il testo precedente dell’immagine di {{episode}} è sconosciuto. Forzare la ricreazione dalla fonte senza testo registrata con il titolo attuale \"{{title}}\"? L’immagine esistente sarà sostituita.",
@@ -308,9 +309,12 @@
       "previousPage": "Pagina precedente",
       "nextPage": "Pagina successiva",
       "progress": "{{processed}} / {{total}} · {{succeeded}} ricreati · {{failed}} falliti · {{skipped}} saltati",
+      "progressRecreated": "Ricreati",
+      "progressFailed": "Falliti",
+      "progressSkipped": "Saltati",
       "partialScan": "Scansione incompleta: {{servers}}",
       "phases": { "idle": "Pronto", "scanning": "Confronto dei titoli", "rebuilding": "Creazione delle immagini degli episodi", "complete": "Completato", "cancelled": "Annullato", "failed": "Fallito" },
-      "reasons": { "placeholder": "In attesa del titolo definitivo", "missing_source": "Nessuna fonte scaricabile registrata", "source_has_text": "Fonte non confermata senza testo", "unknown_text": "Testo precedente non certo" },
+      "reasons": { "placeholder": "In attesa del titolo definitivo", "missing_source": "Nessuna fonte scaricabile registrata", "source_has_text": "Fonte non confermata senza testo", "unknown_text": "Testo precedente non certo", "media_server_source": "L’originale proviene dal server multimediale e può contenere overlay. È necessaria un’immagine originale del provider." },
       "errors": { "request_failed": "Richiesta fallita. Riprova.", "busy": "Un’altra attività è in corso.", "master_off": "L’interruttore principale è disattivato.", "rebuild_disabled": "La simulazione blocca ricreazione e invii.", "nothing_selected": "Nessuna voce idonea selezionata.", "unavailable": "Ricreazione non disponibile al momento.", "scan_failed": "Scansione fallita. Le voci esistenti restano disponibili.", "rebuild_failed": "Attività fallita. Le voci incomplete restano disponibili.", "not_completed": "Ricreazione o invio non completato" }
     }
   },

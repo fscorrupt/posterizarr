@@ -27,7 +27,7 @@ function getSeasonPosterName(seasonNumber, overrideEnabled, seasonText, specialT
   return `${overrideEnabled ? seasonText : "Season"} ${seasonNumber}`;
 }
 
-function AssetReplacer({ asset, onClose, onSuccess }) {
+function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initialMetadata = null }) {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
   const navigate = useNavigate();
@@ -43,7 +43,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     season: [],
   });
 
-  const [activeTab, setActiveTab] = useState("upload");
+  const [activeTab, setActiveTab] = useState(initialTab === "previews" ? "previews" : "upload");
   const [processWithOverlays, setProcessWithOverlays] = useState(true);
   const [addToQueue, setAddToQueue] = useState(false);
   const [autoQueueChanges, setAutoQueueChanges] = useState(false);
@@ -504,6 +504,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       asset_type: assetType,
       season_number: seasonNumber,
       episode_number: episodeNumber,
+      ...initialMetadata,
     };
 
     console.log("=== Extracted Metadata ===");
@@ -525,7 +526,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Determine if we should use horizontal layout (backgrounds and titlecards)
   // Use useMemo to recalculate metadata only when asset or dbData changes
-  const metadata = React.useMemo(() => extractMetadata(), [asset, dbData]);
+  const metadata = React.useMemo(() => extractMetadata(), [asset, dbData, initialMetadata]);
   const useHorizontalLayout =
     metadata.asset_type === "background" || metadata.asset_type === "titlecard";
 

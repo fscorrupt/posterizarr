@@ -15392,7 +15392,7 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
 async def regenerate_asset_title(job, manual=False):
     if job.get("poster_type") != "titlecard" or job.get("media_type") != "episode":
         return False
-    from asset_title_changes import title_regeneration_allowed
+    from asset_title_changes import is_media_server_source, title_regeneration_allowed
     from dynamic_overlays_service import get_dynamic_overlays_settings
     from overlay_sync_service import get_server_credentials, is_overlay_sync_running, run_overlay_sync_task, _confirm_plex_titlecard
     from plex_image_cleanup import is_cleanup_running
@@ -15406,6 +15406,9 @@ async def regenerate_asset_title(job, manual=False):
     if RUNNING_FILE.exists() or (current_process and current_process.poll() is None) or is_overlay_sync_running() or is_cleanup_running():
         return False
     source = job["source"]
+    if is_media_server_source(source, [credentials["url"]]):
+        logger.warning("[TitleChanges] Cannot recreate %s: source was taken from a media server and may contain overlays; a provider original is required.", Path(job["asset_path"]).name)
+        return False
     if not is_safe_url(source, allow_private=False, allow_loopback=False):
         logger.warning("[TitleChanges] Skipping unsafe source for %s", Path(job["asset_path"]).name)
         return False
