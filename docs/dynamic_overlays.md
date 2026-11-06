@@ -761,6 +761,15 @@ normal run scans configured libraries, so it may also create other missing asset
 If the run fails or does not generate a replacement file, the previous local
 titlecard is restored. The existing queue action remains available for slower,
 per-episode processing without a full Normal Mode run.
+While it runs, the review shows preparation, Normal Mode, and local-file
+finalization phases with elapsed time. Normal Mode does not report per-review-item
+progress, so the display uses an indeterminate bar and does not invent an ETA.
+The fast-run status ends after local generation and restoration; it does not wait
+for separately triggered Dynamic Overlay Sync jobs to finish.
+When **Auto Overlay Sync** is enabled, the ImageChoices watcher batches generated
+rows after a short quiet period and flushes pending rows at run completion. A long
+run can therefore produce multiple overlay-sync batches rather than one sync for
+the entire set. With Auto Overlay Sync disabled, that follow-up sync is not started.
 
 ![Confirmation dialog before recreating a selected episode titlecard](images/48-episode-title-recreate-confirmation.png)
 
@@ -771,6 +780,11 @@ confirmation. This screenshot shows the dialog only; the example job was cancell
 
 *The fast action is limited to eligible local review assets. Media-server artwork
 is retained; the normal run may process other missing assets in configured libraries.*
+
+![Fast Normal Run progress showing phase, elapsed time, and overlay batch behavior](images/50-episode-title-fast-run-status.png)
+
+*The status reports elapsed time and the current phase. Normal Mode does not expose
+per-episode progress; final counts report recreated titlecards and local originals restored.*
 
 Confirmed recreation uses the existing **Asset Queue** and queue processor,
 not a separate rendering worker. The queue contains a dedicated episode-title

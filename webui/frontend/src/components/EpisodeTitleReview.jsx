@@ -18,12 +18,15 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
+  const [fastStarting, setFastStarting] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [revision, setRevision] = useState(0);
   const [confirmation, setConfirmation] = useState(null);
   const [replacementAsset, setReplacementAsset] = useState(null);
   const selectPageRef = useRef(null);
+  const fastRunIdRef = useRef(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search), 250);
@@ -60,6 +63,32 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     return () => { active = false; controller.abort(); clearTimeout(timer); };
   }, [query, page, revision, enabled, dryRun]);
 
+  const fastStartedAt = fastStarting?.startedAt || (data.job?.fast_run ? data.job.started_at : null);
+  useEffect(() => {
+    if (!fastStartedAt) {
+      setElapsedSeconds(0);
+      return undefined;
+    }
+    const updateElapsed = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - new Date(fastStartedAt).getTime()) / 1000)));
+    updateElapsed();
+    const timer = setInterval(updateElapsed, 1000);
+    return () => clearInterval(timer);
+  }, [fastStartedAt]);
+
+  useEffect(() => {
+    const job = data.job;
+    if (job?.fast_run && job.running) {
+      fastRunIdRef.current = job.started_at;
+      return;
+    }
+    if (job?.fast_run && fastRunIdRef.current && fastRunIdRef.current === job.started_at && !job.running) {
+      setFastStarting(null);
+      setNotice(text("fastRunFinished", { succeeded: job.succeeded || 0, restored: job.restored ?? job.failed ?? 0 }));
+      fastRunIdRef.current = null;
+      setRevision(value => value + 1);
+    }
+  }, [data.job]);
+
   const pageEntries = data.entries.filter(entry => entry.status === "ready");
   const selectedOnPage = pageEntries.filter(entry => selected.has(entry.candidate_id)).length;
   const allOnPage = pageEntries.length > 0 && selectedOnPage === pageEntries.length;
@@ -68,7 +97,13 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   }, [selectedOnPage, allOnPage]);
 
   const busy = Boolean(data.job?.running);
-  const showRebuildProgress = busy && data.job?.phase === "rebuilding";
+  const fastRunActive = Boolean(fastStarting || (busy && data.job?.fast_run));
+  const progressPhase = fastStarting ? "preparing_fast_run" : data.job?.phase;
+  const showRebuildProgress = (busy && data.job?.phase === "rebuilding") || fastRunActive;
+  const indeterminateProgress = fastRunActive || progressPhase === "scanning";
+  const fastRunCount = fastStarting?.count ?? data.job?.total ?? 0;
+  const elapsedLabel = [Math.floor(elapsedSeconds / 3600), Math.floor((elapsedSeconds % 3600) / 60), elapsedSeconds % 60]
+    .map(value => String(value).padStart(2, "0")).join(":");
   const total = Math.max(0, Number(data.job?.total) || 0);
   const processed = Math.max(0, (Number(data.job?.processed) || 0) + (Number(data.job?.skipped) || 0));
   const progress = total ? Math.min(100, Math.round(processed / total * 100)) : 0;
@@ -81,13 +116,16 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     setPending(true);
     setError(null);
     setNotice(null);
+    if (action === "fast-normal-run") {
+      setFastStarting({ count: body.count || body.candidate_ids?.length || data.eligible, startedAt: new Date().toISOString() });
+    }
     try {
       const response = await fetch(`${endpoint}/${action}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
-        const known = ["busy", "master_off", "rebuild_disabled", "nothing_selected", "unavailable"];
+        const known = ["busy", "master_off", "rebuild_disabled", "nothing_selected", "unavailable", "fast_run_failed"];
         throw new Error(known.includes(result.detail) ? result.detail : "request_failed");
       }
       setData(current => ({ ...current, job: result.job || current.job }));
@@ -95,11 +133,13 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
       if (action === "fast-normal-run") {
         setSelected(new Set());
         setNotice(text("fastRunStarted", { count: result.count }));
+        setFastStarting(null);
       }
       if (action === "dismiss") setSelected(current => { const next = new Set(current); next.delete(body.candidate_id); return next; });
       setRevision(value => value + 1);
     } catch (failure) {
       setError(failure.message || "request_failed");
+      if (action === "fast-normal-run") setFastStarting(null);
     } finally {
       setPending(false);
     }
@@ -144,29 +184,32 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${hasFailures ? "bg-amber-500/15 text-amber-500" : "bg-theme-primary/15 text-theme-primary"}`}>
-                {busy ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : hasFailures ? <AlertTriangle className="h-5 w-5" /> : data.job.phase === "cancelled" ? <StopCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+                {busy || fastStarting ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : hasFailures ? <AlertTriangle className="h-5 w-5" /> : data.job.phase === "cancelled" ? <StopCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
               </div>
               <div className="min-w-0">
-                <p className="break-words text-base font-semibold text-theme-text">{text(`phases.${data.job.phase}`)}</p>
-                {data.job.phase !== "scanning" && <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <p className="break-words text-base font-semibold text-theme-text">{text(`phases.${progressPhase}`)}</p>
+                {fastRunActive ? <div className="mt-2 space-y-1 text-sm text-theme-muted">
+                  <p>{text(`fastRunStages.${progressPhase}`, { count: fastRunCount })}</p>
+                  <p>{text("fastRunElapsed", { time: elapsedLabel })} · {text("fastRunEtaUnavailable")}</p>
+                </div> : progressPhase !== "scanning" && <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <p className="font-mono text-2xl font-semibold tabular-nums text-theme-text">{processed}<span className="text-lg font-normal text-theme-muted"> / {total}</span></p>
                   {total > 0 && <span className="text-sm font-semibold tabular-nums text-theme-muted">{progress}%</span>}
                 </div>}
                 {data.job.current_title && <p className="mt-1 break-words text-sm text-theme-text">{data.job.current_title}</p>}
               </div>
             </div>
-            {busy && <button type="button" className={`${actionClass} min-h-10 shrink-0 bg-theme-card`} title={text("stopHint")} disabled={pending || data.job.cancel_requested} onClick={() => post("cancel")}>
+            {busy && !fastRunActive && <button type="button" className={`${actionClass} min-h-10 shrink-0 bg-theme-card`} title={text("stopHint")} disabled={pending || data.job.cancel_requested} onClick={() => post("cancel")}>
               <StopCircle className="h-4 w-4" />{text("stop")}
             </button>}
           </div>
-          <div role="progressbar" aria-label={text(`phases.${data.job.phase}`)} aria-valuemin={0} aria-valuemax={100}
-            aria-valuenow={data.job.phase === "scanning" ? undefined : progress}
-            aria-valuetext={data.job.phase === "scanning" ? text("phases.scanning") : text("progress", { processed, total, succeeded: data.job.succeeded || 0, failed: data.job.failed || 0, skipped: data.job.skipped || 0 })}
+          <div role="progressbar" aria-label={text(`phases.${progressPhase}`)} aria-valuemin={0} aria-valuemax={100}
+            aria-valuenow={indeterminateProgress ? undefined : progress}
+            aria-valuetext={indeterminateProgress ? text(`phases.${progressPhase}`) : text("progress", { processed, total, succeeded: data.job.succeeded || 0, failed: data.job.failed || 0, skipped: data.job.skipped || 0 })}
             className="h-2.5 overflow-hidden rounded-sm bg-theme-bg/70">
-            <div className={`h-full motion-safe:transition-[width] motion-safe:duration-300 ${hasFailures ? "bg-amber-500" : "bg-theme-primary"} ${data.job.phase === "scanning" ? "motion-safe:animate-pulse" : ""}`}
-              style={{ width: data.job.phase === "scanning" ? "35%" : `${progress}%` }} />
+            <div className={`h-full motion-safe:transition-[width] motion-safe:duration-300 ${hasFailures ? "bg-amber-500" : "bg-theme-primary"} ${indeterminateProgress ? "motion-safe:animate-pulse" : ""}`}
+              style={{ width: indeterminateProgress ? "35%" : `${progress}%` }} />
           </div>
-          {data.job.phase !== "scanning" && <div className="grid grid-cols-3 gap-3 border-t border-theme/50 pt-3">
+          {!fastRunActive && progressPhase !== "scanning" && <div className="grid grid-cols-3 gap-3 border-t border-theme/50 pt-3">
             <div className="min-w-0"><p className="flex items-center gap-1.5 text-lg font-semibold tabular-nums text-emerald-500"><CheckCircle2 className="h-4 w-4 shrink-0" />{data.job.succeeded || 0}</p><p className="mt-0.5 break-words text-xs text-theme-muted">{text("progressRecreated")}</p></div>
             <div className="min-w-0"><p className={`flex items-center gap-1.5 text-lg font-semibold tabular-nums ${(data.job.failed || 0) > 0 ? "text-red-500" : "text-theme-muted"}`}><AlertTriangle className="h-4 w-4 shrink-0" />{data.job.failed || 0}</p><p className={`mt-0.5 break-words text-xs ${(data.job.failed || 0) > 0 ? "font-semibold text-red-500" : "text-theme-muted"}`}>{text("progressFailed")}</p></div>
             <div className="min-w-0"><p className="flex items-center gap-1.5 text-lg font-semibold tabular-nums text-theme-muted"><ChevronRight className="h-4 w-4 shrink-0" />{data.job.skipped || 0}</p><p className="mt-0.5 break-words text-xs text-theme-muted">{text("progressSkipped")}</p></div>
@@ -275,9 +318,9 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         confirmText={text(confirmation?.fast_normal_run ? "fastRunAction" : confirmation?.force_unknown_text ? "forceAction" : "confirmAction")} onConfirm={() => {
           if (!confirmation || !canRebuild) return;
           if (confirmation.fast_normal_run) {
-            const { fast_normal_run, ...selection } = confirmation;
+            const { fast_normal_run, count, ...selection } = confirmation;
             setConfirmation(null);
-            post("fast-normal-run", { ...selection, confirmed: true });
+            post("fast-normal-run", { ...selection, count, confirmed: true });
             return;
           }
           const { count, episode, title, ...selection } = confirmation;

@@ -287,6 +287,10 @@
       "fastRunMessage": "{{count}} imagens locais dos episódios serão removidas temporariamente. As imagens no servidor de mídia não serão alteradas. O modo normal será executado nas bibliotecas configuradas e também poderá criar outros itens em falta. Se uma nova imagem local não for gerada, o ficheiro anterior será restaurado. Cancele e use a fila para um processamento individual mais lento.",
       "fastRunAction": "Remover e iniciar execução normal",
       "fastRunStarted": "Execução normal iniciada. A verificar {{count}} imagens locais.",
+      "fastRunElapsed": "Tempo decorrido: {{time}}",
+      "fastRunEtaUnavailable": "ETA indisponível: o modo normal processa as bibliotecas configuradas.",
+      "fastRunFinished": "Execução normal concluída: {{succeeded}} recriadas · {{restored}} ficheiros anteriores restaurados e mantidos na revisão. Uma sincronização automática de overlays pode continuar em separado.",
+      "fastRunStages": { "preparing_fast_run": "A guardar originais locais e a remover os ficheiros selecionados ({{count}} imagens).", "normal_run": "O modo normal está a processar as bibliotecas configuradas. Se Auto Overlay Sync estiver ativo, o watcher agrupa as novas imagens; podem ocorrer vários lotes de sincronização.", "finalizing_fast_run": "A verificar resultados e a restaurar originais locais não recriados." },
       "rebuildOne": "Recriar esta imagem do episódio",
       "chooseProviderImage": "Escolher uma imagem do fornecedor no Asset Replacer",
       "dismissCandidate": "Ocultar permanentemente esta entrada de revisão",
@@ -320,9 +324,9 @@
       "progressFailed": "Falhadas",
       "progressSkipped": "Ignoradas",
       "partialScan": "Verificação incompleta: {{servers}}",
-      "phases": { "idle": "Pronto", "scanning": "A comparar títulos", "rebuilding": "A recriar imagens dos episódios", "complete": "Concluído", "cancelled": "Cancelado", "failed": "Falhou" },
+      "phases": { "idle": "Pronto", "scanning": "A comparar títulos", "rebuilding": "A recriar imagens dos episódios", "preparing_fast_run": "A preparar ficheiros locais", "normal_run": "Execução normal em curso", "finalizing_fast_run": "A finalizar resultados", "complete": "Concluído", "cancelled": "Cancelado", "failed": "Falhou" },
       "reasons": { "placeholder": "A aguardar o título definitivo", "missing_source": "Nenhuma fonte descarregável guardada", "source_has_text": "Fonte não confirmada sem texto", "unknown_text": "Texto anterior da imagem incerto", "media_server_source": "O original veio do servidor de mídia e pode conter sobreposições. É necessário um original do fornecedor." },
-      "errors": { "request_failed": "O pedido falhou. Tente novamente.", "busy": "Outra tarefa ainda está ativa.", "master_off": "O interruptor principal está desligado.", "rebuild_disabled": "A simulação bloqueia a recriação e os envios.", "nothing_selected": "Nenhuma entrada elegível selecionada.", "unavailable": "A recriação está indisponível neste momento.", "scan_failed": "A verificação falhou. As entradas existentes são mantidas.", "rebuild_failed": "A tarefa falhou. As entradas incompletas são mantidas.", "not_completed": "Recriação ou envio não concluído" }
+      "errors": { "request_failed": "O pedido falhou. Tente novamente.", "busy": "Outra tarefa ainda está ativa.", "master_off": "O interruptor principal está desligado.", "rebuild_disabled": "A simulação bloqueia a recriação e os envios.", "nothing_selected": "Nenhuma entrada elegível selecionada.", "unavailable": "A recriação está indisponível neste momento.", "scan_failed": "A verificação falhou. As entradas existentes são mantidas.", "rebuild_failed": "A tarefa falhou. As entradas incompletas são mantidas.", "fast_run_failed": "A execução normal não pôde iniciar ou concluir. Os originais locais foram restaurados.", "not_completed": "Recriação ou envio não concluído" }
     }
   },
   "runModes": {

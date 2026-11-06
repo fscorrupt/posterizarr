@@ -287,6 +287,10 @@
       "fastRunMessage": "{{count}} images d’épisode locales seront temporairement retirées. Les images du serveur multimédia restent intactes. Le mode normal parcourt ensuite les bibliothèques configurées et peut aussi créer d’autres éléments manquants. Si aucune nouvelle image locale n’est générée, l’ancien fichier est restauré. Annulez et utilisez la file pour un traitement individuel plus lent.",
       "fastRunAction": "Retirer et lancer l’exécution normale",
       "fastRunStarted": "Exécution normale démarrée. Vérification de {{count}} images locales.",
+      "fastRunElapsed": "Durée : {{time}}",
+      "fastRunEtaUnavailable": "Durée estimée indisponible : le mode normal traite les bibliothèques configurées.",
+      "fastRunFinished": "Exécution normale terminée : {{succeeded}} recréés · {{restored}} anciens fichiers restaurés et conservés dans la vérification. Une synchronisation automatique des overlays peut continuer séparément.",
+      "fastRunStages": { "preparing_fast_run": "Sauvegarde des originaux locaux et retrait des fichiers sélectionnés ({{count}} images).", "normal_run": "Le mode normal traite les bibliothèques configurées. Si Auto Overlay Sync est activé, le watcher regroupe les nouvelles images ; plusieurs lots de synchronisation sont possibles.", "finalizing_fast_run": "Vérification des résultats et restauration des originaux non recréés." },
       "rebuildOne": "Recréer cette image d’épisode",
       "chooseProviderImage": "Choisir une image de fournisseur dans Asset Replacer",
       "dismissCandidate": "Masquer définitivement cette entrée de vérification",
@@ -320,9 +324,9 @@
       "progressFailed": "Échecs",
       "progressSkipped": "Ignorés",
       "partialScan": "Analyse incomplète : {{servers}}",
-      "phases": { "idle": "Prêt", "scanning": "Comparaison des titres", "rebuilding": "Recréation des images des épisodes", "complete": "Terminé", "cancelled": "Annulé", "failed": "Échec" },
+      "phases": { "idle": "Prêt", "scanning": "Comparaison des titres", "rebuilding": "Recréation des images des épisodes", "preparing_fast_run": "Préparation des fichiers locaux", "normal_run": "Exécution normale en cours", "finalizing_fast_run": "Finalisation des résultats", "complete": "Terminé", "cancelled": "Annulé", "failed": "Échec" },
       "reasons": { "placeholder": "En attente du titre définitif", "missing_source": "Aucune source téléchargeable enregistrée", "source_has_text": "Source non confirmée sans texte", "unknown_text": "Ancien texte de l’image incertain", "media_server_source": "L’original provient du serveur multimédia et peut contenir des superpositions. Une image originale du fournisseur est nécessaire." },
-      "errors": { "request_failed": "Échec de la requête. Réessayez.", "busy": "Une autre tâche est active.", "master_off": "L’interrupteur principal est désactivé.", "rebuild_disabled": "Le mode simulation bloque la recréation et les envois.", "nothing_selected": "Aucune entrée admissible sélectionnée.", "unavailable": "Recréation indisponible actuellement.", "scan_failed": "Échec de l’analyse. Les entrées existantes sont conservées.", "rebuild_failed": "Échec de la tâche. Les entrées inachevées sont conservées.", "not_completed": "Recréation ou envoi non terminé" }
+      "errors": { "request_failed": "Échec de la requête. Réessayez.", "busy": "Une autre tâche est active.", "master_off": "L’interrupteur principal est désactivé.", "rebuild_disabled": "Le mode simulation bloque la recréation et les envois.", "nothing_selected": "Aucune entrée admissible sélectionnée.", "unavailable": "Recréation indisponible actuellement.", "scan_failed": "Échec de l’analyse. Les entrées existantes sont conservées.", "rebuild_failed": "Échec de la tâche. Les entrées inachevées sont conservées.", "fast_run_failed": "L’exécution normale n’a pas pu démarrer ou aboutir. Les originaux locaux ont été restaurés.", "not_completed": "Recréation ou envoi non terminé" }
     }
   },
   "runModes": {

@@ -287,6 +287,10 @@
       "fastRunMessage": "{{count}} local episode titlecards will be temporarily removed. Artwork on the media server is untouched. Normal Mode then runs across configured libraries and may create other missing assets too. If a replacement titlecard is not generated locally, the previous file is restored. Cancel and use the queue action for slower per-episode processing.",
       "fastRunAction": "Remove and start Normal Run",
       "fastRunStarted": "Normal Run started. Checking {{count}} local titlecards.",
+      "fastRunElapsed": "Elapsed: {{time}}",
+      "fastRunEtaUnavailable": "No reliable ETA: Normal Mode processes configured libraries.",
+      "fastRunFinished": "Normal Run finished: {{succeeded}} recreated · {{restored}} previous files restored and remain in review. An Auto Overlay Sync may still be running separately.",
+      "fastRunStages": { "preparing_fast_run": "Backing up local originals and removing selected files ({{count}} titlecards).", "normal_run": "Normal Mode is running across configured libraries. If Auto Overlay Sync is enabled, the watcher batches new titlecards; there may be multiple sync batches.", "finalizing_fast_run": "Checking results and restoring local originals that were not recreated." },
       "rebuildOne": "Recreate this episode titlecard",
       "chooseProviderImage": "Choose a provider image in Asset Replacer",
       "dismissCandidate": "Permanently hide this review entry",
@@ -320,9 +324,9 @@
       "progressFailed": "Failed",
       "progressSkipped": "Skipped",
       "partialScan": "Incomplete scan: {{servers}}",
-      "phases": { "idle": "Ready", "scanning": "Comparing titles", "rebuilding": "Recreating episode titlecards", "complete": "Complete", "cancelled": "Cancelled", "failed": "Failed" },
+      "phases": { "idle": "Ready", "scanning": "Comparing titles", "rebuilding": "Recreating episode titlecards", "preparing_fast_run": "Preparing local files", "normal_run": "Normal Run in progress", "finalizing_fast_run": "Finalizing results", "complete": "Complete", "cancelled": "Cancelled", "failed": "Failed" },
       "reasons": { "placeholder": "Waiting for a final title", "missing_source": "No downloadable source recorded", "source_has_text": "Source not confirmed textless", "unknown_text": "Previous image text is uncertain", "media_server_source": "Original was taken from a media server and may contain overlays. A provider original is required." },
-      "errors": { "request_failed": "Request failed. Please try again.", "busy": "Another task is still active.", "master_off": "The Master Switch is off.", "rebuild_disabled": "Dry Run is on. Recreation and uploads are blocked.", "nothing_selected": "No eligible entries selected.", "unavailable": "Recreation is currently unavailable.", "scan_failed": "Title scan failed. Existing entries are retained.", "rebuild_failed": "Task failed. Unfinished entries are retained.", "not_completed": "Recreation or upload did not complete" }
+      "errors": { "request_failed": "Request failed. Please try again.", "busy": "Another task is still active.", "master_off": "The Master Switch is off.", "rebuild_disabled": "Dry Run is on. Recreation and uploads are blocked.", "nothing_selected": "No eligible entries selected.", "unavailable": "Recreation is currently unavailable.", "scan_failed": "Title scan failed. Existing entries are retained.", "rebuild_failed": "Task failed. Unfinished entries are retained.", "fast_run_failed": "Normal Run could not start or complete. Local originals were restored.", "not_completed": "Recreation or upload did not complete" }
     }
   },
   "runModes": {

@@ -287,6 +287,10 @@
       "fastRunMessage": "{{count}} lokale Episodenbilder werden vorübergehend entfernt. Bilder auf dem Medienserver bleiben unverändert. Danach läuft Normal Mode über die konfigurierten Bibliotheken; dabei können auch andere fehlende Assets erstellt werden. Wenn keine neue lokale Titelkarte entsteht, wird die bisherige Datei wiederhergestellt. Für die langsamere Einzelverarbeitung abbrechen und die Queue-Option nutzen.",
       "fastRunAction": "Löschen und Normal Run starten",
       "fastRunStarted": "Normal Run gestartet. {{count}} lokale Titelkarten werden geprüft.",
+      "fastRunElapsed": "Laufzeit: {{time}}",
+      "fastRunEtaUnavailable": "Keine verlässliche ETA: Normal Mode verarbeitet die konfigurierten Bibliotheken.",
+      "fastRunFinished": "Normal Run abgeschlossen: {{succeeded}} neu erstellt · {{restored}} bisherige Dateien wiederhergestellt und bleiben im Review. Ein Auto-Overlay-Sync kann separat noch laufen.",
+      "fastRunStages": { "preparing_fast_run": "Sichere lokale Originale und entferne die ausgewählten Dateien ({{count}} Titelkarten).", "normal_run": "Normal Mode läuft über die konfigurierten Bibliotheken. Bei aktiviertem Auto Overlay Sync sammelt der Watcher Titelkarten in Batches; es kann mehrere Sync-Batches geben.", "finalizing_fast_run": "Prüfe die Ergebnisse und stelle nicht neu erzeugte lokale Originale wieder her." },
       "rebuildOne": "Dieses Episodenbild neu erstellen",
       "chooseProviderImage": "Provider-Bild im Asset Replacer auswählen",
       "dismissCandidate": "Diesen Eintrag dauerhaft aus der Prüfung ausblenden",
@@ -320,9 +324,9 @@
       "progressFailed": "Fehlgeschlagen",
       "progressSkipped": "Übersprungen",
       "partialScan": "Abgleich nicht vollständig: {{servers}}",
-      "phases": { "idle": "Bereit", "scanning": "Titel werden abgeglichen", "rebuilding": "Episodenbilder werden erstellt", "complete": "Abgeschlossen", "cancelled": "Abgebrochen", "failed": "Fehlgeschlagen" },
+      "phases": { "idle": "Bereit", "scanning": "Titel werden abgeglichen", "rebuilding": "Episodenbilder werden erstellt", "preparing_fast_run": "Lokale Dateien werden vorbereitet", "normal_run": "Normal Run läuft", "finalizing_fast_run": "Ergebnisse werden abgeschlossen", "complete": "Abgeschlossen", "cancelled": "Abgebrochen", "failed": "Fehlgeschlagen" },
       "reasons": { "placeholder": "Noch kein endgültiger Titel", "missing_source": "Keine abrufbare Quelle gespeichert", "source_has_text": "Quelle nicht als textlos bestätigt", "unknown_text": "Bisheriger Bildtext nicht verlässlich bekannt", "media_server_source": "Original stammt vom Medienserver und kann Overlays enthalten. Ein Provider-Original ist erforderlich." },
-      "errors": { "request_failed": "Anfrage fehlgeschlagen. Bitte erneut versuchen.", "busy": "Ein anderer Auftrag ist noch aktiv.", "master_off": "Master Switch ist ausgeschaltet.", "rebuild_disabled": "Dry Run ist aktiv. Neuerstellung und Upload sind gesperrt.", "nothing_selected": "Keine geeigneten Einträge ausgewählt.", "unavailable": "Neuerstellung ist derzeit nicht verfügbar.", "scan_failed": "Titelabgleich fehlgeschlagen. Vorhandene Einträge bleiben erhalten.", "rebuild_failed": "Auftrag fehlgeschlagen. Nicht abgeschlossene Einträge bleiben erhalten.", "not_completed": "Neuerstellung oder Upload nicht abgeschlossen" }
+      "errors": { "request_failed": "Anfrage fehlgeschlagen. Bitte erneut versuchen.", "busy": "Ein anderer Auftrag ist noch aktiv.", "master_off": "Master Switch ist ausgeschaltet.", "rebuild_disabled": "Dry Run ist aktiv. Neuerstellung und Upload sind gesperrt.", "nothing_selected": "Keine geeigneten Einträge ausgewählt.", "unavailable": "Neuerstellung ist derzeit nicht verfügbar.", "scan_failed": "Titelabgleich fehlgeschlagen. Vorhandene Einträge bleiben erhalten.", "rebuild_failed": "Auftrag fehlgeschlagen. Nicht abgeschlossene Einträge bleiben erhalten.", "fast_run_failed": "Normal Run konnte nicht gestartet oder abgeschlossen werden. Lokale Originale wurden wiederhergestellt.", "not_completed": "Neuerstellung oder Upload nicht abgeschlossen" }
     }
   },
   "runModes": {

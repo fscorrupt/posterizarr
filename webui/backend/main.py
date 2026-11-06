@@ -20920,13 +20920,22 @@ async def _finish_episode_title_normal_run(monitor, backup_dir, entries, process
 
     try:
         return_code = await asyncio.to_thread(process.wait)
+        episode_title_review._update(phase="finalizing_fast_run")
         completed = await asyncio.to_thread(monitor.finish_detached_candidate_assets,
                                              backup_dir, entries, return_code == 0)
+        total = len(entries)
+        episode_title_review._update(running=False, phase="complete", processed=total,
+                                      succeeded=completed, failed=total - completed,
+                                      restored=total - completed, run_exit_code=return_code,
+                                      current_title="", finished_at=datetime.now().isoformat())
         logger.info("[TitleChanges] Normal run finished with %s; %s/%s local titlecards recreated.",
                     return_code, completed, len(entries))
     except Exception:
         logger.exception("[TitleChanges] Could not finalize fast titlecard normal run; restoring local assets.")
         await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review._update(running=False, phase="failed", error="fast_run_failed",
+                                      failed=len(entries), restored=len(entries), current_title="",
+                                      finished_at=datetime.now().isoformat())
     finally:
         episode_title_review.task = None
         episode_title_review.operation_lock.release()
@@ -20954,23 +20963,37 @@ async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequ
     entries = []
     try:
         ensure_episode_title_review_idle()
+        started_at = datetime.now().isoformat()
+        episode_title_review._update(running=True, phase="preparing_fast_run", fast_run=True,
+                                     total=0, processed=0, succeeded=0, failed=0, skipped=0,
+                                     restored=0, error=None, scan_errors=[], cancel_requested=False,
+                                     current_title="", started_at=started_at)
         monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
         jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
                                       request.all_eligible, False)
         if not jobs:
             raise HTTPException(status_code=400, detail="nothing_selected")
+        episode_title_review._update(total=len(jobs))
         backup_dir, entries = await asyncio.to_thread(monitor.detach_candidate_assets, jobs)
+        episode_title_review._update(phase="normal_run")
         result = await run_script("normal")
         episode_title_review.task = asyncio.create_task(_finish_episode_title_normal_run(monitor, backup_dir, entries, current_process))
-        return {"success": True, "message": "normal_run_started", "pid": result["pid"], "count": len(entries)}
+        return {"success": True, "message": "normal_run_started", "pid": result["pid"],
+                "count": len(entries), "job": episode_title_review.status()}
     except HTTPException:
         if backup_dir and monitor:
             await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review._update(running=False, phase="failed", error="fast_run_failed",
+                                     failed=len(entries), restored=len(entries), current_title="",
+                                     finished_at=datetime.now().isoformat())
         episode_title_review.operation_lock.release()
         raise
     except Exception as error:
         if backup_dir and monitor:
             await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review._update(running=False, phase="failed", error="fast_run_failed",
+                                     failed=len(entries), restored=len(entries), current_title="",
+                                     finished_at=datetime.now().isoformat())
         episode_title_review.operation_lock.release()
         logger.exception("[TitleChanges] Could not start fast normal run")
         raise HTTPException(status_code=500, detail="normal_run_failed") from error
