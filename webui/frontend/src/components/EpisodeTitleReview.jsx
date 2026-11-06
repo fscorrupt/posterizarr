@@ -17,6 +17,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [reasonFilter, setReasonFilter] = useState("all");
   const [reviewType, setReviewType] = useState("all");
+  const [includeUncertain, setIncludeUncertain] = useState(false);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -93,7 +94,8 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     }
   }, [data.job]);
 
-  const pageEntries = data.entries.filter(entry => entry.status === "ready");
+  const pageEntries = data.entries.filter(entry => entry.status === "ready" || (includeUncertain && entry.force_recreatable));
+  const eligibleCount = includeUncertain ? (data.force_eligible ?? data.eligible) : data.eligible;
   const selectedOnPage = pageEntries.filter(entry => selected.has(entry.candidate_id)).length;
   const allOnPage = pageEntries.length > 0 && selectedOnPage === pageEntries.length;
   useEffect(() => {
@@ -172,7 +174,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
           <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text">
             <Clapperboard className="h-5 w-5 shrink-0 text-theme-primary" />{text("title")}
           </h3>
-          <p className="mt-1 text-xs text-theme-muted">{text("counts", { total: data.total, eligible: data.eligible })}</p>
+          <p className="mt-1 text-xs text-theme-muted">{text("counts", { total: data.total, eligible: eligibleCount })}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to="/queue" className={actionClass}><List className="h-4 w-4" />{t("queue.title")}</Link>
@@ -266,15 +268,24 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
             <option value="future">{text("future")}</option>
           </select>
         </label>
-        <button type="button" className={actionClass} disabled={!canRebuild || !selected.size} onClick={() => setConfirmation({ candidate_ids: [...selected], count: selected.size })}>
+        <label className="flex min-h-9 items-center gap-2 text-xs text-amber-500">
+          <input type="checkbox" checked={includeUncertain} disabled={busy || pending} onChange={event => {
+            setIncludeUncertain(event.target.checked); setSelected(new Set());
+          }} />{text("includeUncertain")}
+        </label>
+        <button type="button" className={actionClass} disabled={!canRebuild || !selected.size} onClick={() => setConfirmation({ candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain })}>
           <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildSelected", { count: selected.size })}
         </button>
-        <button type="button" className={actionClass} disabled={!canRebuild || !data.eligible} onClick={() => setConfirmation({ ...activeFilters, all_eligible: true, search: query, count: data.eligible })}>
-          <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildAll", { count: data.eligible })}
+        <button type="button" className={actionClass} disabled={!canRebuild || !eligibleCount} onClick={() => setConfirmation({ ...activeFilters, all_eligible: true, search: query, count: eligibleCount, force_unknown_text: includeUncertain })}>
+          <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildAll", { count: eligibleCount })}
         </button>
-        <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !data.eligible}
-          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, all_eligible: true, search: query, count: data.eligible })}>
-          <Zap className="h-4 w-4 shrink-0" />{text("fastRun", { count: data.eligible })}
+        <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !selected.size}
+          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain })}>
+          <Zap className="h-4 w-4 shrink-0" />{text("fastSelected", { count: selected.size })}
+        </button>
+        <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !eligibleCount}
+          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, all_eligible: true, search: query, count: eligibleCount, force_unknown_text: includeUncertain })}>
+          <Zap className="h-4 w-4 shrink-0" />{text("fastRun", { count: eligibleCount })}
         </button>
       </div>
 
@@ -299,7 +310,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
               const needsProvider = ["media_server_source", "missing_source"].includes(entry.reason);
               return <tr key={entry.candidate_id} className="border-b border-theme last:border-0">
                 <td className="p-3"><input type="checkbox" aria-label={text("selectEpisode", { episode: `${entry.parent_title || entry.folder} ${coordinates}` })}
-                  checked={selected.has(entry.candidate_id)} disabled={entry.status !== "ready" || busy || loading || search !== query} onChange={event => {
+                  checked={selected.has(entry.candidate_id)} disabled={(entry.status !== "ready" && !(includeUncertain && entry.force_recreatable)) || busy || loading || search !== query} onChange={event => {
                     const checked = event.target.checked;
                     setSelected(current => { const next = new Set(current); if (checked) next.add(entry.candidate_id); else next.delete(entry.candidate_id); return next; });
                   }} /></td>
@@ -354,9 +365,12 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         onSuccess={() => setRevision(value => value + 1)} />}
       <ConfirmDialog isOpen={Boolean(confirmation)} onClose={() => setConfirmation(null)} type="warning"
         title={text(confirmation?.fast_normal_run ? "fastRunTitle" : confirmation?.force_unknown_text ? "forceTitle" : "confirmTitle")}
-        message={confirmation?.fast_normal_run ? text("fastRunMessage", { count: confirmation.count })
-          : confirmation?.force_unknown_text ? text("forceMessage", { episode: confirmation.episode, title: confirmation.title })
-            : text("confirmMessage", { count: confirmation?.count || 0 })}
+        message={[
+          confirmation?.fast_normal_run ? text("fastRunMessage", { count: confirmation.count })
+            : confirmation?.force_unknown_text && confirmation.episode ? text("forceMessage", { episode: confirmation.episode, title: confirmation.title })
+              : text("confirmMessage", { count: confirmation?.count || 0 }),
+          confirmation?.force_unknown_text && !confirmation.episode ? text("forceBulkMessage", { count: confirmation.count }) : ""
+        ].filter(Boolean).join("\n\n")}
         confirmText={text(confirmation?.fast_normal_run ? "fastRunAction" : confirmation?.force_unknown_text ? "forceAction" : "confirmAction")} onConfirm={() => {
           if (!confirmation || !canRebuild) return;
           if (confirmation.fast_normal_run) {

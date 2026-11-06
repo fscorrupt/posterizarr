@@ -731,12 +731,17 @@ provider original exists. The dismissal persists across scans for that same titl
 and source; a later title or source change can create a new review entry.
 
 If only the previous image text is unknown, the row can offer **Force recreate
-this episode titlecard**. This explicit single-episode action requires a stored
+this episode titlecard**. This explicit action requires a stored
 HTTP(S) source marked **Textless** and a current non-placeholder episode title.
 Its separate warning confirms that the old text cannot be verified and that the
 existing titlecard will be replaced. It does not bypass missing/textful sources,
 Dry Run, the Master Switch, or episode/server validation. Unknown-text rows remain
 excluded from automatic recreation and ordinary selected/all-eligible actions.
+Enable **Include uncertain previous text** to include safe unknown-text rows in
+page selection and bulk processing. Both Queue and Fast actions support selected
+episodes or all matching candidates across pages, respecting the current search
+and filters. A separate bulk warning confirms replacement despite uncertain old
+text. Missing, textful, media-server sources and placeholder titles stay blocked.
 The explicit override is retained in the existing queue if the job is resumed.
 After updating from an earlier version, run **Compare titles** once to refresh
 source eligibility for already cached review entries.

@@ -354,6 +354,7 @@ class AssetTitleChanges:
         rows = [row for row in rows if not _same_episode_title(row.get("old_title"), row.get("title")) and
             _candidate_matches_search(row, search) and _candidate_matches_filters(row, status_filter, reason_filter, review_type)]
         return {"total": len(rows), "eligible": sum(row["status"] == "ready" for row in rows),
+            "force_eligible": sum(row["status"] == "ready" or _can_force_unknown_text(row) for row in rows),
                 "entries": [{**{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")},
                              "force_recreatable": _can_force_unknown_text(row)}
                             for row in rows[offset:offset + limit]]}
@@ -366,7 +367,7 @@ class AssetTitleChanges:
         jobs = []
         for row in rows:
             candidate_selected = row["candidate_id"] in selected
-            eligible = row["status"] == "ready" or (force_unknown_text and candidate_selected and _can_force_unknown_text(row))
+            eligible = row["status"] == "ready" or (force_unknown_text and _can_force_unknown_text(row))
             if (not eligible or _same_episode_title(row.get("old_title"), row.get("title"))
                     or not _candidate_matches_filters(row, status_filter, reason_filter, review_type)):
                 continue
@@ -649,8 +650,6 @@ class EpisodeTitleReview:
         if not title_regeneration_allowed(settings, manual=True):
             raise ValueError("rebuild_disabled")
         if bool(candidate_ids) == bool(all_eligible):
-            raise ValueError("invalid_selection")
-        if force_unknown_text and (all_eligible or len(candidate_ids or []) != 1):
             raise ValueError("invalid_selection")
         if _review_queue is None or _review_queue_runner is None:
             raise RuntimeError("unavailable")

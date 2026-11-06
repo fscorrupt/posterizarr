@@ -20841,6 +20841,7 @@ class EpisodeTitleFastRunRequest(BaseModel):
     reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = "all"
     review_type: Literal["all", "historical", "future"] = "all"
     confirmed: bool = False
+    force_unknown_text: bool = False
 
 
 def ensure_episode_title_review_idle():
@@ -20982,7 +20983,7 @@ async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequ
                                      current_title="", started_at=started_at)
         monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
         jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
-                                      request.all_eligible, False, request.status_filter,
+                                      request.all_eligible, request.force_unknown_text, request.status_filter,
                                       request.reason_filter, request.review_type)
         if not jobs:
             raise HTTPException(status_code=400, detail="nothing_selected")

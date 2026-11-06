@@ -15,8 +15,8 @@ The following API endpoints are available.
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/dynamic-overlays/episode-title-changes` | Paged review candidates. Optional `search`, `limit`, `offset`, `status_filter` (`all`, `eligible`, `blocked`), `reason_filter` (`all`, `none`, or a blocking reason), and `review_type` (`all`, `historical`, `future`) filter the result set and eligible count. |
-| `POST /api/dynamic-overlays/episode-title-changes/rebuild` | Confirmed queue recreation. `candidate_ids` or `all_eligible` with `search` and the same filters selects candidates. |
-| `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed Fast Normal Run over `candidate_ids` or `all_eligible`, using the same search and filters. |
+| `POST /api/dynamic-overlays/episode-title-changes/rebuild` | Confirmed queue recreation. `candidate_ids` or `all_eligible` with `search` and the same filters selects candidates. Optional `force_unknown_text: true` includes safe uncertain-text candidates in either selection. |
+| `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed Fast Normal Run over `candidate_ids` or `all_eligible`, using the same search and filters. Optional `force_unknown_text: true` includes safe uncertain-text candidates. |
 
 ### Overlay Bundles
 
