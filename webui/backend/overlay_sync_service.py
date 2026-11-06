@@ -6744,7 +6744,7 @@ def _background_change_detector_loop(
                 except Exception:
                     pass
 
-            if not has_configured_libs:
+            if not has_configured_libs and not settings.get("regenerate_assets_on_title_change", False):
                 for _ in range(30):
                     if not _change_detector_running:
                         break
@@ -6784,6 +6784,8 @@ def _background_change_detector_loop(
                 asyncio.set_event_loop(loop)
                 report = {}
                 try:
+                    from asset_title_changes import regenerate_changed_asset_titles
+                    title_report = loop.run_until_complete(regenerate_changed_asset_titles(base_dir, config_path))
                     report = loop.run_until_complete(
                         detect_media_changes(
                             target_server="all",
@@ -6792,6 +6794,7 @@ def _background_change_detector_loop(
                             config_path=config_path
                         )
                     )
+                    report.setdefault("summary", {})["titles"] = title_report["detected"]
                 finally:
                     loop.close()
 

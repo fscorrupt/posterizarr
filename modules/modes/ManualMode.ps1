@@ -1294,7 +1294,7 @@
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Type" -Value $PosterType
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Rootfolder" -Value $FolderName
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "LibraryName" -Value $LibraryName
-        $CSVtemp | Add-Member -MemberType NoteProperty -Name "Language" -Value 'false'
+        $CSVtemp | Add-Member -MemberType NoteProperty -Name "Language" -Value $(if ($env:POSTERIZARR_TITLE_REGENERATION -eq '1') { 'Textless' } else { 'false' })
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Fallback" -Value 'false'
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "TextTruncated" -Value $(if ($global:IsTruncated) { 'true' } else { 'false' })
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Download Source" -Value $PicturePath
@@ -1362,7 +1362,7 @@
     }
 
     # Notify Dynamic Overlays service to composite and push newly created artwork
-    if (($posterCount -gt 0) -and ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled)) {
+    if (($posterCount -gt 0) -and ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled) -and $env:POSTERIZARR_TITLE_REGENERATION -ne '1') {
         try {
             $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
             $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"

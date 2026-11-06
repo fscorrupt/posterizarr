@@ -2305,6 +2305,15 @@ async def lifespan(app: FastAPI):
 
     # Start Dynamic Overlays background change detector
     try:
+        from asset_title_changes import configure_title_regenerator, configure_episode_title_queue
+        main_loop = asyncio.get_running_loop()
+
+        async def regenerate_on_main_loop(job, manual=False):
+            future = asyncio.run_coroutine_threadsafe(regenerate_asset_title(job, manual=manual), main_loop)
+            return await asyncio.wrap_future(future)
+
+        configure_title_regenerator(regenerate_on_main_loop)
+        configure_episode_title_queue(queue_manager, run_queue_processor)
         from overlay_sync_service import start_overlay_change_detector_background
         start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
     except Exception as e:
@@ -6110,6 +6119,7 @@ async def get_status():
                 )
                 # Store mode before clearing for runtime tracking
                 finished_mode = current_mode
+                title_regeneration = getattr(current_process, "posterizarr_title_regeneration", False)
 
                 current_process = None
                 current_mode = None
@@ -6126,7 +6136,8 @@ async def get_status():
 
                 # Auto-trigger Dynamic Overlays Sync
                 try:
-                    trigger_auto_overlay_sync(source="script completion")
+                    if not title_regeneration:
+                        trigger_auto_overlay_sync(source="script completion")
                 except Exception as k_err:
                     logger.error(f"Error auto-triggering overlay sync: {k_err}")
 
@@ -15290,12 +15301,15 @@ async def replace_asset_from_url(
         raise HTTPException(status_code=500, detail="An internal error occurred.")
 
 
-async def trigger_manual_run_internal(request: ManualModeRequest):
+async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regeneration=False):
     """
     Internal function to trigger manual run without HTTP overhead
     This is called from replace_asset_from_url
     """
     global current_process, current_mode, current_start_time
+
+    if title_regeneration and request.posterType != "titlecard":
+        raise ValueError("Automatic title regeneration only supports episode titlecards")
 
     # Check if already running
     if current_process and current_process.poll() is None:
@@ -15414,11 +15428,93 @@ async def trigger_manual_run_internal(request: ManualModeRequest):
         stdout=None,  # Let output go to console/log
         stderr=None,  # Let output go to console/log
         text=True,
+        env={**os.environ, "POSTERIZARR_TITLE_REGENERATION": "1"} if title_regeneration else None,
     )
+    current_process.posterizarr_title_regeneration = title_regeneration
     current_mode = "manual"
     current_start_time = datetime.now().isoformat()
 
     logger.info(f"Manual Run process started (PID: {current_process.pid})")
+
+async def regenerate_asset_title(job, manual=False):
+    if job.get("poster_type") != "titlecard" or job.get("media_type") != "episode":
+        return False
+    from asset_title_changes import title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+    from overlay_sync_service import get_server_credentials, is_overlay_sync_running, run_overlay_sync_task, _confirm_plex_titlecard
+    from plex_image_cleanup import is_cleanup_running
+
+    settings = get_dynamic_overlays_settings()
+    if not title_regeneration_allowed(settings, manual=manual):
+        return False
+    credentials = get_server_credentials(CONFIG_PATH).get(job["server_type"], {})
+    if not credentials.get("enabled") or str(credentials.get("url") or "").rstrip("/") != job["server_url"]:
+        return False
+    if RUNNING_FILE.exists() or (current_process and current_process.poll() is None) or is_overlay_sync_running() or is_cleanup_running():
+        return False
+    source = job["source"]
+    if not is_safe_url(source, allow_private=False, allow_loopback=False):
+        logger.warning("[TitleChanges] Skipping unsafe source for %s", Path(job["asset_path"]).name)
+        return False
+    target = Path(job["asset_path"]).resolve()
+    if not target.is_relative_to(ASSETS_DIR.resolve()) or not target.is_file():
+        return False
+    previous_stat = target.stat()
+    request = ManualModeRequest(
+        picturePath=source, titletext=job["title"],
+        folderName=job["folder"], libraryName=job["library"], posterType="titlecard",
+        mediaType="episode", seasonPosterName=str(job["season"]),
+        epTitleName=job["title"], episodeNumber=str(job["episode"]),
+    )
+    with process_lock:
+        if RUNNING_FILE.exists() or (current_process and current_process.poll() is None):
+            return False
+        await trigger_manual_run_internal(request, title_regeneration=True)
+        process = current_process
+    exit_code = await asyncio.to_thread(process.wait)
+    if exit_code != 0 or not target.is_file() or target.stat().st_mtime_ns == previous_stat.st_mtime_ns:
+        logger.warning("[TitleChanges] Asset was not successfully regenerated: %s", target.name)
+        return False
+    settings = get_dynamic_overlays_settings()
+    if not title_regeneration_allowed(settings, manual=manual):
+        return False
+    credentials = get_server_credentials(CONFIG_PATH).get(job["server_type"], {})
+    if not credentials.get("enabled") or str(credentials.get("url") or "").rstrip("/") != job["server_url"]:
+        return False
+    result = await run_overlay_sync_task(
+        target_server=job["server_type"], scope="incremental", library=job["library"],
+        base_dir=BASE_DIR, config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+        target_items=[{"id": job["parent_id"], "server_type": job["server_type"], "library_name": job["library"],
+                       "media_type": "show", "asset_type": "titlecard", "season_number": job["season"],
+                       "episode_number": job["episode"], "force_reapply": False}],
+    )
+    if not result.get("success") or result.get("stopped") or result.get("total_failed", 0):
+        return False
+    if result.get("total_synced", 0) + result.get("total_skipped", 0):
+        return True
+    from overlay_sync_service import resolve_library_rules
+    rules_path = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "configs" / "config.yml"
+    if not rules_path.is_file():
+        rules_path = BASE_DIR / "Overlayfiles" / "kometa" / "configs" / "config.yml"
+    if rules_path.is_file():
+        with open(rules_path, encoding="utf-8-sig") as rules_file:
+            libraries = (yaml.safe_load(rules_file) or {}).get("libraries") or {}
+        library_rules = {str(name).lower(): data.get("overlay_files") or data.get("overlays") or [] for name, data in libraries.items() if isinstance(data, dict)}
+        if resolve_library_rules(job["library"], "show", library_rules)[1]:
+            logger.warning("[TitleChanges] Configured overlay target was not processed: %s", target.name)
+            return False
+    content = target.read_bytes()
+    async with httpx.AsyncClient(timeout=30, verify=False) as client:
+        if job["server_type"] == "plex":
+            response = await client.post(f"{credentials['url']}/library/metadata/{quote(job['item_id'], safe='')}/posters",
+                                         headers={"X-Plex-Token": credentials["token"], "Content-Type": "image/jpeg"}, content=content)
+            response.raise_for_status()
+            await _confirm_plex_titlecard(client, credentials["url"], job["item_id"], credentials["token"], content)
+        else:
+            response = await client.post(f"{credentials['url']}/Items/{quote(job['item_id'], safe='')}/Images/Primary",
+                                         headers={"X-Emby-Token": credentials["api_key"], "Content-Type": "image/jpeg"}, content=content)
+            response.raise_for_status()
+    return True
 
 async def _find_and_delete_asset(record_id: int) -> Dict[str, any]:
     """
@@ -18481,13 +18577,46 @@ class RunQueueRequest(BaseModel):
 class DeleteQueueRequest(BaseModel):
     item_ids: List[int]
 
-async def run_queue_processor(item_ids: Optional[List[int]] = None):
+async def process_queued_episode_title(item):
+    from asset_title_changes import create_title_monitor, queued_episode_title_is_current
+
+    monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+    candidate_id = item.get("overlay_params", {}).get("episode_title_candidate_id")
+    job = await asyncio.to_thread(monitor.candidate_job, candidate_id)
+    if job is None:
+        raise ValueError("episode_title_candidate_unavailable")
+    try:
+        if not await queued_episode_title_is_current(job, CONFIG_PATH):
+            raise RuntimeError("episode_title_changed_rescan_required")
+        if not await regenerate_asset_title(job, manual=True):
+            raise RuntimeError("episode_title_not_completed")
+        await asyncio.to_thread(monitor.acknowledge, job)
+    except Exception:
+        await asyncio.to_thread(monitor.record_failure, job, "not_completed")
+        raise
+
+
+queue_processing_lock = threading.Lock()
+
+
+async def run_queue_processor(item_ids: Optional[List[int]] = None, *, should_stop=None, on_item_finished=None):
+    if not queue_processing_lock.acquire(blocking=False):
+        raise RuntimeError("busy")
+    try:
+        await _run_queue_processor(item_ids, should_stop=should_stop, on_item_finished=on_item_finished)
+    finally:
+        queue_processing_lock.release()
+
+
+async def _run_queue_processor(item_ids: Optional[List[int]] = None, *, should_stop=None, on_item_finished=None):
     """
     Background task to process the queue sequentially.
     """
     logger.info("Starting Queue Processor")
 
     while True:
+        if should_stop and should_stop():
+            break
         # helper check
         if RUNNING_FILE.exists():
             logger.warning("Posterizarr is running. Aborting queue start.")
@@ -18505,6 +18634,8 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
         logger.info(f"Queue Processor: Found {len(items)} pending items.")
 
         for item in items:
+            if should_stop and should_stop():
+                break
             # Check running file before each item to be safe/responsive to external stops
             if RUNNING_FILE.exists():
                  logger.warning("Queue Processor: execution paused/stopped because RUNNING_FILE appeared.")
@@ -18514,8 +18645,13 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
             logger.info(f"Queue Processor: Processing item #{item_id} ({item['asset_path']})")
 
             queue_manager.update_status(item_id, "processing")
+            item_status = "completed"
 
             try:
+                if item["source_type"] == "episode_title":
+                    await process_queued_episode_title(item)
+                    queue_manager.update_status(item_id, "completed")
+                    continue
                 content = b""
                 if item["source_type"] == "url":
                     if not is_safe_url(item["source_data"], allow_private=True):
@@ -18557,8 +18693,12 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
                         pass
 
             except Exception as e:
+                item_status = "failed"
                 logger.error(f"Queue Processor: Failed item #{item_id}: {e}")
                 queue_manager.update_status(item_id, "failed", str(e))
+            finally:
+                if on_item_finished:
+                    await on_item_finished(item, item_status)
 
         if item_ids:
             break
@@ -18588,7 +18728,7 @@ async def clear_queue():
 
 @app.post("/api/queue/run")
 async def run_queue(background_tasks: BackgroundTasks, request: Optional[RunQueueRequest] = None):
-    if RUNNING_FILE.exists():
+    if RUNNING_FILE.exists() or queue_processing_lock.locked():
         raise HTTPException(status_code=409, detail="Posterizarr is already running")
 
     item_ids = request.item_ids if request else None
@@ -20721,6 +20861,81 @@ async def reset_dynamic_overlays_sync_state():
         return {"success": False, "error": str(e)}
 
 
+class EpisodeTitleRebuildRequest(BaseModel):
+    candidate_ids: List[str] = Field(default_factory=list, max_length=10000)
+    all_eligible: bool = False
+    search: str = Field(default="", max_length=200)
+    confirmed: bool = False
+
+
+def ensure_episode_title_review_idle():
+    from overlay_sync_service import is_overlay_sync_running
+    from plex_image_cleanup import is_cleanup_running
+
+    if RUNNING_FILE.exists() or queue_processing_lock.locked() or (current_process and current_process.poll() is None) or is_overlay_sync_running() or is_cleanup_running():
+        raise HTTPException(status_code=409, detail="busy")
+
+
+@app.get("/api/dynamic-overlays/episode-title-changes")
+async def get_episode_title_changes(
+    search: str = Query("", max_length=200),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    from asset_title_changes import create_title_monitor, episode_title_review, title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+
+    settings = get_dynamic_overlays_settings()
+    try:
+        monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+        result = await asyncio.to_thread(monitor.candidates, search, limit, offset)
+    except (ValueError, FileNotFoundError):
+        result = {"entries": [], "total": 0, "eligible": 0}
+    return {"success": True, **result, "job": episode_title_review.status(),
+            "can_scan": bool(settings.get("enabled")),
+            "can_rebuild": title_regeneration_allowed(settings, manual=True)}
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/scan")
+async def scan_episode_title_changes():
+    from asset_title_changes import episode_title_review
+
+    ensure_episode_title_review_idle()
+    try:
+        job = await episode_title_review.start_scan(BASE_DIR, CONFIG_PATH)
+        return {"success": True, "job": job}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/rebuild")
+async def rebuild_episode_title_changes(request: EpisodeTitleRebuildRequest):
+    from asset_title_changes import episode_title_review
+
+    if not request.confirmed:
+        raise HTTPException(status_code=400, detail="confirmation_required")
+    ensure_episode_title_review_idle()
+    try:
+        job = await episode_title_review.start_rebuild(
+            BASE_DIR, CONFIG_PATH, candidate_ids=request.candidate_ids,
+            all_eligible=request.all_eligible, search=request.search,
+        )
+        return {"success": True, "job": job}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/cancel")
+async def cancel_episode_title_changes():
+    from asset_title_changes import episode_title_review
+
+    return {"success": True, "job": episode_title_review.cancel()}
+
+
 @app.get("/api/dynamic-overlays/detect-changes")
 async def detect_dynamic_overlays_changes_endpoint(
     target_server: str = Query("all"),
@@ -21015,6 +21230,7 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     change_detection_enabled: Optional[bool] = None
     change_detection_interval_minutes: Optional[int] = None
     auto_resync_on_change: Optional[bool] = None
+    regenerate_assets_on_title_change: Optional[bool] = None
     change_detection_dry_run: Optional[bool] = None
     fast_bulk_query_enabled: Optional[bool] = None
     debug_logging: Optional[bool] = None

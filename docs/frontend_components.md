@@ -64,6 +64,8 @@ The frontend follows a component-based architecture located entirely within `web
 
 ### Monitoring & Status
 
+- **`DynamicOverlays.jsx`**: Sync & Maintenance has separate URL-addressable views for synchronization, media changes, episode title review, overlay cache, and ratings cache. Only the active view is rendered; shared settings, sync state, dialogs, and background jobs remain intact. Navigation supports keyboard arrows/Home/End, saved view selection, and legacy `tab=cache` links.
+- **`EpisodeTitleReview.jsx`**: Historical ImageChoices title comparison with existing-artwork previews, eligibility reasons, filtered paging, and confirmed single/selected/all recreation. Recreation uses the existing asset queue rather than a separate renderer.
 - **`LogViewer.jsx`**: A real-time terminal-like component that connects to the backend WebSocket to stream Posterizarr execution logs.
 - **`QueueView.jsx`**: Displays backend task queue states (running, pending, completed, failed) with abort controls.
 - **`RuntimeStats.jsx` & `RuntimeHistory.jsx`**: Charts and tables displaying historical execution metrics, processing durations, and asset counts.

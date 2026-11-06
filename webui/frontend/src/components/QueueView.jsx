@@ -425,7 +425,7 @@ const QueueView = () => {
                                                         ) : (
                                                             <>
                                                                 <FileImage className="w-4 h-4 text-theme-muted opacity-70" />
-                                                                <span className="capitalize text-theme-muted opacity-70">{item.source_type}</span>
+                                                                <span className="text-theme-muted opacity-70">{item.source_type === 'episode_title' ? t("dynamicOverlays.episodeTitles.title") : item.source_type}</span>
                                                             </>
                                                         )}
                                                     </div>

@@ -68,9 +68,9 @@ After the guide, use this safe setup path:
 3. Open **Visual Badges** or **Live Preview**, choose the library and format, and
    adjust badges. **Save Layout** persists the layout; previewing alone does not
    update media-server artwork.
-4. Run a dry-run sync in **Sync & Cache** and review its log and cache results.
+4. Run a dry-run sync in **Sync & Maintenance > Synchronize** and review its log and cache results.
    Turn off Dry Run only when you intend to upload artwork to the selected server.
-5. For a smaller test, use **Select Movie / Show** in **Sync & Cache** instead of
+5. For a smaller test, use **Select Movie / Show** in **Sync & Maintenance > Synchronize** instead of
    processing an entire library. Avoid **Force Reapply** unless you deliberately
    want to reapply artwork.
 
@@ -248,7 +248,7 @@ See [SIMKL ratings](https://api.simkl.org/api-reference/ratings.md),
 
 ### Local IMDb Dataset
 
-Open **Builders > Dynamic Overlays > Sync & Cache > Browse Ratings** to open
+Open **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache > Browse Ratings** to open
 **Ratings Cache & Refresh**. Enable **Local IMDb Dataset**,
 then select **Download & Update** and confirm the import. This optional source is
 disabled by default. It downloads the official `title.ratings.tsv.gz`,
@@ -261,7 +261,7 @@ and imported in bounded batches, not loaded entirely into RAM.
 
 ![Dynamic Overlays Sync and Cache controls](images/22-overlay-sync-cache.png)
 
-*Navigate to **Builders > Dynamic Overlays > Sync & Cache**, then choose **Browse Ratings** to open Local IMDb Dataset and the ratings cache.*
+*Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open Local IMDb Dataset and the ratings cache.*
 
 *Read-only capture of an existing imported index. Its count and timestamp are
 installation-specific, not download requirements or a performance benchmark.*
@@ -414,7 +414,7 @@ Missing season values never erase the inherited show
 scores. The season ratings cache contains only the season's own SIMKL/MAL values,
 not copies of the fallbacks used for rendering.
 
-In **Sync & Cache > Ratings Cache & Refresh**, select **Seasons**, then use the
+In **Sync & Maintenance > Ratings Cache > Browse Ratings**, select **Seasons**, then use the
 row's **Season rating mapping** action. Choose a discovered anime/cour entry,
 enter a positive **SIMKL Anime ID**, or restore **Automatic (exact season match)**.
 The linked MAL ID is read from that anime entry. Saving starts a ratings-only
@@ -635,11 +635,91 @@ Generated AniMetaFill episode regexes include a numeric boundary so an episode s
 Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 
 ### Background Change Detection & Dry Run
+The former **Sync & Cache** page is split into **Sync & Maintenance** views:
+
+| View | Contents | Direct Link |
+| --- | --- | --- |
+| **Synchronize** | Sync controls, automatic application to new media, sync log | `/dynamic-overlays?tab=sync` |
+| **Media Changes** | Metadata monitoring, detected changes, intervals, Dry Run | `/dynamic-overlays?tab=media-changes` |
+| **Episode Title Review** | Historical title comparison, optional title automation, recreation through the queue | `/dynamic-overlays?tab=episode-titles` |
+| **Overlay Cache** | Cache statistics, browser, cleanup, recently updated artwork | `/dynamic-overlays?tab=overlay-cache` |
+| **Ratings Cache** | Ratings cache, refresh controls, Local IMDb Dataset | `/dynamic-overlays?tab=ratings-cache` |
+
+The selected view is retained in the URL and local preference. The legacy
+`tab=cache` link opens Overlay Cache. Changing views does not stop running jobs.
+
 - **Background Checking** controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.
 - **Automatic Overlay Resync** controls whether detected changes start the overlay render pipeline.
 - **Dry Run** is enabled by default. Syncs still evaluate rules and render changed artwork, but never upload it to a media server or mark it synced in the cache. This applies to automatic and manual syncs.
 - Turn off **Background Checking** as well to stop periodic change scans entirely.
 - The **Master Switch** is the hard stop: when disabled, background detection and sync processing do not run. Switching it off also stops the detector and cancels active sync work before any subsequent upload.
+
+#### Recreate Episode Titlecards When Titles Change
+
+**Sync & Maintenance > Episode Title Review > Recreate episode titlecards when titles change** is
+optional and off by default. With the Master Switch and Background Checking on,
+it compares titles at the configured background-check interval. It is independent
+of **Automatic Overlay Resync**. Keep **Dry Run** on to log eligible changes
+without recreating files or uploading artwork; turn it off to apply changes.
+
+The monitor supports only existing episode titlecards on Plex, Jellyfin, and
+Emby. Movie/show posters, season posters, backgrounds, and collection posters
+are excluded from this title-change automation. Their normal generation and
+overlay workflows are unchanged. The monitor uses stable episode IDs after the
+initial match, so a title change does not rename asset folders. The first
+successful scan also compares the episode title recorded in ImageChoices with
+the current server title. Existing differences become historical review
+candidates, including when an older version already established a baseline.
+The scan itself never recreates historical titlecards automatically.
+
+Open **Sync & Maintenance > Episode Title Review** and select **Compare titles** for
+an initial, read-only artwork audit. The table shows the existing image, series,
+episode number, previous title, current title, and eligibility. Historical rows
+are explicitly review candidates: ImageChoices is not an exact rendering log,
+and unknown or truncated historical text cannot be safely recreated automatically.
+Missing sources, textful sources, and placeholder titles remain visible with a
+blocking reason. Unmatched episodes and missing image files are not guessed.
+
+Use the row's recreate action for one episode, select several entries with the
+checkboxes, or choose **All eligible matches**. The all action includes every
+eligible result of the current search, not just the current page. Each action
+requires confirmation. Manual recreation does not require the automatic title
+option or Background Checking, but the Master Switch must be on and Dry Run off.
+
+Confirmed recreation uses the existing **Asset Queue** and queue processor,
+not a separate rendering worker. The queue contains a dedicated episode-title
+operation referencing the persisted review candidate. Pending/processing
+duplicates are reused. Only the selected queue IDs are started; unrelated
+pending replacements are not processed. Progress and failures are visible in
+the review and the ordinary queue. Cancelling stops before the next episode;
+remaining queue entries stay pending and can be resumed from the queue. Failed
+entries retain their review candidate for retry. A successful render and server
+upload acknowledge the new title and remove its review entry.
+
+Only title metadata is stored in `overlay_cache.db`; no additional original-image
+cache or image backup is created. For an eligible change, the existing manual
+generator downloads the recorded `DownloadSource` again and uses the current
+rendering settings. The source must be a public HTTP(S) URL recorded as
+**Textless** in ImageChoices. Missing/local sources, sources with existing text,
+ambiguous matches, and missing asset files are skipped. This is not a new artwork
+search and cannot translate text already baked into a provider image. Custom
+per-asset edits or previously used one-off blueprint overrides are not restored;
+the current generator configuration governs the rebuilt asset.
+
+Generic episode placeholders such as `Episode 2`, `Folge #2.2`, `TBA`, and
+`Untitled` are not treated as finished replacement titles. Titlecards that were
+never created still need the ordinary generation workflow. Only the affected
+episode titlecard is rebuilt and passed to a targeted overlay sync. If the
+library has no dynamic-overlay rules, the titlecard is sent directly to its
+exact episode item. A failed generation or upload leaves the title change pending.
+Historical candidates remain manual-only across subsequent scans; only later
+title changes on otherwise reconciled episodes qualify for the optional automatic
+workflow. A series-title change alone does not recreate its episodes.
+The legacy setting key `regenerate_assets_on_title_change` is retained for
+compatibility but now applies exclusively to episode titlecards.
+Progress is logged under `[TitleChanges]` in the backend log;
+rendering uses the existing manual-run log and targeted overlays use
+`DynamicOverlaysSync.log`.
 
 ### 0. Guided Onboarding Setup Wizard
 - **Zero Confusion Onboarding:** A friendly 4-step visual wizard guides new users through the engine's core concepts, eliminating manual reading.
@@ -731,7 +811,7 @@ Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
 ### 5. Cache & Sync
 - **Automatic newly created artwork:** automatic targets retain their artwork scope. A new episode titlecard such as `S38E05` selects only that episode, not the show's poster, backgrounds, season posters, or other titlecards. Batched events process the union of their explicit artwork targets. A newly created season poster selects only that season poster; a newly created background selects only the background. Manual movie/show scans retain the broader behavior described below.
 - **Sync log rotation:** output is written to `UILogs/DynamicOverlaysSync.log`. When the previous active log exceeds 10 MiB, it is moved to `DynamicOverlaysSync.log.old` before opening the new active writer. The `.old` file is the previous log, not the current run's output.
-- **Single movie/show sync:** in **Sync & Cache**, choose **Select Movie / Show**, select a server/library, search by title, and select the matching result by year, library, and server ID. **Scan Selected Item** fetches that exact item directly instead of crawling the library, reevaluates configured overlays, and skips unchanged artwork. A show includes its configured season posters and episode titlecards, not other shows. **Force Reapply** explicitly reapplies the selected item's artwork. The usual sync queue, progress, logs, stop controls, and clean-asset requirements still apply. Search is server-backed (not cache-only), bounded to 30 results, and respects configured/excluded libraries.
+- **Single movie/show sync:** in **Sync & Maintenance > Synchronize**, choose **Select Movie / Show**, select a server/library, search by title, and select the matching result by year, library, and server ID. **Scan Selected Item** fetches that exact item directly instead of crawling the library, reevaluates configured overlays, and skips unchanged artwork. A show includes its configured season posters and episode titlecards, not other shows. **Force Reapply** explicitly reapplies the selected item's artwork. The usual sync queue, progress, logs, stop controls, and clean-asset requirements still apply. Search is server-backed (not cache-only), bounded to 30 results, and respects configured/excluded libraries.
 - **Ratings Cache & Refresh:** use **Refresh Missing & Expired** to refresh expired movie/show/episode ratings and backfill missing ratings for posters and episode titlecards already in the overlay cache. Episodes with missing selected IMDb/TMDb scores are retried even when another provider's cached score is still valid. The action applies across all servers, independently of the table filters and overlay rules. A row's **Refresh ratings now** action forces just that entry. Both run in the background without rendering, uploading, or selecting artwork; overlay artwork is updated by the next appropriate overlay sync. The cache browser includes an **Episodes** type filter.
 - **Automatic ratings refresh:** while Dynamic Overlays is enabled, **Ratings Cache & Refresh** checks expired movie/show/episode ratings independently of the overlay scheduler and rule configuration. It also picks up uncached episode titlecards already in the overlay cache and retries missing selected IMDb/TMDb episode scores. When an episode is due and **MDBList Episodes** is selected, supporter accounts use MDBList's show endpoint with `append_to_response=episode_ratings`; the per-season episode matrix is cached once per TMDb show for one day, then matched by season and episode number. The dedicated `mdblist_rating` field is not relabeled as IMDb or TMDb. MDBList's documented daily/short-window limits are respected with a 2-requests/second process-wide pacer; a 429 stops further MDBList calls for the run, and three consecutive server errors open a run-level circuit breaker. Provider quota/rate/server failures receive a daily retry cooldown. Valid episodes missing only optional MDBList scores are not all bulk-queried immediately; they are checked on expiry or by a manual bulk refresh, avoiding a large first-run request burst. Missing movie/show poster entries still require the manual bulk action. Episode metadata supplies the episode IMDb ID and season/episode numbers; the parent show's TMDb ID is used only for the TMDb episode endpoint or MDBList's episode matrix, never to substitute the show's score. SIMKL/MAL are series/season sources, not episode sources. Refreshes are sequential, with parent metadata reused within each refresh job to limit provider traffic. Automatic refresh is enabled by default and can be disabled or configured for 1-8,760 hours (1 hour, 24 hours daily, 168 hours weekly, or 720 hours per 30 days are common choices). The first run waits for the selected interval after backend startup; an overdue run is deferred rather than triggered immediately on container restart. The interval and last automatic attempt persist across restarts. Automatic refresh does not render or upload artwork. Only one ratings refresh job runs at a time. Cancel stops further processing; completed items remain saved.
 - **Episode cache context:** episode rows display the titlecard cache's full series/season/episode title and library name when available, alongside the rating-cache item title.

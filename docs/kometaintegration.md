@@ -51,12 +51,12 @@ Add the following settings to your Kometa configuration file (e.g., `config.yml`
 libraries:
   "4K TV Shows":
     # Metadata files configurations...
-    
+
     # Asset directory settings
     settings:
       asset_directory: /assets/4K TV Shows
       prioritize_assets: true
-      
+
     # Operations
     operations:
       assets_for_all: true
@@ -95,8 +95,8 @@ A common question is how Posterizarr's `PlexUpload` configuration behaves alongs
 
 ## Summary
 
-By doing these two simple steps: 
-1. Mounting the Posterizarr output folder to Kometa's `/assets` 
+By doing these two simple steps:
+1. Mounting the Posterizarr output folder to Kometa's `/assets`
 2. Configuring Kometa's library settings to point to this directory
 
 You fully automate your asset pipeline between Posterizarr and Kometa.

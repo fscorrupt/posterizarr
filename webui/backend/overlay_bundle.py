@@ -28,6 +28,7 @@ SETTINGS_FIELDS = {
     "ratings_auto_refresh_enabled", "ratings_auto_refresh_interval_hours",
     "debug_logging", "concurrency", "change_detection_enabled",
     "change_detection_interval_minutes", "auto_resync_on_change",
+    "regenerate_assets_on_title_change",
     "change_detection_dry_run", "fast_bulk_query_enabled",
 }
 PRIVATE_BLOCKS = {

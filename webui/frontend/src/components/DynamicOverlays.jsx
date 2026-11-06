@@ -15,8 +15,9 @@ import SiloSupportNotice from "./SiloSupportNotice";
 import MediaServerLogo from "./MediaServerLogo";
 import ConfirmDialog from "./ConfirmDialog";
 import ImdbDatasetPanel from "./ImdbDatasetPanel";
+import EpisodeTitleReview from "./EpisodeTitleReview";
 import OverlayBundleTransfer from "./OverlayBundleTransfer";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Layers,
@@ -84,6 +85,16 @@ import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPre
 import { getAniMetaFillPreview, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
 
 const DEFAULT_RATING_SOURCES = ["imdb", "tomatoes", "tmdb"];
+const MAINTENANCE_TABS = [
+  { id: "sync", key: "syncSection", icon: RefreshCw },
+  { id: "media-changes", key: "mediaChanges", icon: Activity },
+  { id: "episode-titles", key: "episodeTitles", icon: Clapperboard },
+  { id: "overlay-cache", key: "overlayCache", icon: Database },
+  { id: "ratings-cache", key: "ratingsCache", icon: Star },
+];
+const MAINTENANCE_TAB_IDS = MAINTENANCE_TABS.map(tab => tab.id);
+const OVERLAY_TAB_IDS = ["rules", "importer", "config", "preview", "anime", ...MAINTENANCE_TAB_IDS];
+const normalizeOverlayTab = value => value === "cache" ? "overlay-cache" : value;
 const RATING_PROVIDER_OPTIONS = [
   { id: "imdb", label: "IMDb" },
   { id: "tomatoes", label: "RT Critics" },
@@ -437,6 +448,7 @@ const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => 
 export default function DynamicOverlays() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { showSuccess, showError, showInfo } = useToast();
 
   const [schedulerConfig, setSchedulerConfig] = useState(null);
@@ -455,24 +467,30 @@ export default function DynamicOverlays() {
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      if (tabParam && ["rules", "importer", "config", "preview", "sync", "anime"].includes(tabParam)) {
+      const tabParam = normalizeOverlayTab(params.get("tab"));
+      if (OVERLAY_TAB_IDS.includes(tabParam)) {
         return tabParam;
       }
-      const savedTab = localStorage.getItem("posterizarr_active_overlay_tab");
-      if (savedTab && ["rules", "importer", "config", "preview", "sync", "anime"].includes(savedTab)) {
+      const savedTab = normalizeOverlayTab(localStorage.getItem("posterizarr_active_overlay_tab"));
+      if (OVERLAY_TAB_IDS.includes(savedTab)) {
         return savedTab;
       }
     } catch {}
     return "rules";
   });
 
+  useEffect(() => {
+    const tab = normalizeOverlayTab(searchParams.get("tab"));
+    if (OVERLAY_TAB_IDS.includes(tab)) setActiveTab(tab);
+  }, [searchParams]);
+
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
+    setSearchParams(current => { const next = new URLSearchParams(current); next.set("tab", tabId); return next; }, { replace: true });
     try {
       localStorage.setItem("posterizarr_active_overlay_tab", tabId);
     } catch {}
-    if (tabId === "sync" || tabId === "cache") {
+    if (MAINTENANCE_TAB_IDS.includes(tabId)) {
       fetchOverlaySyncStatus();
     } else if (tabId === "anime") {
       fetchAnimetafillStatus();
@@ -2214,7 +2232,7 @@ export default function DynamicOverlays() {
 
       // 2. Dynamic Overlay Sync Status (/api/dynamic-overlays/sync/status):
       // Fast polling (3.5s) if sync is running; if idle, only poll every ~14s if user is actively on sync/cache tab
-      if (isSyncRunning || ((curTab === "sync" || curTab === "cache") && tick % 4 === 0)) {
+      if (isSyncRunning || (MAINTENANCE_TAB_IDS.includes(curTab) && tick % 4 === 0)) {
         fetchOverlaySyncStatus();
       }
 
@@ -5002,7 +5020,7 @@ export default function DynamicOverlays() {
                   title: t("dynamicOverlays.navigation.applyMaintain"),
                   description: t("dynamicOverlays.navigation.applyMaintainDescription"),
                   tabs: [
-                    { id: "sync", label: t("dynamicOverlays.navigation.syncCache"), icon: RefreshCw },
+                    { id: "sync", label: t("dynamicOverlays.navigation.maintenance"), icon: RefreshCw },
                     { id: "anime", label: t("dynamicOverlays.navigation.aniMetaFill"), icon: Sparkles }
                   ]
                 }
@@ -5021,7 +5039,7 @@ export default function DynamicOverlays() {
                       const isActive =
                         activeTab === tab.id ||
                         (tab.id === "config" && activeTab === "visual") ||
-                        (tab.id === "sync" && activeTab === "cache");
+                        (tab.id === "sync" && MAINTENANCE_TAB_IDS.includes(activeTab));
                       return (
                         <button
                           key={tab.id}
@@ -9964,8 +9982,29 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {/* TAB 4: CACHE & SYNC */}
       {/* ========================================================================= */}
-      {featureSettings?.enabled && (activeTab === "sync" || activeTab === "cache") && (
-        <div className="space-y-6">
+      {featureSettings?.enabled && MAINTENANCE_TAB_IDS.includes(activeTab) && (
+        <div className="min-w-0 space-y-5">
+          <div role="tablist" aria-label={t("dynamicOverlays.navigation.maintenance")} className="flex flex-wrap gap-1 border-b border-theme pb-3">
+            {MAINTENANCE_TABS.map((tab, index) => {
+              const Icon = tab.icon;
+              return <button key={tab.id} id={`overlay-tab-${tab.id}`} type="button" role="tab"
+                aria-selected={activeTab === tab.id} aria-controls={`overlay-panel-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => handleTabChange(tab.id)}
+                onKeyDown={event => {
+                  if (event.altKey || event.ctrlKey || event.metaKey || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? 0 : event.key === "End" ? MAINTENANCE_TABS.length - 1 :
+                    (index + (event.key === "ArrowRight" ? 1 : -1) + MAINTENANCE_TABS.length) % MAINTENANCE_TABS.length;
+                  handleTabChange(MAINTENANCE_TABS[next].id);
+                  event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next].focus();
+                }}
+                className={`flex min-h-10 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${activeTab === tab.id ? "bg-theme-primary text-white" : "text-theme-muted hover:bg-theme-hover hover:text-theme-text"}`}>
+                <Icon className="h-4 w-4 shrink-0" /><span>{t(`dynamicOverlays.navigation.${tab.key}`)}</span>
+              </button>;
+            })}
+          </div>
+          <div role="tabpanel" id={`overlay-panel-${activeTab}`} aria-labelledby={`overlay-tab-${activeTab}`} className="min-w-0 space-y-6">
+          {activeTab === "sync" && (<>
           {/* AUTOMATED RUN ON NEW MEDIA CARD */}
           <div className="bg-theme-card border border-theme rounded-xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
@@ -10446,7 +10485,10 @@ export default function DynamicOverlays() {
             )}
           </div>
 
-          {/* MEDIA CHANGE DETECTION CARD */}
+          </>)}
+
+          {activeTab === "media-changes" && (
+          /* MEDIA CHANGE DETECTION CARD */
           <div className="bg-theme-card border border-theme rounded-2xl p-5 sm:p-6 shadow-sm space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-theme/60">
               <div className="flex items-start gap-3.5">
@@ -10717,7 +10759,20 @@ export default function DynamicOverlays() {
             </div>
           </div>
 
+          )}
+
+          {activeTab === "episode-titles" && (<>
+            <label className="flex items-center justify-between gap-3 border-b border-theme pb-3 text-sm text-theme-text">
+              <span>{t("dynamicOverlays.changeDetection.regenerateTitles")}</span>
+              <input type="checkbox" role="switch" checked={featureSettings?.regenerate_assets_on_title_change === true}
+                onChange={event => handleUpdateDynamicSettings({ regenerate_assets_on_title_change: event.target.checked })}
+                className="h-4 w-4 shrink-0 accent-theme-primary" />
+            </label>
+            <EpisodeTitleReview enabled={featureSettings?.enabled === true} dryRun={isChangeDetectionDryRun} />
+          </>)}
+
           {/* OVERLAY CACHE CARD */}
+          {activeTab === "overlay-cache" && (
           <div className="bg-theme-card border border-theme rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -10780,7 +10835,10 @@ export default function DynamicOverlays() {
             </div>
           </div>
 
+          )}
+
           {/* RATINGS CACHE & AUTO-REFRESH CARD */}
+          {activeTab === "ratings-cache" && (
           <div className="bg-theme-card border border-theme rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -10849,6 +10907,9 @@ export default function DynamicOverlays() {
             </div>
           </div>
 
+          )}
+
+          {activeTab === "overlay-cache" && (
           <div className="bg-theme-card border border-theme rounded-2xl overflow-hidden shadow-sm">
             <div className="p-5 border-b border-theme/60 font-bold text-theme-text text-sm">
               Recently Updated Items
@@ -10890,6 +10951,8 @@ export default function DynamicOverlays() {
                 </tbody>
               </table>
             </div>
+          </div>
+          )}
           </div>
         </div>
       )}
