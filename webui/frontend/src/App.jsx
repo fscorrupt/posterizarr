@@ -235,7 +235,10 @@ function AppContent() {
   return (
     <>
       {/* Onboarding Modal - highest priority */}
-      {showOnboarding && <OnboardingModal onComplete={() => { setShowOnboarding(false); navigate("/how-it-works"); }} />}
+      {showOnboarding && <OnboardingModal onComplete={(openDynamicOverlaysSetup) => {
+        setShowOnboarding(false);
+        navigate(openDynamicOverlaysSetup ? "/dynamic-overlays?setupWizard=1" : "/how-it-works");
+      }} />}
 
       {/* Loading Screen Overlay - shown over the UI during login transition */}
       {showLoadingScreen && (

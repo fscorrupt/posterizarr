@@ -46,6 +46,7 @@ import ValidateButton from "./ValidateButton";
 import LanguageSwitcher from "./LanguageSwitcher";
 import LibraryExclusionSelector from "./LibraryExclusionSelector";
 import PlexOAuthButton from "./PlexOAuthButton";
+import MediaServerLogo from "./MediaServerLogo";
 
 export default function OnboardingModal({ onComplete }) {
   const { t } = useTranslation();
@@ -57,6 +58,7 @@ const STEPS = [
   { id: "auto", title: t("onboarding.automation"), icon: <Settings className="w-5 h-5" /> },
   { id: "perf", title: t("onboarding.performance"), icon: <Activity className="w-5 h-5" /> },
   { id: "notif", title: t("onboarding.notifications"), icon: <Bell className="w-5 h-5" /> },
+  { id: "overlays", title: t("dynamicOverlays.title", "Dynamic Overlays"), icon: <Zap className="w-5 h-5" /> },
   { id: "schedule", title: t("onboarding.schedule"), icon: <Clock className="w-5 h-5" /> },
   { id: "finish", title: t("onboarding.ready"), icon: <Check className="w-5 h-5" /> },
 ];
@@ -127,6 +129,7 @@ const runModes = [
   const [intervalUnit, setIntervalUnit] = useState("hours");
   const [newMode, setNewMode] = useState("normal");
   const [newTime, setNewTime] = useState("03:00");
+  const [enableDynamicOverlays, setEnableDynamicOverlays] = useState(false);
   const [logoLibrary, setLogoLibrary] = useState("all");
   const [logoForceReplace, setLogoForceReplace] = useState(false);
   const [logoExifCheck, setLogoExifCheck] = useState(false);
@@ -287,6 +290,18 @@ const runModes = [
         body: JSON.stringify({ config: finalConfig }),
       });
 
+      if (enableDynamicOverlays) {
+        const overlaysResponse = await fetch("/api/dynamic-overlays/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: true, change_detection_dry_run: true }),
+        });
+        const overlaysData = await overlaysResponse.json();
+        if (!overlaysResponse.ok || !overlaysData.success) {
+          throw new Error(overlaysData.error || "Failed to enable Dynamic Overlays.");
+        }
+      }
+
       // Save Schedule if enabled
       if (enableSchedule) {
         try {
@@ -339,7 +354,7 @@ const runModes = [
         headers: { "Content-Type": "application/json" }
       });
 
-      onComplete();
+      onComplete(enableDynamicOverlays);
     } catch (err) {
       console.error("Failed to complete onboarding", err);
     } finally {
@@ -351,7 +366,10 @@ const runModes = [
     if (type === 'silo') {
       return (
         <div className="mt-2 p-3 bg-theme-bg/30 rounded-lg flex flex-col gap-3 min-h-0 overflow-y-auto">
-          <h4 className="font-semibold text-sm text-theme-primary">{t("silo.name")}</h4>
+          <h4 className="font-semibold text-sm text-theme-primary flex items-center gap-2">
+            <MediaServerLogo server="silo" className="w-4 h-4 rounded-sm" />
+            {t("silo.name")}
+          </h4>
           <label className="block text-xs font-medium text-theme-muted">
             {t("silo.serverUrl")}
             <ClearableInput value={config.SiloUrl} onChange={value => { handleChange("SiloUrl", value); setSiloValidated(false); setSiloLibsValid(false); }} placeholder="http://silo:8080" />
@@ -504,7 +522,7 @@ const runModes = [
               <img src="/logo.png" alt="Posterizarr Logo" className="h-24 object-contain" />
             </div>
             <p className="text-theme-muted max-w-md text-lg">
-              The ultimate automated tool for standardizing and enhancing your media server's artwork. Let's get you set up in just a few steps!
+              Posterizarr automates artwork styling for your media server. Configure the essentials in a few steps.
             </p>
           </div>
         );
@@ -523,25 +541,26 @@ const runModes = [
                 onClick={() => setPrimaryServer('plex')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'plex' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
               >
-                <img src="/plex.svg" alt="Plex" className="w-5 h-5 mr-2 object-contain drop-shadow-md opacity-90 transition-transform hover:scale-110" />
+                <MediaServerLogo server="plex" className="w-5 h-5 mr-2 drop-shadow-md opacity-90 transition-transform hover:scale-110" />
                 <span className="font-semibold text-sm">Plex</span>
               </button>
               <button
                 onClick={() => setPrimaryServer('jellyfin')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'jellyfin' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
               >
-                <img src="/jellyfin.svg" alt="Jellyfin" className="w-5 h-5 mr-2 object-contain drop-shadow-md opacity-90 transition-transform hover:scale-110" />
+                <MediaServerLogo server="jellyfin" className="w-5 h-5 mr-2 drop-shadow-md opacity-90 transition-transform hover:scale-110" />
                 <span className="font-semibold text-sm">Jellyfin</span>
               </button>
               <button
                 onClick={() => setPrimaryServer('emby')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'emby' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
               >
-                <img src="/emby.svg" alt="Emby" className="w-5 h-5 mr-2 object-contain drop-shadow-md opacity-90 transition-transform hover:scale-110" />
+                <MediaServerLogo server="emby" className="w-5 h-5 mr-2 drop-shadow-md opacity-90 transition-transform hover:scale-110" />
                 <span className="font-semibold text-sm">Emby</span>
               </button>
               <button onClick={() => setPrimaryServer('silo')}
                 className={`py-2 px-3 rounded-lg flex items-center justify-center transition-all ${primaryServer === 'silo' ? 'bg-theme-primary/15 text-theme-primary ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}>
+                <MediaServerLogo server="silo" className="w-5 h-5 mr-2 rounded-sm" />
                 <span className="font-semibold text-sm">Silo</span>
               </button>
             </div>
@@ -809,7 +828,31 @@ const runModes = [
             </div>
           </div>
         );
-      case 6: // Schedule
+      case 6: // Dynamic Overlays
+        return (
+          <div className="space-y-6 animate-fade-in">
+            <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.dynamicOverlaysTitle")}</h3>
+            <p className="text-theme-muted mb-6">{t("onboarding.dynamicOverlaysIntro")}</p>
+
+            <div className="flex items-center justify-between gap-4 p-4 bg-theme-bg/50 rounded-xl border border-theme-border/50">
+              <div>
+                <h4 className="font-semibold text-white">{t("onboarding.dynamicOverlaysEnable")}</h4>
+                <p className="text-sm text-theme-muted">{t("onboarding.dynamicOverlaysDescription")}</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input type="checkbox" className="sr-only peer" checked={enableDynamicOverlays} onChange={event => setEnableDynamicOverlays(event.target.checked)} />
+                <div className="w-11 h-6 bg-theme-bg peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-primary"></div>
+              </label>
+            </div>
+
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-theme-muted">
+              {enableDynamicOverlays
+                ? t("onboarding.dynamicOverlaysEnabledHint")
+                : t("onboarding.dynamicOverlaysDisabledHint")}
+            </div>
+          </div>
+        );
+      case 7: // Schedule
         return (
           <div className="space-y-6 animate-fade-in">
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.automatedSchedule")}</h3>
@@ -928,7 +971,7 @@ const runModes = [
             </div>
           </div>
         );
-      case 7: // Finish
+      case 8: // Finish
         return (
           <div className="flex flex-col items-center justify-center text-center space-y-6 animate-fade-in py-10">
             <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mb-4 text-green-500 ring-4 ring-green-500/10">

@@ -4,7 +4,9 @@ Posterizarr is designed to be operated from the Web UI. You do not need a
 terminal or PowerShell for the normal artwork workflow. Open **Run Modes** from
 the left sidebar to run, test, back up, restore, sync, or create one asset.
 
-![Run Modes page with quick actions for normal, testing, backup, restore, sync, and logo updates](images/ui-run-modes.png)
+![Run Modes page with quick actions and the manual asset form](images/02-run-modes.png)
+
+*Choose **Run Modes** in the left sidebar. Quick Run cards start common jobs; the manual form below creates or replaces one asset.*
 
 ## Quick Run modes
 
@@ -454,9 +456,9 @@ On [docker](platformandtools.md#docker) this way:
 !!! info "Direct Upload Enforced in Trigger Modes"
     Tautulli Mode always forces direct upload to Plex (`Upload2Plex = true`), regardless of whether `PlexUpload` is set to `false` in your `config.json`. The purpose of real-time triggers is to immediately style newly added media in Plex the moment it is imported, without waiting for your next scheduled run. If you use Kometa and want zero uploads from Posterizarr before Kometa applies overlays, do not configure Tautulli triggers; schedule regular Posterizarr batch runs before your Kometa schedule instead.
 
-In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex, like a new show, movie or episode got added.
+This mode lets Tautulli trigger Posterizarr for a specific Plex item, such as a newly added show, movie, or episode.
 
-To use it we need to configure a script in Tautulli, please follow these instructions.
+For the legacy script-based setup, configure a script in Tautulli as follows.
 
 1. Make sure that you mount the `Posterizarr` directory to tautulli, cause the script needs the Path `/posterizarr`
    ```yml
@@ -471,7 +473,7 @@ To use it we need to configure a script in Tautulli, please follow these instruc
 1. Open Tautulli and go to Settings -    `NOTIFICATION AGENTS`
 1. Click on `Add a new notification agent` and select `Script`
 1. Specify the script folder where you placed the script and select the script file.
-   - You can specify a `Description` at the bottom like i did.
+  - Add an optional `Description` to identify the script.
 
     ![backgroundtesting](images/Tautulli_Step1.png)
 
@@ -480,9 +482,8 @@ To use it we need to configure a script in Tautulli, please follow these instruc
     ![backgroundtesting](images/Tautulli_Step2.png)
 
 1. Go to `Conditions`, you can now specify when the script should get called.
-   - In my case i specified the **Media Type**: `episode, movie, show and season`
-   - I also excluded the **Youtube** Lib cause the videos i have there - **do not** have an `tmdb,tvdb or fanart ID`.
-     - This is an recommended setting, either exclude such libs or include only those libs where Posterizarr should create art for.
+   - Set **Media Type** to the types you want to process, for example `episode, movie, show and season`.
+   - Exclude libraries without `tmdb`, `tvdb`, or Fanart IDs, or include only libraries where Posterizarr should create artwork.
 
      ![backgroundtesting](images/Tautulli_Step3.png)
 
@@ -511,13 +512,13 @@ To use it we need to configure a script in Tautulli, please follow these instruc
 !!! note
     If Discord is configured it will send a Notification on each trigger.
 
-In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex, like a new show, movie or episode got added.
+This mode lets Tautulli trigger Posterizarr for a specific Plex item, such as a newly added show, movie, or episode.
 
 1. Open Tautulli and go to Settings -    `NOTIFICATION AGENTS`
 1. Click on `Add a new notification agent` and select `Script`
 1. Specify the script folder of Posterizarr and select the script file.
    - Set the script timeout to `0`, which is unlimited. (The default is `30`, which would kill the script before it finishes.)
-   - You can specify a `Description` at the bottom like i did.
+  - Add an optional `Description` to identify the script.
 
     ![backgroundtesting](images/Tautulli_windows_Step1.png)
 
@@ -526,9 +527,8 @@ In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex
     ![backgroundtesting](images/Tautulli_Step2.png)
 
 1. Go to `Conditions`, you can now specify when the script should get called.
-   - In my case i specified the **Media Type**: `episode, movie, show and season`
-   - I also excluded the **Youtube** Lib cause the videos i have there - **do not** have an `tmdb,tvdb or fanart ID`.
-     - This is an recommended setting, either exclude such libs or include only those libs where Posterizarr should create art for.
+   - Set **Media Type** to the types you want to process, for example `episode, movie, show and season`.
+   - Exclude libraries without `tmdb`, `tvdb`, or Fanart IDs, or include only libraries where Posterizarr should create artwork.
 
      ![backgroundtesting](images/Tautulli_Step3.png)
 
@@ -578,9 +578,9 @@ In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex
 !!! info "Direct Upload Enforced in Trigger Modes"
     Arr trigger runs always force direct upload to your media server (`Upload2Plex = true` / Jellyfin / Emby), regardless of whether `PlexUpload` is set to `false` in your `config.json`.
 
-In this mode we use Sonarr/Radarr to trigger Posterizarr for an specific item in Plex/Jellyfin, like a new show, movie or episode got added.
+This mode lets Sonarr or Radarr trigger Posterizarr for a specific Plex or Jellyfin item, such as a newly added show, movie, or episode.
 
-To use it we need to configure a script in Sonarr/Radarr, please follow these instructions.
+For the legacy script-based setup, configure a script in Sonarr or Radarr as follows.
 
 1. Ensure you mount the `Posterizarr` directory to your Sonarr/Radarr container, as the script requires access to `/posterizarr`:
    ```yml

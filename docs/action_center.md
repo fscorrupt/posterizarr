@@ -6,6 +6,10 @@ Open it from **Asset Management > Asset Overview** in the left sidebar. After a
 run, use its filters to find assets flagged for review; these are curation
 suggestions, not necessarily failed jobs.
 
+![Action Center with filters, summary cards, and review actions](images/07-action-center.png)
+
+*Expand **Asset Management** in the sidebar and choose **Action Center** to filter flagged items before resolving, replacing, or deleting records.*
+
 When Posterizarr runs, it tracks assets that don't meet your ideal configuration—such as missing high-quality sources, incorrect languages, or truncated text. These appear in the Action Center for your review.
 
 ---
@@ -44,7 +48,7 @@ Each asset in the list will have one or more tags explaining why it was flagged:
 For every asset, you have several options to resolve the alert:
 
 ### 1. Mark as Resolved / No Edits Needed
-If you look at the asset and decide it is "good enough" or exactly what you want, click this button. 
+If you look at the asset and decide it is "good enough" or exactly what you want, click this button.
 *   **What it does**: Sets the asset status to "Resolved".
 *   **Result**: It will no longer appear in the "Unresolved" list or count towards your "Assets with Issues" total.
 

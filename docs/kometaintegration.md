@@ -64,7 +64,7 @@ libraries:
 
 ### Explanation of Settings
 
-- **`asset_directory`**: Tells Kometa specifically where to find the images for this library. Because we mapped the Posterizarr assets directly into `/assets`, the path corresponds directly to `/assets/YourLibraryName`.
+- **`asset_directory`**: Tells Kometa specifically where to find the images for this library. With the Posterizarr assets mounted at `/assets`, the path corresponds directly to `/assets/YourLibraryName`.
 - **`prioritize_assets`**: Ensures Kometa prioritizes found local image assets over downloading from metadata agents, preserving the textless images you generated.
 - **`assets_for_all`**: Instructs Kometa to apply these assets to all matches within the library during an operation run.
 

@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
 import SiloSupportNotice from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 import ConfirmDialog from "./ConfirmDialog";
 import ImdbDatasetPanel from "./ImdbDatasetPanel";
 import OverlayBundleTransfer from "./OverlayBundleTransfer";
@@ -624,6 +625,7 @@ export default function DynamicOverlays() {
   const [wizardUploadedFiles, setWizardUploadedFiles] = useState([]);
   const [wizardExtractedKeys, setWizardExtractedKeys] = useState([]);
   const [isWizardUploading, setIsWizardUploading] = useState(false);
+  const setupWizardLaunchHandled = useRef(false);
   const wizardFileInputRef = useRef(null);
 
   const [animetafillConfig, setAnimetafillConfig] = useState(null);
@@ -2156,6 +2158,16 @@ export default function DynamicOverlays() {
   };
 
   const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("setupWizard") !== "1" || !featureSettings?.enabled || setupWizardLaunchHandled.current) return;
+    setupWizardLaunchHandled.current = true;
+    setWizardStep(1);
+    setIsWizardOpen(true);
+    url.searchParams.delete("setupWizard");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [featureSettings?.enabled]);
+
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
@@ -10112,7 +10124,7 @@ export default function DynamicOverlays() {
               {/* Target Server Selector */}
               <div className="space-y-2">
                 <label className="text-[11px] font-bold text-theme-muted uppercase tracking-wider flex items-center gap-1.5">
-                  <Server className="w-3.5 h-3.5 text-purple-400" />
+                  <MediaServerLogo server={syncServer === "all" ? "" : syncServer} className="w-3.5 h-3.5" />
                   Media Server:
                 </label>
                 <select
@@ -11048,13 +11060,12 @@ export default function DynamicOverlays() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {[
-                    { id: "plex", name: "Plex", icon: Tv },
-                    { id: "jellyfin", name: "Jellyfin", icon: Film },
-                    { id: "emby", name: "Emby", icon: HardDrive },
-                    { id: "silo", name: t("silo.name"), icon: Server }
+                    { id: "plex", name: "Plex" },
+                    { id: "jellyfin", name: "Jellyfin" },
+                    { id: "emby", name: "Emby" },
+                    { id: "silo", name: t("silo.name") }
                   ].map(srv => {
                     const isSelected = (animetafillConfig?.media_server || "plex") === srv.id;
-                    const SrvIcon = srv.icon;
                     const serverObj = (animetafillConfig?.available_servers || []).find(s => s.id === srv.id);
                     const isConfigured = serverObj ? serverObj.configured : Boolean(animetafillConfig?.server_url);
 
@@ -11069,7 +11080,7 @@ export default function DynamicOverlays() {
                             : "border-theme bg-theme-hover/40 text-theme-muted hover:text-theme-text hover:bg-theme-hover"
                         }`}
                       >
-                        <SrvIcon className={`w-5 h-5 mb-1.5 ${isSelected ? "text-theme-primary" : "text-theme-muted"}`} />
+                        <MediaServerLogo server={srv.id} className="w-5 h-5 mb-1.5" />
                         <span>{srv.name}</span>
                         <span className={`text-[10px] mt-1 px-1.5 py-0.2 rounded-full border ${
                           isConfigured
@@ -13040,7 +13051,7 @@ export default function DynamicOverlays() {
                 className="w-full h-64 bg-theme-bg border border-theme rounded-lg p-3 text-xs font-mono text-theme-text placeholder:text-theme-muted/50 focus:outline-none focus:ring-1 focus:ring-theme-primary resize-none leading-relaxed"
               />
               <p className="text-[11px] text-theme-muted">
-                Our translation engine reads your libraries and rules, turning them into visual toggles and position pickers. You won't need to edit YAML ever again!
+                The visual editor turns imported libraries and rules into visual toggles and position controls, so common changes do not require editing YAML.
               </p>
             </div>
 
@@ -13277,7 +13288,8 @@ export default function DynamicOverlays() {
             {/* Target Server and Library Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-theme-muted uppercase tracking-wider">
+                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-theme-muted uppercase tracking-wider">
+                  <MediaServerLogo server={syncServer === "all" ? "" : syncServer} className="w-3.5 h-3.5" />
                   Target Server
                 </label>
                 <select
@@ -13919,7 +13931,7 @@ export default function DynamicOverlays() {
             </div>
             <div className="p-4 border-b border-theme space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="text-xs text-theme-muted space-y-1"><span>Media Server</span>
+                <label className="text-xs text-theme-muted space-y-1"><span className="flex items-center gap-1.5"><MediaServerLogo server={syncServer || "all"} className="w-4 h-4" />Media Server</span>
                   <select value={syncServer || "all"} onChange={(event) => setSyncServer(event.target.value)}
                     className="w-full min-w-0 bg-theme-bg border border-theme rounded-lg px-3 py-2 text-theme-text">
                     <option value="all">All Configured Servers</option>
@@ -15019,7 +15031,7 @@ export default function DynamicOverlays() {
                     <div className="space-y-1">
                       <h4 className="text-sm font-bold text-theme-text">Start with popular badge layouts</h4>
                       <p className="text-xs text-theme-muted leading-relaxed">
-                        If you are starting fresh, you can apply our recommended badges for your libraries below. You can customize, move, or disable any badge at any time.
+                        If you are starting fresh, apply recommended badges for your libraries below. You can customize, move, or disable any badge at any time.
                       </p>
                     </div>
 
@@ -15365,7 +15377,9 @@ export default function DynamicOverlays() {
                   <button
                     type="button"
                     onClick={() => {
-                      dismissWizardInDb();
+                      if (dontShowWizardAgain) {
+                        dismissWizardInDb();
+                      }
                       setIsWizardOpen(false);
                       handleTabChange("preview");
                     }}

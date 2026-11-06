@@ -3,6 +3,10 @@
 Welcome to the Posterizarr Blueprints and Recipes guide! This page provides quick-start configurations for common use cases.
 You can easily find which settings you need to adjust to achieve a specific look or behavior.
 
+![Blueprint Builder presets](images/11-blueprint-builder.png)
+
+*Expand **Builders** in the sidebar and choose **Blueprint Builder** to review, load, or apply a preset.*
+
 ---
 
 ## Logo Instead of Text

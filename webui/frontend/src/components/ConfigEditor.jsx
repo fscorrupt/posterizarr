@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
 import SiloSupportNotice from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Save,
@@ -1500,7 +1501,10 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
             return (
                 <div className={`flex items-center justify-between h-[42px] px-4 bg-theme-bg rounded-lg border border-theme transition-all ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}>
-                    <div className="text-sm font-medium text-theme-text">{getDisplayName(settingKey)} {disabled && <span className="text-xs text-theme-muted ml-2">(Disabled)</span>}</div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-theme-text">
+                        {["UsePlex", "UseJellyfin", "UseEmby", "UseSilo"].includes(settingKey) && <MediaServerLogo server={settingKey.replace(/^Use/, "")} className="h-4 w-4" />}
+                        {getDisplayName(settingKey)} {disabled && <span className="text-xs text-theme-muted ml-2">(Disabled)</span>}
+                    </div>
                     <label className={`relative inline-flex items-center ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                         <input type="checkbox" checked={isEnabled} disabled={disabled} onChange={(e) => handleChange(e.target.checked)} className="sr-only peer" />
                         <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-theme-primary rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-primary"></div>

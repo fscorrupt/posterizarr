@@ -56,23 +56,26 @@ nav:
     - 'Choose an installation method': 'installation.md'
     - 'Manual PowerShell walkthrough': 'walkthrough.md'
     - 'Run the Web UI from source': 'uiinstallation.md'
-  - 'Use Posterizarr':
-    - 'What Posterizarr does': 'capabilities.md'
-    - 'Artwork showcase': 'showcase.md'
-    - 'Run modes and automation': 'modes.md'
+  - 'Web UI Guide':
+    - 'First look and navigation': 'ui_guide.md'
+    - 'Configuration': 'configuration.md'
+    - 'Run Modes and Queue': 'modes.md'
     - 'Action Center': 'action_center.md'
+    - 'Capabilities': 'capabilities.md'
+  - 'Artwork & Builders':
+    - 'Artwork showcase': 'showcase.md'
     - 'Dynamic Overlays': 'dynamic_overlays.md'
     - 'Blueprints and recipes': 'blueprints.md'
     - 'Manual asset naming': 'namingconvention.md'
-    - 'Plex Image Cleanup (ImageMaid)': 'plex_image_cleanup.md'
-  - 'Servers & Integrations':
+    - 'Plex Image Cleanup': 'plex_image_cleanup.md'
+  - 'Automation & Integrations':
+    - 'Run modes, schedules and triggers': 'modes.md'
     - 'Agregarr Integration': 'agregarrintegration.md'
     - 'Jellyfin Plugin': 'jellyfin_plugin.md'
     - 'Emby Plugin': 'emby_plugin.md'
     - 'Homepage API integration': 'homepage.md'
     - 'Optional Kometa Compatibility': 'kometaintegration.md'
-  - 'Configuration & Reference':
-    - 'Configuration reference': 'configuration.md'
+  - 'Reference & Troubleshooting':
     - 'Artwork search order': 'searchorder.md'
     - 'Platform & Tools': 'platformandtools.md'
     - 'Networking': 'networking.md'

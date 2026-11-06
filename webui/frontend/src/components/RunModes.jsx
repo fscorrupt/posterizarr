@@ -36,6 +36,7 @@ import { useToast } from "../context/ToastContext";
 import { BLUEPRINTS } from "./Blueprints";
 import WorkspaceHeader from "./WorkspaceHeader";
 import SiloSupportNotice, { useSiloEnabled } from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 
 const API_URL = "/api";
 
@@ -2551,7 +2552,10 @@ const LogoUpdaterModal = React.memo(({
             className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
           >
             <RefreshCw className="w-8 h-8 text-emerald-400 mb-3" />
-            <h3 className="font-semibold text-theme-text mb-1">{t("silo.syncTitle")}</h3>
+            <h3 className="font-semibold text-theme-text mb-1 flex items-center justify-center gap-2">
+              <MediaServerLogo server="silo" className="h-4 w-4 rounded-sm" />
+              {t("silo.syncTitle")}
+            </h3>
             <p className="text-sm text-theme-muted text-center">{t("silo.syncDescription")}</p>
           </button>
 

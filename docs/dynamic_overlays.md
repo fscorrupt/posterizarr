@@ -24,22 +24,55 @@ Kometa (formerly Plex Meta Manager) is a separate application. Posterizarr's Dyn
 
 ## Quick Start From the Web UI
 
-1. Open **Builders > Dynamic Overlays**. Use **Setup Wizard** for a guided first
-   setup, or import your supported Kometa-style YAML in **Config & YAML Files**.
-2. Keep **Dry Run** enabled while testing. Check the Master Switch and confirm
-   which libraries and artwork formats are in scope before running a sync.
-3. In **Libraries & Rules**, review the imported rules. Check readiness and fetch
+The general first-run wizard now includes an optional **Dynamic Overlays**
+step. If enabled there, Posterizarr saves the feature as enabled with **Dry Run**
+on, then opens this dedicated Setup Wizard after the general setup finishes. The
+finish action itself does not sync or upload artwork. Leave the option off to
+set up overlays later from **Builders**.
+
+![Dynamic Overlays workspace with Configure, Design, and Apply & Maintain areas](images/10-dynamic-overlays.png)
+
+*Expand **Builders** and choose **Dynamic Overlays** in the sidebar to reach setup, configuration, preview, synchronization, and cache tools.*
+
+![Dynamic Overlays Setup Wizard at Choose your setup](images/42-dynamic-overlays-setup-wizard.png)
+
+*Choose **Setup Wizard** at the top of Dynamic Overlays. If the feature is off, **Turn On & Launch Setup Wizard** enables it and opens the guide.*
+
+The four steps are:
+
+| Step | What it covers | What happens |
+|---|---|---|
+| **How It Works** | Clean source artwork, in-memory compositing, supported servers, and turning overlays off later. | Information only. |
+| **Choose your setup** | **Recommended Presets** or **Import Existing Files**. Presets cover movie ratings/runtime/age/resolution, show status/network, titlecard runtime/resolution, and background ratings. Import accepts multiple `.yml` / `.yaml` files such as `config.yml` and `overlays_movies.yml`. | **Apply Presets** changes the overlay configuration immediately. Selecting or dropping YAML uploads those files immediately, extracts and saves recognized API keys, and may translate `config.yml` into the visual configuration. Neither action uploads artwork. |
+| **Customize** | Drag-and-drop placement, grid/alignment guides, sliders, and artwork formats. | Guidance only; edit and save layouts in **Visual Badges** or **Live Preview**. |
+| **Send to Server** | **Changes Only** versus Full Sync and scheduled updates. | Guidance only. **Finish & Open Live Preview** closes the guide and opens the preview; it does not run a sync. |
+
+The **Do not show this welcome guide automatically** checkbox controls the
+welcome banner after finishing. You can reopen the guide from **Setup Wizard**
+at any time.
+
+!!! warning "Preset and import actions take effect immediately"
+    Do not select **Apply Presets** or upload YAML just to inspect the wizard.
+   Presets change overlay rules. YAML imports write files and may save API keys
+   found in the YAML to Dynamic Overlays settings; importing `config.yml` can
+   also update the visual configuration. Inspect the files and trust their
+   source before importing. Existing same-name files are backed up as `.bak`.
+   These actions do not upload artwork. Keep **Dry Run** enabled for sync testing.
+
+After the guide, use this safe setup path:
+
+1. Keep **Dry Run** enabled. Check the Master Switch and confirm which libraries
+   and artwork formats are in scope before running a sync.
+2. In **Libraries & Rules**, review the imported rules. Check readiness and fetch
    any required official templates, fonts, or images before previewing.
-4. Open **Visual Badges** or **Live Preview**, choose the library and format, and
-   adjust the badges. **Save Layout** persists the layout; a preview alone does
-   not update media-server artwork.
-5. Run a dry-run sync in **Sync & Cache** and review the log and cache results.
+3. Open **Visual Badges** or **Live Preview**, choose the library and format, and
+   adjust badges. **Save Layout** persists the layout; previewing alone does not
+   update media-server artwork.
+4. Run a dry-run sync in **Sync & Cache** and review its log and cache results.
    Turn off Dry Run only when you intend to upload artwork to the selected server.
-6. For a smaller test, use **Select Movie / Show** in **Sync & Cache** instead of
+5. For a smaller test, use **Select Movie / Show** in **Sync & Cache** instead of
    processing an entire library. Avoid **Force Reapply** unless you deliberately
    want to reapply artwork.
-
-![Live Preview showing sample artwork, resolution and score badges, placement controls and alignment guides](images/ui-dynamic-overlays.png)
 
 *Development-build screenshot with example library names. The artwork and badge
 metadata are preview samples, not the result of a media-server sync. The visible
@@ -52,6 +85,10 @@ configuration is an example, not the installation defaults.*
     overlays itself; it does not start Kometa.
 
 ### Share a Complete Overlay Bundle
+
+![Dynamic Overlays Config and YAML Files section](images/19-overlay-config-yaml.png)
+
+*Navigate to **Builders > Dynamic Overlays > Config & YAML Files** to manage YAML, assets, fonts, and readiness.*
 
 Use **Export bundle** in the Dynamic Overlays header to download
 `posterizarr-overlays.zip`. This is separate from Blueprint exports and raw
@@ -128,6 +165,10 @@ the backend. As a workaround for a blank variables block, use
 one; its values define the overlay's behavior.
 
 ### Provider Ratings and Score Layout
+
+![Dynamic Overlays Visual Badges controls](images/20-overlay-visual-badges.png)
+
+*Navigate to **Builders > Dynamic Overlays > Visual Badges** to choose rating sources and adjust badge layout.*
 
 Provider badges support IMDb (`imdb`), Rotten Tomatoes critics (`tomatoes`),
 Rotten Tomatoes audience (`tomatoesaudience`), TMDb (`tmdb`), Trakt (`trakt`),
@@ -218,7 +259,9 @@ Downloads can exceed 1 GB compressed; allow several GB of free disk space and
 time for the initial indexing, especially on a NAS. Files are streamed to disk
 and imported in bounded batches, not loaded entirely into RAM.
 
-![Local IMDb Dataset showing an imported ratings index, Download and Update, and expanded matching guidance](images/ui-imdb-dataset.png)
+![Dynamic Overlays Sync and Cache controls](images/22-overlay-sync-cache.png)
+
+*Navigate to **Builders > Dynamic Overlays > Sync & Cache**, then choose **Browse Ratings** to open Local IMDb Dataset and the ratings cache.*
 
 *Read-only capture of an existing imported index. Its count and timestamp are
 installation-specific, not download requirements or a performance benchmark.*
@@ -749,4 +792,4 @@ MIT License
 Copyright (c) 2026 meisnate12
 ```
 
-We extend deep gratitude to the Kometa community for their contributions to media server automation.
+Posterizarr's maintainer thanks the Kometa community for its contributions to media server automation.

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
 import SiloSupportNotice from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 import { useTranslation } from "react-i18next";
 import {
   Folder,
@@ -397,7 +398,7 @@ const LogoBrowser = () => {
                       : "bg-theme-bg text-theme-text hover:bg-theme-hover border border-theme"
                   }`}
                 >
-                  <Server className="w-4 h-4" />
+                  <MediaServerLogo server={server.id} className="w-4 h-4" />
                   {server.name}
                 </button>
               ))}

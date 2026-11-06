@@ -16,91 +16,76 @@
 
 ## New to Posterizarr?
 
-Start with the short setup path. It helps you choose an installation method,
-connect your media server, and test the result before enabling automation.
+Start with the short setup path: choose an installation method, connect one
+media-server library, and test the result before enabling uploads or automation.
 
-<div class="grid cards" markdown>
+![Dashboard with Posterizarr's main navigation and workspace](images/01-dashboard-overview.png)
 
--   **I am new to Posterizarr**
+*Navigate to **Dashboard** in the left sidebar after the Web UI opens. Use the sidebar to reach setup, artwork, automation, and history views.*
 
-  Choose an install path, connect one library, and test before automating.
+1. [Choose an installation method](installation.md) and open the Web UI.
+2. Follow [First-time setup](getting_started.md) to connect a server and configure providers.
+3. Run a safe [Testing Mode](modes.md#test-mode) sample before processing a library.
+4. Use the [Web UI map](ui_guide.md) to locate everyday tasks and the [configuration reference](configuration.md) for individual settings.
 
-  [Start the setup guide](getting_started.md)
+## What Posterizarr Does
 
--   **I already installed it**
+Posterizarr creates and manages posters, season posters, backgrounds, title
+cards, and collection artwork for Plex, Jellyfin, and Emby. Experimental Silo
+support is available but does not yet have full feature parity. Artwork sources,
+language preference, sizing, logos, text, borders, templates, local assets, and
+upload behavior can be configured by artwork type.
 
-  Jump to everyday tasks: run modes, Action Center, overlays, or recipes.
+![Run Modes with normal, test, backup, restore, sync, and logo actions](images/02-run-modes.png)
 
-  [Browse user guides](modes.md)
+*Navigate to **Run Modes** to test, run, back up, restore, or create one asset manually.*
 
--   **I want to understand the settings**
-
-  Look up a specific configuration field or provider behavior.
-
-  [Open the configuration reference](configuration.md)
-
-</div>
-
-See real examples in the [artwork showcase](showcase.md), or learn
-[what Posterizarr can do](capabilities.md) before setting it up.
-
-## Manage Your Artwork From the Web UI
-
-Posterizarr creates and manages artwork for Plex, Jellyfin, and Emby, with
-experimental support for Silo. Silo does not yet have full feature parity with
-the other servers. Use the
-dashboard to check engine status, upcoming schedules, and recently generated
-artwork. Open **Action Center** to review assets that need attention, or
-**Insights** to explore execution history and runtime statistics.
-
-![Dashboard with engine status, upcoming scheduler jobs and recent artwork](images/ui-dashboard.png)
-
-- [Install Posterizarr](installation.md) for a new setup.
-- [Review assets in Action Center](action_center.md) to resolve artwork issues.
-- [Create reusable Blueprints](blueprints.md) for asset-generation recipes.
-- [Configure automation](modes.md) for scheduled and externally triggered runs.
+The Web UI also includes the Action Center, asset galleries, scheduling,
+webhooks, server export, logs, and Insights. See [Capabilities](capabilities.md)
+for the complete feature inventory.
 
 ## Native Dynamic Overlays
 
-**Builders > Dynamic Overlays** previews and composites supported badges for
-posters, titlecards, and backgrounds. Choose a library and format, adjust badge
-placement, check required assets, and sync directly to Plex, Jellyfin, or Emby.
-Clean source artwork stays unchanged on disk.
+![Dynamic Overlays configure, design, and apply sections](images/10-dynamic-overlays.png)
 
-![Dynamic Overlays live preview with a sample poster and badge placement controls](images/ui-dynamic-overlays.png)
+*Navigate to **Builders > Dynamic Overlays** to configure supported rules, preview badges, and apply overlays.*
 
-Start with **Dry Run** to evaluate and render changes without uploading artwork.
-Supported Kometa-style YAML can be imported, but Posterizarr does not run Kometa
-and does not implement every Kometa feature.
+Dynamic Overlays composites supported badges in memory and can upload the
+result directly to Plex, Jellyfin, or Emby while keeping clean source artwork
+unchanged on disk. Start with **Dry Run**. Kometa-style YAML import supports a
+subset of Kometa configuration; Posterizarr does not run Kometa or implement all
+of its features. Read the [Dynamic Overlays guide](dynamic_overlays.md).
 
-[Open the Dynamic Overlays setup guide](dynamic_overlays.md)
+## Configure and Automate
 
-## Import IMDb Ratings Locally
+![Configuration providers view](images/17-configuration-providers.png)
 
-Posterizarr can import IMDb's official ratings, episode, and title datasets into
-a local index. Missing IMDb scores can then be resolved locally, without an
-API call for each successful lookup. Episode matching and manual episode/season
-mapping help with alternate numbering and anime.
+*Navigate to **Configuration > Providers** to set provider credentials and search priority.*
 
-Open **Builders > Dynamic Overlays > Sync & Cache > Browse Ratings** for
-**Local IMDb Dataset** and **Download & Update**. The download and indexing
-require disk space and time; IMDb's datasets are for non-commercial use only.
+Connect a server and choose a test library under **Configuration > Media
+Servers**. Then add provider credentials and choose the artwork types to enable.
+Use [the configuration guide](configuration.md) for every setting and
+[Run Modes and automation](modes.md) for schedules, Tautulli, Sonarr, and Radarr.
 
-![Local IMDb Dataset import status and the built-in explanation of local episode matching](images/ui-imdb-dataset.png)
+## Full Documentation
 
-[Read the IMDb import and matching guide](dynamic_overlays.md#local-imdb-dataset).
+| Start here | Use and maintain | Reference and integrations |
+|---|---|---|
+| [Requirements](requirements.md) · [Installation](installation.md) · [First-time setup](getting_started.md) · [Manual PowerShell walkthrough](walkthrough.md) · [Web UI from source](uiinstallation.md) | [UI map](ui_guide.md) · [Action Center](action_center.md) · [Blueprints](blueprints.md) · [Artwork showcase](showcase.md) · [Plex Image Cleanup](plex_image_cleanup.md) | [Configuration](configuration.md) · [Provider search order](searchorder.md) · [Platform & Tools](platformandtools.md) · [Networking](networking.md) · [FAQs](faqs.md) · [Telemetry](telemetry.md) |
+| [Capabilities](capabilities.md) · [Naming manual assets](namingconvention.md) | [Dynamic Overlays](dynamic_overlays.md) · [Homepage API](homepage.md) · [Agregarr](agregarrintegration.md) · [Jellyfin plugin](jellyfin_plugin.md) · [Emby plugin](emby_plugin.md) · [Kometa compatibility](kometaintegration.md) | [API endpoints](endpoints.md) · [PowerShell architecture](powershell_scripts.md) · [Backend architecture](backend_python.md) · [Frontend components](frontend_components.md) · [LLM architecture](llms.md) · [Docs preview workflow](docs_preview.md) |
 
-## Explore Run History
+## Supported Platforms
 
-Insights brings run counts, success/error filters, durations, artwork totals,
-storage figures, and interactive charts into one view. Its optional **Demo**
-mode lets you explore the interface using simulated runs.
+Docker, Unraid, Linux, Windows, macOS, and ARM deployments are covered in the [installation and platform guides](installation.md).
 
-![Insights KPI cards and charts with the built-in Sample Preview enabled](images/ui-insights.png)
+## Privacy & Telemetry
 
-!!! note "About these screenshots"
-    These are development-build captures from a local, read-only documentation
-    preview. Library and title names are replaced with examples. The Insights
-    image uses built-in simulated telemetry; overlay previews use sample metadata.
-    They illustrate the UI, not benchmark results, default configuration, or a
-    completed media-server sync.
+Telemetry is optional and can be disabled with `"telemetry": false` in the configuration. The complete payload, retention behavior, and opt-out instructions are in [Telemetry & Privacy](telemetry.md). The worker implementation is in [telemetry-worker/worker.js](https://github.com/fscorrupt/posterizarr/blob/main/telemetry-worker/worker.js).
+
+## Contributing
+
+Please review the [Contributing Guidelines](https://github.com/fscorrupt/posterizarr/blob/main/.github/CONTRIBUTING.md) and [Code of Conduct](https://github.com/fscorrupt/posterizarr/blob/main/.github/CODE_OF_CONDUCT.md) before submitting a pull request. Keep `$CurrentScriptVersion` in `Posterizarr.ps1` and [Release.txt](https://github.com/fscorrupt/posterizarr/blob/main/Release.txt) synchronized as required by the contribution guide. Version synchronization supports update detection. The project maintainer reviews and tests AI-assisted UI and web changes before they are committed.
+
+<!-- sponsors --><!-- sponsors -->
+
+Made by [fscorrupt](https://github.com/fscorrupt) and the [open source community](https://github.com/fscorrupt/posterizarr/graphs/contributors). Join the [Discord](https://discord.gg/fYyJQSGt54), [report a bug or request a feature](https://github.com/fscorrupt/posterizarr/issues), or [support Posterizarr](https://ko-fi.com/R6R81S6SC).

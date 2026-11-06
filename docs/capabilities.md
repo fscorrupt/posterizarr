@@ -40,7 +40,9 @@ type, arrange badges in the visual editor, and preview or Dry Run before
 uploading. Overlay compositing happens in memory, so clean source artwork stays
 unchanged on disk. A separate Kometa installation is optional, not required.
 
-![Dynamic Overlays editor with the visual preview and badge controls](images/ui-dynamic-overlays.png)
+![Dynamic Overlays editor with Configure, Design, and Apply & Maintain areas](images/10-dynamic-overlays.png)
+
+*Navigate to **Builders > Dynamic Overlays** in the sidebar to configure rules, preview badges, or run a sync.*
 
 [Open the Dynamic Overlays guide](dynamic_overlays.md) ·
 [Browse the artwork gallery](showcase.md) ·
@@ -54,7 +56,9 @@ conservatively, and let you correct episode IDs or season numbering locally.
 Successful local lookups avoid per-item provider requests; other sources and
 unresolved items can still need external providers.
 
-![Local IMDb Dataset import controls and local episode-matching explanation](images/ui-imdb-dataset.png)
+![Dynamic Overlays Sync and Cache controls](images/22-overlay-sync-cache.png)
+
+*Navigate to **Builders > Dynamic Overlays > Sync & Cache**, then choose **Browse Ratings** to open the local IMDb dataset and ratings cache.*
 
 [Set up the local IMDb dataset](dynamic_overlays.md#local-imdb-dataset).
 The datasets are optional, require disk space for indexing, and are licensed by
@@ -67,12 +71,16 @@ Testing Mode to check sample output before changing a live library. The Web UI
 also includes manual asset creation, backups and restores, logs, scheduled
 runs, and supported Tautulli or Sonarr/Radarr webhooks.
 
-![Posterizarr dashboard with run status, scheduler, configuration, and recent assets](images/ui-dashboard.png)
+![Posterizarr dashboard and main navigation](images/01-dashboard-overview.png)
+
+*Navigate to **Dashboard** in the sidebar to check status, schedules, configuration, recent assets, and logs.*
 
 [See all Run Modes](modes.md) · [Review assets in Action Center](action_center.md) ·
 [Set up your first run](getting_started.md)
 
-![Run Modes page showing normal, testing, backup, restore, sync, and logo-updater actions](images/ui-run-modes.png)
+![Run Modes page showing quick actions and manual asset controls](images/02-run-modes.png)
+
+*Navigate to **Run Modes** to test, run, back up, restore, sync, or create one asset manually.*
 
 ## Configure each artwork type
 
@@ -81,7 +89,9 @@ system, providers, media servers, global visuals, posters, seasons, backgrounds,
 title cards, and collections. Search by setting name or value, open a settings
 card for its controls, then save changes in the UI.
 
-![Configuration page with searchable settings and grouped artwork sections](images/ui-configuration-groups.png)
+![Configuration page with Media Servers selected](images/06-configuration-media-servers.png)
+
+*Navigate to **Configuration** and choose a settings group; use the search field to find a specific option.*
 
 [Open the configuration guide](configuration.md)
 

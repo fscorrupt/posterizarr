@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import MediaServerLogo from "./MediaServerLogo";
 
 export function useSiloEnabled(knownEnabled) {
   const [detected, setDetected] = useState(false);
@@ -29,7 +30,10 @@ export default function SiloSupportNotice({ enabled, scope = "general" }) {
 
   return (
     <aside role="note" aria-label={t("silo.support.heading")} className="flex min-w-0 items-start gap-3 border-l-2 border-amber-500 bg-amber-500/5 px-4 py-3 text-theme-text">
-      <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+      <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
+        <MediaServerLogo server="silo" className="h-5 w-5 rounded-sm" />
+        <Info className="h-4 w-4 text-amber-500" aria-hidden="true" />
+      </div>
       <div className="min-w-0 break-words [overflow-wrap:anywhere]">
         <p className="text-sm font-semibold">{t("silo.support.heading")}</p>
         <p className="mt-1 text-sm leading-relaxed text-theme-muted">{t(`silo.support.${scope}`)}</p>

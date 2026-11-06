@@ -1,171 +1,144 @@
-<a name="readme-top"></a>
-<br />
-<div align="center">
-  <a href="https://github.com/fscorrupt/posterizarr">
-    <img src="/docs/images/logo_banner.png" alt="Logo" width="550" height="550">
-  </a>
+# Posterizarr
 
-  <p align="center">
-    Automate the creation of beautiful assets for your Plex, Jellyfin, or Emby library.
-  </p>
-</div>
-<br />
-<div align="center">
-  <a href="https://github.com/fscorrupt/posterizarr">
-    <img src="docs/images/posterizarr_banner.jpg" alt="Posterizarr artwork formats with selected Plex posters, titlecard and Matrix (1999) background" width="1200">
-  </a>
-    <br />
-    <br />
-    <strong><a href="https://fscorrupt.github.io/posterizarr/">View Full Documentation »</a></strong>
-    <br />
-    <br />
-    <a href="https://github.com/fscorrupt/posterizarr/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/fscorrupt/posterizarr/issues">Request Feature</a>
-    ·
-    <a href="https://discord.gg/fYyJQSGt54">Join our Discord</a>
-  </p>
-</div>
+Automate artwork creation and management for Plex, Jellyfin, and Emby. Posterizarr combines configurable artwork search and styling with a Web UI for testing, curation, server uploads, and automation. Silo support is experimental and does not have full feature parity.
 
-<div align="center">
-  <h3>☕ Support Posterizarr</h3>
-  <p>
-    Posterizarr is free to use. If it is useful to you, your support helps keep development going.
-  </p>
-  <a href="https://ko-fi.com/R6R81S6SC">
-    <img src="https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support on Ko-fi">
-  </a>
-  &nbsp;
-  <a href="https://discord.gg/fYyJQSGt54">
-    <img src="https://img.shields.io/badge/Join%20our-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord">
-  </a>
-</div>
+<p align="center"><img src="docs/images/posterizarr_banner.jpg" alt="Posterizarr artwork examples for posters, seasons, title cards, and backgrounds" width="1100"></p>
 
-## About The Project
+**New here?** Follow [First-time setup](docs/getting_started.md), then use the [Web UI map](docs/ui_guide.md) to find each screen.
 
-Posterizarr is a PowerShell script with a full Web UI that automates generating images for your media library. It fetches artwork from Fanart.tv, TMDB, TVDB, Plex, and IMDb, focusing on textless images and applying your own custom overlays and text.
+## 1. Overview & Key Features
 
-* **User-Friendly Web UI:** Manage settings, monitor activity, and trigger runs from a browser.
-* **Native Dynamic Overlays:** In-memory compositing for ratings, 4K resolution banners, language flags, and series status ribbons directly to Plex, Jellyfin, and Emby — without modifying clean artwork on disk or needing an external Kometa container.
-* **Logo Management:** Search, preview, and manually replace clearlogos directly from the Web UI.
-* **Multiple Media Servers:** Supports Plex, Jellyfin, and Emby.
-* **Organized Local Assets:** Keeps artwork in a predictable library/title structure for Posterizarr's native workflows and optional external consumers.
-* **Smart Integration:** Trigger runs from Tautulli, Sonarr, and Radarr.
+![Posterizarr Dashboard with navigation, run status, and workspace panels](docs/images/01-dashboard-overview.png)
 
-### Web UI & Dynamic Overlays
+*Navigate to **Dashboard** in the left sidebar to check engine status, scheduler activity, configuration state, recent assets, and logs.*
 
-Use the Web UI to monitor the dashboard, review generated artwork in the
-**Action Center**, inspect run history in **Insights**, and schedule automation.
-Heavy views load on demand, while artwork previews keep the thumbnail visible
-until the full-resolution image is ready.
+- Generate posters, season posters, backgrounds, title cards, and collection artwork using provider, language, image-size, and styling preferences.
+- Preserve clean source artwork while using native Dynamic Overlays to render supported ratings, resolution, language, and other metadata badges in memory.
+- Connect Plex, Jellyfin, or Emby; manage logos and assets; review suggested artwork issues; and upload or synchronize artwork.
+- Test styling without uploading, then run manually, schedule jobs, or respond to Tautulli and Sonarr/Radarr events.
+- Use local assets, templates, backups, restore workflows, notifications, and optional integrations such as Kometa, Agregarr, and the Jellyfin/Emby plugins.
 
-**Builders > Dynamic Overlays** adds a native overlay workflow for movie, show,
-and season posters, titlecards, and backgrounds. Preview supported badges,
-adjust their placement, inspect missing assets, and sync directly to Plex,
-Jellyfin, or Emby. Clean source artwork stays unchanged on disk.
+## 2. Quick Start / Installation
 
-Start with **Dry Run**, which evaluates and renders changes without uploading
-artwork. Kometa-style YAML import supports a subset of Kometa configuration;
-Posterizarr does not run Kometa or provide complete Kometa feature parity.
+Docker Compose is the recommended path for most users. Docker and Unraid include the Web UI; you do not need to install it separately.
 
-- [Dynamic Overlays guide](https://fscorrupt.github.io/posterizarr/dynamic_overlays/)
-- [Action Center guide](https://fscorrupt.github.io/posterizarr/action_center/)
-- [Installation and upgrades](https://fscorrupt.github.io/posterizarr/installation/)
+1. Review [requirements](docs/requirements.md) and choose [an installation method](docs/installation.md).
+2. For Docker, create writable persistent folders for `/config` and `/assets`, publish host port `8000` to container port `8000`, and set the container time zone. The complete Compose example also mounts `/assetsbackup` and `/manualassets`.
+3. Start the container, then open `http://localhost:8000` on the host or `http://YOUR_SERVER_IP:8000` from another device. If you changed the host port, use that port in the URL.
+4. Continue with the [first-time setup walkthrough](docs/getting_started.md). Keep `RUN_TIME=disabled` when using the Web UI Scheduler.
 
-<p align="center">
-  <a href="https://fscorrupt.github.io/posterizarr/installation">
-    <img alt="Current Posterizarr dashboard with scheduler and recent artwork" width="100%" src="docs/images/ui-dashboard.png">
-  </a>
-</p>
+The installation guide covers updates, stopping the container, external Docker networks, Unraid, and manual PowerShell installs. See [Networking](docs/networking.md) if the UI is not reachable.
 
-<p align="center">
-  <a href="https://fscorrupt.github.io/posterizarr/dynamic_overlays/">
-    <img alt="Dynamic Overlays live preview with resolution, rating and series-status badges" width="100%" src="docs/images/ui-dynamic-overlays.png">
-  </a>
-</p>
+## 3. First-Time UI Walkthrough & Initial Setup
 
-The banner and [Showcase](docs/showcase.md) use selected Plex artwork, with the
-existing Posterizarr logo for project branding.
+![First-run wizard at the Media Server step](docs/images/41-first-run-wizard.png)
 
-UI screenshots show a development build with example library/title names. Insights
-sample telemetry is simulated; preview badges use sample metadata rather than
-the metadata of a particular media-server item.
+*The first-run wizard opens automatically for an incomplete configuration. It guides server, provider, automation, optional Dynamic Overlays, notification, and schedule setup.*
 
-## 🚀 Get Started
+![Configuration screen with the Media Servers group selected](docs/images/06-configuration-media-servers.png)
 
-All installation instructions, configuration guides, and advanced tutorials have been moved to our dedicated documentation site.
+*Navigate to **Configuration** in the left sidebar, then choose **Media Servers** to connect Plex, Jellyfin, or Emby and select libraries.*
 
-## **[Click Here to Read the Full Documentation](https://fscorrupt.github.io/posterizarr/installation)**
+1. Add the URL and API credential for one media server, validate the connection, and choose one test library.
+2. Open **Configuration > Providers** and add keys for the artwork providers you plan to use. TMDb, Fanart.tv, and TheTVDB are optional individually; configure only the providers you intend to use.
+3. Review the asset path, upload behavior, and enabled artwork types. Search settings by name and save changes in the UI.
+4. Use **Run Modes > Testing Mode** to check artwork styling without uploading. For Dynamic Overlays, use its Setup Wizard and keep Dry Run enabled; this checks overlay rules separately.
+5. Run a small, targeted job and inspect its output and logs before enabling broader uploads or automation.
 
-## Supported Platforms 💻
+![Provider configuration with searchable settings and provider preferences](docs/images/17-configuration-providers.png)
 
-[![Docker](https://img.shields.io/static/v1?style=for-the-badge&logo=docker&logoColor=FFFFFF&message=docker&color=1E63EE&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![Unraid](https://img.shields.io/static/v1?style=for-the-badge&logo=unraid&logoColor=FFFFFF&message=unraid&color=E8402A&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![Linux](https://img.shields.io/static/v1?style=for-the-badge&logo=linux&logoColor=FFFFFF&message=Linux&color=0D597F&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![Windows](https://img.shields.io/static/v1?style=for-the-badge&logo=windows&logoColor=FFFFFF&message=windows&color=097CD7&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![MacOS](https://img.shields.io/static/v1?style=for-the-badge&logo=apple&logoColor=FFFFFF&message=macOS&color=515151&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![ARM](https://img.shields.io/static/v1?style=for-the-badge&logo=arm&logoColor=FFFFFF&message=ARM&color=815151&label=)](https://fscorrupt.github.io/posterizarr/installation)
+*Navigate to **Configuration > Providers** to enter artwork-provider credentials and set provider priority.*
 
-## Sponsors ❤️
+The UI also has **Global Visuals**, **Posters**, **Seasons**, **Backgrounds**, **Title Cards**, and **Collections** groups. The [Configuration reference](docs/configuration.md) retains the full field-by-field settings and JSON examples.
 
-Check out our awesome sponsors!
+## 4. Core Features & Sections
 
-<!-- sponsors --><!-- sponsors -->
+### Run Modes and Queue
+
+![Run Modes quick actions and manual asset form](docs/images/02-run-modes.png)
+
+*Navigate to **Run Modes** in the left sidebar to start a normal run, test, backup, restore, sync, logo update, or manual asset job.*
+
+Use **Testing Mode** before a full run. **Queue** shows pending, running, and completed manual or overlay work. See [Run Modes and automation](docs/modes.md) for mode behavior, safety notes, manual CLI switches, and webhook instructions.
+
+### Asset Management
+
+![Action Center filters and asset review actions](docs/images/07-action-center.png)
+
+*Navigate to **Asset Management > Action Center** to filter flagged assets, mark them resolved, replace an image, or remove a tracking record.*
+
+Asset Management also contains poster/background/season/title-card galleries, **Manual Assets**, **Backup Assets**, **Test Gallery**, and (when available) **Plex Image Quarantine**. Action Center items are curation suggestions, not necessarily failed jobs. Read the [Action Center guide](docs/action_center.md), [manual naming rules](docs/namingconvention.md), and [Plex Image Cleanup guide](docs/plex_image_cleanup.md) before using destructive cleanup actions.
+
+### Media Server Export
+
+![Plex library export filters and records](docs/images/09-plex-library-export.png)
+
+*Navigate to **Media Server Export > Plex** to browse cached Plex library and episode records; choose **Jellyfin / Emby** for those server exports.*
+
+Exports and refresh/import operations are separate from artwork generation. See the [API and endpoint reference](docs/endpoints.md) for supported data operations.
+
+### Builders
+
+![Dynamic Overlays with its Configure, Design, and Apply & Maintain areas](docs/images/10-dynamic-overlays.png)
+
+*Navigate to **Builders > Dynamic Overlays** to configure rules, edit badges, preview changes, and run a sync.*
+
+Start with **Dry Run**. It renders and evaluates changes without uploading artwork. Kometa-style YAML import supports a subset of Kometa configuration; Posterizarr does not run Kometa and does not provide complete Kometa feature parity. The detailed [Dynamic Overlays guide](docs/dynamic_overlays.md) covers bundle sharing, provider ratings, local IMDb data, cache behavior, Anime ratings, and compatibility limits.
+
+![Blueprint presets in Blueprint Builder](docs/images/11-blueprint-builder.png)
+
+*Navigate to **Builders > Blueprint Builder** to preview and apply reusable artwork presets.*
+
+Other builders include Collection Builder, Logo Builder, and Overlay Builder. See [Blueprints and recipes](docs/blueprints.md) for examples and the [artwork showcase](docs/showcase.md) for samples.
+
+### Insights and Logs
+
+![Insights analytics view](docs/images/12-insights.png)
+
+*Navigate to **Insights** in the sidebar for run history, filters, charts, exports, and optional demo data.*
+
+![Logs view with live controls and level filters](docs/images/13-logs.png)
+
+*Navigate to **Logs** to search and filter log files, download them, or gather a support bundle.*
+
+## 5. Automation, Scheduling & Advanced Usage
+
+![Scheduler configuration and task list](docs/images/04-scheduler.png)
+
+*Navigate to **Scheduler** to create, enable, and run scheduled jobs. In Docker, set `RUN_TIME=disabled` first so the container timer and UI Scheduler do not compete.*
+
+![Auto Triggers setup methods for Tautulli, Sonarr, and Radarr](docs/images/05-auto-triggers.png)
+
+*Navigate to **Auto Triggers** to configure native webhooks; the Docker and Windows methods are retained for legacy setups.*
+
+- Configure schedules and external triggers after you have checked a small test run. See [Run Modes and automation](docs/modes.md), [Agregarr](docs/agregarrintegration.md), and the [FAQ](docs/faqs.md).
+- Container variables include `RUN_TIME`, `APP_PORT`, `DISABLE_UI`, and `ARR_WAIT_TIME`; advanced container startup supports `--run` for one-shot jobs. Details and Docker exec commands remain in [Platform & Tools](docs/platformandtools.md).
+- PowerShell users can use the [manual walkthrough](docs/walkthrough.md) and the optional CLI instructions in [Run Modes](docs/modes.md). The Web UI is the recommended everyday workflow.
+- See [provider search order](docs/searchorder.md), [telemetry and privacy](docs/telemetry.md), [Homepage integration](docs/homepage.md), [optional Kometa compatibility](docs/kometaintegration.md), and the [Jellyfin](docs/jellyfin_plugin.md) and [Emby](docs/emby_plugin.md) plugins for specialist workflows.
+
+## Documentation Map
+
+| Topic | Guides |
+|---|---|
+| Setup | [First-time setup](docs/getting_started.md), [requirements](docs/requirements.md), [installation](docs/installation.md), [PowerShell walkthrough](docs/walkthrough.md), [source Web UI](docs/uiinstallation.md) |
+| Web UI | [UI map](docs/ui_guide.md), [configuration](docs/configuration.md), [run modes](docs/modes.md), [Action Center](docs/action_center.md), [API endpoints](docs/endpoints.md) |
+| Artwork | [Capabilities](docs/capabilities.md), [showcase](docs/showcase.md), [Dynamic Overlays](docs/dynamic_overlays.md), [Blueprints](docs/blueprints.md), [manual naming](docs/namingconvention.md), [Plex cleanup](docs/plex_image_cleanup.md) |
+| Servers and integrations | [Agregarr](docs/agregarrintegration.md), [Jellyfin plugin](docs/jellyfin_plugin.md), [Emby plugin](docs/emby_plugin.md), [Homepage](docs/homepage.md), [Kometa](docs/kometaintegration.md) |
+| Reference and troubleshooting | [search order](docs/searchorder.md), [platforms and tools](docs/platformandtools.md), [networking](docs/networking.md), [FAQs](docs/faqs.md), [telemetry](docs/telemetry.md) |
+| Developers | [documentation preview](docs/docs_preview.md), [PowerShell architecture](docs/powershell_scripts.md), [backend](docs/backend_python.md), [frontend](docs/frontend_components.md), [LLM architecture](docs/llms.md) |
+
+## Supported Platforms
+
+Docker, Unraid, Linux, Windows, macOS, and ARM deployments are covered in the [installation and platform guides](docs/installation.md).
 
 ## Privacy & Telemetry
 
-[telemetry-code](telemetry-worker/worker.js)
+Telemetry is optional and can be disabled with `"telemetry": false` in the configuration. The complete payload, retention behavior, and opt-out instructions are documented in [Telemetry & Privacy](docs/telemetry.md). The worker implementation is in [telemetry-worker/worker.js](telemetry-worker/worker.js).
 
-Starting with `v2.2.50`, Posterizarr collects completely anonymous, basic usage stats to help guide development (e.g., knowing whether to prioritize Docker vs. Bare-Metal, or Plex vs. Jellyfin).
+## Contributing
 
-**NO** IP addresses, **NO** personal data, and **NO** file paths are collected or stored.
+Please review the [Contributing Guidelines](.github/CONTRIBUTING.md) and [Code of Conduct](.github/CODE_OF_CONDUCT.md) before submitting a pull request. Keep `$CurrentScriptVersion` in `Posterizarr.ps1` and [Release.txt](Release.txt) synchronized as required by the contribution guide. Version synchronization is used for update detection. The existing PR checklist also says not to include images; confirm the maintainer's current policy for documentation screenshot changes. The project maintainer reviews and tests AI-assisted UI and web changes before they are committed.
 
-The telemetry payload contains exactly:
-- Anonymous GUID
-- OS
-- Target Media Server
-- App Version
+<!-- sponsors --><!-- sponsors -->
 
-You can opt-out at any time by setting `"telemetry": false` in your `config.json`.
-
-## Enjoy
-
-Feel free to customize the script further to meet your specific preferences or automation requirements.
-
-I'm open about the fact that I use AI as a coding assistant, for the UI and Web components since I’m not a web dev by trade.
-It helps me handle boilerplate and refactoring at a speed I couldn't achieve alone.
-I review and test every line before it’s committed.
-
-## PR Rules
-
-> [!IMPORTANT]
->
-> - Please review our full [Contributing Guidelines](.github/CONTRIBUTING.md) and [Code of Conduct](.github/CODE_OF_CONDUCT.md) before submitting a pull request.
-> - Adjust on each PR the version number in script on Line 78 `$CurrentScriptVersion = "3.0.0"`
-> - Adjust the version number in [Release.txt](Release.txt) to match the one in script.
->   - this is required because the script checks against this file if a newer version is available.
-> - Do not include images on a PR.
-
-<div align="center">
-<br />
-  <img src="docs/images/versioning.jpg" alt="Version Management" width="350">
-  <br />
-  <em>Version synchronization is critical for update detection</em>
-</div>
-
-<br />
-
-**⭐ Star this repo if Posterizarr helps organize your media library!**
-
-<div align="center">
-
-[![Star History Chart](https://api.star-history.com/chart?repos=fscorrupt/posterizarr&type=date&legend=top-left&sealed_token=UnvtqA0-rM_NkgL8lgyAq-I_prozQwNYS1wh-4wh1wiIugXX349fyqJ530qGr22AVPY4GASP5PrS3s7GFpKqJ30IG8NpXMmHFqMa7F0cQghRjrCglFiErA)](https://www.star-history.com/?repos=fscorrupt%2Fposterizarr&type=date&legend=top-left)
-
-
-<br />
-
----
-
-<sub>Made with ❤️ by [fscorrupt](https://github.com/fscorrupt) and the [open source community](https://github.com/fscorrupt/posterizarr/graphs/contributors)</sub>
-
-</div>
+Made by [fscorrupt](https://github.com/fscorrupt) and the [open source community](https://github.com/fscorrupt/posterizarr/graphs/contributors). Join the [Discord](https://discord.gg/fYyJQSGt54), [report a bug or request a feature](https://github.com/fscorrupt/posterizarr/issues), or [support Posterizarr](https://ko-fi.com/R6R81S6SC).

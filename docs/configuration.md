@@ -3,7 +3,9 @@
 For normal use, configure Posterizarr in **Configuration** in the Web UI. You do
 not need to edit `config.json` or use the command line for routine setup.
 
-![Configuration groups and expandable settings cards in the Posterizarr Web UI](images/ui-configuration-groups.png)
+![Configuration with the Media Servers group selected](images/06-configuration-media-servers.png)
+
+*Choose **Configuration** in the sidebar, then select a group such as **Media Servers** or **Providers** to find its controls.*
 
 *Current Web UI capture; no API keys or personal media titles are shown.*
 

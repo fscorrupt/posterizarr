@@ -35,6 +35,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import { formatDateTimeInTimezone, sortSchedulesByTime } from "../utils/timeUtils";
 import WorkspaceHeader from "./WorkspaceHeader";
 import SiloSupportNotice from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 
 const API_URL = "/api";
 
@@ -350,7 +351,7 @@ const SchedulerSettings = () => {
     normal: { icon: Clock, color: "text-theme-primary", bgColor: "bg-theme-primary/10", label: t("schedulerSettings.modes.normal") },
     syncjelly: { icon: RefreshCw, color: "text-blue-400", bgColor: "bg-blue-400/10", label: t("schedulerSettings.modes.syncjelly") },
     syncemby: { icon: RefreshCw, color: "text-green-500", bgColor: "bg-green-500/10", label: t("schedulerSettings.modes.syncemby") },
-    syncsilo: { icon: RefreshCw, color: "text-emerald-500", bgColor: "bg-emerald-500/10", label: t("silo.syncTitle") },
+    syncsilo: { icon: RefreshCw, logoServer: "silo", color: "text-emerald-500", bgColor: "bg-emerald-500/10", label: t("silo.syncTitle") },
     backup: { icon: Database, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.backup") },
     logoupdater: { icon: Grid, color: "text-purple-400", bgColor: "bg-purple-400/10", label: t("schedulerSettings.modes.logoupdater") },
     plexsync: { icon: Zap, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.plexsync") },
@@ -992,7 +993,9 @@ const SchedulerSettings = () => {
             <div className="flex-1 relative" ref={modeDropdownRef}>
               <button type="button" onClick={() => { if (!isUpdating) { setModeDropdownUp(calculateDropdownPosition(modeDropdownRef)); setModeDropdownOpen(!modeDropdownOpen); } }} disabled={isUpdating} className="w-full px-4 py-3 bg-theme-bg border border-theme rounded-lg text-theme-text hover:bg-theme-hover hover:border-theme-primary/50 focus:outline-none focus:ring-2 focus:ring-theme-primary focus:border-theme-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {React.createElement(modeConfigs[newMode]?.icon || Clock, { className: `w-4 h-4 ${modeConfigs[newMode]?.color || 'text-theme-primary'}` })}
+                  {modeConfigs[newMode]?.logoServer
+                    ? <MediaServerLogo server={modeConfigs[newMode].logoServer} className="w-4 h-4" />
+                    : React.createElement(modeConfigs[newMode]?.icon || Clock, { className: `w-4 h-4 ${modeConfigs[newMode]?.color || 'text-theme-primary'}` })}
                   <span>{runModes.find((m) => m.id === newMode)?.label}</span>
                 </div>
                 <ChevronDown className={`w-5 h-5 text-theme-muted transition-transform ${modeDropdownOpen ? "rotate-180" : ""}`} />
@@ -1001,7 +1004,10 @@ const SchedulerSettings = () => {
                 <div className={`absolute z-50 left-0 right-0 ${modeDropdownUp ? "bottom-full mb-2" : "top-full mt-2"} bg-theme-card border border-theme-primary rounded-lg shadow-xl max-h-60 overflow-y-auto`}>
                   {runModes.map((mode) => (
                     <button key={mode.id} type="button" onClick={() => { setNewMode(mode.id); setModeDropdownOpen(false); }} className={`w-full px-4 py-3 text-sm transition-all text-left flex items-center gap-3 ${newMode === mode.id ? "bg-theme-primary text-white" : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"}`}>
-                      {React.createElement(modeConfigs[mode.id].icon, { className: "w-4 h-4" })}{mode.label}
+                      {modeConfigs[mode.id]?.logoServer
+                        ? <MediaServerLogo server={modeConfigs[mode.id].logoServer} className="w-4 h-4" />
+                        : React.createElement(modeConfigs[mode.id].icon, { className: "w-4 h-4" })}
+                      {mode.label}
                     </button>
                   ))}
                 </div>
@@ -1468,7 +1474,11 @@ const SchedulerSettings = () => {
               return (
                 <div key={index} className={`flex flex-wrap items-center justify-between gap-3 p-4 bg-theme-bg rounded-lg transition-all border ${isCurrentEditing ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500/50 shadow-sm" : "hover:bg-theme-hover border-theme hover:border-theme-primary/50"} group`}>
                   <div className="flex min-w-0 flex-1 items-center gap-4">
-                    <div className={`p-2.5 rounded-lg ${mConfig.bgColor} transition-all`}><Icon className={`w-5 h-5 ${mConfig.color}`} /></div>
+                    <div className={`p-2.5 rounded-lg ${mConfig.bgColor} transition-all`}>
+                      {mConfig.logoServer
+                        ? <MediaServerLogo server={mConfig.logoServer} className="w-5 h-5" />
+                        : <Icon className={`w-5 h-5 ${mConfig.color}`} />}
+                    </div>
                     <div className="min-w-0 break-words">
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="font-semibold text-theme-text text-lg">{freqVal === "interval" ? <Activity className="w-5 h-5 text-theme-muted" /> : schedule.time}</span>
