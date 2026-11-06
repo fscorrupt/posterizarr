@@ -190,10 +190,10 @@ screenshot shows Synchronize with Dry Run on and illustrative library counts.*
 
 ![Episode Title Review with historical title differences and eligibility](images/45-episode-title-review.png)
 
-*Episode Title Review compares existing titlecards with current episode titles.
-The initial scan does not recreate artwork. These are sample review records;
-single, selected, and all-eligible recreation require confirmation and use the
-existing asset queue.*
+*Episode Title Review compares existing titlecards with current episode titles
+and filters by eligibility, blocking reason, or historical/future status. The
+initial scan does not recreate artwork. These are sample review records; queue
+and Fast Normal Run actions require confirmation.*
 
 ![AniMetaFill settings](images/23-animetafill.png)
 

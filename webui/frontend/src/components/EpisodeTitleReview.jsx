@@ -14,6 +14,9 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   const [data, setData] = useState({ entries: [], total: 0, eligible: 0, job: {} });
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [reasonFilter, setReasonFilter] = useState("all");
+  const [reviewType, setReviewType] = useState("all");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -41,7 +44,8 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     const load = async () => {
       let delay = 15000;
       try {
-        const params = new URLSearchParams({ search: query, limit: String(pageSize), offset: String(page * pageSize) });
+        const params = new URLSearchParams({ search: query, limit: String(pageSize), offset: String(page * pageSize),
+          status_filter: statusFilter, reason_filter: reasonFilter, review_type: reviewType });
         const response = await fetch(`${endpoint}?${params}`, { signal: controller.signal });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error("request_failed");
@@ -61,7 +65,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     };
     load();
     return () => { active = false; controller.abort(); clearTimeout(timer); };
-  }, [query, page, revision, enabled, dryRun]);
+  }, [query, page, revision, enabled, dryRun, statusFilter, reasonFilter, reviewType]);
 
   const fastStartedAt = fastStarting?.startedAt || (data.job?.fast_run ? data.job.started_at : null);
   useEffect(() => {
@@ -154,6 +158,13 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     return next;
   });
 
+  const activeFilters = { status_filter: statusFilter, reason_filter: reasonFilter, review_type: reviewType };
+  const updateFilter = (setter) => (event) => {
+    setter(event.target.value);
+    setPage(0);
+    setSelected(new Set());
+  };
+
   return (
     <section className="min-w-0 max-w-full space-y-4 border-y border-theme py-5" aria-label={text("title")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -225,14 +236,44 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
             setSearch(event.target.value); setPage(0); setSelected(new Set());
           }} className="min-h-9 w-full rounded-lg border border-theme bg-theme-card py-2 pl-9 pr-3 text-xs text-theme-text" />
         </label>
+        <label className="flex min-h-9 items-center gap-2 rounded-lg border border-theme bg-theme-card px-2 text-xs text-theme-muted">
+          <span>{text("filterStatus")}</span>
+          <select aria-label={text("filterStatus")} value={statusFilter} onChange={updateFilter(setStatusFilter)}
+            className="max-w-36 bg-transparent py-2 text-theme-text">
+            <option value="all">{text("filterAll")}</option>
+            <option value="eligible">{text("filterEligible")}</option>
+            <option value="blocked">{text("filterBlocked")}</option>
+          </select>
+        </label>
+        <label className="flex min-h-9 items-center gap-2 rounded-lg border border-theme bg-theme-card px-2 text-xs text-theme-muted">
+          <span>{text("filterReason")}</span>
+          <select aria-label={text("filterReason")} value={reasonFilter} onChange={updateFilter(setReasonFilter)}
+            className="max-w-44 bg-transparent py-2 text-theme-text">
+            <option value="all">{text("filterAll")}</option>
+            <option value="none">{text("filterNoReason")}</option>
+            {[
+              ["media_server_source", "media_server_source"], ["missing_source", "missing_source"],
+              ["source_has_text", "source_has_text"], ["unknown_text", "unknown_text"], ["placeholder", "placeholder"]
+            ].map(([value, key]) => <option key={value} value={value}>{text(`reasons.${key}`)}</option>)}
+          </select>
+        </label>
+        <label className="flex min-h-9 items-center gap-2 rounded-lg border border-theme bg-theme-card px-2 text-xs text-theme-muted">
+          <span>{text("filterType")}</span>
+          <select aria-label={text("filterType")} value={reviewType} onChange={updateFilter(setReviewType)}
+            className="max-w-36 bg-transparent py-2 text-theme-text">
+            <option value="all">{text("filterAll")}</option>
+            <option value="historical">{text("historical")}</option>
+            <option value="future">{text("future")}</option>
+          </select>
+        </label>
         <button type="button" className={actionClass} disabled={!canRebuild || !selected.size} onClick={() => setConfirmation({ candidate_ids: [...selected], count: selected.size })}>
           <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildSelected", { count: selected.size })}
         </button>
-        <button type="button" className={actionClass} disabled={!canRebuild || !data.eligible} onClick={() => setConfirmation({ all_eligible: true, search: query, count: data.eligible })}>
+        <button type="button" className={actionClass} disabled={!canRebuild || !data.eligible} onClick={() => setConfirmation({ ...activeFilters, all_eligible: true, search: query, count: data.eligible })}>
           <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildAll", { count: data.eligible })}
         </button>
         <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !data.eligible}
-          onClick={() => setConfirmation({ fast_normal_run: true, all_eligible: true, search: query, count: data.eligible })}>
+          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, all_eligible: true, search: query, count: data.eligible })}>
           <Zap className="h-4 w-4 shrink-0" />{text("fastRun", { count: data.eligible })}
         </button>
       </div>
@@ -308,6 +349,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         </div>
       </div>
       {replacementAsset && <AssetReplacer key={replacementAsset.path} asset={replacementAsset} initialTab="previews" initialMetadata={replacementAsset._replacementMetadata}
+        autoFetchProviders
         onClose={() => { setReplacementAsset(null); setRevision(value => value + 1); }}
         onSuccess={() => setRevision(value => value + 1)} />}
       <ConfirmDialog isOpen={Boolean(confirmation)} onClose={() => setConfirmation(null)} type="warning"
@@ -325,7 +367,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
           }
           const { count, episode, title, ...selection } = confirmation;
           setConfirmation(null);
-          post("rebuild", { ...selection, confirmed: true });
+          post("rebuild", { ...selection, ...activeFilters, confirmed: true });
         }} />
     </section>
   );

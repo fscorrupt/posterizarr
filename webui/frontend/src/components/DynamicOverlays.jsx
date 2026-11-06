@@ -1966,7 +1966,9 @@ export default function DynamicOverlays() {
         setFeatureSettings(data.settings);
         showSuccess("Settings updated.");
       } else {
-        showError(data.error || "Failed to update settings.");
+        showError(data.error === "settings_not_persisted"
+          ? t("dynamicOverlays.changeDetection.settingsNotPersisted")
+          : data.error || "Failed to update settings.");
       }
     } catch (err) {
       showError("Error: " + err.message);

@@ -116,6 +116,29 @@ def _dismissal_fingerprint(job):
     return hashlib.sha256(json.dumps(state, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _candidate_matches_filters(job, status_filter="all", reason_filter="all", review_type="all"):
+    if status_filter == "eligible" and job.get("status") != "ready":
+        return False
+    if status_filter == "blocked" and job.get("status") == "ready":
+        return False
+    if reason_filter == "none" and job.get("reason"):
+        return False
+    if reason_filter not in ("", "all", "none") and job.get("reason") != reason_filter:
+        return False
+    if review_type == "historical" and not job.get("requires_review"):
+        return False
+    if review_type == "future" and job.get("requires_review"):
+        return False
+    return True
+
+
+def _candidate_matches_search(job, search):
+    search = str(search or "").strip().casefold()
+    return not search or search in " ".join(
+        str(job.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")
+    ).casefold()
+
+
 class AssetTitleChanges:
     def __init__(self, base_dir, assets_dir, library_folders=True):
         self.base_dir = Path(base_dir)
@@ -325,26 +348,31 @@ class AssetTitleChanges:
         shutil.rmtree(backup_dir, ignore_errors=True)
         return completed
 
-    def candidates(self, search="", limit=50, offset=0):
+    def candidates(self, search="", limit=50, offset=0, status_filter="all", reason_filter="all", review_type="all"):
         with closing(sqlite3.connect(self.database)) as connection:
             rows = [_with_source_safety(json.loads(row[0])) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
-        search = search.strip().casefold()
         rows = [row for row in rows if not _same_episode_title(row.get("old_title"), row.get("title")) and
-            (not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold())]
+            _candidate_matches_search(row, search) and _candidate_matches_filters(row, status_filter, reason_filter, review_type)]
         return {"total": len(rows), "eligible": sum(row["status"] == "ready" for row in rows),
                 "entries": [{**{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")},
                              "force_recreatable": _can_force_unknown_text(row)}
                             for row in rows[offset:offset + limit]]}
 
-    def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False, force_unknown_text=False):
+    def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False, force_unknown_text=False,
+                       status_filter="all", reason_filter="all", review_type="all"):
         with closing(sqlite3.connect(self.database)) as connection:
             rows = [_with_source_safety(json.loads(row[0])) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
         selected = set(candidate_ids or [])
-        search = search.strip().casefold()
-        return [{**row, "force_unknown_text": bool(force_unknown_text and row["status"] != "ready")} for row in rows
-            if (row["status"] == "ready" or (force_unknown_text and row["candidate_id"] in selected and _can_force_unknown_text(row)))
-            and not _same_episode_title(row.get("old_title"), row.get("title")) and
-                (row["candidate_id"] in selected or (all_eligible and (not search or search in " ".join(str(row.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")).casefold())))]
+        jobs = []
+        for row in rows:
+            candidate_selected = row["candidate_id"] in selected
+            eligible = row["status"] == "ready" or (force_unknown_text and candidate_selected and _can_force_unknown_text(row))
+            if (not eligible or _same_episode_title(row.get("old_title"), row.get("title"))
+                    or not _candidate_matches_filters(row, status_filter, reason_filter, review_type)):
+                continue
+            if candidate_selected or (all_eligible and _candidate_matches_search(row, search)):
+                jobs.append({**row, "force_unknown_text": bool(force_unknown_text and row["status"] != "ready")})
+        return jobs
 
     def record_failure(self, job, reason):
         with closing(sqlite3.connect(self.database)) as connection, connection:
@@ -611,7 +639,8 @@ class EpisodeTitleReview:
             self._update(running=False)
             self.operation_lock.release()
 
-    async def start_rebuild(self, base_dir, config_path, candidate_ids=None, all_eligible=False, search="", force_unknown_text=False):
+    async def start_rebuild(self, base_dir, config_path, candidate_ids=None, all_eligible=False, search="",
+                            force_unknown_text=False, status_filter="all", reason_filter="all", review_type="all"):
         from dynamic_overlays_service import get_dynamic_overlays_settings
 
         settings = get_dynamic_overlays_settings()
@@ -628,7 +657,8 @@ class EpisodeTitleReview:
         self._reserve("scanning")
         try:
             monitor = await asyncio.to_thread(create_title_monitor, base_dir, config_path)
-            selected = await asyncio.to_thread(monitor.candidate_jobs, candidate_ids, search, all_eligible, force_unknown_text)
+            selected = await asyncio.to_thread(monitor.candidate_jobs, candidate_ids, search, all_eligible,
+                                               force_unknown_text, status_filter, reason_filter, review_type)
             if not selected:
                 raise ValueError("nothing_selected")
             self._update(total=len(selected))

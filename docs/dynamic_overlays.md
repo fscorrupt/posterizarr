@@ -702,6 +702,9 @@ are explicitly review candidates: ImageChoices is not an exact rendering log,
 and unknown or truncated historical text cannot be safely recreated automatically.
 Missing sources, textful sources, and placeholder titles remain visible with a
 blocking reason. Unmatched episodes and missing image files are not guessed.
+Use the status, blocking-reason, and review-type filters together with the search
+field to narrow results across all pages. The eligible count and bulk actions use
+the active filters, not only the rows currently visible on screen.
 
 Images originally taken from a media server are never reused for recreation,
 even when their URL is public or their stored language is Textless. The server
@@ -715,9 +718,11 @@ For **media-server source** and **missing-source** entries, use the row's
 **Choose a provider image in Asset Replacer** action. It opens the existing
 Asset Replacer on its provider tab with the series, library, folder, season,
 episode, and current episode title prefilled. Available series provider IDs
-are carried into the lookup; a provider search starts only after its existing
-confirmation. Choose an image and use the modal's normal recreation or queue
-workflow. The original media-server URL is never preselected as the new source.
+are carried into an automatic, read-only provider lookup when opened from this
+review. The provider previews and modal header show the target `SxxExx` coordinates
+as UI labels only; they are not added to the image. Choose a result to continue
+with the modal's normal replacement or queue workflow. The original media-server
+URL is never preselected as the new source.
 Opening or queueing a replacement does not acknowledge the review entry as
 completed. The Master Switch must be on and Dry Run off to open this replacement
 workflow from the review.
@@ -736,7 +741,7 @@ The explicit override is retained in the existing queue if the job is resumed.
 After updating from an earlier version, run **Compare titles** once to refresh
 source eligibility for already cached review entries.
 
-![Episode Title Review showing previous and current titles and eligibility reasons](images/45-episode-title-review.png)
+![Episode Title Review with search and status, reason, and review-type filters](images/45-episode-title-review.png)
 
 *Illustrative review records show two historical candidates and one
 media-server-source block. Artwork thumbnails are existing published showcase

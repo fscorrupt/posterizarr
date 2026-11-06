@@ -20822,6 +20822,9 @@ class EpisodeTitleRebuildRequest(BaseModel):
     candidate_ids: List[str] = Field(default_factory=list, max_length=10000)
     all_eligible: bool = False
     search: str = Field(default="", max_length=200)
+    status_filter: Literal["all", "eligible", "blocked"] = "all"
+    reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = "all"
+    review_type: Literal["all", "historical", "future"] = "all"
     confirmed: bool = False
     force_unknown_text: bool = False
 
@@ -20834,6 +20837,9 @@ class EpisodeTitleFastRunRequest(BaseModel):
     candidate_ids: List[str] = Field(default_factory=list, max_length=10000)
     all_eligible: bool = False
     search: str = Field(default="", max_length=200)
+    status_filter: Literal["all", "eligible", "blocked"] = "all"
+    reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = "all"
+    review_type: Literal["all", "historical", "future"] = "all"
     confirmed: bool = False
 
 
@@ -20850,6 +20856,9 @@ async def get_episode_title_changes(
     search: str = Query("", max_length=200),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    status_filter: Literal["all", "eligible", "blocked"] = Query("all"),
+    reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = Query("all"),
+    review_type: Literal["all", "historical", "future"] = Query("all"),
 ):
     from asset_title_changes import create_title_monitor, episode_title_review, title_regeneration_allowed
     from dynamic_overlays_service import get_dynamic_overlays_settings
@@ -20857,7 +20866,8 @@ async def get_episode_title_changes(
     settings = get_dynamic_overlays_settings()
     try:
         monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
-        result = await asyncio.to_thread(monitor.candidates, search, limit, offset)
+        result = await asyncio.to_thread(monitor.candidates, search, limit, offset,
+                         status_filter, reason_filter, review_type)
     except (ValueError, FileNotFoundError):
         result = {"entries": [], "total": 0, "eligible": 0}
     return {"success": True, **result, "job": episode_title_review.status(),
@@ -20891,6 +20901,8 @@ async def rebuild_episode_title_changes(request: EpisodeTitleRebuildRequest):
             BASE_DIR, CONFIG_PATH, candidate_ids=request.candidate_ids,
             all_eligible=request.all_eligible, search=request.search,
             force_unknown_text=request.force_unknown_text,
+            status_filter=request.status_filter, reason_filter=request.reason_filter,
+            review_type=request.review_type,
         )
         return {"success": True, "job": job}
     except ValueError as error:
@@ -20970,7 +20982,8 @@ async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequ
                                      current_title="", started_at=started_at)
         monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
         jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
-                                      request.all_eligible, False)
+                                      request.all_eligible, False, request.status_filter,
+                                      request.reason_filter, request.review_type)
         if not jobs:
             raise HTTPException(status_code=400, detail="nothing_selected")
         episode_title_review._update(total=len(jobs))
@@ -21452,9 +21465,13 @@ async def get_dynamic_overlays_settings_endpoint():
 async def save_dynamic_overlays_settings_endpoint(req: DynamicOverlaysSettingsRequest):
     """Update master settings (e.g. enable/disable, backdrops, rating sources, wizard dismissal)."""
     try:
-        from dynamic_overlays_service import save_dynamic_overlays_settings
+        from dynamic_overlays_service import get_dynamic_overlays_settings, save_dynamic_overlays_settings
         update_dict = {k: v for k, v in req.model_dump().items() if v is not None}
-        saved = save_dynamic_overlays_settings(update_dict)
+        save_dynamic_overlays_settings(update_dict)
+        saved = get_dynamic_overlays_settings()
+        if any(saved.get(key) != value for key, value in update_dict.items()):
+            logger.error("Dynamic overlay settings did not persist for one or more requested fields.")
+            return {"success": False, "error": "settings_not_persisted"}
         from overlay_sync_service import stop_overlay_change_detector_background
         if saved.get("enabled", False) and saved.get("change_detection_enabled", True):
             from overlay_sync_service import start_overlay_change_detector_background

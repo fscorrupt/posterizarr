@@ -12,6 +12,12 @@ The following API endpoints are available.
 
 ## Dynamic Overlays
 
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/dynamic-overlays/episode-title-changes` | Paged review candidates. Optional `search`, `limit`, `offset`, `status_filter` (`all`, `eligible`, `blocked`), `reason_filter` (`all`, `none`, or a blocking reason), and `review_type` (`all`, `historical`, `future`) filter the result set and eligible count. |
+| `POST /api/dynamic-overlays/episode-title-changes/rebuild` | Confirmed queue recreation. `candidate_ids` or `all_eligible` with `search` and the same filters selects candidates. |
+| `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed Fast Normal Run over `candidate_ids` or `all_eligible`, using the same search and filters. |
+
 ### Overlay Bundles
 
 | Endpoint | Purpose |
@@ -19,7 +25,6 @@ The following API endpoints are available.
 | `GET /api/dynamic-overlays/bundle/export` | Download custom YAML and required custom assets/fonts plus layouts and portable settings. Official downloadable Kometa files are dependency references, not ZIP payloads. Credential fields and media-server connections are excluded; known credentials in text are masked. |
 | `POST /api/dynamic-overlays/bundle/preview` | Multipart `file` upload. Returns source profiles, existing destination libraries/server, features, file counts, conflicts, and warnings without applying the bundle. |
 | `POST /api/dynamic-overlays/bundle/import` | Multipart upload with `file`, JSON-string `mapping`, JSON-string `anime_libraries`/`season_libraries`, and boolean `import_settings`/`replace_files`. Applies validated mappings and starts in Dry Run, without uploading artwork. |
-| `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed fast bulk recreation of eligible episode titlecards: backs up/removes local files, starts Normal Mode, restores files not regenerated, and acknowledges regenerated candidates. |
 
 `mapping` maps source profile names to existing destination library names, for
 example `{"Source TV":"My Shows","Source Movies":""}`. An empty value skips a

@@ -27,7 +27,7 @@ function getSeasonPosterName(seasonNumber, overrideEnabled, seasonText, specialT
   return `${overrideEnabled ? seasonText : "Season"} ${seasonNumber}`;
 }
 
-function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initialMetadata = null }) {
+function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initialMetadata = null, autoFetchProviders = false }) {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
   const navigate = useNavigate();
@@ -63,6 +63,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
   const [isDimensionValid, setIsDimensionValid] = useState(false); // Track if dimensions are valid
   const contentScrollRef = useRef(null);
+  const autoProviderFetchRef = useRef(null);
   const [activeProviderTab, setActiveProviderTab] = useState("tmdb"); // Provider tabs: tmdb, tvdb, fanart
   const [languageFilter, setLanguageFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("poster"); // Default to posters only
@@ -535,6 +536,10 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
     metadata.asset_type === "season" ||
     metadata.asset_type === "collection";
   const isTitlecard = metadata.asset_type === "titlecard";
+  const titlecardCoordinates = isTitlecard && metadata.season_number !== null && metadata.season_number !== undefined
+    && metadata.episode_number !== null && metadata.episode_number !== undefined
+    ? `S${String(metadata.season_number).padStart(2, "0")}E${String(metadata.episode_number).padStart(2, "0")}`
+    : null;
   const targetRatio = isPosterType ? 2 / 3 : 16 / 9;
   const targetWidth = isPosterType ? 2000 : (isTitlecard ? 1920 : 3840);
   const targetHeight = isPosterType ? 3000 : (isTitlecard ? 1080 : 2160);
@@ -1160,18 +1165,10 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
     setShowFetchConfirm(true);
   };
 
-  const fetchPreviews = async () => {
+  const fetchProviderPreviews = async (searchMetadata, isManualSearch = false) => {
     console.log("=== AssetReplacer: Fetching Previews ===");
     setShowFetchConfirm(false);
-
-    if (!pendingFetchParams) {
-      console.error("No pending fetch params found!");
-      return;
-    }
-
-    const { metadata, manualSearch: isManualSearch } = pendingFetchParams;
-    console.log("Fetch params:", { metadata, isManualSearch });
-
+    console.log("Fetch params:", { metadata: searchMetadata, isManualSearch });
     setLoading(true);
     showError(null);
 
@@ -1184,7 +1181,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
         body: JSON.stringify({
           asset_path: asset.path,
           is_manual_search: isManualSearch,
-          ...metadata,
+          ...searchMetadata,
         }),
       });
 
@@ -1227,6 +1224,23 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
       setLoading(false);
     }
   };
+
+  const fetchPreviews = async () => {
+    if (!pendingFetchParams) {
+      console.error("No pending fetch params found!");
+      return;
+    }
+    const { metadata: searchMetadata, manualSearch: isManualSearch } = pendingFetchParams;
+    await fetchProviderPreviews(searchMetadata, isManualSearch);
+  };
+
+  useEffect(() => {
+    if (!autoFetchProviders || !titlecardCoordinates) return;
+    const fetchKey = `${asset.path}|${titlecardCoordinates}|${metadata.tmdb_id}|${metadata.tvdb_id}`;
+    if (autoProviderFetchRef.current === fetchKey) return;
+    autoProviderFetchRef.current = fetchKey;
+    fetchProviderPreviews(metadata, false);
+  }, [autoFetchProviders, asset.path, metadata, titlecardCoordinates]);
 
   const processSelectedFile = (file) => {
     if (!file) return;
@@ -1804,6 +1818,10 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
               <p className="text-sm sm:text-lg font-bold text-theme-text mt-0.5 sm:mt-1 break-words">
                 {(asset.path || "").split(/[\\/]/).slice(-2, -1)[0] || "Unknown"}
               </p>
+              {titlecardCoordinates && <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-theme-muted">
+                <span className="rounded border border-theme-primary/50 bg-theme-primary/10 px-2 py-1 font-mono font-semibold text-theme-primary">{titlecardCoordinates}</span>
+                <span>{t("assetReplacer.seasonEpisodeCoordinates", {season: metadata.season_number, episode: metadata.episode_number})}</span>
+              </p>}
               <p className="text-xs text-theme-muted break-all mt-1">
                 {asset.path || "Unknown path"}
               </p>
@@ -2572,6 +2590,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                           disabled={uploading || (isPosterizarrRunning && !addToQueue)}
                           isHorizontal={useHorizontalLayout}
                           isTargetPoster={isPosterType}
+                          targetLabel={titlecardCoordinates}
                         />
                       ))}
                     </div>
@@ -2634,7 +2653,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
   );
 }
 
-function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTargetPoster = false }) {
+function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTargetPoster = false, targetLabel = null }) {
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -2686,6 +2705,11 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTarg
             16:9
           </div>
         )}
+        {targetLabel && (
+          <div className="absolute bottom-2 left-2 z-20 rounded border border-white/25 bg-black/80 px-2 py-1 font-mono text-xs font-semibold text-white shadow">
+            {targetLabel}
+          </div>
+        )}
         {!imageLoaded && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-theme-muted" />
@@ -2707,6 +2731,7 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTarg
         )}
 
         <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 text-center">
+          {targetLabel && <span className="mb-2 rounded border border-white/30 bg-black/80 px-2 py-1 font-mono text-xs font-semibold text-white">{targetLabel}</span>}
           <button
             onClick={handleDownload}
             className="absolute top-2 right-2 px-3 py-2 bg-theme-primary hover:bg-theme-primary/80 rounded-lg transition-all shadow-lg z-10 flex items-center gap-2"
