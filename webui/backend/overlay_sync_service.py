@@ -2650,13 +2650,13 @@ def build_overlay_layers_for_item(
     try:
         engine = _get_overlay_config_engine(overlays_dir)
         layers = engine.evaluate_item(item_metadata, engine_rules)
-        if (rating_rules and item_metadata.get("multi_ratings")) or any(
-            layer.get("name") == "single_rating" for layer in native_rating_layers
-        ):
+        if rating_rules and item_metadata.get("multi_ratings"):
             layers = [
                 layer for layer in layers
                 if str(layer.get("name") or "").lower() not in LEGACY_AUDIENCE_RATING_LAYERS
             ]
+        elif any(str(layer.get("name") or "").lower() in ("user_rating", "user_rating_black") for layer in layers):
+            native_rating_layers = [layer for layer in native_rating_layers if layer.get("name") != "single_rating"]
         if any(layer.get("name") in ("resolution_banner", "resolution") for layer in native_rating_layers):
             layers = [layer for layer in layers if str(layer.get("name") or "").lower() not in ("4k_banner", "resolution_banner", "resolution", "4k", "1080p", "720p", "576p", "480p")]
 
