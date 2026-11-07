@@ -752,7 +752,8 @@
     if ($AssetCleanup -eq 'true') {
         $ImagesCleared = 0
         $PathsCleared = 0
-        $savedsizestring = 0
+        [long]$SavedSpace = 0
+        $savedsizestring = "{0:N2} MB" -f 0
         Write-Entry -Subtext "Starting Asset Cleanup, this can take some time..." -Path $global:configLogging -Color Yellow -log Info
         Write-Entry -Subtext "Only removing Artwork with posterizarr exif data" -Path $global:configLogging -Color Cyan -log Info
         $processedDirectories = [System.Collections.Generic.List[object]]::new()
@@ -770,7 +771,15 @@
                 $uncheckedItemPath = $uncheckedItem + ".jpg"
 
                 if (Test-IsPosterizarrAsset -Path $uncheckedItemPath) {
-                    Remove-Item -LiteralPath $uncheckedItemPath -Force
+                    try {
+                        $assetSize = (Get-Item -LiteralPath $uncheckedItemPath -ErrorAction Stop).Length
+                        Remove-Item -LiteralPath $uncheckedItemPath -Force -ErrorAction Stop
+                    }
+                    catch {
+                        Write-Entry -Subtext "Could not remove artwork: $uncheckedItemPath - $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                        continue
+                    }
+                    $SavedSpace += $assetSize
                     $ImagesCleared++
                     Write-Entry -Subtext "Artwork Removed: $uncheckedItemPath" -Path $global:configLogging -Color Yellow -log Info
 
@@ -815,38 +824,12 @@
         if ($ImagesCleared -ge '1' -or $PathsCleared -ge '1') {
             Write-Entry -Message "Asset Cleanup overview..." -Path $global:configLogging -Color Green -log Info
         }
-        # Check new dir Size
         if ($ImagesCleared -ge '1') {
-            $newtotalSize = Get-ChildItem $AssetPath -Recurse | Measure-Object -Property Length -Sum
-            # Convert bytes to kilobytes, megabytes, or gigabytes as needed
-            if ($newtotalSize.Sum -gt 1GB) {
-                $newtotalSizeString = "{0:N2} GB" -f ($newtotalSize.Sum / 1GB)
-            }
-            elseif ($newtotalSize.Sum -gt 1MB) {
-                $newtotalSizeString = "{0:N2} MB" -f ($newtotalSize.Sum / 1MB)
-            }
-            elseif ($newtotalSize.Sum -gt 1KB) {
-                $newtotalSizeString = "{0:N2} KB" -f ($newtotalSize.Sum / 1KB)
-            }
-            else {
-                $newtotalSizeString = "$($newtotalSize.Sum) bytes"
-            }
-
-            # Saved space
-            $SavedSpace = $global:totalSize - $newtotalSize.Sum
-
-            # Convert bytes to kilobytes, megabytes, or gigabytes as needed
-            if ($SavedSpace -gt 1GB) {
+            if ($SavedSpace -ge 1GB) {
                 $savedsizestring = "{0:N2} GB" -f ($SavedSpace / 1GB)
             }
-            elseif ($SavedSpace -gt 1MB) {
-                $savedsizestring = "{0:N2} MB" -f ($SavedSpace / 1MB)
-            }
-            elseif ($SavedSpace -gt 1KB) {
-                $savedsizestring = "{0:N2} KB" -f ($SavedSpace / 1KB)
-            }
             else {
-                $savedsizestring = "$SavedSpace bytes"
+                $savedsizestring = "{0:N2} MB" -f ($SavedSpace / 1MB)
             }
 
             if ($ImagesCleared -ge '1') {
