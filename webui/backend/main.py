@@ -14473,11 +14473,14 @@ async def upload_asset_replacement(
                     )
 
                     # Background task to monitor process completion and broadcast event
-                    async def _monitor_manual_run_and_broadcast(proc, lib, fold, atype, relpath, snum, enum, ttext):
+                    async def _monitor_manual_run_and_broadcast(proc, lib, fold, atype, relpath, snum, enum, ttext, rendered_title):
                         try:
                             loop = asyncio.get_running_loop()
                             await loop.run_in_executor(None, proc.wait)
                             if proc.returncode == 0:
+                                if atype == "titlecard":
+                                    from asset_title_changes import acknowledge_titlecard_replacement
+                                    await acknowledge_titlecard_replacement(BASE_DIR, CONFIG_PATH, relpath, rendered_title, proc.returncode)
                                 logger.info(f"[WS-Events] Manual run completed successfully for {fold}. Broadcasting...")
                                 await broadcast_asset_event(
                                     library_name=lib,
@@ -14504,7 +14507,8 @@ async def upload_asset_replacement(
                         normalized_path,
                         season_number,
                         episode_number,
-                        final_title_text
+                        final_title_text,
+                        episode_title
                     ))
 
                     if uploaded_template_file:
@@ -15180,11 +15184,14 @@ async def replace_asset_from_url(
 
                     # Monitor completion of manual run to broadcast real-time update
                     if current_process:
-                        async def _monitor_url_manual_run(proc, lib, fold, atype, relpath, snum, enum, ttext):
+                        async def _monitor_url_manual_run(proc, lib, fold, atype, relpath, snum, enum, ttext, rendered_title):
                             try:
                                 loop = asyncio.get_running_loop()
                                 await loop.run_in_executor(None, proc.wait)
                                 if proc.returncode == 0:
+                                    if atype == "titlecard":
+                                        from asset_title_changes import acknowledge_titlecard_replacement
+                                        await acknowledge_titlecard_replacement(BASE_DIR, CONFIG_PATH, relpath, rendered_title, proc.returncode)
                                     logger.info(f"[WS-Events] Manual run from URL completed for {fold}. Broadcasting...")
                                     await broadcast_asset_event(
                                         library_name=lib,
@@ -15211,7 +15218,8 @@ async def replace_asset_from_url(
                             asset_path,
                             season_poster_name,
                             ep_number,
-                            final_title_text
+                            final_title_text,
+                            ep_title_name
                         ))
 
                     if url_template_file:
@@ -17953,6 +17961,9 @@ async def finalize_asset_replacement(
                     logger.info(f"Queue Processor: Waiting for Manual Run (PID {proc.pid}) to finish...")
                     while proc.poll() is None:
                         await asyncio.sleep(1)
+                    if poster_type == "titlecard":
+                        from asset_title_changes import acknowledge_titlecard_replacement
+                        await acknowledge_titlecard_replacement(BASE_DIR, CONFIG_PATH, asset_path, ep_title_name, proc.returncode)
                 finally:
                     if current_process == proc:
                         current_process = None

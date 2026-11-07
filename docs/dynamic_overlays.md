@@ -557,8 +557,7 @@ back to **Most frequent**. The default behavior is also available explicitly in 
 ```yaml
 - default: languages
    template_variables:
-      builder_level: episode
-      aggregate_parent_streams: true
+   builder_level: all
       languages: [de, en, ja]
       overlay_limit: 2
       parent_language_mode: preferred_then_frequency
@@ -566,10 +565,11 @@ back to **Most frequent**. The default behavior is also available explicitly in 
 
 This selection mode does not enable additional artwork targets. Show or season
 flags must already be explicitly configured with `builder_level: show`,
-`builder_level: season`, or `builder_level: all`. An episode rule can explicitly
-include parent artwork with `aggregate_parent_streams: true`, as in the example.
-Episode-only rules without that opt-in remain episode-only, even when the hybrid
-selection mode is enabled or other rules aggregate episode metadata.
+`builder_level: season`, or `builder_level: all`. `builder_level` is authoritative:
+an episode-only rule stays episode-only even if an older configuration contains
+`aggregate_parent_streams: true`, hybrid selection is enabled, or another rule
+already aggregates episode metadata. The legacy aggregation flag does not enable
+additional artwork targets. Use separate rules to select individual levels.
 The first configured language gets the first flag slot as soon as at least one
 episode has it. Remaining slots follow frequency, then configured priority for
 ties. With JA:40, EN:20, DE:1, the result is DE + JA; with DE:0 it displays EN + JA;
@@ -739,7 +739,16 @@ as UI labels only; they are not added to the image. Choose a result to continue
 with the modal's normal replacement or queue workflow. The original media-server
 URL is never preselected as the new source.
 Opening or queueing a replacement does not acknowledge the review entry as
-completed. The Master Switch must be on and Dry Run off to open this replacement
+completed. A successful processed titlecard replacement from a URL, upload, or
+the normal asset queue acknowledges only the matching file and rendered episode
+title. Failed processes and mismatching titles leave the review entry intact.
+The entry disappears on the next review refresh (normally within 15 seconds).
+For replacements completed before this acknowledgment was available, **Compare
+titles** also reconciles the baseline when ImageChoices records the current
+episode title without truncation. A missing original download URL does not keep
+an already confirmed current title in the review. This confirms the local
+titlecard; final media-server upload remains a separate overlay-sync step.
+The Master Switch must be on and Dry Run off to open this replacement
 workflow from the review.
 Use **Hide this review entry** on a media-server-source row to dismiss it when no
 provider original exists. The dismissal persists across scans for that same title
@@ -977,7 +986,7 @@ section. Counts and listed updates in these screenshots are illustrative.*
 - Plex movie/show poster cache hits verify the actual item thumbnail bytes, not just the recipe hash or the poster list's `selected` flag. This also applies when the thumbnail URL is unchanged, including separate library entries for the same movie. If the displayed poster already matches the rendered bytes, fingerprints are refreshed without uploading. Successful poster uploads always issue an explicit selection request for the target item, then verify its displayed thumbnail before the cache is marked synced. Pre-upload verification failures leave server artwork untouched; an upload whose selection cannot be confirmed is not marked synced.
 - Verified Plex episode stream metadata is reused on incremental runs only when the episode timestamp and media path still match. The first run builds this metadata cache; full/targeted runs and changed or incomplete metadata still perform fresh detail queries. Artwork-selection verification and overlay-rule evaluation remain active.
 - Show/season audio-codec badges use the same image resolver as other artwork, including imported `defaults/images/audio_codec/...` files and explicit `file_dts` / `file_ma` image overrides. They are not limited to `assets/audio_codec/...`. Parent audio-codec rules also accept `builder_level: [show, season]` or `builder_level: "show, season"` as well as a single level. An existing image in the defaults directory does not need to be downloaded or copied again.
-- Parent audio-codec aggregation retains the selected/default episode audio stream's profile and track title. This distinguishes a `dts`/`dca` base codec with a DTS-HD MA profile from plain DTS on show and season posters. Codec/profile variants are counted separately when selecting the common format, and stale parent track-title aliases are cleared when the aggregate is applied. Existing DTS/DCA stream-cache entries without profile fields are reread once; unrelated verified codec entries remain reusable. No cache clear is required. The audio-codec rule must target `show`, `season`, or `all`, or explicitly opt into `aggregate_parent_streams`; the matching badge image must be available.
+- Parent audio-codec aggregation retains the selected/default episode audio stream's profile and track title. This distinguishes a `dts`/`dca` base codec with a DTS-HD MA profile from plain DTS on show and season posters. Codec/profile variants are counted separately when selecting the common format, and stale parent track-title aliases are cleared when the aggregate is applied. Existing DTS/DCA stream-cache entries without profile fields are reread once; unrelated verified codec entries remain reusable. No cache clear is required. The audio-codec rule must target `show`, `season`, or `all`; `aggregate_parent_streams` never overrides an episode-only target. The matching badge image must be available.
 - After updating the backend, a normal targeted sync of an affected show reevaluates its show and season codec badges; Force Apply and cache clearing are not required for the DTS-MA profile handoff fix. The selected aggregate codec, profile, and both track-title fields are applied together to show metadata before poster recipes are built. A codec present only in a minority of selected/default episode streams may not be the common show or season format; forcing does not override that selection or enable an unconfigured badge.
 - Incremental sync still enumerates media-server items, checks clean source files, evaluates recipes, and verifies artwork where required; an `Up-to-date` result is not just a database lookup. A bounded candidate cache excludes overlay rules restricted to other show titles, while retaining per-episode filters and queue/group processing. Candidate keys include expanded rule inputs and title, so template, variable, and YAML changes invalidate them. This optimization does not change recipe hashes or require a cache reset.
 - Explicit font requests never silently substitute another font family. Font directories created after engine initialization are discovered on subsequent evaluations; a missing required custom font fails rendering instead of uploading a differently styled image. Existing images previously rendered with a substitute font may require one corrective sync to the configured font.

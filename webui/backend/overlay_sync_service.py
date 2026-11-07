@@ -520,8 +520,6 @@ def _parent_stream_aggregation_requested(rules):
         if default not in ("languages", "audio_codec"):
             continue
         variables = rule.get("template_variables") or {}
-        if variables.get("aggregate_parent_streams") is True:
-            return True
         builder_level = variables.get("builder_level")
         if builder_level is None:
             continue
@@ -2500,8 +2498,7 @@ def build_overlay_layers_for_item(
             variables = rule.get("template_variables") or {}
             target = str(variables.get("builder_level", "episode")).lower()
             target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
-            parent_opt_in = variables.get("aggregate_parent_streams") is True
-            if target not in ("all", target_level) and not (target == "episode" and parent_opt_in):
+            if target not in ("all", target_level):
                 continue
             subtitle_rule = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
             detected = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
@@ -2607,8 +2604,7 @@ def build_overlay_layers_for_item(
             raw_target = variables.get("builder_level", "all")
             targets = [str(value).strip().lower() for value in (raw_target if isinstance(raw_target, list) else str(raw_target).split(","))]
             target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
-            parent_opt_in = variables.get("aggregate_parent_streams") is True
-            if not any(target in ("all", target_level) for target in targets) and not ("episode" in targets and parent_opt_in):
+            if not any(target in ("all", target_level) for target in targets):
                 continue
             candidates = [
                 str(item_metadata.get(key) or "")
@@ -2704,6 +2700,12 @@ def build_overlay_layers_for_item(
         r_name = str(r.get("default") or r.get("file") or r.get("name") or "").lower()
         base_name = Path(r_name).stem.lower()
         vars_dict = r.get("template_variables") or r.get("variables") or {}
+        if base_name in ("languages", "audio_codec"):
+            raw_target = vars_dict.get("builder_level", "episode" if base_name == "languages" else "all")
+            targets = [str(value).strip().lower() for value in (raw_target if isinstance(raw_target, list) else str(raw_target).split(","))]
+            target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
+            if not any(target in ("all", target_level) for target in targets):
+                continue
         if r_name:
             rule_names[r_name] = vars_dict
         if base_name:
@@ -2795,11 +2797,9 @@ def build_overlay_layers_for_item(
     if "languages" in rule_names:
         lang_vars = rule_names["languages"]
         builder_level = str(lang_vars.get("builder_level", "")).lower()
-        # Episode rules may also render on parent art when their episode data was aggregated.
         if not (
             builder_level == "episode"
             and media_type in ["show", "season"]
-            and not item_metadata.get("_aggregated_episode_streams")
         ):
             allowed_langs = [str(l).lower() for l in lang_vars.get("languages", ["de", "en", "ja", "zh", "ko"])]
             subtitle_rule = str(lang_vars.get("use_subtitles", False)).lower() in ("true", "1")

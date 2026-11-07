@@ -15,9 +15,7 @@ export function getConfiguredPreviewBadges(library, template) {
     const levels = (Array.isArray(rawLevel) ? rawLevel : String(rawLevel).split(",")).map(value => value.trim().toLowerCase());
     const artwork = String(variables.artwork_type || "both").toLowerCase();
     const matchesArtwork = artwork === "both" || artwork === (backdrop ? "backdrop" : "poster");
-    const parentOptIn = ["audio_languages", "subtitle_languages", "audio_codec"].includes(key)
-      && variables.aggregate_parent_streams === true && levels.includes("episode") && (backdrop || ["show", "season"].includes(level));
-    const matchesLevel = levels.includes("all") || levels.includes(level) || (backdrop && levels.includes("backdrop")) || parentOptIn;
+    const matchesLevel = levels.includes("all") || levels.includes(level) || (backdrop && levels.includes("backdrop"));
     return [key, { ...badge, enabled: Boolean(badge.enabled && matchesArtwork && matchesLevel), preview_scope_matches: matchesArtwork && matchesLevel }];
   }));
 }

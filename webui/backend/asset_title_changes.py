@@ -246,6 +246,10 @@ class AssetTitleChanges:
                 elif baseline[2] is None:
                     connection.execute("UPDATE asset_title_baselines SET applied_titles = ? WHERE server_key = ? AND asset_path = ?",
                                        (applied_titles, server_key, str(path)))
+                if baseline and _same_episode_title(recorded_title, render_title) and str(record.get("TextTruncated")).lower() in ("false", "0"):
+                    applied_titles = titles
+                    connection.execute("UPDATE asset_title_baselines SET titles = ?, applied_titles = ? WHERE server_key = ? AND asset_path = ?",
+                                       (titles, titles, server_key, str(path)))
                 if _same_title_snapshot(applied_titles, titles):
                     continue
                 source = str(record.get("DownloadSource") or "").strip()
@@ -403,11 +407,42 @@ class AssetTitleChanges:
         eligible = job and (job["status"] == "ready" or (force_unknown_text and _can_force_unknown_text(job)))
         return job if eligible and not _same_episode_title(job.get("old_title"), job.get("title")) else None
 
+    def acknowledge_replacement(self, asset_path, rendered_title):
+        target = Path(asset_path).resolve()
+        if not target.is_relative_to(self.assets.resolve()) or not target.is_file() or not str(rendered_title or "").strip():
+            return 0
+        completed = 0
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            rows = connection.execute("SELECT payload FROM episode_title_candidates WHERE asset_path = ?", (str(target),)).fetchall()
+            for row in rows:
+                job = json.loads(row[0])
+                if job.get("media_type") != "episode" or not _same_episode_title(job.get("title"), rendered_title):
+                    continue
+                connection.execute("UPDATE asset_title_baselines SET titles = ?, applied_titles = ? WHERE server_key = ? AND asset_path = ? AND item_id = ?",
+                                   (job["titles"], job["titles"], job["server_key"], job["asset_path"], job["item_id"]))
+                connection.execute("DELETE FROM episode_title_candidates WHERE candidate_id = ?", (job["candidate_id"],))
+                completed += 1
+        return completed
+
     def acknowledge(self, job):
         with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute("UPDATE asset_title_baselines SET titles = ?, applied_titles = ? WHERE server_key = ? AND asset_path = ? AND item_id = ?",
                                (job["titles"], job["titles"], job["server_key"], job["asset_path"], job["item_id"]))
             connection.execute("DELETE FROM episode_title_candidates WHERE candidate_id = ?", (job["candidate_id"],))
+
+
+async def acknowledge_titlecard_replacement(base_dir, config_path, asset_path, rendered_title, return_code):
+    if return_code != 0:
+        return 0
+    try:
+        monitor = await asyncio.to_thread(create_title_monitor, base_dir, config_path)
+        completed = await asyncio.to_thread(monitor.acknowledge_replacement, monitor.assets / asset_path, rendered_title)
+        if completed:
+            logger.info("[TitleChanges] Confirmed recreated titlecard %s; cleared %s review entry/entries", Path(asset_path).name, completed)
+        return completed
+    except Exception:
+        logger.exception("[TitleChanges] Could not confirm recreated titlecard %s", Path(asset_path).name)
+        return 0
 
 
 async def fetch_title_items(client, server_type, credentials, library="all"):
