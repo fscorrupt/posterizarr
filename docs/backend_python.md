@@ -70,6 +70,14 @@ The backend handles the following core responsibilities:
 
 ## Log Retention
 
+Service diagnostics and per-item progress are not mirrored into `BackendServer.log`
+or `FrontendUI.log`. Ratings/provider refresh details stay in `RatingsRefresh.log`,
+overlay synchronization in `DynamicOverlaysSync.log`, and episode-title comparison
+and recreation in `EpisodeTitleChanges.log`. Plex Sync, image cleanup, AniMetaFill,
+and overlay-default updates retain their own service logs. Scheduler orchestration
+is recorded in `Scheduler.log`. These logs are available separately in the log viewer;
+general backend/API and browser diagnostics retain their existing UI log targets.
+
 Backend/container startup does not delete or truncate logs. In Docker, `UILogs` lives under the persistent `/config` volume. `BackendServer.log` and `FrontendUI.log` append across restarts because they record continuous server activity rather than individual jobs.
 
 These two continuous logs rotate at approximately 10 MiB per active file and
@@ -80,6 +88,8 @@ single and batch UI-log endpoints. Individual formatted records are limited to
 the active log without bound. An already oversized log rotates on the next
 write; its full previous contents are initially retained in the first backup
 until normal backup rotation ages it out. No blanket startup cleanup is used.
+`EpisodeTitleChanges.log` and `Scheduler.log` use the same bounded continuous-log
+rotation rather than being reset by background scans.
 
 When a Python job actually starts, its previous active log is renamed to `Name.old.log` and the new run writes a fresh `Name.log`. One previous run is retained; the next rotation replaces that backup. This applies to Plex Sync, Dynamic Overlays Sync, Overlay Defaults, Ratings Refresh, AniMetaFill, and Plex Image Cleanup. Rejected/busy jobs do not rotate logs. If rotation fails, the existing log is retained and new output is appended rather than discarded. The `.old.log` files remain available in the log viewer.
 

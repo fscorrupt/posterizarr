@@ -31,6 +31,51 @@ def write_frontend_log(handler, level, component, message):
     handler.handle(record)
 
 
+class ServiceLogFileHandler(logging.Handler):
+    def __init__(self, path):
+        super().__init__()
+        self.path = Path(path)
+
+    def emit(self, record):
+        try:
+            with self.path.open("a", encoding="utf-8") as output:
+                output.write(self.format(record) + "\n")
+        except Exception:
+            self.handleError(record)
+
+
+def configure_service_logging(log_directory):
+    directory = Path(log_directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    services = {
+        "DynamicOverlaysSync.log": ("overlay_sync_service", "overlay_engine", "overlay_cache"),
+        "OverlayDefaults.log": ("overlay_resolver",),
+        "EpisodeTitleChanges.log": ("asset_title_changes",),
+        "PlexSync.log": ("plex_push_service",),
+        "PlexImageCleanup.log": ("plex_image_cleanup",),
+        "AniMetaFill.log": ("AniMetaFill",),
+        "Scheduler.log": ("scheduler", "apscheduler"),
+    }
+    handlers = {}
+    previous_handlers = set()
+    for filename, names in services.items():
+        handler = create_continuous_log_handler(directory / filename) if filename in ("EpisodeTitleChanges.log", "Scheduler.log") else ServiceLogFileHandler(directory / filename)
+        handler.set_name("service_file")
+        handler.setFormatter(ContinuousLogFormatter())
+        handlers[filename] = handler
+        for name in names:
+            target = logging.getLogger(name)
+            for previous in list(target.handlers):
+                if previous.get_name() == "service_file":
+                    target.removeHandler(previous)
+                    previous_handlers.add(previous)
+            target.addHandler(handler)
+            target.propagate = False
+    for previous in previous_handlers:
+        previous.close()
+    return handlers
+
+
 def rotate_run_log(log_file):
     path = Path(log_file)
     try:

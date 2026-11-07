@@ -684,6 +684,53 @@ class OverlayResolver:
 
         return safe_path
 
+    def get_template_variable_defaults(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        visited = set()
+
+        def collect(reference):
+            if reference.get("default"):
+                path = self.defaults_dir / f"{reference['default']}.yml"
+            else:
+                path = self._resolve_config_path(str(reference.get("file") or ""))
+            if not path or not path.is_file() or path in visited:
+                return {}
+            visited.add(path)
+            try:
+                data = load_cached_yaml_file(path) or {}
+            except Exception:
+                return {}
+            if not isinstance(data, dict):
+                return {}
+            defaults = {}
+            external = data.get("external_templates") or []
+            for template in external if isinstance(external, list) else [external]:
+                if isinstance(template, dict):
+                    defaults.update(collect(template))
+
+            def visit(block):
+                if isinstance(block, list):
+                    for child in block:
+                        visit(child)
+                elif isinstance(block, dict):
+                    declared = block.get("default")
+                    if isinstance(declared, dict):
+                        defaults.update({key: value for key, value in declared.items()
+                                         if isinstance(key, str) and "<<" not in key})
+                    optional = block.get("optional") or []
+                    for key in optional if isinstance(optional, list) else [optional]:
+                        if isinstance(key, str) and "<<" not in key:
+                            defaults.setdefault(key, None)
+                    for key, child in block.items():
+                        if key not in ("default", "optional"):
+                            visit(child)
+
+            visit(data.get("templates"))
+            visit(data.get("external_templates"))
+            visit(data.get("queues"))
+            return defaults
+
+        return collect(entry)
+
     def scan_and_analyze_rules(self) -> Dict[str, Any]:
         """
         Scans all YAML files in Overlayfiles/kometa/configs/ and extracts:
@@ -748,6 +795,7 @@ class OverlayResolver:
                     active_overlays.append({
                         "type": "default",
                         "name": def_name,
+                        "template_defaults": self.get_template_variable_defaults(entry),
                         "variables": entry.get("template_variables") or {}
                     })
                     # Add default template asset
@@ -783,6 +831,7 @@ class OverlayResolver:
                     active_overlays.append({
                         "type": "file",
                         "name": file_name,
+                        "template_defaults": self.get_template_variable_defaults(entry),
                         "variables": entry.get("template_variables") or {}
                     })
                     self._parse_overlay_file_assets(file_name, all_referenced_assets)
@@ -2394,9 +2443,10 @@ class OverlayConfigEngine:
         if not raw_path or str(raw_path).startswith("text(") or str(raw_path).startswith("blur("):
             return None
         p_str = str(raw_path).strip()
-        # If full remote URL, extract filename
         if p_str.startswith(("http://", "https://")):
-            p_str = Path(urllib.parse.urlparse(p_str).path).name
+            remote_path = urllib.parse.urlparse(p_str).path
+            flag_path = re.search(r"(?:^|/)(flags?/(?:round|square)/[^/]+)$", remote_path, re.I)
+            p_str = flag_path[1] if flag_path else Path(remote_path).name
         # Clean extension
         if not p_str.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             p_str = f"{p_str}.png"
@@ -2405,6 +2455,27 @@ class OverlayConfigEngine:
         flag_aliases = FLAG_CODE_ALIASES
         target_name = Path(p_str).name.lower()
         target_name_with_ext = target_name if target_name.endswith((".png", ".jpg", ".jpeg", ".webp")) else f"{target_name}.png"
+
+        scoped_flag = re.search(r"(?:^|/)(flags?)/(round|square)/([^/]+)$", p_str.replace("\\", "/"), re.I)
+        if scoped_flag:
+            requested = Path(p_str)
+            if requested.is_absolute() and requested.is_file():
+                return requested
+            flag_style = scoped_flag[2].lower()
+            filenames = [scoped_flag[3]]
+            if stem in flag_aliases:
+                filenames.append(f"{flag_aliases[stem]}.png")
+            for base_asset_dir in self.candidate_asset_dirs:
+                for family in ("flag", "flags"):
+                    for filename in filenames:
+                        candidate = base_asset_dir / family / flag_style / filename
+                        if candidate.is_file():
+                            return candidate
+            official_url = resolve_official_kometa_image_url(f"flag/{flag_style}/{filenames[-1]}")
+            if official_url:
+                base_target = self.candidate_asset_dirs[0] if self.candidate_asset_dirs else self.assets_dir
+                return base_target / "flag" / flag_style / Path(official_url).name
+            return None
 
         sub_dirs = [
             "",

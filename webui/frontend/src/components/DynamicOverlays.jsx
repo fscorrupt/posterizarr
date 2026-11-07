@@ -82,7 +82,57 @@ import {
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
-import { getAniMetaFillPreview, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
+import { getAniMetaFillPreview, getConfiguredPreviewBadges, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
+
+function templateVisualValues(name, fields) {
+  const values = {
+    builder_level: fields.level || undefined,
+    artwork_type: fields.artworkType === "both" ? undefined : fields.artworkType,
+    horizontal_align: fields.hAlign, vertical_align: fields.vAlign,
+    horizontal_offset: fields.hOffset === "" ? undefined : Number(fields.hOffset),
+    vertical_offset: fields.vOffset === "" ? undefined : Number(fields.vOffset),
+    back_color: fields.backColor || undefined, font: fields.font || undefined,
+    font_size: Number(fields.fontSize) > 0 ? Number(fields.fontSize) : undefined,
+    font_color: fields.fontColor || undefined,
+  };
+  if (name.toLowerCase().includes("lang")) {
+    values.languages = fields.languages.split(",").map(code => code.trim()).filter(Boolean);
+    values.use_subtitles = fields.useSubtitles;
+    values.style = fields.flagStyle;
+  }
+  if (name.toLowerCase().includes("status")) {
+    values.text = fields.statusText || undefined;
+    values.font_color = fields.statusColor || undefined;
+  }
+  return values;
+}
+
+function TemplateVariableField({ name, value, inherited, onChange, onReset, onValidityChange }) {
+  const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  const [draft, setDraft] = useState(serialized ?? "");
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => { setDraft(serialized ?? ""); }, [serialized, inherited]);
+  const update = text => {
+    setDraft(text);
+    try {
+      const parsed = typeof value === "string" ? text : JSON.parse(text);
+      setInvalid(false);
+      onValidityChange(name, false);
+      onChange(parsed);
+    } catch {
+      setInvalid(true);
+      onValidityChange(name, true);
+    }
+  };
+  return <div className="space-y-1 min-w-0">
+    <div className="flex items-center justify-between gap-2">
+      <label htmlFor={`template-variable-${name}`} className="text-xs font-mono text-theme-text break-all">{name}</label>
+      {!inherited && <button type="button" title={`Reset ${name}`} aria-label={`Reset ${name}`} onClick={() => { setInvalid(false); onValidityChange(name, false); onReset(); }} className="p-1 text-theme-muted hover:text-theme-primary"><RotateCcw className="w-3.5 h-3.5" /></button>}
+    </div>
+    {typeof value === "boolean" ? <input id={`template-variable-${name}`} type="checkbox" checked={value} onChange={event => onChange(event.target.checked)} />
+      : <input id={`template-variable-${name}`} type={typeof value === "number" ? "number" : "text"} aria-invalid={invalid} value={draft} onChange={event => update(event.target.value)} className={`w-full min-w-0 bg-theme-hover border rounded-lg px-2 py-1.5 text-xs font-mono text-theme-text ${invalid ? "border-red-500" : "border-theme"}`} />}
+  </div>;
+}
 
 const DEFAULT_RATING_SOURCES = ["imdb", "tomatoes", "tmdb"];
 const MAINTENANCE_TABS = [
@@ -797,6 +847,8 @@ export default function DynamicOverlays() {
   const [previewRuntimeFormat, setPreviewRuntimeFormat] = useState("<<runtimeH>>h <<runtimeM>>m");
   const [previewLanguageLabels, setPreviewLanguageLabels] = useState(false);
   const [previewSubtitleLabels, setPreviewSubtitleLabels] = useState(false);
+  const [previewLanguageStyle, setPreviewLanguageStyle] = useState("round");
+  const [previewSubtitleStyle, setPreviewSubtitleStyle] = useState("round");
   const [previewLanguages, setPreviewLanguages] = useState("de,en");
   const [previewLanguageLimit, setPreviewLanguageLimit] = useState(5);
   const [previewSubtitles, setPreviewSubtitles] = useState("");
@@ -1876,6 +1928,9 @@ export default function DynamicOverlays() {
   const [visualBackColor, setVisualBackColor] = useState("#00000000");
   const [visualLanguages, setVisualLanguages] = useState("de, en, ja");
   const [visualUseSubtitles, setVisualUseSubtitles] = useState(false);
+  const [visualFlagStyle, setVisualFlagStyle] = useState("round");
+  const visualVariableBaseline = useRef({});
+  const [templateVariableErrors, setTemplateVariableErrors] = useState({});
   const [visualStatusText, setVisualStatusText] = useState("");
   const [visualStatusColor, setVisualStatusColor] = useState("#FFA500");
   const [visualFont, setVisualFont] = useState("");
@@ -2048,6 +2103,7 @@ export default function DynamicOverlays() {
         const data = await res.json();
         if (data.config && data.config.libraries) {
           setVisualConfig(data.config);
+          setPreviewRecipeRevision(previous => previous + 1);
           const libKeys = Object.keys(data.config.libraries);
           const savedLib = localStorage.getItem("posterizarr_selected_visual_lib");
           const targetLib = (savedLib && data.config.libraries[savedLib]) ? savedLib : (libKeys[0] || "");
@@ -3355,8 +3411,22 @@ export default function DynamicOverlays() {
       overlay: ov
     });
     setEditVariablesTab("visual");
-    const vars = ov.variables || {};
-    setEditVariablesJson(JSON.stringify(vars, null, 2));
+    const vars = { ...ov.template_defaults, ...ov.variables };
+    setEditVariablesJson(JSON.stringify(ov.variables || {}, null, 2));
+    setTemplateVariableErrors({});
+    visualVariableBaseline.current = templateVisualValues(ov.name, {
+      level: vars.builder_level || "", artworkType: vars.artwork_type || "both",
+      hAlign: vars.horizontal_align || vars.horizontal_position || "center",
+      vAlign: vars.vertical_align || vars.vertical_position || "bottom",
+      hOffset: vars.horizontal_offset !== undefined ? String(vars.horizontal_offset) : "0",
+      vOffset: vars.vertical_offset !== undefined ? String(vars.vertical_offset) : "0",
+      backColor: vars.back_color || "#00000000", font: vars.font || "",
+      fontSize: vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "",
+      fontColor: vars.font_color || "", languages: Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja",
+      useSubtitles: vars.use_subtitles === true || vars.use_subtitles === "true",
+      flagStyle: vars.style || "round", statusText: vars.text || vars.status_label || vars.status || "",
+      statusColor: vars.font_color || vars.status_color || "#FFA500",
+    });
     setVisualLevel(vars.builder_level || "");
     setVisualArtworkType(vars.artwork_type || "both");
     setVisualHAlign(vars.horizontal_align || vars.horizontal_position || "center");
@@ -3366,6 +3436,7 @@ export default function DynamicOverlays() {
     setVisualBackColor(vars.back_color || "#00000000");
     setVisualLanguages(Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja");
     setVisualUseSubtitles(vars.use_subtitles === true || vars.use_subtitles === "true");
+    setVisualFlagStyle(vars.style || ov.template_defaults?.style || "round");
     setVisualStatusText(vars.text || vars.status_label || vars.status || "");
     setVisualStatusColor(vars.font_color || vars.status_color || "#FFA500");
     setVisualFont(vars.font || "");
@@ -3373,53 +3444,33 @@ export default function DynamicOverlays() {
     setVisualFontColor(vars.font_color || "");
   };
 
-  // 15. Save Edited Variables
-  const handleSaveVariables = async () => {
-    if (!editVariablesModal) return;
-    try {
-      let finalVariables = {};
+  const getEditedTemplateVariables = () => {
+      const finalVariables = JSON.parse(editVariablesJson);
+      if (!finalVariables || Array.isArray(finalVariables) || typeof finalVariables !== "object") throw new Error("Variables must be a JSON object");
       if (editVariablesTab === "visual") {
-        try {
-          finalVariables = JSON.parse(editVariablesJson);
-        } catch (e) {
-          finalVariables = {};
-        }
-        if (visualLevel) finalVariables.builder_level = visualLevel;
-        else delete finalVariables.builder_level;
-        if (visualArtworkType !== "both") finalVariables.artwork_type = visualArtworkType;
-        else delete finalVariables.artwork_type;
-        finalVariables.horizontal_align = visualHAlign;
-        finalVariables.vertical_align = visualVAlign;
-        if (visualHOffset !== "") finalVariables.horizontal_offset = Number(visualHOffset) || 0;
-        if (visualVOffset !== "") finalVariables.vertical_offset = Number(visualVOffset) || 0;
-        if (visualBackColor) finalVariables.back_color = visualBackColor;
-        if (visualFont) finalVariables.font = visualFont;
-        else delete finalVariables.font;
-        if (visualFontSize !== "") {
-          const fsNum = Number(visualFontSize);
-          if (!isNaN(fsNum) && fsNum > 0) finalVariables.font_size = fsNum;
-          else delete finalVariables.font_size;
-        } else {
-          delete finalVariables.font_size;
-        }
-        if (visualFontColor) finalVariables.font_color = visualFontColor;
-        if (editVariablesModal.overlay.name.toLowerCase().includes("lang")) {
-          finalVariables.languages = visualLanguages.split(",").map(s => s.trim()).filter(Boolean);
-          finalVariables.use_subtitles = visualUseSubtitles;
-        }
-        if (editVariablesModal.overlay.name.toLowerCase().includes("status") || visualStatusText) {
-          if (visualStatusText) finalVariables.text = visualStatusText;
-          if (visualStatusColor) finalVariables.font_color = visualStatusColor;
-        }
-      } else {
-        try {
-          finalVariables = JSON.parse(editVariablesJson);
-        } catch (e) {
-          showToast("Invalid JSON formatting for variables", "error");
-          return;
+        const values = templateVisualValues(editVariablesModal.overlay.name, {
+          level: visualLevel, artworkType: visualArtworkType, hAlign: visualHAlign, vAlign: visualVAlign,
+          hOffset: visualHOffset, vOffset: visualVOffset, backColor: visualBackColor,
+          font: visualFont, fontSize: visualFontSize, fontColor: visualFontColor,
+          languages: visualLanguages, useSubtitles: visualUseSubtitles, flagStyle: visualFlagStyle,
+          statusText: visualStatusText, statusColor: visualStatusColor,
+        });
+        for (const [key, value] of Object.entries(values)) {
+          if (JSON.stringify(value) === JSON.stringify(visualVariableBaseline.current[key])) continue;
+          if (value === undefined) delete finalVariables[key];
+          else finalVariables[key] = value;
+          if (key === "horizontal_align" && "horizontal_position" in finalVariables) finalVariables.horizontal_position = value;
+          if (key === "vertical_align" && "vertical_position" in finalVariables) finalVariables.vertical_position = value;
         }
       }
+      return finalVariables;
+  };
 
+  // 15. Save Edited Variables
+  const handleSaveVariables = async () => {
+    if (!editVariablesModal || (editVariablesTab === "visual" && Object.values(templateVariableErrors).some(Boolean))) return;
+    try {
+      const finalVariables = getEditedTemplateVariables();
       setIsSavingVariables(true);
       const res = await fetch("/api/dynamic-overlays/rules/update", {
         method: "POST",
@@ -3703,6 +3754,8 @@ export default function DynamicOverlays() {
 
     const sprite = previewSprites?.sprites.find((item) => item.key === draggingItem);
     if (sprite) {
+      hAlign = sprite.placement.align;
+      vAlign = sprite.placement.valign;
       const corrected = getPreviewSpriteOffset(sprite, elemLeft, elemTop, hAlign, vAlign, canvasW, canvasH);
       ho = corrected.x;
       vo = corrected.y;
@@ -3984,7 +4037,7 @@ export default function DynamicOverlays() {
         layoutPayload.languages = {
           languages: previewLanguages.split(",").map(code => code.trim()).filter(Boolean),
           overlay_limit: previewLanguageLimit,
-          ...(["show_poster", "season_poster", "backdrop", "background"].includes(previewTemplate) ? { aggregate_parent_streams: true } : {}),
+          style: previewLanguageStyle,
           hide_text: !previewLanguageLabels,
           final_name: "text(<<final_text>>)",
           font_color: "#FFFFFF",
@@ -4004,7 +4057,7 @@ export default function DynamicOverlays() {
           vertical_offset: position?.y ?? 0,
           horizontal_align: position?.align || "center",
           vertical_align: position?.valign || "bottom",
-          ...(key === "subtitle_languages" ? { use_subtitles: true, languages: previewSubtitles.split(",").map(code => code.trim()).filter(Boolean), hide_text: !previewSubtitleLabels, final_name: "text(<<final_text>>)", font_color: "#FFFFFF" } : {}),
+          ...(key === "subtitle_languages" ? { use_subtitles: true, style: previewSubtitleStyle, languages: previewSubtitles.split(",").map(code => code.trim()).filter(Boolean), hide_text: !previewSubtitleLabels, final_name: "text(<<final_text>>)", font_color: "#FFFFFF" } : {}),
           ...(key === "streaming" ? previewStreamingOptions : {})
         };
       }
@@ -4167,6 +4220,8 @@ export default function DynamicOverlays() {
   };
 
   const syncPreviewWithLibraryAndFormat = (libName, targetFormat, configOverride = null) => {
+    setPreviewSprites(null);
+    setRenderedPreviewUrl("");
     setSelectedSaveLibrary(libName);
     setPreviewTemplate(targetFormat);
 
@@ -4195,7 +4250,7 @@ export default function DynamicOverlays() {
       return;
     }
 
-    const badges = curLib.badges || {};
+    const badges = getConfiguredPreviewBadges(curLib, targetFormat);
     const isTv = curLib.media_type === "show";
 
     const parsePos = (posStr, defAlign, defValign) => {
@@ -4214,7 +4269,7 @@ export default function DynamicOverlays() {
       (!badges.resolution?.offset_y && badges.resolution?.position?.includes("top"))
     );
     setResolutionMode(isLandscape ? "corner_badge" : (isResBanner ? "banner" : "corner_badge"));
-    if (badges.resolution?.enabled || badges.resolution?.banner_4k || badges.resolution?.banner_1080p || badges.resolution?.titlecard_enabled) {
+    if (badges.resolution?.preview_scope_matches && (badges.resolution?.enabled || badges.resolution?.banner_4k || badges.resolution?.banner_1080p || badges.resolution?.titlecard_enabled)) {
       if (targetFormat === "movie_poster" || targetFormat === "show_poster" || targetFormat === "season_poster") {
         if (isResBanner) {
           nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
@@ -4265,11 +4320,11 @@ export default function DynamicOverlays() {
     }
 
     // 2. STATUS BANNER (SHOW POSTER ONLY)
-    if (targetFormat === "show_poster" && badges.status?.enabled) {
+    if (badges.status?.enabled) {
       const p = parsePos(badges.status.position, "center", "bottom");
       nextOffsets.status = {
         x: Number(badges.status.offset_x) || 0,
-        y: Number(badges.status.offset_y) || 23,
+        y: Number(badges.status.offset_y ?? 23),
         align: p.align,
         valign: p.valign,
         font_size: badges.status?.font_size ?? "",
@@ -4284,16 +4339,11 @@ export default function DynamicOverlays() {
     }
 
     // 3. AUDIO LANGUAGES (FLAGS)
-    const langLevel = (badges.audio_languages?.level || (isTv ? "episode" : "movie")).toLowerCase();
     setPreviewLanguageLabels(Boolean(badges.audio_languages?.show_labels));
     setPreviewSubtitleLabels(Boolean(badges.subtitle_languages?.show_labels));
-    const shouldShowLanguages = Boolean(badges.audio_languages?.enabled) && (
-      (targetFormat === "movie_poster" && (langLevel === "movie" || langLevel === "all")) ||
-      (targetFormat === "episode_card" && (langLevel === "episode" || langLevel === "all")) ||
-      (targetFormat === "show_poster" && (langLevel === "show" || langLevel === "all" || langLevel === "episode")) ||
-      (targetFormat === "season_poster" && (langLevel === "season" || langLevel === "all" || langLevel === "episode")) ||
-      (["backdrop", "background"].includes(targetFormat) && (langLevel === "show" || langLevel === "all" || langLevel === "episode"))
-    );
+    setPreviewLanguageStyle(badges.audio_languages?.style || "round");
+    setPreviewSubtitleStyle(badges.subtitle_languages?.style || "round");
+    const shouldShowLanguages = Boolean(badges.audio_languages?.enabled);
 
     if (shouldShowLanguages) {
       const p = parsePos(badges.audio_languages.position, "left", "bottom");
@@ -4318,9 +4368,7 @@ export default function DynamicOverlays() {
 
     for (const [key, setter, sample] of [["subtitle_languages", setPreviewSubtitles, "de,en"], ["aspect", setPreviewAspect, "2.35"], ["studio", setPreviewStudio, "Universal Pictures"], ["streaming", setPreviewStreaming, "netflix,disney"]]) {
       const badge = badges[key];
-      const level = badge?.level || (targetFormat === "episode_card" ? "episode" : isTv ? "show" : "movie");
-      const targetLevel = { movie_poster: "movie", show_poster: "show", season_poster: "season", episode_card: "episode", backdrop: "backdrop" }[targetFormat];
-      const enabled = badge?.enabled && (level === "all" || level === targetLevel);
+      const enabled = badge?.enabled;
       setter(enabled ? (key === "subtitle_languages" ? (badge.languages || ["de", "en"]).join(",") : sample) : "");
       if (enabled) {
         const position = parsePos(badge.position, "center", "bottom");
@@ -4334,12 +4382,7 @@ export default function DynamicOverlays() {
     }
 
     // 4. RUNTIME DURATION
-    const runtimeLevel = (badges.runtime?.level || (isTv ? "episode" : "movie")).toLowerCase();
-    const shouldShowRuntime = Boolean(badges.runtime?.enabled) && (
-      (targetFormat === "movie_poster" && (runtimeLevel === "movie" || runtimeLevel === "all")) ||
-      (targetFormat === "episode_card" && (runtimeLevel === "episode" || runtimeLevel === "all")) ||
-      (targetFormat === "show_poster" && (runtimeLevel === "show" || runtimeLevel === "all"))
-    );
+    const shouldShowRuntime = Boolean(badges.runtime?.enabled);
 
     if (shouldShowRuntime) {
       const p = parsePos(badges.runtime.position, isTv ? "right" : "center", "bottom");
@@ -4367,13 +4410,7 @@ export default function DynamicOverlays() {
       ? badges.critic_rating
       : (badges.rating?.enabled && ["ratings", "audience_rating"].includes(badges.rating.source) ? badges.rating : null);
     setPreviewRatingMode(badges.critic_rating?.enabled || badges.rating?.source === "ratings" ? "providers" : "single");
-    const ratingLevel = (ratingBadge?.level || (isTv ? "show" : "movie")).toLowerCase();
-    const shouldShowRating = Boolean(ratingBadge?.enabled) && (
-      (targetFormat === "movie_poster" && (ratingLevel === "movie" || ratingLevel === "all")) ||
-      (targetFormat === "show_poster" && (ratingLevel === "show" || ratingLevel === "all")) ||
-      (targetFormat === "season_poster" && (ratingLevel === "season" || ratingLevel === "all")) ||
-      (targetFormat === "episode_card" && (ratingLevel === "episode" || ratingLevel === "all"))
-    );
+    const shouldShowRating = Boolean(ratingBadge?.enabled);
 
     if (shouldShowRating) {
       const isLandscape = isLandscapeFormat(targetFormat);
@@ -4397,19 +4434,13 @@ export default function DynamicOverlays() {
 
     // 6. AGE / CONTENT RATING
     const ageBadge = badges.age_rating;
-    const ageLevel = (ageBadge?.level || (isTv ? "show" : "movie")).toLowerCase();
-    const shouldShowAge = Boolean(ageBadge?.enabled) && (
-      (targetFormat === "movie_poster" && (ageLevel === "movie" || ageLevel === "all")) ||
-      (targetFormat === "show_poster" && (ageLevel === "show" || ageLevel === "all")) ||
-      (targetFormat === "season_poster" && (ageLevel === "season" || ageLevel === "all")) ||
-      (targetFormat === "episode_card" && (ageLevel === "episode" || ageLevel === "all"))
-    );
+    const shouldShowAge = Boolean(ageBadge?.enabled);
 
     if (shouldShowAge) {
       const p = parsePos(ageBadge.position, "left", "bottom");
       nextOffsets.age_rating = {
-        x: Number(ageBadge.offset_x) || 255,
-        y: Number(ageBadge.offset_y) || 37,
+        x: Number(ageBadge.offset_x ?? 255),
+        y: Number(ageBadge.offset_y ?? 37),
         align: p.align,
         valign: p.valign,
         font_size: ageBadge?.font_size ?? "",
@@ -4424,17 +4455,13 @@ export default function DynamicOverlays() {
 
     // 7. NETWORK / STUDIO LOGO
     const netBadge = badges.network;
-    const netLevel = (netBadge?.level || "season").toLowerCase();
-    const shouldShowNetwork = Boolean(netBadge?.enabled) && (
-      (targetFormat === "season_poster" && (netLevel === "season" || netLevel === "all")) ||
-      (targetFormat === "show_poster" && (netLevel === "show" || netLevel === "all"))
-    );
+    const shouldShowNetwork = Boolean(netBadge?.enabled);
 
     if (shouldShowNetwork) {
       const p = parsePos(netBadge.position, "right", "top");
       nextOffsets.network = {
-        x: Number(netBadge.offset_x) || 25,
-        y: Number(netBadge.offset_y) || 25,
+        x: Number(netBadge.offset_x ?? 25),
+        y: Number(netBadge.offset_y ?? 25),
         align: p.align,
         valign: p.valign
       };
@@ -4444,11 +4471,11 @@ export default function DynamicOverlays() {
     }
 
     // 8. ANIME TAG
-    if (targetFormat === "episode_card" && badges.anime?.enabled) {
+    if (badges.anime?.enabled) {
       const p = parsePos(badges.anime.position, "left", "top");
       nextOffsets.anime = {
-        x: Number(badges.anime.offset_x) || 20,
-        y: Number(badges.anime.offset_y) || 20,
+        x: Number(badges.anime.offset_x ?? 20),
+        y: Number(badges.anime.offset_y ?? 20),
         align: p.align,
         valign: p.valign,
         font_size: badges.anime?.font_size ?? "",
@@ -4463,8 +4490,8 @@ export default function DynamicOverlays() {
     if (badges.audio_codec?.enabled) {
       const p = parsePos(badges.audio_codec.position, "right", "bottom");
       nextOffsets.audio_codec = {
-        x: Number(badges.audio_codec.offset_x) || 30,
-        y: Number(badges.audio_codec.offset_y) || 70,
+        x: Number(badges.audio_codec.offset_x ?? 30),
+        y: Number(badges.audio_codec.offset_y ?? 70),
         align: p.align,
         valign: p.valign
       };
@@ -4479,8 +4506,8 @@ export default function DynamicOverlays() {
     if (badges.video_format?.enabled) {
       const p = parsePos(badges.video_format.position, "right", "top");
       nextOffsets.video_format = {
-        x: Number(badges.video_format.offset_x) || 30,
-        y: Number(badges.video_format.offset_y) || 30,
+        x: Number(badges.video_format.offset_x ?? 30),
+        y: Number(badges.video_format.offset_y ?? 30),
         align: p.align,
         valign: p.valign
       };
@@ -4641,9 +4668,14 @@ export default function DynamicOverlays() {
     setPreviewTimestamp(Date.now());
   };
 
+  const previewLibrary = visualConfig?.libraries?.[selectedSaveLibrary];
+  const configuredPreviewBadges = previewLibrary ? getConfiguredPreviewBadges(previewLibrary, previewTemplate) : null;
+  const isPreviewControlConfigured = key => !configuredPreviewBadges || Boolean(configuredPreviewBadges[key]?.enabled);
+
   const fontParams = [
     `&rating_mode=${previewRatingMode}`,
     `&runtime_prefix=${encodeURIComponent(previewRuntimePrefix)}&runtime_format=${encodeURIComponent(previewRuntimeFormat)}&language_labels=${previewLanguageLabels}&subtitle_labels=${previewSubtitleLabels}`,
+    `&language_style=${encodeURIComponent(previewLanguageStyle)}&subtitle_style=${encodeURIComponent(previewSubtitleStyle)}`,
     `&streaming=${encodeURIComponent(previewStreaming)}&streaming_options=${encodeURIComponent(JSON.stringify(previewStreamingOptions))}`,
     `&rating_options=${encodeURIComponent(JSON.stringify(previewRatingOptions))}`,
     `&subtitle_languages=${encodeURIComponent(previewSubtitles)}&studio=${encodeURIComponent(previewStudio)}${previewAspect ? `&aspect_ratio=${encodeURIComponent(previewAspect)}` : ""}`,
@@ -4673,19 +4705,7 @@ export default function DynamicOverlays() {
   const spritePreviewUrl = (() => {
     const [path, query = ""] = compositorPreviewUrl.split("?");
     const params = new URLSearchParams(query);
-    [
-      "t", "supplemental_layout",
-      "rating_x", "rating_y", "rating_align", "rating_valign",
-      "runtime_x", "runtime_y", "runtime_align", "runtime_valign",
-      "status_x", "status_y", "status_align", "status_valign",
-      "res_x", "res_y", "res_align", "res_valign",
-      "anime_x", "anime_y", "anime_align", "anime_valign",
-      "lang_x", "lang_y", "lang_align", "lang_valign",
-      "network_x", "network_y", "network_align", "network_valign",
-      "age_rating_x", "age_rating_y", "age_rating_align", "age_rating_valign",
-      "audio_codec_x", "audio_codec_y", "audio_codec_align", "audio_codec_valign",
-      "video_format_x", "video_format_y", "video_format_align", "video_format_valign",
-    ].forEach((key) => params.delete(key));
+    params.delete("t");
     params.set("preview_recipe_revision", String(previewRecipeRevision));
     return `${path}?${params.toString()}`;
   })();
@@ -8718,7 +8738,7 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Resolution Badge */}
-              <div className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("resolution")} className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-theme-text flex items-center gap-1.5">
                     <span>Resolution Badge</span>
@@ -8857,7 +8877,7 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Rating Badge */}
-              <div className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("rating") && !isPreviewControlConfigured("critic_rating")} className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <label className="text-xs font-semibold text-theme-text">
@@ -8976,7 +8996,7 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Age & Content Ratings Badge */}
-              <div className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("age_rating")} className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-theme-text">Age Rating Badge</label>
                   <div className="flex items-center gap-2">
@@ -9086,7 +9106,7 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Audio Codec Badge */}
-              <div className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("audio_codec")} className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Volume2 className="w-3.5 h-3.5 text-theme-primary" />
@@ -9169,7 +9189,7 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Video Format Badge */}
-              <div className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("video_format")} className="space-y-2 p-3 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Clapperboard className="w-3.5 h-3.5 text-theme-primary" />
@@ -9251,7 +9271,7 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Audio Languages (Flags / Badges) */}
-              <div className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("audio_languages")} className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-theme-text">Audio Language Flags</label>
                   <span className="text-[11px] font-mono text-theme-muted">{previewLanguages || "Off"}</span>
@@ -9296,6 +9316,12 @@ export default function DynamicOverlays() {
                   </label>
                 )}
                 {previewLanguages && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={previewLanguageLabels} onChange={event => { setPreviewLanguageLabels(event.target.checked); setPreviewTimestamp(Date.now()); }} />Show Language Codes</label>}
+                {previewLanguages && <label className="flex items-center justify-between gap-3 text-xs text-theme-text">
+                  Flag Style
+                  <select aria-label="Audio flag style" value={previewLanguageStyle} onChange={event => setPreviewLanguageStyle(event.target.value)} className="bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text">
+                    <option value="round">Round</option><option value="square">Square</option><option value="half">Half</option>
+                  </select>
+                </label>}
                 {previewLanguages && (
                   <BadgeOffsetControls
                     itemKey="languages"
@@ -9307,19 +9333,25 @@ export default function DynamicOverlays() {
               </div>
 
               {[["subtitle_languages", "Subtitle Language Flags", previewSubtitles, setPreviewSubtitles], ["aspect", "Aspect Ratio", previewAspect, setPreviewAspect], ["studio", "Studio Logo", previewStudio, setPreviewStudio], ["streaming", "Streaming Services", previewStreaming, setPreviewStreaming]].map(([key, label, value, setter]) => (
-                <div key={key} className="space-y-2 border border-theme rounded-lg p-3">
+                <div key={key} hidden={!isPreviewControlConfigured(key)} className="space-y-2 border border-theme rounded-lg p-3">
                   <label className="flex items-center justify-between gap-2 text-xs font-semibold text-theme-text" htmlFor={`enable-preview-${key}`}>
                     {label}
                     <input id={`enable-preview-${key}`} type="checkbox" checked={Boolean(value)} onChange={event => { setter(event.target.checked ? ({ subtitle_languages: "de,en", aspect: "1.78", studio: "Universal Pictures", streaming: "netflix,disney" }[key]) : ""); setPreviewTimestamp(Date.now()); }} />
                   </label>
                   <input id={`preview-${key}`} type={key === "aspect" ? "number" : "text"} min={key === "aspect" ? "0.1" : undefined} max={key === "aspect" ? "9.99" : undefined} step={key === "aspect" ? "0.01" : undefined} value={value} onChange={event => { setter(event.target.value); setPreviewTimestamp(Date.now()); }} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
                   {key === "subtitle_languages" && value && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={previewSubtitleLabels} onChange={event => { setPreviewSubtitleLabels(event.target.checked); setPreviewTimestamp(Date.now()); }} />Show Language Codes</label>}
+                  {key === "subtitle_languages" && value && <label className="flex items-center justify-between gap-3 text-xs text-theme-text">
+                    Flag Style
+                    <select aria-label="Subtitle flag style" value={previewSubtitleStyle} onChange={event => setPreviewSubtitleStyle(event.target.value)} className="bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text">
+                      <option value="round">Round</option><option value="square">Square</option><option value="half">Half</option>
+                    </select>
+                  </label>}
                   {value && <BadgeOffsetControls itemKey={key} offset={offsets[key]} onChange={handleOffsetChange} fonts={availableFonts} />}
                 </div>
               ))}
 
               {/* Runtime Duration */}
-              <div className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("runtime")} className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-xs text-theme-muted">Label<input aria-label="Runtime label" value={previewRuntimePrefix} onChange={event => { setPreviewRuntimePrefix(event.target.value); setPreviewTimestamp(Date.now()); }} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" /></label>
                   <label className="text-xs text-theme-muted">Format<select aria-label="Runtime format" value={previewRuntimeFormat} onChange={event => { setPreviewRuntimeFormat(event.target.value); setPreviewTimestamp(Date.now()); }} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"><option value="<<runtimeH>>h <<runtimeM>>m">Hours / Minutes</option><option value="<<runtime>> min">Total Minutes</option></select></label>
@@ -9404,7 +9436,7 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Series Status Banner (TV Show Poster only) */}
-              {previewTemplate === "show_poster" && (
+              {isPreviewControlConfigured("status") && (
                 <div className="space-y-2.5 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-theme-text">Show Status Banner</label>
@@ -9487,7 +9519,7 @@ export default function DynamicOverlays() {
               )}
 
               {/* Network Logo */}
-              <div className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
+              <div hidden={!isPreviewControlConfigured("network")} className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-theme-text">Network Logo</label>
                   <span className="text-[11px] font-mono text-theme-muted">{previewNetwork || "Off"}</span>
@@ -12607,7 +12639,12 @@ export default function DynamicOverlays() {
             <div className="flex rounded-xl bg-theme-hover/60 p-1 border border-theme">
               <button
                 type="button"
-                onClick={() => setEditVariablesTab("visual")}
+                onClick={() => {
+                  try {
+                    const variables = getEditedTemplateVariables();
+                    handleOpenEditVariables(editVariablesModal.libraryName, editVariablesModal.overlayIndex, { ...editVariablesModal.overlay, variables });
+                  } catch { showToast("Invalid JSON formatting for variables", "error"); }
+                }}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   editVariablesTab === "visual"
                     ? "bg-theme-primary text-white shadow-sm"
@@ -12618,7 +12655,13 @@ export default function DynamicOverlays() {
               </button>
               <button
                 type="button"
-                onClick={() => setEditVariablesTab("json")}
+                onClick={() => {
+                  if (Object.values(templateVariableErrors).some(Boolean)) return;
+                  try {
+                    setEditVariablesJson(JSON.stringify(getEditedTemplateVariables(), null, 2));
+                    setEditVariablesTab("json");
+                  } catch { showToast("Invalid JSON formatting for variables", "error"); }
+                }}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   editVariablesTab === "json"
                     ? "bg-theme-primary text-white shadow-sm"
@@ -12888,6 +12931,12 @@ export default function DynamicOverlays() {
                       <input type="checkbox" checked={visualUseSubtitles} onChange={event => setVisualUseSubtitles(event.target.checked)} />
                       Subtitle languages
                     </label>
+                    <label className="block space-y-1 text-xs text-theme-text">
+                      <span>Flag Style</span>
+                      <select aria-label="Template flag style" value={visualFlagStyle} onChange={event => setVisualFlagStyle(event.target.value)} className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1.5 text-xs text-theme-text">
+                        <option value="round">Round</option><option value="square">Square</option><option value="half">Half</option>
+                      </select>
+                    </label>
                     <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Languages (comma-separated)</label>
                     <input
                       type="text"
@@ -12898,6 +12947,21 @@ export default function DynamicOverlays() {
                     />
                   </div>
                 )}
+                <div className="space-y-3 border-t border-theme pt-3">
+                  <h4 className="text-xs font-semibold text-theme-text">Template Variables</h4>
+                  {(() => {
+                    let configured;
+                    try { configured = JSON.parse(editVariablesJson); } catch { return null; }
+                    const defaults = editVariablesModal.overlay.template_defaults || {};
+                    return Object.keys({ ...defaults, ...configured }).filter(key => !(key in visualVariableBaseline.current)).sort().map(key => (
+                      <TemplateVariableField key={key} name={key} value={Object.prototype.hasOwnProperty.call(configured, key) ? configured[key] : defaults[key] ?? null}
+                        inherited={!Object.prototype.hasOwnProperty.call(configured, key)}
+                        onValidityChange={(name, invalid) => setTemplateVariableErrors(previous => ({ ...previous, [name]: invalid }))}
+                        onChange={value => setEditVariablesJson(previous => JSON.stringify({ ...JSON.parse(previous), [key]: value }, null, 2))}
+                        onReset={() => setEditVariablesJson(previous => { const next = JSON.parse(previous); delete next[key]; return JSON.stringify(next, null, 2); })} />
+                    ));
+                  })()}
+                </div>
               </div>
             ) : (
               /* TAB CONTENT: RAW JSON */
@@ -12925,7 +12989,7 @@ export default function DynamicOverlays() {
               </button>
               <button
                 onClick={handleSaveVariables}
-                disabled={isSavingVariables}
+                disabled={isSavingVariables || (editVariablesTab === "visual" && Object.values(templateVariableErrors).some(Boolean))}
                 className="flex items-center gap-2 px-5 py-2 rounded-xl bg-theme-primary hover:bg-theme-primary/90 text-white text-xs font-semibold shadow-lg shadow-theme-primary/20 disabled:opacity-50"
               >
                 {isSavingVariables ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

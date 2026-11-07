@@ -101,14 +101,24 @@ def _same_title_snapshot(previous, current):
         _same_episode_title(old, new) for old, new in zip(previous_values, current_values))
 
 
-def _can_force_unknown_text(job):
-    if job.get("reason") != "unknown_text" or not job.get("source_textless") or _placeholder(str(job.get("title") or "")) or is_media_server_source(job.get("source"), [job.get("server_url")]):
-        return False
+def _unknown_text_block_reason(job):
+    if is_media_server_source(job.get("source"), [job.get("server_url")]):
+        return "media_server_source"
+    if _placeholder(str(job.get("title") or "")):
+        return "placeholder"
     try:
         source = urlsplit(str(job.get("source") or "").strip())
-        return bool(source.scheme in ("http", "https") and source.hostname and not source.username and not source.password)
+        if source.scheme not in ("http", "https") or not source.hostname or source.username or source.password:
+            return "missing_source"
     except ValueError:
-        return False
+        return "missing_source"
+    if not job.get("source_textless"):
+        return "source_has_text"
+    return None
+
+
+def _can_force_unknown_text(job):
+    return job.get("reason") == "unknown_text" and _unknown_text_block_reason(job) is None
 
 
 def _dismissal_fingerprint(job):
@@ -356,7 +366,8 @@ class AssetTitleChanges:
         return {"total": len(rows), "eligible": sum(row["status"] == "ready" for row in rows),
             "force_eligible": sum(row["status"] == "ready" or _can_force_unknown_text(row) for row in rows),
                 "entries": [{**{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")},
-                             "force_recreatable": _can_force_unknown_text(row)}
+                             "force_recreatable": _can_force_unknown_text(row),
+                             "rebuild_block_reason": _unknown_text_block_reason(row) if row.get("reason") == "unknown_text" else None}
                             for row in rows[offset:offset + limit]]}
 
     def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False, force_unknown_text=False,

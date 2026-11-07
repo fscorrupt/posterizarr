@@ -248,8 +248,9 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         for key, default in defaults.items() if key in placements
     ]
     if options.get("rating_mode") in ("single", "providers") and "rating" in placements:
-        rules = [rule for rule in rules if not (isinstance(rule, dict) and rule.get("default") in ("ratings", "rating", "single_rating"))]
-        rules.append({"default": defaults["rating"], "template_variables": {"builder_level": "all", **(options.get("rating_options") or {})}})
+        for rule in rules:
+            if isinstance(rule, dict) and rule.get("default") in ("ratings", "rating", "single_rating"):
+                rule["default"] = defaults["rating"]
     if "resolution" in placements and options.get("resolution_mode"):
         resolution_mode = "corner_badge" if options["resolution_mode"] == "badge" else options["resolution_mode"]
         for rule in rules:
@@ -258,7 +259,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
                 for key in ("4K_banner", "1080p_banner", "720p_banner", "4K", "1080p", "720p"):
                     variables[key] = False
         resolution_rules = [rule for rule in rules if isinstance(rule, dict) and rule.get("default") == "resolution"]
-        if not resolution_rules:
+        if not resolution_rules and library_rules is None:
             resolution_rules = [{"default": "resolution", "template_variables": {"builder_level": "all"}}]
             rules.extend(resolution_rules)
         for rule in resolution_rules:
@@ -276,7 +277,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
             and (key != "subtitle_languages" or str((rule.get("template_variables") or {}).get("use_subtitles", False)).lower() in ("true", "1"))
             for rule in rules
         )
-        if not matching:
+        if not matching and library_rules is None:
             rules.append({"default": defaults[key], "template_variables": {"builder_level": "all", **({"use_subtitles": True} if key == "subtitle_languages" else {})}})
     rating_options = options.get("rating_options") or {}
     allowed_rating_options = {"sources", "theme", "orientation", "contrast_box", "spacing", "score_size_mode", "score_width", "score_position", "score_alignment"}
@@ -295,6 +296,9 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         if default_name == "languages":
             variables = rule.setdefault("template_variables", {})
             subtitle = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
+            selected_style = options.get("subtitle_style" if subtitle else "language_style")
+            if selected_style in ("round", "square", "half"):
+                variables["style"] = selected_style
             if not subtitle and options.get("language_limit") is not None:
                 variables["overlay_limit"] = int(options["language_limit"])
             label_option = "subtitle_labels" if subtitle else "language_labels"

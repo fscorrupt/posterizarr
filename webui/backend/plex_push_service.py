@@ -1180,7 +1180,6 @@ async def run_plex_sync_task(
                 lf.write(formatted)
         except Exception:
             pass
-        logger.info(f"[PlexSync] {msg}")
 
     global _is_plex_sync_running, _stop_plex_sync_requested
     if _is_plex_sync_running:

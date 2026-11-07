@@ -388,7 +388,6 @@ def run_scheduled_image_cleanup(base_dir, options, *, scheduled=False):
         log_file.parent.mkdir(parents=True, exist_ok=True)
         with log_file.open("a", encoding="utf-8") as output:
             output.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{level}] {message}\n")
-        logger.log(logging.ERROR if level == "ERROR" else logging.INFO, "[PlexImageCleanup] %s", message)
 
     try:
         from log_rotation import rotate_run_log

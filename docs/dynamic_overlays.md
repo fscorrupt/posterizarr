@@ -70,6 +70,21 @@ After the guide, use this safe setup path:
    update media-server artwork.
 4. Run a dry-run sync in **Sync & Maintenance > Synchronize** and review its log and cache results.
    Turn off Dry Run only when you intend to upload artwork to the selected server.
+
+For a selected library, **Live Preview** uses its configured rules and respects
+`builder_level` and `artwork_type`. Episode-only flags are not inherited by show
+or season posters. Preview controls do not create missing library rules or widen
+their scope. **Drag & Drop** and **Final Render** use the same positions; dragging
+retains the configured anchor, which can be changed explicitly in the position controls.
+
+Audio and subtitle flags have independent **Flag Style** selectors in Live Preview.
+Choose **Round**, **Square**, or **Half**, then use **Save Layout** to persist the
+selection. Missing local flags are resolved within the requested style rather than
+substituting another shape. Without an explicit style, the template default is
+`round`; `half` uses square flag artwork with a rounded label background.
+In **Libraries & Rules > Edit Template Variables**, additional default and optional
+variables from downloaded template YAMLs are editable alongside existing overrides.
+Unchanged inherited values remain inherited; the JSON editor also accepts custom keys.
 5. For a smaller test, use **Select Movie / Show** in **Sync & Maintenance > Synchronize** instead of
    processing an entire library. Avoid **Force Reapply** unless you deliberately
    want to reapply artwork.
@@ -742,6 +757,13 @@ page selection and bulk processing. Both Queue and Fast actions support selected
 episodes or all matching candidates across pages, respecting the current search
 and filters. A separate bulk warning confirms replacement despite uncertain old
 text. Missing, textful, media-server sources and placeholder titles stay blocked.
+For uncertain rows that cannot safely be forced, the status also shows the
+additional blocking reason. Their action opens **Choose a provider image in
+Asset Replacer** instead of leaving a disabled recreate button. This allows an
+explicit replacement with a new original without reusing an unsafe source.
+Titles such as `Folge 7` and `Episode 2` remain placeholders for automatic and
+forced source reuse. Comparison and recreation diagnostics are recorded in the
+dedicated `EpisodeTitleChanges.log`, not the backend/browser UI logs.
 The explicit override is retained in the existing queue if the job is resumed.
 After updating from an earlier version, run **Compare titles** once to refresh
 source eligibility for already cached review entries.

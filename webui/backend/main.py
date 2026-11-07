@@ -433,7 +433,7 @@ LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL_ENV, logging.INFO)
 logging.root.handlers.clear()
 
 # Create file handler for BackendServer.log
-from log_rotation import create_continuous_log_handler, write_frontend_log
+from log_rotation import configure_service_logging, create_continuous_log_handler, write_frontend_log
 
 file_handler = create_continuous_log_handler(UI_LOGS_DIR / "BackendServer.log")
 file_handler.setLevel(LOG_LEVEL)
@@ -444,6 +444,7 @@ logging.root.addHandler(file_handler)
 
 from ratings_refresh import configure_ratings_logging
 configure_ratings_logging(UI_LOGS_DIR)
+configure_service_logging(UI_LOGS_DIR)
 
 # Set httpx to WARNING to reduce noise, but keep our app at DEBUG
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -5996,6 +5997,8 @@ async def get_upload_diagnostics():
 
 def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental", target_items: Optional[List[Dict[str, Any]]] = None):
     """Auto-trigger Dynamic Overlays Sync in background when new media is created."""
+    from overlay_sync_service import logger
+
     try:
         # Check master Dynamic Overlays feature setting first
         try:
@@ -8987,8 +8990,11 @@ KNOWN_LOG_FILES: Dict[str, Path] = {
     "FrontendUI.log": UI_LOGS_DIR / "FrontendUI.log",
     "PlexSync.log": UI_LOGS_DIR / "PlexSync.log",
     "KometaDefaults.log": UI_LOGS_DIR / "KometaDefaults.log",
+    "OverlayDefaults.log": UI_LOGS_DIR / "OverlayDefaults.log",
     "DynamicOverlaysSync.log": UI_LOGS_DIR / "DynamicOverlaysSync.log",
     "RatingsRefresh.log": UI_LOGS_DIR / "RatingsRefresh.log",
+    "EpisodeTitleChanges.log": UI_LOGS_DIR / "EpisodeTitleChanges.log",
+    "Scheduler.log": UI_LOGS_DIR / "Scheduler.log",
     "PlexImageCleanup.log": UI_LOGS_DIR / "PlexImageCleanup.log",
     "AniMetaFill.log": UI_LOGS_DIR / "AniMetaFill.log",
 }
@@ -15261,6 +15267,11 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
     """
     global current_process, current_mode, current_start_time
 
+    if title_regeneration:
+        from asset_title_changes import logger as run_logger
+    else:
+        run_logger = logger
+
     if title_regeneration and request.posterType != "titlecard":
         raise ValueError("Automatic title regeneration only supports episode titlecards")
 
@@ -15280,7 +15291,7 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
             subprocess.run([ps_command, "-v"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             ps_command = "powershell"
-            logger.info("pwsh not found, using powershell instead")
+            run_logger.info("pwsh not found, using powershell instead")
     else:
         ps_command = "pwsh"
 
@@ -15370,7 +15381,7 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
         temp_override_path = generate_blueprint_override_config(request.blueprint_overrides)
         command.extend(["-ConfigOverride", temp_override_path])
 
-    logger.info(f"Starting Manual Run: {' '.join(command)}")
+    run_logger.info(f"Starting Manual Run: {' '.join(command)}")
 
     # Start the process in background
     # IMPORTANT: Do NOT redirect stdout/stderr to PIPE if we're not reading them!
@@ -15387,12 +15398,12 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
     current_mode = "manual"
     current_start_time = datetime.now().isoformat()
 
-    logger.info(f"Manual Run process started (PID: {current_process.pid})")
+    run_logger.info(f"Manual Run process started (PID: {current_process.pid})")
 
 async def regenerate_asset_title(job, manual=False):
     if job.get("poster_type") != "titlecard" or job.get("media_type") != "episode":
         return False
-    from asset_title_changes import is_media_server_source, title_regeneration_allowed
+    from asset_title_changes import is_media_server_source, logger, title_regeneration_allowed
     from dynamic_overlays_service import get_dynamic_overlays_settings
     from overlay_sync_service import get_server_credentials, is_overlay_sync_running, run_overlay_sync_task, _confirm_plex_titlecard
     from plex_image_cleanup import is_cleanup_running
@@ -19933,6 +19944,8 @@ def preview_dynamic_overlay(
     runtime_format: Optional[str] = Query(None),
     language_labels: Optional[bool] = Query(None),
     subtitle_labels: Optional[bool] = Query(None),
+    language_style: Optional[str] = Query(None, pattern="^(round|square|half)$"),
+    subtitle_style: Optional[str] = Query(None, pattern="^(round|square|half)$"),
     status_label: Optional[str] = Query(""),
     status_color: Optional[str] = Query("#FFA500"),
     resolution: Optional[str] = Query("4K"),
@@ -20166,6 +20179,7 @@ def preview_dynamic_overlay(
             "template_type": template_type, "rating": rating, "runtime": runtime,
             "runtime_prefix": runtime_prefix, "runtime_format": runtime_format,
             "language_labels": language_labels, "subtitle_labels": subtitle_labels,
+            "language_style": language_style, "subtitle_style": subtitle_style,
             "status_label": status_label, "status_color": status_color, "resolution": resolution, "languages": languages,
             "subtitle_languages": subtitle_languages, "aspect_ratio": aspect_ratio, "studio": studio,
             "network": network, "age_rating": age_rating, "age_rating_source": age_rating_source,
@@ -20932,7 +20946,7 @@ async def dismiss_episode_title_change(request: EpisodeTitleDismissRequest):
 
 
 async def _finish_episode_title_normal_run(monitor, backup_dir, entries, process):
-    from asset_title_changes import episode_title_review
+    from asset_title_changes import episode_title_review, logger
 
     try:
         return_code = await asyncio.to_thread(process.wait)
@@ -20959,7 +20973,7 @@ async def _finish_episode_title_normal_run(monitor, backup_dir, entries, process
 
 @app.post("/api/dynamic-overlays/episode-title-changes/fast-normal-run")
 async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequest):
-    from asset_title_changes import create_title_monitor, episode_title_review, title_regeneration_allowed
+    from asset_title_changes import create_title_monitor, episode_title_review, logger, title_regeneration_allowed
     from dynamic_overlays_service import get_dynamic_overlays_settings
 
     if not request.confirmed:

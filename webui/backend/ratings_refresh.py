@@ -40,6 +40,7 @@ def configure_ratings_logging(log_directory):
                 previous_handlers.add(previous)
         ratings_logger.addHandler(handler)
         ratings_logger.setLevel(logging.INFO)
+        ratings_logger.propagate = False
     for previous in previous_handlers:
         previous.close()
     return handler

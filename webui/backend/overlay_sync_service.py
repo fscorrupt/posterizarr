@@ -2486,22 +2486,12 @@ def build_overlay_layers_for_item(
     native_language_layers = []
     native_parent_stream_layers = []
     flag_assets_dir = overlays_dir / "assets"
-    flag_dirs = [
-        flag_assets_dir / "flag" / "square", flag_assets_dir / "flags" / "square",
-        flag_assets_dir / "flag" / "round", flag_assets_dir / "flags" / "round",
-        flag_assets_dir / "flag", flag_assets_dir / "flags", flag_assets_dir,
-        overlays_dir / "defaults" / "images" / "flag" / "square",
-        overlays_dir / "defaults" / "images" / "flags" / "square",
-        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flag" / "square",
-        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flags" / "square",
-        Path("/config/Overlayfiles/dynamic_overlays/assets/flag/square"),
-        Path("/config/Overlayfiles/dynamic_overlays/assets/flags/square"),
-        Path("/app/Overlayfiles/dynamic_overlays/assets/flag/square"),
-    ]
 
-    def resolve_parent_flag(code):
+    def resolve_parent_flag(code, variables):
         filename = LANGUAGE_TO_FLAG_MAP.get(code, f"{code}.png")
-        return next((directory / filename for directory in flag_dirs if (directory / filename).exists()), flag_assets_dir / "flag" / "square" / filename)
+        style = "round" if str(variables.get("style", "round")).lower() == "round" else "square"
+        selected_asset = variables.get(f"file_{code}") or f"flag/{style}/{filename}"
+        return _get_overlay_config_engine(overlays_dir).resolve_image_path(selected_asset) or flag_assets_dir / "flag" / style / filename
 
     if aggregated_parent:
         for rule in library_rules:
@@ -2571,7 +2561,7 @@ def build_overlay_layers_for_item(
                     native_language_layers.append({
                         "name": f"language_flag_{code}",
                         "type": "image",
-                        "image_path": str(resolve_parent_flag(code)),
+                        "image_path": str(resolve_parent_flag(code, variables)),
                         "horizontal_align": horizontal_align,
                         "horizontal_offset": horizontal_offset,
                         "vertical_align": vertical_align,
@@ -2592,7 +2582,7 @@ def build_overlay_layers_for_item(
                         "name": f"language_flag_{code}",
                         "type": "text",
                         "text": lang_text,
-                        "image_path": str(resolve_parent_flag(code)),
+                        "image_path": str(resolve_parent_flag(code, variables)),
                         "addon_position": flag_align,
                         "addon_offset": int(variables.get("offset", 10)),
                         "font_path": font_file,
@@ -2692,30 +2682,9 @@ def build_overlay_layers_for_item(
     # 2. Safety Fallback: Direct rule construction
     layers = []
     assets_dir = overlays_dir / "assets"
-    flags_dirs = [
-        assets_dir / "flag" / "square",
-        assets_dir / "flags" / "square",
-        assets_dir / "flag" / "round",
-        assets_dir / "flags" / "round",
-        assets_dir / "flag",
-        assets_dir / "flags",
-        assets_dir,
-        overlays_dir / "defaults" / "images" / "flag" / "square",
-        overlays_dir / "defaults" / "images" / "flags" / "square",
-        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flag" / "square",
-        PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets" / "flags" / "square",
-        Path("/config/Overlayfiles/dynamic_overlays/assets/flag/square"),
-        Path("/config/Overlayfiles/dynamic_overlays/assets/flags/square"),
-        Path("/app/Overlayfiles/dynamic_overlays/assets/flag/square"),
-    ]
 
     def resolve_flag_path(c_code: str) -> Path:
-        f_file = LANGUAGE_TO_FLAG_MAP.get(c_code, f"{c_code}.png")
-        for fd in flags_dirs:
-            cand = fd / f_file
-            if cand.exists():
-                return cand
-        return assets_dir / "flag" / "square" / f_file
+        return resolve_parent_flag(c_code, lang_vars)
 
     fonts_dir = overlays_dir / "fonts"
 
@@ -3890,7 +3859,6 @@ async def _run_overlay_sync_task(
                     lf.write(line)
             except Exception:
                 pass
-        logger.info(f"[OverlaySync] {msg}")
 
     if dry_run:
         write_log("DRY RUN is active: overlays will be evaluated and rendered, but no artwork will be uploaded or marked synced.")

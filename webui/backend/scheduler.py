@@ -394,7 +394,6 @@ class PosterizarrScheduler:
                             lf.write(f"[{now_str}] {msg}\n")
                     except Exception:
                         pass
-                    logger.info(f"[OverlayDefaults] {msg}")
 
                 write_defaults_log("=" * 60)
                 write_defaults_log("STARTING SCHEDULED OVERLAY DEFAULTS UPDATE (GITHUB)")

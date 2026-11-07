@@ -307,7 +307,8 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
             {data.entries.map(entry => {
               const coordinates = `S${String(entry.season).padStart(2, "0")}E${String(entry.episode).padStart(2, "0")}`;
               const preview = `/poster_assets/${entry.preview_path.split("/").map(encodeURIComponent).join("/")}`;
-              const needsProvider = ["media_server_source", "missing_source"].includes(entry.reason);
+              const needsProvider = ["media_server_source", "missing_source", "source_has_text"].includes(entry.reason)
+                || (entry.reason === "unknown_text" && !entry.force_recreatable);
               return <tr key={entry.candidate_id} className="border-b border-theme last:border-0">
                 <td className="p-3"><input type="checkbox" aria-label={text("selectEpisode", { episode: `${entry.parent_title || entry.folder} ${coordinates}` })}
                   checked={selected.has(entry.candidate_id)} disabled={(entry.status !== "ready" && !(includeUncertain && entry.force_recreatable)) || busy || loading || search !== query} onChange={event => {
@@ -323,6 +324,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                 <td className="break-words px-2 py-3 font-medium text-theme-text">{entry.title}</td>
                 <td className="px-2 py-3"><p className={entry.status === "ready" ? "text-emerald-500" : "text-amber-500"}>
                   {entry.reason ? text(`reasons.${entry.reason}`) : text("ready")}</p>
+                  {entry.rebuild_block_reason && <p className="mt-1 text-amber-500">{text(`reasons.${entry.rebuild_block_reason}`)}</p>}
                   <p className="mt-1 text-theme-muted">{entry.requires_review ? text("historical") : text("future")}</p>
                   {entry.last_error && <p className="mt-1 text-red-500">{text("errors.not_completed")}</p>}</td>
                 <td className="px-2 py-3"><div className="flex items-center gap-1">{needsProvider ? <button type="button"
