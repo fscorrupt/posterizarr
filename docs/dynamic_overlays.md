@@ -85,6 +85,11 @@ substituting another shape. Without an explicit style, the template default is
 In **Libraries & Rules > Edit Template Variables**, additional default and optional
 variables from downloaded template YAMLs are editable alongside existing overrides.
 Unchanged inherited values remain inherited; the JSON editor also accepts custom keys.
+Info icons beside the editor's settings provide hover descriptions in all five
+UI languages. The icons are keyboard-focusable and expose the description to
+screen readers. Known YAML variables and aliases have specific explanations;
+unknown custom keys are identified as template-specific rather than assigned a
+guessed meaning. Reading or clicking an info icon does not change the setting.
 5. For a smaller test, use **Select Movie / Show** in **Sync & Maintenance > Synchronize** instead of
    processing an entire library. Avoid **Force Reapply** unless you deliberately
    want to reapply artwork.

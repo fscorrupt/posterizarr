@@ -107,6 +107,25 @@ function templateVisualValues(name, fields) {
   return values;
 }
 
+function TemplateVariableHelp({ name }) {
+  const { t } = useTranslation();
+  const aliases = { horizontal_position: "horizontal_align", vertical_position: "vertical_align", final_text: "text" };
+  const key = name.startsWith("file_") ? "image_override"
+    : name.startsWith("font_color_") ? "font_color"
+      : name.startsWith("country_") ? "country"
+        : name.startsWith("use_") && !["use_subtitles", "use_lowercase"].includes(name) ? "use_feature"
+          : aliases[name] || name;
+  const description = t(`dynamicOverlays.templateVariableHelp.fields.${key}`, {
+    defaultValue: t("dynamicOverlays.templateVariableHelp.unknown", { name }),
+  });
+  return <span tabIndex={0} role="img" title={description}
+    aria-label={`${t("dynamicOverlays.templateVariableHelp.label", { name })}: ${description}`}
+    onClick={event => event.preventDefault()}
+    className="ml-1 inline-flex shrink-0 align-middle text-theme-muted hover:text-theme-primary focus:text-theme-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary rounded-sm cursor-help">
+    <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+  </span>;
+}
+
 function TemplateVariableField({ name, value, inherited, onChange, onReset, onValidityChange }) {
   const serialized = typeof value === "string" ? value : JSON.stringify(value);
   const [draft, setDraft] = useState(serialized ?? "");
@@ -126,7 +145,7 @@ function TemplateVariableField({ name, value, inherited, onChange, onReset, onVa
   };
   return <div className="space-y-1 min-w-0">
     <div className="flex items-center justify-between gap-2">
-      <label htmlFor={`template-variable-${name}`} className="text-xs font-mono text-theme-text break-all">{name}</label>
+      <label htmlFor={`template-variable-${name}`} className="text-xs font-mono text-theme-text break-all">{name}<TemplateVariableHelp name={name} /></label>
       {!inherited && <button type="button" title={`Reset ${name}`} aria-label={`Reset ${name}`} onClick={() => { setInvalid(false); onValidityChange(name, false); onReset(); }} className="p-1 text-theme-muted hover:text-theme-primary"><RotateCcw className="w-3.5 h-3.5" /></button>}
     </div>
     {typeof value === "boolean" ? <input id={`template-variable-${name}`} type="checkbox" checked={value} onChange={event => onChange(event.target.checked)} />
@@ -12677,7 +12696,7 @@ export default function DynamicOverlays() {
               <div className="space-y-3.5 max-h-[55vh] overflow-y-auto pr-1">
                 {/* Builder Level */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Builder Level</label>
+                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Builder Level<TemplateVariableHelp name="builder_level" /></label>
                   <select
                     value={visualLevel}
                     onChange={(e) => setVisualLevel(e.target.value)}
@@ -12694,7 +12713,7 @@ export default function DynamicOverlays() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="rule-artwork-type" className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Artwork Type</label>
+                  <label htmlFor="rule-artwork-type" className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Artwork Type<TemplateVariableHelp name="artwork_type" /></label>
                   <select
                     id="rule-artwork-type"
                     value={visualArtworkType}
@@ -12710,7 +12729,7 @@ export default function DynamicOverlays() {
                 {/* Alignment */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Horizontal Position</label>
+                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Horizontal Position<TemplateVariableHelp name="horizontal_align" /></label>
                     <select
                       value={visualHAlign}
                       onChange={(e) => setVisualHAlign(e.target.value)}
@@ -12722,7 +12741,7 @@ export default function DynamicOverlays() {
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Vertical Position</label>
+                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Vertical Position<TemplateVariableHelp name="vertical_align" /></label>
                     <select
                       value={visualVAlign}
                       onChange={(e) => setVisualVAlign(e.target.value)}
@@ -12738,7 +12757,7 @@ export default function DynamicOverlays() {
                 {/* Offsets */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">H-Offset (px)</label>
+                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">H-Offset (px)<TemplateVariableHelp name="horizontal_offset" /></label>
                     <input
                       type="number"
                       value={visualHOffset}
@@ -12747,7 +12766,7 @@ export default function DynamicOverlays() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">V-Offset (px)</label>
+                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">V-Offset (px)<TemplateVariableHelp name="vertical_offset" /></label>
                     <input
                       type="number"
                       value={visualVOffset}
@@ -12759,7 +12778,7 @@ export default function DynamicOverlays() {
 
                 {/* Back Color */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Background Color (Hex / Alpha)</label>
+                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Background Color (Hex / Alpha)<TemplateVariableHelp name="back_color" /></label>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -12792,7 +12811,7 @@ export default function DynamicOverlays() {
 
                   {/* Font Family Selector */}
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Family</label>
+                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Family<TemplateVariableHelp name="font" /></label>
                     <select
                       value={visualFont}
                       onChange={(e) => setVisualFont(e.target.value)}
@@ -12810,7 +12829,7 @@ export default function DynamicOverlays() {
                   {/* Font Size Presets & Custom Input */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Size (px)</label>
+                      <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Size (px)<TemplateVariableHelp name="font_size" /></label>
                       {visualFontSize && (
                         <button
                           type="button"
@@ -12859,7 +12878,7 @@ export default function DynamicOverlays() {
 
                   {/* Font Color */}
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Color (Hex)</label>
+                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Color (Hex)<TemplateVariableHelp name="font_color" /></label>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
@@ -12880,7 +12899,7 @@ export default function DynamicOverlays() {
                 {/* Optional Status text & color input */}
                 {(editVariablesModal.overlay.name.toLowerCase().includes("status") || visualStatusText) && (
                   <div className="space-y-2 p-3 rounded-xl bg-theme-hover/40 border border-theme">
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Status Banner Text</label>
+                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Status Banner Text<TemplateVariableHelp name="text" /></label>
                     <input
                       type="text"
                       value={visualStatusText}
@@ -12908,7 +12927,7 @@ export default function DynamicOverlays() {
                       ))}
                     </div>
                     <div className="flex items-center gap-2 pt-1">
-                      <span className="text-[11px] text-theme-muted">Font Color:</span>
+                      <span className="text-[11px] text-theme-muted">Font Color:<TemplateVariableHelp name="font_color" /></span>
                       <input
                         type="text"
                         value={visualStatusColor}
@@ -12930,14 +12949,15 @@ export default function DynamicOverlays() {
                     <label className="flex items-center gap-2 text-xs text-theme-text">
                       <input type="checkbox" checked={visualUseSubtitles} onChange={event => setVisualUseSubtitles(event.target.checked)} />
                       Subtitle languages
+                      <TemplateVariableHelp name="use_subtitles" />
                     </label>
                     <label className="block space-y-1 text-xs text-theme-text">
-                      <span>Flag Style</span>
+                      <span>Flag Style<TemplateVariableHelp name="style" /></span>
                       <select aria-label="Template flag style" value={visualFlagStyle} onChange={event => setVisualFlagStyle(event.target.value)} className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1.5 text-xs text-theme-text">
                         <option value="round">Round</option><option value="square">Square</option><option value="half">Half</option>
                       </select>
                     </label>
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Languages (comma-separated)</label>
+                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Languages (comma-separated)<TemplateVariableHelp name="languages" /></label>
                     <input
                       type="text"
                       value={visualLanguages}
