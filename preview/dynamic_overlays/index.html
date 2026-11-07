@@ -2385,10 +2385,23 @@ at any time.</p>
    update media-server artwork.</li>
 <li>Run a dry-run sync in <strong>Sync &amp; Maintenance &gt; Synchronize</strong> and review its log and cache results.
    Turn off Dry Run only when you intend to upload artwork to the selected server.</li>
-<li>For a smaller test, use <strong>Select Movie / Show</strong> in <strong>Sync &amp; Maintenance &gt; Synchronize</strong> instead of
-   processing an entire library. Avoid <strong>Force Reapply</strong> unless you deliberately
-   want to reapply artwork.</li>
 </ol>
+<p>For a selected library, <strong>Live Preview</strong> uses its configured rules and respects
+<code>builder_level</code> and <code>artwork_type</code>. Episode-only flags are not inherited by show
+or season posters. Preview controls do not create missing library rules or widen
+their scope. <strong>Drag &amp; Drop</strong> and <strong>Final Render</strong> use the same positions; dragging
+retains the configured anchor, which can be changed explicitly in the position controls.</p>
+<p>Audio and subtitle flags have independent <strong>Flag Style</strong> selectors in Live Preview.
+Choose <strong>Round</strong>, <strong>Square</strong>, or <strong>Half</strong>, then use <strong>Save Layout</strong> to persist the
+selection. Missing local flags are resolved within the requested style rather than
+substituting another shape. Without an explicit style, the template default is
+<code>round</code>; <code>half</code> uses square flag artwork with a rounded label background.
+In <strong>Libraries &amp; Rules &gt; Edit Template Variables</strong>, additional default and optional
+variables from downloaded template YAMLs are editable alongside existing overrides.
+Unchanged inherited values remain inherited; the JSON editor also accepts custom keys.
+5. For a smaller test, use <strong>Select Movie / Show</strong> in <strong>Sync &amp; Maintenance &gt; Synchronize</strong> instead of
+   processing an entire library. Avoid <strong>Force Reapply</strong> unless you deliberately
+   want to reapply artwork.</p>
 <p><em>Development-build screenshot with example library names. The artwork and badge
 metadata are preview samples, not the result of a media-server sync. The visible
 configuration is an example, not the installation defaults.</em></p>
@@ -3143,6 +3156,13 @@ page selection and bulk processing. Both Queue and Fast actions support selected
 episodes or all matching candidates across pages, respecting the current search
 and filters. A separate bulk warning confirms replacement despite uncertain old
 text. Missing, textful, media-server sources and placeholder titles stay blocked.
+For uncertain rows that cannot safely be forced, the status also shows the
+additional blocking reason. Their action opens <strong>Choose a provider image in
+Asset Replacer</strong> instead of leaving a disabled recreate button. This allows an
+explicit replacement with a new original without reusing an unsafe source.
+Titles such as <code>Folge 7</code> and <code>Episode 2</code> remain placeholders for automatic and
+forced source reuse. Comparison and recreation diagnostics are recorded in the
+dedicated <code>EpisodeTitleChanges.log</code>, not the backend/browser UI logs.
 The explicit override is retained in the existing queue if the job is resumed.
 After updating from an earlier version, run <strong>Compare titles</strong> once to refresh
 source eligibility for already cached review entries.</p>
