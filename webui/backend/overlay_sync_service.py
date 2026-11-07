@@ -2650,7 +2650,9 @@ def build_overlay_layers_for_item(
     try:
         engine = _get_overlay_config_engine(overlays_dir)
         layers = engine.evaluate_item(item_metadata, engine_rules)
-        if rating_rules and item_metadata.get("multi_ratings"):
+        if (rating_rules and item_metadata.get("multi_ratings")) or any(
+            layer.get("name") == "single_rating" for layer in native_rating_layers
+        ):
             layers = [
                 layer for layer in layers
                 if str(layer.get("name") or "").lower() not in LEGACY_AUDIENCE_RATING_LAYERS
