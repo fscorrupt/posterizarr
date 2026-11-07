@@ -2854,18 +2854,18 @@ their existing layout.</p>
 back to <strong>Most frequent</strong>. The default behavior is also available explicitly in YAML:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">languages</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">   </span><span class="l l-Scalar l-Scalar-Plain">template_variables</span><span class="p p-Indicator">:</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">      </span><span class="nt">builder_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">episode</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="nt">aggregate_parent_streams</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="nt">languages</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">de</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">en</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ja</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="nt">overlay_limit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">      </span><span class="nt">parent_language_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">preferred_then_frequency</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">   </span><span class="nt">builder_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">all</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="l l-Scalar l-Scalar-Plain">languages</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">de</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">en</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ja</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="nt">overlay_limit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="nt">parent_language_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">preferred_then_frequency</span>
 </code></pre></div>
 <p>This selection mode does not enable additional artwork targets. Show or season
 flags must already be explicitly configured with <code>builder_level: show</code>,
-<code>builder_level: season</code>, or <code>builder_level: all</code>. An episode rule can explicitly
-include parent artwork with <code>aggregate_parent_streams: true</code>, as in the example.
-Episode-only rules without that opt-in remain episode-only, even when the hybrid
-selection mode is enabled or other rules aggregate episode metadata.
+<code>builder_level: season</code>, or <code>builder_level: all</code>. <code>builder_level</code> is authoritative:
+an episode-only rule stays episode-only even if an older configuration contains
+<code>aggregate_parent_streams: true</code>, hybrid selection is enabled, or another rule
+already aggregates episode metadata. The legacy aggregation flag does not enable
+additional artwork targets. Use separate rules to select individual levels.
 The first configured language gets the first flag slot as soon as at least one
 episode has it. Remaining slots follow frequency, then configured priority for
 ties. With JA:40, EN:20, DE:1, the result is DE + JA; with DE:0 it displays EN + JA;
@@ -3139,7 +3139,16 @@ as UI labels only; they are not added to the image. Choose a result to continue
 with the modal's normal replacement or queue workflow. The original media-server
 URL is never preselected as the new source.
 Opening or queueing a replacement does not acknowledge the review entry as
-completed. The Master Switch must be on and Dry Run off to open this replacement
+completed. A successful processed titlecard replacement from a URL, upload, or
+the normal asset queue acknowledges only the matching file and rendered episode
+title. Failed processes and mismatching titles leave the review entry intact.
+The entry disappears on the next review refresh (normally within 15 seconds).
+For replacements completed before this acknowledgment was available, <strong>Compare
+titles</strong> also reconciles the baseline when ImageChoices records the current
+episode title without truncation. A missing original download URL does not keep
+an already confirmed current title in the review. This confirms the local
+titlecard; final media-server upload remains a separate overlay-sync step.
+The Master Switch must be on and Dry Run off to open this replacement
 workflow from the review.
 Use <strong>Hide this review entry</strong> on a media-server-source row to dismiss it when no
 provider original exists. The dismissal persists across scans for that same title
@@ -3441,7 +3450,7 @@ section. Counts and listed updates in these screenshots are illustrative.</em></
 <li>Plex movie/show poster cache hits verify the actual item thumbnail bytes, not just the recipe hash or the poster list's <code>selected</code> flag. This also applies when the thumbnail URL is unchanged, including separate library entries for the same movie. If the displayed poster already matches the rendered bytes, fingerprints are refreshed without uploading. Successful poster uploads always issue an explicit selection request for the target item, then verify its displayed thumbnail before the cache is marked synced. Pre-upload verification failures leave server artwork untouched; an upload whose selection cannot be confirmed is not marked synced.</li>
 <li>Verified Plex episode stream metadata is reused on incremental runs only when the episode timestamp and media path still match. The first run builds this metadata cache; full/targeted runs and changed or incomplete metadata still perform fresh detail queries. Artwork-selection verification and overlay-rule evaluation remain active.</li>
 <li>Show/season audio-codec badges use the same image resolver as other artwork, including imported <code>defaults/images/audio_codec/...</code> files and explicit <code>file_dts</code> / <code>file_ma</code> image overrides. They are not limited to <code>assets/audio_codec/...</code>. Parent audio-codec rules also accept <code>builder_level: [show, season]</code> or <code>builder_level: "show, season"</code> as well as a single level. An existing image in the defaults directory does not need to be downloaded or copied again.</li>
-<li>Parent audio-codec aggregation retains the selected/default episode audio stream's profile and track title. This distinguishes a <code>dts</code>/<code>dca</code> base codec with a DTS-HD MA profile from plain DTS on show and season posters. Codec/profile variants are counted separately when selecting the common format, and stale parent track-title aliases are cleared when the aggregate is applied. Existing DTS/DCA stream-cache entries without profile fields are reread once; unrelated verified codec entries remain reusable. No cache clear is required. The audio-codec rule must target <code>show</code>, <code>season</code>, or <code>all</code>, or explicitly opt into <code>aggregate_parent_streams</code>; the matching badge image must be available.</li>
+<li>Parent audio-codec aggregation retains the selected/default episode audio stream's profile and track title. This distinguishes a <code>dts</code>/<code>dca</code> base codec with a DTS-HD MA profile from plain DTS on show and season posters. Codec/profile variants are counted separately when selecting the common format, and stale parent track-title aliases are cleared when the aggregate is applied. Existing DTS/DCA stream-cache entries without profile fields are reread once; unrelated verified codec entries remain reusable. No cache clear is required. The audio-codec rule must target <code>show</code>, <code>season</code>, or <code>all</code>; <code>aggregate_parent_streams</code> never overrides an episode-only target. The matching badge image must be available.</li>
 <li>After updating the backend, a normal targeted sync of an affected show reevaluates its show and season codec badges; Force Apply and cache clearing are not required for the DTS-MA profile handoff fix. The selected aggregate codec, profile, and both track-title fields are applied together to show metadata before poster recipes are built. A codec present only in a minority of selected/default episode streams may not be the common show or season format; forcing does not override that selection or enable an unconfigured badge.</li>
 <li>Incremental sync still enumerates media-server items, checks clean source files, evaluates recipes, and verifies artwork where required; an <code>Up-to-date</code> result is not just a database lookup. A bounded candidate cache excludes overlay rules restricted to other show titles, while retaining per-episode filters and queue/group processing. Candidate keys include expanded rule inputs and title, so template, variable, and YAML changes invalidate them. This optimization does not change recipe hashes or require a cache reset.</li>
 <li>Explicit font requests never silently substitute another font family. Font directories created after engine initialization are discovered on subsequent evaluations; a missing required custom font fails rendering instead of uploading a differently styled image. Existing images previously rendered with a substitute font may require one corrective sync to the configured font.</li>
