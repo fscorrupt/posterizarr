@@ -9708,7 +9708,7 @@ export default function DynamicOverlays() {
                 </div>
 
                 {/* Custom Test Image Upload Button */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => previewFileInputRef.current?.click()}
@@ -9733,11 +9733,20 @@ export default function DynamicOverlays() {
                     className="hidden"
                   />
                   {customImages[previewTemplate] && (
+                    <span
+                      className="min-w-0 max-w-[180px] truncate text-xs text-theme-muted"
+                      title={customImages[previewTemplate].filename}
+                    >
+                      {customImages[previewTemplate].filename}
+                    </span>
+                  )}
+                  {customImages[previewTemplate] && (
                     <button
                       type="button"
                       onClick={handleRemoveCustomImage}
-                      className="p-1.5 rounded-xl bg-theme-hover border border-theme text-theme-muted hover:text-red-400 transition-all"
-                      title="Remove custom image and return to default sample artwork"
+                      className="shrink-0 p-1.5 rounded-xl bg-theme-hover border border-theme text-theme-muted hover:text-red-400 transition-all"
+                      aria-label="Remove custom preview image"
+                      title="Remove custom preview image"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -9905,22 +9914,6 @@ export default function DynamicOverlays() {
                       );
                     })()}
 
-                    {/* Active Custom Image Indicator Badge */}
-                    {customImages[previewTemplate] && (
-                      <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-black/80 backdrop-blur-md border border-white/20 text-[11px] text-white shadow-lg pointer-events-auto">
-                        <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="font-semibold max-w-[130px] truncate">{customImages[previewTemplate].filename}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleRemoveCustomImage(); }}
-                          className="ml-1 p-0.5 hover:bg-white/20 rounded text-white/70 hover:text-white transition-colors"
-                          title="Revert to default sample artwork"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-
                     {/* Drag-and-drop file dropzone overlay */}
                     {isDraggingFile && (
                       <div className="absolute inset-0 z-40 bg-theme-primary/85 backdrop-blur-sm border-2 border-dashed border-white rounded-2xl flex flex-col items-center justify-center text-white gap-2 pointer-events-none animate-in fade-in">
@@ -10012,22 +10005,6 @@ export default function DynamicOverlays() {
                       />
                       {showAssetGuides && <AssetPreviewGuides config={serverConfig} template={previewTemplate} />}
                     </div>
-
-                    {/* Active Custom Image Indicator Badge in Rendered Mode */}
-                    {customImages[previewTemplate] && (
-                      <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-black/80 backdrop-blur-md border border-white/20 text-[11px] text-white shadow-lg pointer-events-auto">
-                        <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="font-semibold max-w-[130px] truncate">{customImages[previewTemplate].filename}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleRemoveCustomImage(); }}
-                          className="ml-1 p-0.5 hover:bg-white/20 rounded text-white/70 hover:text-white transition-colors"
-                          title="Revert to default sample artwork"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
 
                     {/* Drag-and-drop file dropzone overlay in Rendered mode */}
                     {isDraggingFile && (
