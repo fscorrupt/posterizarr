@@ -121,6 +121,79 @@ def _can_force_unknown_text(job):
     return job.get("reason") == "unknown_text" and _unknown_text_block_reason(job) is None
 
 
+def _can_force_media_server_source(job):
+    return job.get("reason") == "media_server_source" and not _placeholder(str(job.get("title") or ""))
+
+
+def _can_force(job):
+    return _can_force_unknown_text(job) or _can_force_media_server_source(job)
+
+
+def _rebuild_block_reason(job):
+    if job.get("reason") == "unknown_text":
+        return _unknown_text_block_reason(job)
+    if job.get("reason") == "media_server_source" and not _can_force_media_server_source(job):
+        return "placeholder"
+    return None
+
+
+# Same markers and 64 KB window as GetPlexArtwork in ApiHandlers.ps1.
+PROCESSED_ARTWORK_MARKERS = re.compile(rb"overlay|titlecard|created with ppm|created with posterizarr", re.I)
+MAX_MEDIA_SERVER_ORIGINAL_BYTES = 50 * 1024 * 1024
+
+
+def _origin(url):
+    parts = urlsplit(str(url or "").strip())
+    return parts.scheme, parts.hostname, parts.port or (443 if parts.scheme == "https" else 80)
+
+
+def _image_extension(content):
+    if content.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
+def hash_validation_disabled(config_path):
+    try:
+        config = json.loads(Path(config_path).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return False
+    value = (config.get("PrerequisitePart") or {}).get("DisableHashValidation", config.get("DisableHashValidation"))
+    return str(value).strip().lower() == "true"
+
+
+async def download_media_server_original(job, credentials, destination_dir, config_path):
+    name = Path(job["asset_path"]).name
+    source = str(job.get("source") or "").strip()
+    server = str(credentials.get("url") or "").rstrip("/")
+    if not server or urlsplit(source).scheme not in ("http", "https") or _origin(source) != _origin(server):
+        logger.warning("[TitleChanges] Cannot force recreate %s: the recorded original is not on the configured media server.", name)
+        return None
+    headers = {"X-Plex-Token": credentials.get("token") or ""} if job.get("server_type") == "plex" else {"X-Emby-Token": credentials.get("api_key") or ""}
+    try:
+        async with httpx.AsyncClient(timeout=30, verify=False, follow_redirects=False) as client:
+            response = await client.get(source, headers=headers)
+    except httpx.HTTPError as error:
+        logger.warning("[TitleChanges] Cannot force recreate %s: media server download failed (%s).", name, type(error).__name__)
+        return None
+    content = response.content
+    extension = _image_extension(content) if response.status_code == 200 else None
+    if extension is None or len(content) > MAX_MEDIA_SERVER_ORIGINAL_BYTES:
+        logger.warning("[TitleChanges] Cannot force recreate %s: the media server did not return a usable image (HTTP %s).", name, response.status_code)
+        return None
+    if PROCESSED_ARTWORK_MARKERS.search(content[:65536]) and not hash_validation_disabled(config_path):
+        logger.warning("[TitleChanges] Cannot force recreate %s: the media server artwork already has Posterizarr/Kometa/TCM EXIF data. Choose a provider image or enable DisableHashValidation.", name)
+        return None
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    path = destination_dir / f"title-regeneration-{uuid.uuid4().hex}{extension}"
+    path.write_bytes(content)
+    return path
+
+
 def _dismissal_fingerprint(job):
     state = [job.get("reason"), job.get("old_title"), job.get("title"), job.get("source")]
     return hashlib.sha256(json.dumps(state, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
@@ -307,7 +380,7 @@ class AssetTitleChanges:
             if not row:
                 return False
             job = _with_source_safety(json.loads(row[0]))
-            if job.get("reason") not in {"media_server_source", "unknown_text"}:
+            if not job.get("reason"):
                 return False
             connection.execute("INSERT OR IGNORE INTO episode_title_candidate_dismissals (candidate_id, fingerprint, dismissed_at) VALUES (?, ?, ?)",
                                (candidate_id, _dismissal_fingerprint(job), datetime.now().isoformat()))
@@ -368,10 +441,10 @@ class AssetTitleChanges:
         rows = [row for row in rows if not _same_episode_title(row.get("old_title"), row.get("title")) and
             _candidate_matches_search(row, search) and _candidate_matches_filters(row, status_filter, reason_filter, review_type)]
         return {"total": len(rows), "eligible": sum(row["status"] == "ready" for row in rows),
-            "force_eligible": sum(row["status"] == "ready" or _can_force_unknown_text(row) for row in rows),
+            "force_eligible": sum(row["status"] == "ready" or _can_force(row) for row in rows),
                 "entries": [{**{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")},
-                             "force_recreatable": _can_force_unknown_text(row),
-                             "rebuild_block_reason": _unknown_text_block_reason(row) if row.get("reason") == "unknown_text" else None}
+                             "force_recreatable": _can_force(row),
+                             "rebuild_block_reason": _rebuild_block_reason(row)}
                             for row in rows[offset:offset + limit]]}
 
     def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False, force_unknown_text=False,
@@ -382,12 +455,14 @@ class AssetTitleChanges:
         jobs = []
         for row in rows:
             candidate_selected = row["candidate_id"] in selected
-            eligible = row["status"] == "ready" or (force_unknown_text and _can_force_unknown_text(row))
+            eligible = row["status"] == "ready" or (force_unknown_text and _can_force(row))
             if (not eligible or _same_episode_title(row.get("old_title"), row.get("title"))
                     or not _candidate_matches_filters(row, status_filter, reason_filter, review_type)):
                 continue
             if candidate_selected or (all_eligible and _candidate_matches_search(row, search)):
-                jobs.append({**row, "force_unknown_text": bool(force_unknown_text and row["status"] != "ready")})
+                forced = bool(force_unknown_text and row["status"] != "ready")
+                jobs.append({**row, "force_unknown_text": forced,
+                             "force_media_server_source": forced and row.get("reason") == "media_server_source"})
         return jobs
 
     def record_failure(self, job, reason):
@@ -402,9 +477,12 @@ class AssetTitleChanges:
         with closing(sqlite3.connect(self.database)) as connection:
             row = connection.execute("SELECT payload FROM episode_title_candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
         job = _with_source_safety(json.loads(row[0])) if row else None
-        if job and job["reason"] == "media_server_source":
-            logger.warning("[TitleChanges] Cannot recreate %s: the original was taken from a media server; a provider original is required.", Path(job["asset_path"]).name)
-        eligible = job and (job["status"] == "ready" or (force_unknown_text and _can_force_unknown_text(job)))
+        forced = bool(job and force_unknown_text and job["status"] != "ready" and _can_force(job))
+        if job and job["reason"] == "media_server_source" and not forced:
+            logger.warning("[TitleChanges] Cannot recreate %s: the original was taken from a media server; use force recreate or a provider original.", Path(job["asset_path"]).name)
+        eligible = job and (job["status"] == "ready" or forced)
+        if eligible and forced and job["reason"] == "media_server_source":
+            job = {**job, "force_media_server_source": True}
         return job if eligible and not _same_episode_title(job.get("old_title"), job.get("title")) else None
 
     def acknowledge_replacement(self, asset_path, rendered_title):

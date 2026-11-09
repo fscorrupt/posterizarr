@@ -1905,7 +1905,8 @@ const AssetOverview = () => {
       )}
 
       {/* Filters */}
-      <div className="bg-theme-card border border-theme rounded-lg p-4">
+      {/* backdrop-filter makes each card a stacking context; this layer keeps filter menus above the list. */}
+      <div className="relative z-20 bg-theme-card border border-theme rounded-lg p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           {activeTab === "active" && (
             <>
@@ -2149,7 +2150,7 @@ const AssetOverview = () => {
           </div>
         </div>
       )}
-      <div className="bg-theme-card border border-theme rounded-lg p-6">
+      <div className="relative z-0 bg-theme-card border border-theme rounded-lg p-6">
         {/* Bulk Action Toolbar */}
         {selectedAssetIds.size > 0 && (
           <div className="mb-4 p-4 bg-theme-primary/10 border border-theme-primary rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

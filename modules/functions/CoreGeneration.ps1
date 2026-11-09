@@ -3067,7 +3067,9 @@ function Invoke-ShowPosterCreation {
                                     $logEntry = "`"$magick`" $Arguments"
                                     $logEntry | Write-MagickLog
                                     InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                    $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                    if ($SkippingText -ne 'true') {
+                                        $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                    }
                                     if ($SkippingText -eq 'true') {
                                         Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                     }
@@ -4038,7 +4040,9 @@ function Invoke-ShowPosterCreation {
                                             $logEntry = "`"$magick`" $Arguments"
                                             $logEntry | Write-MagickLog
                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            if ($SkippingText -ne 'true') {
+                                                $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            }
                                             if ($SkippingText -eq 'true') {
                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                             }
@@ -4098,8 +4102,12 @@ function Invoke-ShowPosterCreation {
                                                 }
                                                 $joinedTitlePointSize = $global:seasonTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
                                                 $joinedShowTitlePointSize = $global:ShowTitleOnSeason -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
+                                                $hasSeasonTitle = -not [string]::IsNullOrWhiteSpace($global:seasonTitle)
+                                                if (-not $hasSeasonTitle) {
+                                                    Write-Entry -Subtext "Skipping season title text because the season title is empty." -Path $global:configLogging -Color Yellow -log Warning
+                                                }
                                                 if ($AddShowTitletoSeason -eq 'true') {
-                                                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing
+                                                    $optimalFontSize = if ($hasSeasonTitle) { Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing } else { $null }
                                                     $ShowoptimalFontSize = Get-OptimalPointSize -text $joinedShowTitlePointSize -font $fontImagemagick -box_width $ShowOnSeasonMaxWidth  -box_height $ShowOnSeasonMaxHeight -min_pointsize $ShowOnSeasonminPointSize -max_pointsize $ShowOnSeasonmaxPointSize -lineSpacing $ShowOnSeasonlineSpacing
 
                                                     if ($global:IsTruncated -ne $true) {
@@ -4137,10 +4145,12 @@ function Invoke-ShowPosterCreation {
                                                             }
                                                         }
 
-                                                        Write-Entry -Subtext "Applying seasonTitle text: `"$global:seasonTitle`"" -Path $global:configLogging -Color White -log Info
-                                                        $logEntry = "`"$magick`" $SeasonArguments"
-                                                        $logEntry | Write-MagickLog
-                                                        InvokeMagickCommand -Command $magick -Arguments $SeasonArguments
+                                                        if ($hasSeasonTitle) {
+                                                            Write-Entry -Subtext "Applying seasonTitle text: `"$global:seasonTitle`"" -Path $global:configLogging -Color White -log Info
+                                                            $logEntry = "`"$magick`" $SeasonArguments"
+                                                            $logEntry | Write-MagickLog
+                                                            InvokeMagickCommand -Command $magick -Arguments $SeasonArguments
+                                                        }
 
                                                         # Show Part (Logo vs Text)
                                                         $ApplyTextInsteadOfLogo = $null
@@ -4236,7 +4246,7 @@ function Invoke-ShowPosterCreation {
                                                         }
                                                     }
                                                 }
-                                                Else {
+                                                ElseIf ($hasSeasonTitle) {
                                                     $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing
                                                     if ($global:IsTruncated -ne $true) {
                                                         Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
@@ -5044,7 +5054,9 @@ function Invoke-TitleCardCreation {
                                             $logEntry = "`"$magick`" $Arguments"
                                             $logEntry | Write-MagickLog
                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            if ($SkippingText -ne 'true') {
+                                                $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                            }
                                             if ($SkippingText -eq 'true') {
                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                             }
@@ -5758,7 +5770,9 @@ function Invoke-TitleCardCreation {
                                         $logEntry = "`"$magick`" $Arguments"
                                         $logEntry | Write-MagickLog
                                         InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                        $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                        if ($SkippingText -ne 'true') {
+                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                        }
                                         if ($SkippingText -eq 'true') {
                                             Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                         }
@@ -6545,7 +6559,9 @@ function Invoke-TitleCardCreation {
                                                             $logEntry = "`"$magick`" $Arguments"
                                                             $logEntry | Write-MagickLog
                                                             InvokeMagickCommand -Command $magick -Arguments $Arguments
-                                                            $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                                            if ($SkippingText -ne 'true') {
+                                                                $SkippingText = Get-SkipTextSetting -SkipAddText $SkipAddText -SkipAddTextAndOverlay $SkipAddTextAndOverlay -PosterWithText $global:PosterWithText
+                                                            }
                                                             if ($SkippingText -eq 'true') {
                                                                 Write-Entry -Subtext "Skipping 'AddText' because poster already has text." -Path $global:configLogging -Color Yellow -log Info
                                                             }

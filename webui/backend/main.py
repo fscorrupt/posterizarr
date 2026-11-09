@@ -13977,6 +13977,7 @@ async def upload_asset_replacement(
     asset_path: str = Query(...),
     process_with_overlays: bool = Query(False),
     add_to_queue: bool = Query(False),
+    start_when_idle: bool = Query(False),
     title_text: Optional[str] = Query(None),
     folder_name: Optional[str] = Query(None),
     library_name: Optional[str] = Query(None),
@@ -14123,6 +14124,8 @@ async def upload_asset_replacement(
                         poster_with_text=posterWithText,
                         blueprint_overrides=parsed_overrides
                     )
+                if start_when_idle:
+                    schedule_queue_when_idle([item_id])
 
                 return {
                     "success": True,
@@ -14858,6 +14861,7 @@ async def replace_asset_from_url(
     image_url: str = Query(...),
     process_with_overlays: bool = Query(False),
     add_to_queue: bool = Query(False),
+    start_when_idle: bool = Query(False),
     title_text: Optional[str] = Query(None),
     folder_name: Optional[str] = Query(None),
     library_name: Optional[str] = Query(None),
@@ -14921,6 +14925,8 @@ async def replace_asset_from_url(
                     source_data=image_url,
                     overlay_params=overlay_params
                 )
+                if start_when_idle:
+                    schedule_queue_when_idle([item_id])
 
                 return {
                     "success": True,
@@ -15411,7 +15417,7 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
 async def regenerate_asset_title(job, manual=False):
     if job.get("poster_type") != "titlecard" or job.get("media_type") != "episode":
         return False
-    from asset_title_changes import is_media_server_source, logger, title_regeneration_allowed
+    from asset_title_changes import download_media_server_original, is_media_server_source, logger, title_regeneration_allowed
     from dynamic_overlays_service import get_dynamic_overlays_settings
     from overlay_sync_service import get_server_credentials, is_overlay_sync_running, run_overlay_sync_task, _confirm_plex_titlecard
     from plex_image_cleanup import is_cleanup_running
@@ -15424,29 +15430,39 @@ async def regenerate_asset_title(job, manual=False):
         return False
     if RUNNING_FILE.exists() or (current_process and current_process.poll() is None) or is_overlay_sync_running() or is_cleanup_running():
         return False
-    source = job["source"]
-    if is_media_server_source(source, [credentials["url"]]):
-        logger.warning("[TitleChanges] Cannot recreate %s: source was taken from a media server and may contain overlays; a provider original is required.", Path(job["asset_path"]).name)
-        return False
-    if not is_safe_url(source, allow_private=False, allow_loopback=False):
-        logger.warning("[TitleChanges] Skipping unsafe source for %s", Path(job["asset_path"]).name)
-        return False
     target = Path(job["asset_path"]).resolve()
     if not target.is_relative_to(ASSETS_DIR.resolve()) or not target.is_file():
         return False
-    previous_stat = target.stat()
-    request = ManualModeRequest(
-        picturePath=source, titletext=job["title"],
-        folderName=job["folder"], libraryName=job["library"], posterType="titlecard",
-        mediaType="episode", seasonPosterName=str(job["season"]),
-        epTitleName=job["title"], episodeNumber=str(job["episode"]),
-    )
-    with process_lock:
-        if RUNNING_FILE.exists() or (current_process and current_process.poll() is None):
+    source = job["source"]
+    downloaded_source = None
+    if is_media_server_source(source, [credentials["url"]]):
+        if not (manual and job.get("force_media_server_source")):
+            logger.warning("[TitleChanges] Cannot recreate %s: source was taken from a media server; use force recreate or a provider original.", Path(job["asset_path"]).name)
             return False
-        await trigger_manual_run_internal(request, title_regeneration=True)
-        process = current_process
-    exit_code = await asyncio.to_thread(process.wait)
+        downloaded_source = await download_media_server_original(job, credentials, BASE_DIR / "temp", CONFIG_PATH)
+        if downloaded_source is None:
+            return False
+        source = str(downloaded_source)
+    elif not is_safe_url(source, allow_private=False, allow_loopback=False):
+        logger.warning("[TitleChanges] Skipping unsafe source for %s", Path(job["asset_path"]).name)
+        return False
+    previous_stat = target.stat()
+    try:
+        request = ManualModeRequest(
+            picturePath=source, titletext=job["title"],
+            folderName=job["folder"], libraryName=job["library"], posterType="titlecard",
+            mediaType="episode", seasonPosterName=str(job["season"]),
+            epTitleName=job["title"], episodeNumber=str(job["episode"]),
+        )
+        with process_lock:
+            if RUNNING_FILE.exists() or (current_process and current_process.poll() is None):
+                return False
+            await trigger_manual_run_internal(request, title_regeneration=True)
+            process = current_process
+        exit_code = await asyncio.to_thread(process.wait)
+    finally:
+        if downloaded_source is not None:
+            downloaded_source.unlink(missing_ok=True)
     if exit_code != 0 or not target.is_file() or target.stat().st_mtime_ns == previous_stat.st_mtime_ns:
         logger.warning("[TitleChanges] Asset was not successfully regenerated: %s", target.name)
         return False
@@ -18587,6 +18603,50 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None, *, should_st
         queue_processing_lock.release()
 
 
+idle_queue_item_ids = set()
+idle_queue_task = None
+
+
+def _queue_runner_idle():
+    from overlay_sync_service import is_overlay_sync_running
+    from plex_image_cleanup import is_cleanup_running
+
+    return not (RUNNING_FILE.exists() or (current_process and current_process.poll() is None)
+                or queue_processing_lock.locked() or is_overlay_sync_running() or is_cleanup_running())
+
+
+async def _process_queue_when_idle():
+    global idle_queue_task
+    try:
+        while idle_queue_item_ids:
+            if not _queue_runner_idle():
+                await asyncio.sleep(5)
+                continue
+            requested = sorted(idle_queue_item_ids)
+            try:
+                await run_queue_processor(requested)
+            except RuntimeError:
+                await asyncio.sleep(5)
+                continue
+            pending = {item["id"] for item in queue_manager.get_items_by_ids(requested) if item["status"] == "pending"}
+            idle_queue_item_ids.difference_update(set(requested) - pending)
+            if pending:
+                await asyncio.sleep(5)
+    except Exception:
+        logger.exception("Queue idle runner failed")
+    finally:
+        idle_queue_task = None
+
+
+def schedule_queue_when_idle(item_ids):
+    """Process the given queue items as soon as no run, sync, cleanup or queue batch is active."""
+    global idle_queue_task
+    idle_queue_item_ids.update(int(item_id) for item_id in item_ids if item_id is not None)
+    if idle_queue_item_ids and (idle_queue_task is None or idle_queue_task.done()):
+        idle_queue_task = asyncio.create_task(_process_queue_when_idle())
+    return sorted(idle_queue_item_ids)
+
+
 async def _run_queue_processor(item_ids: Optional[List[int]] = None, *, should_stop=None, on_item_finished=None):
     """
     Background task to process the queue sequentially.
@@ -20938,6 +20998,32 @@ async def rebuild_episode_title_changes(request: EpisodeTitleRebuildRequest):
         raise HTTPException(status_code=400, detail=str(error)) from None
     except RuntimeError as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/queue")
+async def queue_episode_title_changes(request: EpisodeTitleRebuildRequest):
+    """Queue selected titlecards without waiting for the current run; they start automatically once idle."""
+    from asset_title_changes import create_title_monitor, title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+
+    if not request.confirmed:
+        raise HTTPException(status_code=400, detail="confirmation_required")
+    if bool(request.candidate_ids) == bool(request.all_eligible):
+        raise HTTPException(status_code=400, detail="invalid_selection")
+    settings = get_dynamic_overlays_settings()
+    if not settings.get("enabled"):
+        raise HTTPException(status_code=400, detail="master_off")
+    if not title_regeneration_allowed(settings, manual=True):
+        raise HTTPException(status_code=400, detail="rebuild_disabled")
+    monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+    jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
+                                   request.all_eligible, request.force_unknown_text, request.status_filter,
+                                   request.reason_filter, request.review_type)
+    if not jobs:
+        raise HTTPException(status_code=400, detail="nothing_selected")
+    queue_ids = await asyncio.to_thread(queue_manager.add_episode_title_items, jobs)
+    schedule_queue_when_idle(queue_ids)
+    return {"success": True, "queued": len(queue_ids), "queue_ids": queue_ids}
 
 
 @app.post("/api/dynamic-overlays/episode-title-changes/dismiss")

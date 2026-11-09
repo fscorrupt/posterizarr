@@ -2426,18 +2426,15 @@ class OverlayConfigEngine:
                 if sub.exists() and sub not in self.candidate_default_dirs:
                     self.candidate_default_dirs.append(sub)
 
-        # Load standard external templates (templates.yml) across candidates
-        self.templates = {}
-        for dd in self.candidate_default_dirs:
-            tpl_path = dd / "templates.yml"
-            if tpl_path.exists():
-                try:
-                    with open(tpl_path, "r", encoding="utf-8") as f:
-                        self.templates = yaml.safe_load(f).get("templates", {})
-                    if self.templates:
-                        break
-                except Exception as e:
-                    logger.warning(f"[OverlayConfigEngine] Error loading templates.yml from {tpl_path}: {e}")
+    @property
+    def templates(self) -> Dict[str, Any]:
+        # Read on demand: the engine is cached per process and templates.yml can be imported later.
+        for default_dir in self.candidate_default_dirs:
+            data = load_cached_yaml_file(default_dir / "templates.yml")
+            templates = data.get("templates") if isinstance(data, dict) else None
+            if isinstance(templates, dict) and templates:
+                return templates
+        return {}
 
     def resolve_image_path(self, raw_path: Optional[str]) -> Optional[Path]:
         if not raw_path or str(raw_path).startswith("text(") or str(raw_path).startswith("blur("):

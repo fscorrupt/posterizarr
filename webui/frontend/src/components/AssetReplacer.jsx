@@ -46,6 +46,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
   const [activeTab, setActiveTab] = useState(initialTab === "previews" ? "previews" : "upload");
   const [processWithOverlays, setProcessWithOverlays] = useState(true);
   const [addToQueue, setAddToQueue] = useState(false);
+  const queueUntilIdle = isPosterizarrRunning && !addToQueue;
   const [autoQueueChanges, setAutoQueueChanges] = useState(false);
   const [queueSettingsLoaded, setQueueSettingsLoaded] = useState(false);
   const [savingQueueSettings, setSavingQueueSettings] = useState(false);
@@ -1381,11 +1382,6 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
       return;
     }
 
-    if (isPosterizarrRunning && !addToQueue) {
-      showError(t("assetReplacer.posterizarrRunningError"));
-      return;
-    }
-
     setShowUploadConfirm(true);
   };
 
@@ -1399,7 +1395,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
     try {
       let url = `${API_URL}/assets/upload-replacement?asset_path=${encodeURIComponent(
         asset.path || ""
-      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
+      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue || queueUntilIdle}&start_when_idle=${queueUntilIdle}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
         const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
@@ -1485,7 +1481,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
 
       if (data.success) {
         if (data.queued) {
-          showSuccess(t("assetReplacer.addedToQueue"));
+          showSuccess(t(queueUntilIdle ? "assetReplacer.queuedUntilIdle" : "assetReplacer.addedToQueue"));
           onClose();
           return;
         }
@@ -1521,11 +1517,6 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
     if (!queueSettingsLoaded || savingQueueSettings || uploading || queueSubmissionRef.current) return;
     if (logoSelectionMode) {
       handleLogoSelect(preview);
-      return;
-    }
-
-    if (isPosterizarrRunning && !addToQueue) {
-      showError(t("assetReplacer.posterizarrRunningError"));
       return;
     }
 
@@ -1656,7 +1647,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
         asset.path || ""
       )}&image_url=${encodeURIComponent(
         preview.original_url
-      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
+      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue || queueUntilIdle}&start_when_idle=${queueUntilIdle}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
       if (processWithOverlays && metadata.asset_type !== "titlecard") {
         const titleText = manualForm?.titletext ?? metadata.title;
@@ -1706,7 +1697,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
 
       if (data.success) {
         if (data.queued) {
-          showSuccess(t("assetReplacer.addedToQueue"));
+          showSuccess(t(queueUntilIdle ? "assetReplacer.queuedUntilIdle" : "assetReplacer.addedToQueue"));
           onClose();
           return;
         }
@@ -1796,7 +1787,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                   Posterizarr is Currently Running
                 </p>
                 <p className="text-sm text-orange-300/80">
-                  Asset replacement is disabled while Posterizarr is processing.
+                  {t("assetReplacer.runningQueueHint")}
                 </p>
               </div>
             </div>
@@ -2409,8 +2400,8 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                   <div className="mt-4">
                     <button
                       onClick={handleUploadClick}
-                      disabled={!isDimensionValid || uploading || (isPosterizarrRunning && !addToQueue)}
-                      className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 ${isDimensionValid && !uploading && !isPosterizarrRunning
+                      disabled={!isDimensionValid || uploading}
+                      className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 ${isDimensionValid && !uploading
                         ? "bg-theme-primary hover:bg-theme-primary/90 text-white"
                         : "bg-gray-500/20 text-gray-500 cursor-not-allowed"
                         }`}
@@ -2418,8 +2409,8 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                       <Upload className="w-4 h-4" />
                       {uploading
                         ? t("assetReplacer.uploadingAsset")
-                        : isPosterizarrRunning
-                          ? "Upload Disabled (Running)"
+                        : queueUntilIdle
+                          ? t("assetReplacer.queueUntilIdleButton")
                           : t("assetReplacer.uploadAssetButton")}
                     </button>
                   </div>
@@ -2587,7 +2578,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                           key={`${activeProviderTab}-${index}`}
                           preview={preview}
                           onSelect={() => handlePreviewClick(preview)}
-                          disabled={uploading || (isPosterizarrRunning && !addToQueue)}
+                          disabled={uploading}
                           isHorizontal={useHorizontalLayout}
                           isTargetPoster={isPosterType}
                           targetLabel={titlecardCoordinates}

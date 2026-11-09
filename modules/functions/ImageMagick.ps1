@@ -384,8 +384,14 @@ function InvokeMagickCommand {
             # Drain stdout (discard; only stderr carries actionable messages)
             $null = $stdoutTask.GetAwaiter().GetResult()
 
-            # Check if there was any error output
-            if (-not [string]::IsNullOrWhiteSpace($errorOutput)) {
+            # ImageMagick exits 0 for warnings (e.g. XMP "ParseError missing >") and still writes the image.
+            if ($process.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($errorOutput)) {
+                Write-Entry -Subtext "ImageMagick reported a warning (image was still written):" -Path $global:configLogging -Color Yellow -log Warning
+                Write-Entry -Subtext ($errorOutput -split "convert: |magick.exe: |magick: |@" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1).Trim() -Path $global:configLogging -Color Yellow -log Warning
+                Write-Entry -Subtext "$errorOutput" -Path $global:configLogging -Color Cyan -log Debug
+            }
+            elseif ($process.ExitCode -ne 0) {
+                if ([string]::IsNullOrWhiteSpace($errorOutput)) { $errorOutput = "magick exited with code $($process.ExitCode)" }
                 Write-Entry -Subtext "An error occurred while executing the magick command:" -Path $global:configLogging -Color Red -log Error
                 Write-Entry -Subtext (GetMagickErrorMessage $errorOutput) -Path $global:configLogging -Color Red -log Error
                 Write-Entry -Subtext "$errorOutput" -Path $global:configLogging -Color Cyan -log Debug
