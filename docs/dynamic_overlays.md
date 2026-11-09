@@ -755,9 +755,10 @@ an already confirmed current title in the review. This confirms the local
 titlecard; final media-server upload remains a separate overlay-sync step.
 The Master Switch must be on and Dry Run off to open this replacement
 workflow from the review.
-Use **Hide this review entry** on a media-server-source row to dismiss it when no
-provider original exists. The dismissal persists across scans for that same title
-and source; a later title or source change can create a new review entry.
+Use **Permanently hide this review entry** on any blocked row (for example a
+media-server source or an image that already contains text) to dismiss it. The
+dismissal persists across scans for that same title and source; a later title or
+source change can create a new review entry.
 
 If only the previous image text is unknown, the row can offer **Force recreate
 this episode titlecard**. This explicit action requires a stored
@@ -766,11 +767,22 @@ Its separate warning confirms that the old text cannot be verified and that the
 existing titlecard will be replaced. It does not bypass missing/textful sources,
 Dry Run, the Master Switch, or episode/server validation. Unknown-text rows remain
 excluded from automatic recreation and ordinary selected/all-eligible actions.
-Enable **Include uncertain previous text** to include safe unknown-text rows in
-page selection and bulk processing. Both Queue and Fast actions support selected
-episodes or all matching candidates across pages, respecting the current search
-and filters. A separate bulk warning confirms replacement despite uncertain old
-text. Missing, textful, media-server sources and placeholder titles stay blocked.
+Rows whose recorded source is the media server's own artwork can also be forced.
+Before a forced recreation from such a row, Posterizarr downloads the original
+again from the configured media server (same server address only, with its token)
+and runs the same EXIF check as Normal Mode: artwork marked as created by
+Posterizarr, Kometa overlays, or TitleCardMaker is skipped and left in the
+review. Set `DisableHashValidation` to `true` only if you deliberately want to
+skip this check. The downloaded file is used only for that run and is then
+deleted. **Fast: Normal Run** does not need this extra download, because Normal
+Mode performs its own EXIF check when it fetches media-server artwork.
+
+Enable **Include uncertain text and media server originals** to include these
+forceable rows in page selection and bulk processing. Queue and Fast actions
+work on the selected episodes or on all matching candidates across pages, using
+the current search and filters. A separate bulk warning confirms replacement
+despite uncertain old text. Missing sources, sources that already contain text,
+and placeholder titles stay blocked.
 For uncertain rows that cannot safely be forced, the status also shows the
 additional blocking reason. Their action opens **Choose a provider image in
 Asset Replacer** instead of leaving a disabled recreate button. This allows an
@@ -799,6 +811,12 @@ checkboxes, or choose **All eligible matches**. The all action includes every
 eligible result of the current search, not just the current page. Each action
 requires confirmation. Manual recreation does not require the automatic title
 option or Background Checking, but the Master Switch must be on and Dry Run off.
+
+**Recreate selected** is only available while no other Posterizarr run is active. Use
+**Add to queue** instead to queue the selected episodes immediately, even while a
+run, overlay sync, or cleanup is active. The queued entries start automatically
+when everything else has finished. Only these entries are started; other pending
+queue items still wait for a manual queue start.
 
 For a one-time bulk rebuild, **Fast: Normal Run** temporarily backs up and removes
 the eligible local titlecard files matching the current search, then starts the

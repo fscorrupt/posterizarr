@@ -15,7 +15,9 @@ The following API endpoints are available.
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/dynamic-overlays/episode-title-changes` | Paged review candidates. Optional `search`, `limit`, `offset`, `status_filter` (`all`, `eligible`, `blocked`), `reason_filter` (`all`, `none`, or a blocking reason), and `review_type` (`all`, `historical`, `future`) filter the result set and eligible count. |
-| `POST /api/dynamic-overlays/episode-title-changes/rebuild` | Confirmed queue recreation. `candidate_ids` or `all_eligible` with `search` and the same filters selects candidates. Optional `force_unknown_text: true` includes safe uncertain-text candidates in either selection. |
+| `POST /api/dynamic-overlays/episode-title-changes/rebuild` | Confirmed queue recreation; returns `409` while another run is active. `candidate_ids` or `all_eligible` with `search` and the same filters selects candidates. Optional `force_unknown_text: true` includes safe uncertain-text candidates and media-server originals (re-downloaded and EXIF-checked) in either selection. |
+| `POST /api/dynamic-overlays/episode-title-changes/queue` | Confirmed queueing with the same body as `rebuild`. Allowed while a run is active. Returns `queued` and `queue_ids`; these items start automatically once no run, queue, overlay sync, or cleanup is active. |
+| `POST /api/dynamic-overlays/episode-title-changes/dismiss` | Permanently hides one review entry (`candidate_id`) with any blocking reason. |
 | `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed Fast Normal Run over `candidate_ids` or `all_eligible`, using the same search and filters. Optional `force_unknown_text: true` includes safe uncertain-text candidates. |
 
 ### Overlay Bundles
@@ -1397,7 +1399,7 @@ Submits data or triggers an action at `/api/assets/fetch-replacements`.
     ```
 
 ### `/api/assets/upload-replacement`
-Submits data or triggers an action at `/api/assets/upload-replacement`.
+Uploads a replacement image. With `add_to_queue=true` the item is queued instead of processed immediately; adding `start_when_idle=true` starts it automatically once no run is active.
 
 ??? example "View Response"
     ```json
@@ -1407,7 +1409,7 @@ Submits data or triggers an action at `/api/assets/upload-replacement`.
     ```
 
 ### `/api/assets/replace-from-url`
-Submits data or triggers an action at `/api/assets/replace-from-url`.
+Replaces an asset from a provider URL. Supports the same `add_to_queue` and `start_when_idle` query parameters as `upload-replacement`.
 
 ??? example "View Response"
     ```json
