@@ -6513,7 +6513,15 @@
 </tr>
 <tr>
 <td><code>POST /api/dynamic-overlays/episode-title-changes/rebuild</code></td>
-<td>Confirmed queue recreation. <code>candidate_ids</code> or <code>all_eligible</code> with <code>search</code> and the same filters selects candidates. Optional <code>force_unknown_text: true</code> includes safe uncertain-text candidates in either selection.</td>
+<td>Confirmed queue recreation; returns <code>409</code> while another run is active. <code>candidate_ids</code> or <code>all_eligible</code> with <code>search</code> and the same filters selects candidates. Optional <code>force_unknown_text: true</code> includes safe uncertain-text candidates and media-server originals (re-downloaded and EXIF-checked) in either selection.</td>
+</tr>
+<tr>
+<td><code>POST /api/dynamic-overlays/episode-title-changes/queue</code></td>
+<td>Confirmed queueing with the same body as <code>rebuild</code>. Allowed while a run is active. Returns <code>queued</code> and <code>queue_ids</code>; these items start automatically once no run, queue, overlay sync, or cleanup is active.</td>
+</tr>
+<tr>
+<td><code>POST /api/dynamic-overlays/episode-title-changes/dismiss</code></td>
+<td>Permanently hides one review entry (<code>candidate_id</code>) with any blocking reason.</td>
 </tr>
 <tr>
 <td><code>POST /api/dynamic-overlays/episode-title-changes/fast-normal-run</code></td>
@@ -7785,7 +7793,7 @@ modification-time ordering; pagination limits the response, not the database sca
 </code></pre></div>
 </details>
 <h3 id="apiassetsupload-replacement"><code>/api/assets/upload-replacement</code></h3>
-<p>Submits data or triggers an action at <code>/api/assets/upload-replacement</code>.</p>
+<p>Uploads a replacement image. With <code>add_to_queue=true</code> the item is queued instead of processed immediately; adding <code>start_when_idle=true</code> starts it automatically once no run is active.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-90-1" name="__codelineno-90-1" href="#__codelineno-90-1"></a><span class="p">{</span>
@@ -7794,7 +7802,7 @@ modification-time ordering; pagination limits the response, not the database sca
 </code></pre></div>
 </details>
 <h3 id="apiassetsreplace-from-url"><code>/api/assets/replace-from-url</code></h3>
-<p>Submits data or triggers an action at <code>/api/assets/replace-from-url</code>.</p>
+<p>Replaces an asset from a provider URL. Supports the same <code>add_to_queue</code> and <code>start_when_idle</code> query parameters as <code>upload-replacement</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-91-1" name="__codelineno-91-1" href="#__codelineno-91-1"></a><span class="p">{</span>
