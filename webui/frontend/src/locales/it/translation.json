@@ -383,7 +383,7 @@
       "rebuildOne": "Ricrea questa immagine episodio",
       "chooseProviderImage": "Scegli un’immagine del provider in Asset Replacer",
       "dismissCandidate": "Nascondi definitivamente questa voce di revisione",
-      "forceOne": "Forza la ricreazione di questa immagine episodio",
+      "fastOne": "Esecuzione normale rapida per questo episodio",
       "forceTitle": "Ricreare con il testo precedente sconosciuto?",
       "forceMessage": "Il testo precedente dell’immagine di {{episode}} è sconosciuto. Forzare la ricreazione dalla fonte senza testo registrata con il titolo attuale \"{{title}}\"? L’immagine esistente sarà sostituita.",
       "forceAction": "Forza ricreazione",

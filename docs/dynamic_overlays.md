@@ -760,22 +760,13 @@ media-server source or an image that already contains text) to dismiss it. The
 dismissal persists across scans for that same title and source; a later title or
 source change can create a new review entry.
 
-If only the previous image text is unknown, the row can offer **Force recreate
-this episode titlecard**. This explicit action requires a stored
-HTTP(S) source marked **Textless** and a current non-placeholder episode title.
-Its separate warning confirms that the old text cannot be verified and that the
-existing titlecard will be replaced. It does not bypass missing/textful sources,
-Dry Run, the Master Switch, or episode/server validation. Unknown-text rows remain
-excluded from automatic recreation and ordinary selected/all-eligible actions.
-Rows whose recorded source is the media server's own artwork can also be forced.
-Before a forced recreation from such a row, Posterizarr downloads the original
-again from the configured media server (same server address only, with its token)
-and runs the same EXIF check as Normal Mode: artwork marked as created by
-Posterizarr, Kometa overlays, or TitleCardMaker is skipped and left in the
-review. Set `DisableHashValidation` to `true` only if you deliberately want to
-skip this check. The downloaded file is used only for that run and is then
-deleted. **Fast: Normal Run** does not need this extra download, because Normal
-Mode performs its own EXIF check when it fetches media-server artwork.
+If only the previous image text is unknown, the row can offer **Fast: Normal Run
+for this episode**. It temporarily removes the local titlecard and starts the
+ordinary Normal Mode, just like the bulk Fast action. Artwork on the media server
+is untouched, and Normal Mode applies its usual source and EXIF checks. If no
+replacement is generated locally, the previous titlecard is restored. Unknown-
+text rows remain excluded from automatic recreation and ordinary selected/all-
+eligible actions.
 
 Enable **Include uncertain text and media server originals** to include these
 forceable rows in page selection and bulk processing. Queue and Fast actions

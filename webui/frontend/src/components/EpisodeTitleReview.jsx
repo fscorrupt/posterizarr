@@ -349,12 +349,12 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                       tmdbid: entry.provider_ids?.tmdb || "", tvdbid: entry.provider_ids?.tvdb || "",
                       imdbid: entry.provider_ids?.imdb || "", _attemptedEpisodeFetch: true }
                   })}><ImagePlus className="h-4 w-4" /></button>}{(!needsProvider || entry.force_recreatable) && <button type="button" className={`flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-theme-hover disabled:opacity-40 ${entry.force_recreatable ? "border-amber-500/60 text-amber-500" : "border-theme text-theme-text"}`}
-                  aria-label={text(entry.force_recreatable ? "forceOne" : "rebuildOne")} title={text(entry.force_recreatable ? "forceOne" : "rebuildOne")}
+                  aria-label={text(entry.force_recreatable ? "fastOne" : "rebuildOne")} title={text(entry.force_recreatable ? "fastOne" : "rebuildOne")}
                   disabled={!canRebuild || (entry.status !== "ready" && !entry.force_recreatable)}
-                  onClick={() => setConfirmation({ candidate_ids: [entry.candidate_id], count: 1,
-                    force_unknown_text: Boolean(entry.force_recreatable), media_server: entry.reason === "media_server_source",
-                    episode: `${entry.parent_title || entry.folder} ${coordinates}`, title: entry.title })}>
-                  <RotateCcw className="h-4 w-4" /></button>}{entry.reason && <button type="button"
+                  onClick={() => setConfirmation(entry.force_recreatable
+                    ? { fast_normal_run: true, candidate_ids: [entry.candidate_id], count: 1, force_unknown_text: true }
+                    : { candidate_ids: [entry.candidate_id], count: 1 })}>
+                  {entry.force_recreatable ? <Zap className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</button>}{entry.reason && <button type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-muted hover:bg-theme-hover hover:text-theme-text disabled:opacity-40"
                   aria-label={text("dismissCandidate")} title={text("dismissCandidate")} disabled={pending || busy || loading || search !== query}
                   onClick={() => post("dismiss", { candidate_id: entry.candidate_id })}><EyeOff className="h-4 w-4" /></button>}</div></td>
@@ -381,8 +381,8 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
           confirmation?.fast_normal_run ? text("fastRunMessage", { count: confirmation.count })
             : confirmation?.force_unknown_text && confirmation.episode && !confirmation.media_server ? text("forceMessage", { episode: confirmation.episode, title: confirmation.title })
               : text("confirmMessage", { count: confirmation?.count || 0 }),
-          confirmation?.force_unknown_text && !confirmation.episode ? text("forceBulkMessage", { count: confirmation.count }) : "",
-          confirmation?.force_unknown_text && (confirmation.media_server || !confirmation.episode) ? text("forceServerHint") : "",
+          confirmation?.force_unknown_text && !confirmation?.fast_normal_run && !confirmation.episode ? text("forceBulkMessage", { count: confirmation.count }) : "",
+          confirmation?.force_unknown_text && !confirmation?.fast_normal_run && (confirmation.media_server || !confirmation.episode) ? text("forceServerHint") : "",
           confirmation?.queue ? text("queueHint") : ""
         ].filter(Boolean).join("\n\n")}
         confirmText={text(confirmation?.queue ? "queueAction" : confirmation?.fast_normal_run ? "fastRunAction" : confirmation?.force_unknown_text ? "forceAction" : "confirmAction")} onConfirm={() => {

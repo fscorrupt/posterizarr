@@ -383,7 +383,7 @@
       "rebuildOne": "Dieses Episodenbild neu erstellen",
       "chooseProviderImage": "Provider-Bild im Asset Replacer auswählen",
       "dismissCandidate": "Diesen Eintrag dauerhaft aus der Prüfung ausblenden",
-      "forceOne": "Neuerstellung dieses Episodenbilds erzwingen",
+      "fastOne": "Schnell: Normal Run für diese Episode",
       "forceTitle": "Trotz unbekanntem bisherigen Text neu erstellen?",
       "forceMessage": "Der bisherige Bildtext von {{episode}} ist unbekannt. Neuerstellung aus der gespeicherten textlosen Quelle mit dem aktuellen Titel \"{{title}}\" erzwingen? Das vorhandene Episodenbild wird ersetzt.",
       "forceAction": "Neuerstellung erzwingen",

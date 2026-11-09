@@ -383,7 +383,7 @@
       "rebuildOne": "Recriar esta imagem do episódio",
       "chooseProviderImage": "Escolher uma imagem do fornecedor no Asset Replacer",
       "dismissCandidate": "Ocultar permanentemente esta entrada de revisão",
-      "forceOne": "Forçar a recriação desta imagem do episódio",
+      "fastOne": "Execução normal rápida para este episódio",
       "forceTitle": "Recriar com o texto anterior desconhecido?",
       "forceMessage": "O texto anterior da imagem de {{episode}} é desconhecido. Forçar a recriação a partir da fonte sem texto guardada com o título atual \"{{title}}\"? A imagem existente será substituída.",
       "forceAction": "Forçar recriação",
