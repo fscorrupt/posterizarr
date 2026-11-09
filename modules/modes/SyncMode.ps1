@@ -1,4 +1,29 @@
 #region Sync Mode
+function Select-SameLocationMatch {
+    param($Candidates, $Entry)
+
+    $all = @($Candidates)
+    if ($all.Count -le 1 -or [string]::IsNullOrWhiteSpace([string]$Entry.Path) -or
+        [string]::IsNullOrWhiteSpace([string]$Entry.RootFoldername)) {
+        return $Candidates
+    }
+
+    $entryPath = ([string]$Entry.Path).Trim().Replace('\', '/').TrimEnd('/')
+    $same = @($all | Where-Object {
+        $candidatePath = ([string]$_.Path).Trim().Replace('\', '/').TrimEnd('/')
+        $candidatePath -eq $entryPath -and $_.RootFoldername -eq $Entry.RootFoldername
+    })
+
+    if ($same.Count -eq 1) { return $same[0] }
+    if ($same.Count -gt 1 -and -not [string]::IsNullOrWhiteSpace([string]$Entry.extraFolder)) {
+        $sameExtraFolder = @($same | Where-Object { $_.extraFolder -eq $Entry.extraFolder })
+        if ($sameExtraFolder.Count -eq 1) { return $sameExtraFolder[0] }
+        if ($sameExtraFolder.Count -gt 1) { return $sameExtraFolder }
+    }
+    if ($same.Count -gt 1) { return $same }
+    return $Candidates
+}
+
     # Initialize counter variable
     $global:posterCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['posterCount'] = 0 }
@@ -833,6 +858,9 @@
             # Create an object for the current season
             $seasonObject = [PSCustomObject]@{
                 "Library Name"                 = $show."Library Name"
+                "Path"                         = $show.Path
+                "RootFoldername"               = $show.RootFoldername
+                "extraFolder"                  = $show.extraFolder
                 "Show Name"                    = $show.title
                 "Show Original Name"           = $show.OriginalTitle
                 "Library Language"             = $PreferredMetadataLanguage
@@ -870,6 +898,9 @@
         # Create a custom object for each episode using the variables
         $FormattedData.Add([PSCustomObject]@{
                 'Library Name'                 = $data.'Library Name'
+                'Path'                         = $data.Path
+                'RootFoldername'               = $data.RootFoldername
+                'extraFolder'                  = $data.extraFolder
                 'Show Name'                    = $data.'Show Name'
                 'Show Original Name'           = $data.'Show Original Name'
                 'Library Language'             = $data.'Library Language'
@@ -940,6 +971,7 @@
                             }
                         }
 
+                        $matchingMovie = Select-SameLocationMatch -Candidates $matchingMovie -Entry $entry
                         if ($matchingMovie) {
                             $MovieTitle = $entry.Title
                             $imageType = "Primary"
@@ -1013,6 +1045,7 @@
                             }
                         }
 
+                        $matchingMovie = Select-SameLocationMatch -Candidates $matchingMovie -Entry $entry
                         if ($matchingMovie) {
                             $MovieTitle = $entry.Title + " | Background"
                             $imageType = "Backdrop"
@@ -1100,6 +1133,7 @@
                             }
                         }
 
+                        $matchingShow = Select-SameLocationMatch -Candidates $matchingShow -Entry $entry
                         if ($matchingShow) {
                             $ShowTitle = $entry.Title
                             $imageType = "Primary"
@@ -1169,6 +1203,7 @@
                             }
                         }
 
+                        $matchingShow = Select-SameLocationMatch -Candidates $matchingShow -Entry $entry
                         if ($matchingShow) {
                             $ShowTitle = $entry.Title + " | Background"
                             $imageType = "Backdrop"
@@ -1245,6 +1280,7 @@
                                 }
                             }
 
+                            $matchingSeason = Select-SameLocationMatch -Candidates $matchingSeason -Entry $entry
                             if ($matchingSeason) {
                                 $ShowTitle = $entry.Title + " | Season $global:SeasonNumber"
                                 $imageType = "Primary"
@@ -1339,6 +1375,7 @@
                                         }
                                     }
 
+                                    $matchingEpisode = Select-SameLocationMatch -Candidates $matchingEpisode -Entry $entry
                                     if ($matchingEpisode) {
                                         # Select the matching episode ID by EPISODE NUMBER, not by the source
                                         # loop index. Source and destination hold their own episode arrays and
