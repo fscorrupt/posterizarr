@@ -4957,11 +4957,11 @@ async def perform_jellyfin_emby_action(request: JellyfinEmbyActionRequest):
 
         if request.action == "refresh_item":
             # Full metadata refresh
-            params["MetadataRefreshMode"] = "Full"
+            params["MetadataRefreshMode"] = "FullRefresh"
 
         elif request.action == "refresh_images":
             # Image specific refresh (look for new images)
-            params["ImageRefreshMode"] = "Full"
+            params["ImageRefreshMode"] = "FullRefresh"
             params["MetadataRefreshMode"] = "Default"
 
         else:
