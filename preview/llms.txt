@@ -25,7 +25,7 @@ Posterizarr combines a PowerShell/ImageMagick asset-generation pipeline, a nativ
 - [Usage & Execution Modes](https://fscorrupt.github.io/posterizarr/modes/): Comprehensive operational guide for all execution modes: Normal, Testing, Manual, Backup, Restore, Sync, PosterReset, LogoUpdater, ArrMode, and TautulliMode.
 - [Action Center Guide](https://fscorrupt.github.io/posterizarr/action_center/): Artwork resolution, fallback provider tracking, and manual image replacement workflows.
 - [Blueprints & Recipes](https://fscorrupt.github.io/posterizarr/blueprints/): Curated overlay styling blueprints and community design recipes.
-- [Native Dynamic Overlays](https://fscorrupt.github.io/posterizarr/dynamic_overlays/): Supported badge rules, visual previews, direct multi-server uploads, Dry Run, dependency readiness, targeted sync, and cache/ratings management.
+- [Native Dynamic Overlays](https://fscorrupt.github.io/posterizarr/dynamic_overlays/): Supported badge rules, visual previews, direct multi-server uploads, Dry Run, dependency readiness, targeted sync, cache/ratings management, and Jellyfin/Emby box-set discovery (`CollapseBoxSetItems=false`; not applicable to Silo's native catalog).
 
 ## Integrations & Media Servers
 - [Agregarr Integration](https://fscorrupt.github.io/posterizarr/agregarrintegration/): Setup and webhook callback specifications, bitr8/agregarr:develop fork requirements and PR #103 details, multi-episode import expansion, and retry timeout handling.

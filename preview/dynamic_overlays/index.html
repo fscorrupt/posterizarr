@@ -799,6 +799,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jellyfin-emby-box-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Jellyfin / Emby Box Sets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1926,6 +1943,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jellyfin-emby-box-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Jellyfin / Emby Box Sets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2319,6 +2353,16 @@ It uses a Pillow (<code>PIL</code>) compositor and can read a supported subset o
 <li><strong>Predictable File Layout:</strong>
    Configurations, downloaded defaults, and custom overlay assets are stored under <code>Overlayfiles/dynamic_overlays/</code> in the writable application data directory.</li>
 </ol>
+<h3 id="jellyfin-emby-box-sets">Jellyfin / Emby Box Sets</h3>
+<p>Dynamic Overlay Sync explicitly sends <code>CollapseBoxSetItems=false</code> on Jellyfin/Emby
+<code>/Items</code> requests, matching the PowerShell discovery modes. This keeps individual
+movies assigned to box sets visible during normal discovery, targeted searches and
+fallbacks, and change detection. The item picker and direct item lookups use the
+same setting. Series remain included, and pagination settings are unchanged.
+Increasing <code>Limit</code> alone does not prevent box-set collapsing.</p>
+<p>Silo uses its native <code>/api/v2/admin/catalog/items</code> endpoint with cursor pagination
+and a separate collections endpoint. The Jellyfin/Emby parameter does not apply to
+Silo.</p>
 <hr />
 <h2 id="quick-start-from-the-web-ui">Quick Start From the Web UI</h2>
 <p>The general first-run wizard now includes an optional <strong>Dynamic Overlays</strong>

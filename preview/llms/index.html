@@ -1528,6 +1528,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#media-server-discovery-invariant" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Media Server Discovery Invariant
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2304,6 +2315,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#media-server-discovery-invariant" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Media Server Discovery Invariant
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3049,6 +3071,15 @@
 <li><strong>Web UI &amp; Management Dashboard</strong>: Modern single-page React application with real-time dashboards, asset overview tables, manual image choice pickers (Asset Replacer), clearlogo browsers, logs viewer (WebSocket streaming), and background queue runners.</li>
 <li><strong>Arr &amp; Companion Integrations</strong>: Webhook handlers and trigger scripts for Radarr, Sonarr, and Tautulli, automated callbacks for <strong>Agregarr</strong>, native C# media server plugins, Uptime Kuma monitoring, and Discord rich embeds. Asset-folder compatibility with external consumers is optional, not part of the native overlay runtime.</li>
 </ol>
+<h3 id="media-server-discovery-invariant">Media Server Discovery Invariant</h3>
+<p>Jellyfin/Emby <code>/Items</code> requests enumerating movies must explicitly set
+<code>CollapseBoxSetItems=false</code>; otherwise box-set members can disappear before local
+filtering. Preserve this existing PowerShell behavior in Python discovery,
+targeted searches/fallbacks, item pickers, and change detection. A larger <code>Limit</code>
+does not fix collapsed results. Dynamic Overlays uses structured query parameters
+without changing pagination. Silo instead uses its native
+<code>/api/v2/admin/catalog/items</code> cursor-paginated catalog and separate collections;
+do not send it the Jellyfin/Emby parameter.</p>
 <hr />
 <h2 id="2-technology-stack-components-matrix">2. Technology Stack &amp; Components Matrix</h2>
 <table>
