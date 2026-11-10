@@ -20,6 +20,19 @@ Kometa (formerly Plex Meta Manager) is a separate application. Posterizarr's Dyn
 4. **Predictable File Layout:**
    Configurations, downloaded defaults, and custom overlay assets are stored under `Overlayfiles/dynamic_overlays/` in the writable application data directory.
 
+### Jellyfin / Emby Box Sets
+
+Dynamic Overlay Sync explicitly sends `CollapseBoxSetItems=false` on Jellyfin/Emby
+`/Items` requests, matching the PowerShell discovery modes. This keeps individual
+movies assigned to box sets visible during normal discovery, targeted searches and
+fallbacks, and change detection. The item picker and direct item lookups use the
+same setting. Series remain included, and pagination settings are unchanged.
+Increasing `Limit` alone does not prevent box-set collapsing.
+
+Silo uses its native `/api/v2/admin/catalog/items` endpoint with cursor pagination
+and a separate collections endpoint. The Jellyfin/Emby parameter does not apply to
+Silo.
+
 ---
 
 ## Quick Start From the Web UI

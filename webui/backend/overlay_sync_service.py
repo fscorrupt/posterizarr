@@ -3577,7 +3577,7 @@ async def search_overlay_sync_items(
                     response = await http_client.get(
                         f"{server_url}/Items", headers=headers,
                         params={"ParentId": folder_id, "Recursive": "true", "IncludeItemTypes": "Movie,Series", "SearchTerm": query,
-                                "Limit": limit - len(items), "Fields": "ProductionYear"},
+                            "CollapseBoxSetItems": "false", "Limit": limit - len(items), "Fields": "ProductionYear"},
                     )
                 if response.status_code != 200:
                     errors.append(f"{server_type.upper()} / {name}: search HTTP {response.status_code}")
@@ -3741,7 +3741,7 @@ async def _fetch_overlay_target_items(
             else:
                 response = await http_client.get(
                     f"{server_url}/Items",
-                    params={"Ids": item_id, "Fields": "Path,ProviderIds,ProductionYear,MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,Studios,CommunityRating,CriticRating,DateModified,DateCreated"},
+                    params={"Ids": item_id, "CollapseBoxSetItems": "false", "Fields": "Path,ProviderIds,ProductionYear,MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,Studios,CommunityRating,CriticRating,DateModified,DateCreated"},
                     headers={"X-Emby-Token": credentials.get("api_key"), "Accept": "application/json"},
                 )
                 if response.status_code != 200:
@@ -4131,6 +4131,13 @@ async def _run_overlay_sync_task(
                                     write_log(f"  [>] Library '{lib_name}' is not configured for dynamic overlays. Skipping.")
                                     continue
 
+                                items_params = {
+                                    "ParentId": lib_id,
+                                    "Recursive": "true",
+                                    "IncludeItemTypes": "Movie,Series",
+                                    "CollapseBoxSetItems": "false",
+                                    "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                                }
                                 sec_media_items = []
                                 if is_target_mode and (target_titles or target_roots):
                                     searched_terms = target_titles | target_roots
@@ -4141,8 +4148,7 @@ async def _run_overlay_sync_task(
                                             terms_to_try.append(clean_term)
                                         for term in terms_to_try:
                                             try:
-                                                items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&SearchTerm={urllib.parse.quote(term)}&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
-                                                it_resp = await http_client.get(items_url, headers=headers)
+                                                it_resp = await http_client.get(f"{s_url}/Items", params={**items_params, "SearchTerm": term}, headers=headers)
                                                 if it_resp.status_code == 200:
                                                     lib_items = it_resp.json().get("Items", [])
                                                     for item_obj in lib_items:
@@ -4153,8 +4159,7 @@ async def _run_overlay_sync_task(
                                                 pass
 
                                 if not sec_media_items and not is_target_mode:
-                                    items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
-                                    it_resp = await http_client.get(items_url, headers=headers)
+                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
                                     if it_resp.status_code == 200:
                                         lib_items = it_resp.json().get("Items", [])
                                         write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items.")
@@ -4165,8 +4170,7 @@ async def _run_overlay_sync_task(
                                     else:
                                         write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({it_resp.status_code}): {it_resp.text[:120]}")
                                 elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
-                                    items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
-                                    it_resp = await http_client.get(items_url, headers=headers)
+                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
                                     if it_resp.status_code == 200:
                                         lib_items = it_resp.json().get("Items", [])
                                         for item_obj in lib_items:
@@ -4377,7 +4381,7 @@ async def _run_overlay_sync_task(
                             else:
                                 location_resp = await http_client.get(
                                     f"{s_url}/Items",
-                                    params={"Ids": str(item_id), "Fields": "Path,ProviderIds,ProductionYear"},
+                                    params={"Ids": str(item_id), "CollapseBoxSetItems": "false", "Fields": "Path,ProviderIds,ProductionYear"},
                                     headers={"X-Emby-Token": creds.get("api_key"), "Accept": "application/json"}
                                 )
                                 if location_resp.status_code == 200:
@@ -6464,8 +6468,14 @@ async def detect_media_changes(
                             if matched_k == "none" or not matched_rules:
                                 continue
 
-                            items_url = f"{s_url}/Items?ParentId={lib_id}&Recursive=true&IncludeItemTypes=Movie,Series&Fields=MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview"
-                            it_resp = await http_client.get(items_url, headers=headers)
+                            items_params = {
+                                "ParentId": lib_id,
+                                "Recursive": "true",
+                                "IncludeItemTypes": "Movie,Series",
+                                "CollapseBoxSetItems": "false",
+                                "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                            }
+                            it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
                             if it_resp.status_code == 200:
                                 lib_items = it_resp.json().get("Items", [])
                                 for item_obj in lib_items:

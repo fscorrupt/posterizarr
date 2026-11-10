@@ -16,6 +16,17 @@
 6. **Web UI & Management Dashboard**: Modern single-page React application with real-time dashboards, asset overview tables, manual image choice pickers (Asset Replacer), clearlogo browsers, logs viewer (WebSocket streaming), and background queue runners.
 7. **Arr & Companion Integrations**: Webhook handlers and trigger scripts for Radarr, Sonarr, and Tautulli, automated callbacks for **Agregarr**, native C# media server plugins, Uptime Kuma monitoring, and Discord rich embeds. Asset-folder compatibility with external consumers is optional, not part of the native overlay runtime.
 
+### Media Server Discovery Invariant
+
+Jellyfin/Emby `/Items` requests enumerating movies must explicitly set
+`CollapseBoxSetItems=false`; otherwise box-set members can disappear before local
+filtering. Preserve this existing PowerShell behavior in Python discovery,
+targeted searches/fallbacks, item pickers, and change detection. A larger `Limit`
+does not fix collapsed results. Dynamic Overlays uses structured query parameters
+without changing pagination. Silo instead uses its native
+`/api/v2/admin/catalog/items` cursor-paginated catalog and separate collections;
+do not send it the Jellyfin/Emby parameter.
+
 ---
 
 ## 2. Technology Stack & Components Matrix
