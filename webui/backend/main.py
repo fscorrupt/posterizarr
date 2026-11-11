@@ -21700,6 +21700,8 @@ async def get_dynamic_overlays_ratings_cache_entries(
     media_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     show_status: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    missing_only: bool = Query(False),
     sort_by: str = Query("cached_at"),
     sort_desc: bool = Query(True)
 ):
@@ -21715,7 +21717,9 @@ async def get_dynamic_overlays_ratings_cache_entries(
             status=status,
             show_status=show_status,
             sort_by=sort_by,
-            sort_desc=sort_desc
+            sort_desc=sort_desc,
+            source=source,
+            missing_only=missing_only,
         )
         return {"success": True, **data}
     except Exception as e:

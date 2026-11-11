@@ -584,7 +584,9 @@ class RatingsCacheManager:
         status: Optional[str] = None,
         show_status: Optional[str] = None,
         sort_by: str = "cached_at",
-        sort_desc: bool = True
+        sort_desc: bool = True,
+        source: Optional[str] = None,
+        missing_only: bool = False,
     ) -> Dict[str, Any]:
         """Paginated retrieval of cached media ratings with search and filter capabilities."""
         page = max(1, page)
@@ -622,6 +624,18 @@ class RatingsCacheManager:
         if show_status and show_status.strip().lower() not in ("all", ""):
             where_clauses.append("show_status = ?")
             params.append(show_status.strip().lower())
+
+        if source and source.strip().lower() not in ("all", ""):
+            where_clauses.append("LOWER(COALESCE(source, '')) = ?")
+            params.append(source.strip().lower())
+
+        if missing_only:
+            score_columns = (
+                "imdb_rating", "tmdb_rating", "rt_critic_rating", "rt_audience_rating",
+                "trakt_rating", "metacritic_rating", "letterboxd_rating", "mdblist_rating",
+                "simkl_rating", "mal_rating",
+            )
+            where_clauses.append("(" + " AND ".join(f"{column} IS NULL" for column in score_columns) + ")")
 
         if status:
             stat = status.strip().lower()
