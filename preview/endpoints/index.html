@@ -6640,53 +6640,45 @@ rendering or upstream failures return <code>502</code> or <code>503</code>.</p>
 header; a Kometa integration would need to download the image with credentials
 and upload the downloaded file. Do not put an API key in a URL.</p>
 <h3 id="get-apiproviderv1ratingsmedia_typeitem_id"><code>GET /api/provider/v1/ratings/{media_type}/{item_id}</code></h3>
-<p><code>media_type</code> is <code>movie</code>, <code>show</code>, <code>episode</code>, or <code>season</code>. With <code>provider=auto</code> (the
-default), a numeric <code>item_id</code> is treated as a TMDb ID and an IMDb ID beginning
-with <code>tt</code> is detected automatically. Set <code>provider=tmdb</code>, <code>provider=tvdb</code>, or
-<code>provider=imdb</code> to specify the ID type explicitly. Optional <code>tmdb_id</code>,
-<code>tvdb_id</code>, and <code>imdb_id</code> query parameters can supply additional identifiers.
-Posterizarr resolves missing cross-IDs through TMDb or TVDB where configured,
-then queries the configured TMDb, MDBList, SIMKL, and OMDb rating sources.
-<strong>TVDB and IMDb here are identifier types, not new rating providers</strong>; TVDB
-ratings themselves are not fetched. The response includes all IDs it resolved,
-omits unavailable ratings, and identifies the provider for each score.</p>
-<p>Episode requests must include non-negative <code>season_number</code> and positive
-<code>episode_number</code>. For episodes, <code>item_id</code> is normally the series TMDb ID (or
-the series TVDB ID with <code>provider=tvdb</code>); an episode IMDb ID can also be used
-with <code>provider=imdb</code>. Posterizarr fetches the episode rating from TMDb, the
-MDBList episode-rating matrix when the account supports it, and OMDb when an
-episode IMDb ID is available. SIMKL and TVDB episode ratings are not currently
-supported. A TMDb show ID is needed for TMDb and MDBList episode lookups.
-Season requests require non-negative <code>season_number</code> and the complete list of
-positive <code>episode_numbers</code>, supplied by repeating the query parameter once per
-episode. Use a TVDB series ID with <code>provider=tvdb</code>, or a TMDb series ID if
-Posterizarr can resolve its TVDB ID. Season ratings are currently for anime
-seasons with a unique, complete SIMKL mapping; the API returns the mapped
-SIMKL and MAL ratings supplied by SIMKL. Ambiguous, incomplete, or unmapped
-seasons return no season ratings. A SIMKL client ID is required.</p>
-<p>Responses include a <code>title</code> when metadata is available: TMDb provides movie,
-show, and episode titles; a matched SIMKL anime entry provides the season
-title. The field is <code>null</code> when no title can be resolved.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Existing TMDb form</span>
+<p><code>media_type</code> is <code>movie</code>, <code>show</code>, <code>episode</code>, or <code>season</code>. This endpoint reads
+only existing, unexpired entries from the Dynamic Overlays ratings cache; it
+does not call TMDb, TVDB, MDBList, SIMKL, or OMDb and does not resolve missing
+IDs. With <code>provider=auto</code> (the default), a numeric <code>item_id</code> is treated as a
+TMDb ID and an IMDb ID beginning with <code>tt</code> is detected automatically. Use
+<code>provider=tmdb</code> or <code>provider=imdb</code> to select the cached identifier explicitly.
+Optional <code>server_type</code> selects a cache entry from <code>plex</code>, <code>jellyfin</code>, <code>emby</code>,
+or another configured media server when IDs appear in multiple caches.</p>
+<p>Movie and show entries are matched by their cached TMDb or IMDb ID. Episode
+entries must be requested by the <strong>episode's IMDb ID</strong>; episode TMDb IDs and
+season/episode coordinates are not stored in the ratings cache. Season entries
+require <code>season_number</code> and can be found by TVDB series ID, or by TMDb/IMDb ID
+when a matching cached show entry and season mapping exist. Season ratings are
+available for anime seasons already mapped to SIMKL; the cached row may include
+SIMKL and MAL scores. A cache miss or expired entry returns <code>404</code>.</p>
+<p>The response title and score values come from the cached row. Each rating's
+<code>source</code> is <code>posterizarr_cache</code>; individual provider provenance is not stored
+per score. The top-level <code>cache</code> object includes the cache record's server,
+timestamps, and record-level source. The <code>providers</code> object reports the most
+recent cached refresh statuses, not live provider status. Local IMDb dataset
+ratings are returned when they have already been written into the ratings
+cache.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Movie or show: use an ID already present in the ratings cache</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/movie/603"</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># TVDB or IMDb identifier forms</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/show/121361?provider=tvdb"</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/show/1429?provider=tmdb"</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># IMDb ID lookup</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/movie/tt0133093?provider=imdb"</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># Anime episode: Attack on Titan, season 1, episode 1 (TMDb show ID 1429)</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/episode/1429?provider=tmdb&amp;season_number=1&amp;episode_number=1"</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># Episode: use its cached episode IMDb ID</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/episode/tt1234567?provider=imdb"</span>
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># Season request format: repeat episode_numbers for every episode in the season</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/season/YOUR_TVDB_SERIES_ID?provider=tvdb&amp;season_number=2&amp;episode_numbers=1&amp;episode_numbers=2&amp;episode_numbers=3"</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># Anime season: TVDB ID and season number must match a cached season mapping</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/season/12345?provider=tvdb&amp;season_number=1"</span>
 </code></pre></div>
-<p>The endpoint is not a full metadata API and does not yet support Floppy ratings
-or the local IMDb dataset. Results do not write into the Dynamic Overlays
-ratings cache; successful responses are held in a separate in-memory cache for
-15 minutes. Episode and season cache entries include their season coordinates
-and episode numbers. Provider failures are reported in <code>providers</code>, and
-complete upstream failure returns <code>502</code>; missing rating-provider configuration
-returns <code>503</code>.</p>
+<p>The endpoint is not a full metadata API and does not yet support Floppy ratings.
+It neither refreshes nor writes cache entries. <code>404</code> means no unexpired cache
+entry matches the requested ID; <code>400</code> indicates an unsupported identifier or
+missing season number. No provider credentials are needed to read cached data.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">"media_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"movie"</span><span class="p">,</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The Matrix"</span><span class="p">,</span>
@@ -6694,24 +6686,30 @@ returns <code>503</code>.</p>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">"imdb_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tt0133093"</span><span class="p">,</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">"scale"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">"ratings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">"tmdb"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.2</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tmdb"</span><span class="p">},</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="nt">"rt_critic"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.3</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mdblist"</span><span class="p">}</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">"tmdb"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.2</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"posterizarr_cache"</span><span class="p">},</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="nt">"rt_critic"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.3</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"posterizarr_cache"</span><span class="p">}</span>
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">  </span><span class="p">},</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span><span class="nt">"providers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"tmdb"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">,</span><span class="w"> </span><span class="nt">"mdblist"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">}</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">}</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span><span class="nt">"providers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"cache"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hit"</span><span class="p">},</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">  </span><span class="nt">"cache"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">    </span><span class="nt">"server_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex"</span><span class="p">,</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">    </span><span class="nt">"cached_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-11T12:00:00"</span><span class="p">,</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">    </span><span class="nt">"expires_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-12-11T12:00:00"</span><span class="p">,</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">    </span><span class="nt">"record_source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mdblist"</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="p">}</span>
 </code></pre></div>
 <p>Example season response:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">"media_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"season"</span><span class="p">,</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"My Anime Season Two"</span><span class="p">,</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">"season_number"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">"episode_numbers"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">],</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">"scale"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">"ratings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">"simkl"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.4</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"simkl"</span><span class="p">},</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="nt">"mal"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.6</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"simkl"</span><span class="p">}</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="p">},</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">  </span><span class="nt">"providers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"simkl"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Attack on Titan S01"</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">"season_number"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">"scale"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">"ratings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">"simkl"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.4</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"posterizarr_cache"</span><span class="p">},</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">"mal"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.6</span><span class="p">,</span><span class="w"> </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"posterizarr_cache"</span><span class="p">}</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="nt">"providers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"cache"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hit"</span><span class="p">},</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">  </span><span class="nt">"cache"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"server_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex"</span><span class="p">,</span><span class="w"> </span><span class="nt">"record_source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"simkl"</span><span class="p">}</span>
 <a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="p">}</span>
 </code></pre></div>
 <p>Kometa does not currently have a generic HTTP ratings-provider configuration.
