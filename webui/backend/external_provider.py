@@ -153,6 +153,12 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
     render_lock = asyncio.Lock()
     rating_cache = OrderedDict()
 
+    def format_rating_response(cached_result, item_id, requested_provider):
+        response = dict(cached_result)
+        response["requested_id"] = item_id
+        response["requested_provider"] = requested_provider
+        return response
+
     def authorize(x_api_key: Optional[str] = Header(default=None), authorization: Optional[str] = Header(default=None)):
         token = x_api_key or (authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None)
         if not token or not validate_key(token):
@@ -264,7 +270,7 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             cached = rating_cache.get(cache_key)
             if cached and cached[0] > time.monotonic():
                 rating_cache.move_to_end(cache_key)
-                return cached[1]
+                return format_rating_response(cached[1], item_id, requested_provider)
             if tmdb_key:
                 value = await ratings_service.fetch_tmdb_rating(tmdb_id, tmdb_key, client, media_type, outcomes=outcomes) if tmdb_id else None
                 merge({"tmdb": value}, "tmdb")
