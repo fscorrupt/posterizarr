@@ -268,6 +268,81 @@ class RatingsCacheManager:
                 logger.error(f"[RatingsCache] Error reading cache ({server_type}, {item_id}): {e}")
                 return None
 
+    def find_cached_ratings(self, media_type, tmdb_id=None, imdb_id=None, tvdb_id=None,
+                            season_number=None, server_type=None):
+        """Find one unexpired rating row by identifiers already stored in the cache."""
+        if media_type not in ("movie", "show", "episode", "season"):
+            return None
+        now_iso = datetime.utcnow().isoformat()
+        conditions = ["ratings.media_type = ?", "ratings.expires_at > ?"]
+        params = [media_type, now_iso]
+        if server_type:
+            conditions.append("ratings.server_type = ?")
+            params.append(str(server_type).strip().lower())
+
+        if media_type == "season":
+            if season_number is None:
+                return None
+            conditions.extend([
+                "CAST(json_extract(mapping.payload, '$.season_number') AS INTEGER) = ?",
+                "json_extract(mapping.payload, '$.status') IN ('matched', 'manual')",
+            ])
+            params.append(int(season_number))
+            identity_conditions = []
+            if tvdb_id:
+                identity_conditions.append("CAST(json_extract(mapping.payload, '$.tvdb_id') AS TEXT) = ?")
+                params.append(str(tvdb_id))
+            for column, value in (("tmdb_id", tmdb_id), ("imdb_id", imdb_id)):
+                if value:
+                    identity_conditions.append(
+                        "EXISTS (SELECT 1 FROM media_ratings_cache AS parent "
+                        "WHERE parent.server_type = ratings.server_type "
+                        "AND parent.item_id = json_extract(mapping.payload, '$.parent_item_id') "
+                        "AND parent.media_type = 'show' AND parent." + column + " = ?)"
+                    )
+                    params.append(value)
+            if not identity_conditions:
+                return None
+            conditions.append("(" + " AND ".join(identity_conditions) + ")")
+            sql = (
+                "SELECT ratings.*, mapping.payload AS season_mapping "
+                "FROM media_ratings_cache AS ratings "
+                "JOIN season_rating_mappings AS mapping "
+                "ON mapping.server_type = ratings.server_type AND mapping.item_id = ratings.item_id "
+                "WHERE " + " AND ".join(conditions) + " ORDER BY ratings.cached_at DESC LIMIT 1"
+            )
+        else:
+            identifiers = []
+            if media_type == "episode":
+                if not imdb_id:
+                    return None
+                identifiers.append(("imdb_id", imdb_id))
+            else:
+                if tmdb_id:
+                    identifiers.append(("tmdb_id", tmdb_id))
+                if imdb_id:
+                    identifiers.append(("imdb_id", imdb_id))
+                if not identifiers:
+                    return None
+            conditions.append("(" + " AND ".join(f"ratings.{column} = ?" for column, _ in identifiers) + ")")
+            params.extend(value for _, value in identifiers)
+            sql = (
+                "SELECT ratings.* FROM media_ratings_cache AS ratings WHERE "
+                + " AND ".join(conditions) + " ORDER BY ratings.cached_at DESC LIMIT 1"
+            )
+
+        with self.lock, closing(self._get_connection()) as connection:
+            row = connection.execute(sql, tuple(params)).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        if media_type == "season":
+            try:
+                result["season_mapping"] = json.loads(result.pop("season_mapping") or "{}")
+            except (TypeError, ValueError):
+                result["season_mapping"] = {}
+        return result
+
     def get_season_mapping(self, server_type, item_id):
         with self.lock, closing(self._get_connection()) as connection:
             row = connection.execute(

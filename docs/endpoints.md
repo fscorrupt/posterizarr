@@ -86,58 +86,50 @@ and upload the downloaded file. Do not put an API key in a URL.
 
 ### `GET /api/provider/v1/ratings/{media_type}/{item_id}`
 
-`media_type` is `movie`, `show`, `episode`, or `season`. With `provider=auto` (the
-default), a numeric `item_id` is treated as a TMDb ID and an IMDb ID beginning
-with `tt` is detected automatically. Set `provider=tmdb`, `provider=tvdb`, or
-`provider=imdb` to specify the ID type explicitly. Optional `tmdb_id`,
-`tvdb_id`, and `imdb_id` query parameters can supply additional identifiers.
-Posterizarr resolves missing cross-IDs through TMDb or TVDB where configured,
-then queries the configured TMDb, MDBList, SIMKL, and OMDb rating sources.
-**TVDB and IMDb here are identifier types, not new rating providers**; TVDB
-ratings themselves are not fetched. The response includes all IDs it resolved,
-omits unavailable ratings, and identifies the provider for each score.
+`media_type` is `movie`, `show`, `episode`, or `season`. This endpoint reads
+only existing, unexpired entries from the Dynamic Overlays ratings cache; it
+does not call TMDb, TVDB, MDBList, SIMKL, or OMDb and does not resolve missing
+IDs. With `provider=auto` (the default), a numeric `item_id` is treated as a
+TMDb ID and an IMDb ID beginning with `tt` is detected automatically. Use
+`provider=tmdb` or `provider=imdb` to select the cached identifier explicitly.
+Optional `server_type` selects a cache entry from `plex`, `jellyfin`, `emby`,
+or another configured media server when IDs appear in multiple caches.
 
-Episode requests must include non-negative `season_number` and positive
-`episode_number`. For episodes, `item_id` is normally the series TMDb ID (or
-the series TVDB ID with `provider=tvdb`); an episode IMDb ID can also be used
-with `provider=imdb`. Posterizarr fetches the episode rating from TMDb, the
-MDBList episode-rating matrix when the account supports it, and OMDb when an
-episode IMDb ID is available. SIMKL and TVDB episode ratings are not currently
-supported. A TMDb show ID is needed for TMDb and MDBList episode lookups.
-Season requests require non-negative `season_number` and the complete list of
-positive `episode_numbers`, supplied by repeating the query parameter once per
-episode. Use a TVDB series ID with `provider=tvdb`, or a TMDb series ID if
-Posterizarr can resolve its TVDB ID. Season ratings are currently for anime
-seasons with a unique, complete SIMKL mapping; the API returns the mapped
-SIMKL and MAL ratings supplied by SIMKL. Ambiguous, incomplete, or unmapped
-seasons return no season ratings. A SIMKL client ID is required.
+Movie and show entries are matched by their cached TMDb or IMDb ID. Episode
+entries must be requested by the **episode's IMDb ID**; episode TMDb IDs and
+season/episode coordinates are not stored in the ratings cache. Season entries
+require `season_number` and can be found by TVDB series ID, or by TMDb/IMDb ID
+when a matching cached show entry and season mapping exist. Season ratings are
+available for anime seasons already mapped to SIMKL; the cached row may include
+SIMKL and MAL scores. A cache miss or expired entry returns `404`.
 
-Responses include a `title` when metadata is available: TMDb provides movie,
-show, and episode titles; a matched SIMKL anime entry provides the season
-title. The field is `null` when no title can be resolved.
+The response title and score values come from the cached row. Each rating's
+`source` is `posterizarr_cache`; individual provider provenance is not stored
+per score. The top-level `cache` object includes the cache record's server,
+timestamps, and record-level source. The `providers` object reports the most
+recent cached refresh statuses, not live provider status. Local IMDb dataset
+ratings are returned when they have already been written into the ratings
+cache.
 
 ```bash
-# Existing TMDb form
+# Movie or show: use an ID already present in the ratings cache
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/603"
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/show/1429?provider=tmdb"
 
-# TVDB or IMDb identifier forms
-curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/show/121361?provider=tvdb"
+# IMDb ID lookup
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/tt0133093?provider=imdb"
 
-# Anime episode: Attack on Titan, season 1, episode 1 (TMDb show ID 1429)
-curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/1429?provider=tmdb&season_number=1&episode_number=1"
+# Episode: use its cached episode IMDb ID
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/tt1234567?provider=imdb"
 
-# Season request format: repeat episode_numbers for every episode in the season
-curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/season/YOUR_TVDB_SERIES_ID?provider=tvdb&season_number=2&episode_numbers=1&episode_numbers=2&episode_numbers=3"
+# Anime season: TVDB ID and season number must match a cached season mapping
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/season/12345?provider=tvdb&season_number=1"
 ```
 
-The endpoint is not a full metadata API and does not yet support Floppy ratings
-or the local IMDb dataset. Results do not write into the Dynamic Overlays
-ratings cache; successful responses are held in a separate in-memory cache for
-15 minutes. Episode and season cache entries include their season coordinates
-and episode numbers. Provider failures are reported in `providers`, and
-complete upstream failure returns `502`; missing rating-provider configuration
-returns `503`.
+The endpoint is not a full metadata API and does not yet support Floppy ratings.
+It neither refreshes nor writes cache entries. `404` means no unexpired cache
+entry matches the requested ID; `400` indicates an unsupported identifier or
+missing season number. No provider credentials are needed to read cached data.
 
 ```json
 {
@@ -147,10 +139,16 @@ returns `503`.
   "imdb_id": "tt0133093",
   "scale": 10,
   "ratings": {
-    "tmdb": {"value": 8.2, "source": "tmdb"},
-    "rt_critic": {"value": 8.3, "source": "mdblist"}
+    "tmdb": {"value": 8.2, "source": "posterizarr_cache"},
+    "rt_critic": {"value": 8.3, "source": "posterizarr_cache"}
   },
-  "providers": {"tmdb": "success", "mdblist": "success"}
+  "providers": {"cache": "hit"},
+  "cache": {
+    "server_type": "plex",
+    "cached_at": "2026-11-11T12:00:00",
+    "expires_at": "2026-12-11T12:00:00",
+    "record_source": "mdblist"
+  }
 }
 ```
 
@@ -159,15 +157,15 @@ Example season response:
 ```json
 {
   "media_type": "season",
-  "title": "My Anime Season Two",
-  "season_number": 2,
-  "episode_numbers": [1, 2, 3],
+  "title": "Attack on Titan S01",
+  "season_number": 1,
   "scale": 10,
   "ratings": {
-    "simkl": {"value": 8.4, "source": "simkl"},
-    "mal": {"value": 8.6, "source": "simkl"}
+    "simkl": {"value": 8.4, "source": "posterizarr_cache"},
+    "mal": {"value": 8.6, "source": "posterizarr_cache"}
   },
-  "providers": {"simkl": "success"}
+  "providers": {"cache": "hit"},
+  "cache": {"server_type": "plex", "record_source": "simkl"}
 }
 ```
 
