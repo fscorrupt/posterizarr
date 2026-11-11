@@ -1606,7 +1606,7 @@ def normalize_provider_ratings(ratings: Dict[str, Any]) -> Dict[str, Optional[fl
                     value /= 10
                 elif source == "letterboxd":
                     value *= 2
-                if not 0 <= value <= 10:
+                if not 0 < value <= 10:
                     value = None
         except (TypeError, ValueError):
             value = None
