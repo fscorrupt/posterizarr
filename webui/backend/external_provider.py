@@ -1,6 +1,7 @@
 from typing import Callable, Literal, Optional
 from pathlib import Path
 import asyncio
+from functools import wraps
 import json
 import logging
 import os
@@ -157,6 +158,24 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
         if not token or not validate_key(token):
             raise HTTPException(status_code=401, detail="A valid Posterizarr API key is required")
 
+    def log_ratings_errors(endpoint):
+        @wraps(endpoint)
+        async def logged_endpoint(*args, **kwargs):
+            try:
+                return await endpoint(*args, **kwargs)
+            except HTTPException:
+                raise
+            except Exception:
+                logger.exception(
+                    "Unhandled ratings API error (media_type=%s, item_id=%s, provider=%s, "
+                    "season_number=%s, episode_number=%s, server_type=%s)",
+                    kwargs.get("media_type"), kwargs.get("item_id"), kwargs.get("provider"),
+                    kwargs.get("season_number"), kwargs.get("episode_number"), kwargs.get("server_type"),
+                )
+                raise HTTPException(status_code=500, detail="Internal ratings API error") from None
+
+        return logged_endpoint
+
     @router.get("/asset/{media_type}/{item_id}", dependencies=[Depends(authorize)])
     @router.get("/poster/{media_type}/{item_id}", dependencies=[Depends(authorize)])
     async def poster(
@@ -211,6 +230,7 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             return Response(content, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
 
     @router.get("/ratings/{media_type}/{item_id}", dependencies=[Depends(authorize)])
+    @log_ratings_errors
     async def ratings(
         media_type: Literal["movie", "show", "episode", "season"],
         item_id: str,
