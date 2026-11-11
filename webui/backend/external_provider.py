@@ -216,6 +216,7 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
         tvdb_id: Optional[int] = Query(default=None, ge=1),
         imdb_id: Optional[str] = Query(default=None, pattern=r"^tt\d{7,12}$"),
         season_number: Optional[int] = Query(default=None, ge=0),
+        episode_number: Optional[int] = Query(default=None, ge=1),
         server_type: Optional[str] = Query(default=None, max_length=32),
     ):
         import ratings_service
@@ -236,8 +237,13 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
                 tvdb_id = int(item_id)
         if provider == "tvdb" and media_type not in ("season",):
             raise HTTPException(status_code=400, detail="The ratings cache only indexes TVDB IDs for seasons")
-        if media_type == "episode" and not imdb_id:
-            raise HTTPException(status_code=400, detail="Cache-only episode lookups require the episode IMDb ID")
+        if media_type == "episode":
+            if provider == "tmdb" and (season_number is None or episode_number is None):
+                raise HTTPException(status_code=400, detail="TMDb episode lookups require season_number and episode_number")
+            if (season_number is None) != (episode_number is None):
+                raise HTTPException(status_code=400, detail="Provide both season_number and episode_number")
+            if not imdb_id and tmdb_id is None:
+                raise HTTPException(status_code=400, detail="Use the series TMDb ID with coordinates or the episode IMDb ID")
         if media_type == "season" and season_number is None:
             raise HTTPException(status_code=400, detail="Season ratings require season_number")
         if media_type in ("movie", "show") and not (tmdb_id or imdb_id):
@@ -252,6 +258,7 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             imdb_id=imdb_id,
             tvdb_id=tvdb_id,
             season_number=season_number,
+            episode_number=episode_number,
             server_type=server_type,
         )
         if cached is None:
@@ -298,7 +305,9 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             "tmdb_id": cached.get("tmdb_id") or tmdb_id,
             "tvdb_id": resolved_tvdb_id,
             "imdb_id": cached.get("imdb_id") or imdb_id,
-            "season_number": season_mapping.get("season_number") if media_type == "season" else None,
+            "season_number": cached.get("season_number") if media_type == "episode" else (
+                season_mapping.get("season_number") if media_type == "season" else None),
+            "episode_number": cached.get("episode_number") if media_type == "episode" else None,
             "episode_numbers": season_mapping.get("episode_numbers") if media_type == "season" else None,
             "scale": 10,
             "ratings": ratings,

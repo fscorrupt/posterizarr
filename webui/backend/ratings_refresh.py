@@ -452,6 +452,9 @@ class RatingsRefreshService:
             episode_number = int(episode_number) if episode_number is not None else None
         except (TypeError, ValueError):
             season_number = episode_number = None
+        if item["media_type"] == "episode":
+            item["season_number"] = season_number
+            item["episode_number"] = episode_number
         if item["media_type"] == "season":
             from dynamic_overlays_service import season_ratings_enabled_for_library
             if not season_ratings_enabled_for_library(settings, item.get("library_name")):
@@ -531,13 +534,17 @@ class RatingsRefreshService:
                             exists = connection.execute("SELECT 1 FROM media_ratings_cache WHERE server_type = ? AND item_id = ?", (item["server_type"], item["item_id"])).fetchone()
                         if not exists:
                             self.cache.save_ratings(item["server_type"], item["item_id"], item["media_type"], item.get("title"), item.get("year"),
-                                                    item.get("imdb_id"), item.get("tmdb_id"), {}, ttl_days=-1)
+                                                    item.get("imdb_id"), item.get("tmdb_id"), {}, ttl_days=-1,
+                                                    season_number=item.get("season_number"), episode_number=item.get("episode_number"))
                         self.cache.record_refresh(item["server_type"], item["item_id"], outcome, details)
                     with closing(self.cache._get_connection()) as connection:
                         with connection:
                             connection.execute(
-                                "UPDATE media_ratings_cache SET title = ?, media_type = ? WHERE server_type = ? AND item_id = ?",
-                                (item.get("title"), item["media_type"], item["server_type"], item["item_id"]),
+                                "UPDATE media_ratings_cache SET title = ?, media_type = ?, "
+                                "season_number = COALESCE(?, season_number), episode_number = COALESCE(?, episode_number) "
+                                "WHERE server_type = ? AND item_id = ?",
+                                (item.get("title"), item["media_type"], item.get("season_number"), item.get("episode_number"),
+                                 item["server_type"], item["item_id"]),
                             )
                     if not server_item_missing:
                         await asyncio.to_thread(self._record_retry_policy, item, settings, credentials, outcome, message, result)

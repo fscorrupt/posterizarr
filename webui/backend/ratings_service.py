@@ -181,7 +181,9 @@ class RatingsCacheManager:
                         "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_at TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_status TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_details TEXT;",
-                        "ALTER TABLE media_ratings_cache ADD COLUMN mdblist_rating REAL;"
+                        "ALTER TABLE media_ratings_cache ADD COLUMN mdblist_rating REAL;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN season_number INTEGER;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN episode_number INTEGER;"
                     ]:
                         try:
                             conn.execute(col_sql)
@@ -269,7 +271,7 @@ class RatingsCacheManager:
                 return None
 
     def find_cached_ratings(self, media_type, tmdb_id=None, imdb_id=None, tvdb_id=None,
-                            season_number=None, server_type=None):
+                            season_number=None, episode_number=None, server_type=None):
         """Find one unexpired rating row by identifiers already stored in the cache."""
         if media_type not in ("movie", "show", "episode", "season"):
             return None
@@ -314,9 +316,20 @@ class RatingsCacheManager:
         else:
             identifiers = []
             if media_type == "episode":
-                if not imdb_id:
+                if tmdb_id is not None:
+                    if season_number is None or episode_number is None:
+                        return None
+                    identifiers.append(("tmdb_id", tmdb_id))
+                elif imdb_id:
+                    identifiers.append(("imdb_id", imdb_id))
+                else:
                     return None
-                identifiers.append(("imdb_id", imdb_id))
+                if season_number is not None:
+                    conditions.append("ratings.season_number = ?")
+                    params.append(int(season_number))
+                if episode_number is not None:
+                    conditions.append("ratings.episode_number = ?")
+                    params.append(int(episode_number))
             else:
                 if tmdb_id:
                     identifiers.append(("tmdb_id", tmdb_id))
@@ -392,7 +405,9 @@ class RatingsCacheManager:
         tmdb_id: Optional[int],
         ratings: Dict[str, Any],
         source: str = "plex",
-        ttl_days: Optional[int] = None
+        ttl_days: Optional[int] = None,
+        season_number: Optional[int] = None,
+        episode_number: Optional[int] = None,
     ):
         """Save or update ratings in the cache with computed TTL."""
         now = datetime.utcnow()
@@ -425,8 +440,8 @@ class RatingsCacheManager:
                             imdb_id, tmdb_id, imdb_rating, tmdb_rating,
                             rt_critic_rating, rt_audience_rating, trakt_rating,
                             metacritic_rating, letterboxd_rating, mdblist_rating, simkl_rating, mal_rating, simkl_url, source,
-                            cached_at, expires_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            cached_at, expires_at, season_number, episode_number
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
                             title = excluded.title,
                             media_type = excluded.media_type,
@@ -444,6 +459,8 @@ class RatingsCacheManager:
                             simkl_rating = COALESCE(excluded.simkl_rating, media_ratings_cache.simkl_rating),
                             mal_rating = COALESCE(excluded.mal_rating, media_ratings_cache.mal_rating),
                             simkl_url = COALESCE(excluded.simkl_url, media_ratings_cache.simkl_url),
+                            season_number = COALESCE(excluded.season_number, media_ratings_cache.season_number),
+                            episode_number = COALESCE(excluded.episode_number, media_ratings_cache.episode_number),
                             source = excluded.source,
                             cached_at = excluded.cached_at,
                             expires_at = excluded.expires_at;
@@ -469,7 +486,9 @@ class RatingsCacheManager:
                             ratings.get("_simkl_url"),
                             source,
                             now.isoformat(),
-                            expires_at.isoformat()
+                            expires_at.isoformat(),
+                            season_number,
+                            episode_number,
                         )
                     )
                 conn.close()
@@ -850,12 +869,16 @@ class RatingsCacheManager:
                 logger.error(f"[RatingsCache] Error querying entries: {e}")
                 return {"entries": [], "total": 0, "page": page, "limit": limit, "total_pages": 1, "stats": {}}
 
-    def ensure_unmapped_episode(self, server_type, item_id, title, year, imdb_id):
+    def ensure_unmapped_episode(self, server_type, item_id, title, year, imdb_id,
+                                tmdb_id=None, season_number=None, episode_number=None):
         now = datetime.utcnow()
         with self.lock, closing(self._get_connection()) as connection, connection:
             connection.execute(
-                "INSERT OR IGNORE INTO media_ratings_cache (server_type,item_id,media_type,title,year,imdb_id,cached_at,expires_at) VALUES (?,?,'episode',?,?,?,?,?)",
-                (server_type.lower(), str(item_id), title, year, imdb_id, now.isoformat(), (now - timedelta(days=1)).isoformat()),
+                "INSERT OR IGNORE INTO media_ratings_cache "
+                "(server_type,item_id,media_type,title,year,imdb_id,tmdb_id,season_number,episode_number,cached_at,expires_at) "
+                "VALUES (?,?,'episode',?,?,?,?,?,?,?,?)",
+                (server_type.lower(), str(item_id), title, year, imdb_id, tmdb_id, season_number, episode_number,
+                 now.isoformat(), (now - timedelta(days=1)).isoformat()),
             )
 
     def apply_imdb_mapping(self, entry_id, imdb_id, rating):
@@ -1976,12 +1999,15 @@ async def resolve_media_ratings(
             imdb_id=imdb_id,
             tmdb_id=tmdb_id,
             ratings=resolved,
-            source=primary_source
+            source=primary_source,
+            season_number=season_number if media_type == "episode" else None,
+            episode_number=episode_number if media_type == "episode" else None,
         )
         if not saved:
             raise RuntimeError("Could not save fresh ratings to cache")
     elif media_type == "episode" and "imdb" in enabled_sources and imdb_dataset.status()["enabled"]:
-        ratings_cache.ensure_unmapped_episode(server_type, item_id, title, year, imdb_id)
+        ratings_cache.ensure_unmapped_episode(server_type, item_id, title, year, imdb_id,
+                                              tmdb_id, season_number, episode_number)
     ratings_cache.record_refresh(server_type, str(item_id), refresh_status, {
         "scores": sorted(resolved),
         "providers": outcomes,

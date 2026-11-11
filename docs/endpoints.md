@@ -95,9 +95,12 @@ TMDb ID and an IMDb ID beginning with `tt` is detected automatically. Use
 Optional `server_type` selects a cache entry from `plex`, `jellyfin`, `emby`,
 or another configured media server when IDs appear in multiple caches.
 
-Movie and show entries are matched by their cached TMDb or IMDb ID. Episode
-entries must be requested by the **episode's IMDb ID**; episode TMDb IDs and
-season/episode coordinates are not stored in the ratings cache. Season entries
+Movie and show entries are matched by their cached TMDb or IMDb ID. Episodes
+can be matched by the **series TMDb ID plus `season_number` and
+episode_number`**, or directly by the episode's IMDb ID. Episode coordinates
+are now persisted in the ratings cache when ratings are refreshed; existing
+rows need a ratings refresh before they can be found by series ID and
+coordinates. Season entries
 require `season_number` and can be found by TVDB series ID, or by TMDb/IMDb ID
 when a matching cached show entry and season mapping exist. Season ratings are
 available for anime seasons already mapped to SIMKL; the cached row may include
@@ -119,8 +122,11 @@ curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/s
 # IMDb ID lookup
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/tt0133093?provider=imdb"
 
-# Episode: use its cached episode IMDb ID
-curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/tt1234567?provider=imdb"
+# Anime episode: Attack on Titan S04E30 (series TMDb ID 1429)
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/1429?provider=tmdb&season_number=4&episode_number=30"
+
+# Or request an episode directly by its cached IMDb ID
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/tt27048168?provider=imdb"
 
 # Anime season: TVDB ID and season number must match a cached season mapping
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/season/12345?provider=tvdb&season_number=1"
