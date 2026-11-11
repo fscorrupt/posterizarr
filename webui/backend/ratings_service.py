@@ -1566,6 +1566,25 @@ async def fetch_omdb_ratings(
 # UNIFIED RESOLUTION FUNCTION
 # ==============================================================================
 
+def normalize_provider_ratings(ratings: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    normalized = {}
+    for source in ("imdb", "tmdb", "rt_critic", "rt_audience", "trakt", "metacritic", "letterboxd", "simkl", "mal", "mdblist_episode"):
+        value = ratings.get(source)
+        try:
+            value = float(value) if value is not None else None
+            if value is not None:
+                if source in ("rt_critic", "rt_audience", "metacritic"):
+                    value /= 10
+                elif source == "letterboxd":
+                    value *= 2
+                if not 0 <= value <= 10:
+                    value = None
+        except (TypeError, ValueError):
+            value = None
+        normalized[source] = value
+    return normalized
+
+
 async def resolve_media_ratings(
     server_type: str,
     item_id: str,

@@ -10,6 +10,130 @@ The following API endpoints are available.
 
 ---
 
+## External Provider API
+
+These endpoints are opt-in: they do not change regular Posterizarr runs or
+media-server artwork. Both require a Posterizarr API key in the `X-API-Key`
+header or as an `Authorization: Bearer` token, even when Web UI authentication
+is disabled. Create a key in the Web UI. Query-string keys and Basic Auth are
+not accepted by these endpoints.
+
+### `GET /api/provider/v1/asset/{media_type}/{item_id}`
+
+`GET /api/provider/v1/poster/{media_type}/{item_id}` remains as a backwards-
+compatible alias. `media_type` is `movie` or `show`; the response is a JPEG.
+`asset_type` selects `poster` (default), `background`, `season`, or `titlecard`.
+Season and titlecard requests require `season_number`; titlecards also require
+`episode_number`. Seasons and titlecards require `media_type=show`.
+
+`provider` can be `auto` (default), `tmdb`, or `tvdb`. With `auto` or `tmdb`,
+`item_id` is a TMDb ID; `tvdb_id` may additionally be supplied so the configured
+provider order can try TVDB. With `provider=tvdb`, `item_id` is a TVDB ID and
+`tmdb_id` may be supplied for TMDb fallback. For shows, Posterizarr attempts to
+resolve a missing TVDB ID through TMDb's external IDs. Artwork selection follows
+`ProviderPriorityMode`, `FavProvider`, `ProviderOrder`, and the per-media-type
+provider order. This API currently searches TMDb and TVDB; Fanart and Plex
+providers are not yet queried here.
+
+The requested asset's Posterizarr language list is used: `PreferredLanguageOrder`
+for posters, `PreferredBackgroundLanguageOrder` for backgrounds,
+`PreferredSeasonLanguageOrder` for seasons, and `PreferredTCLanguageOrder` for
+titlecards. `PleaseFillMe` inherits the standard poster order, and
+`TmdbLanguageMappings` applies to TMDb requests. The caption uses the selected
+provider's localized title when available. If TVDB artwork has no matching
+title translation, Posterizarr uses the localized TMDb title, then TMDb's
+English default. A TVDB-only request without a resolvable TMDb ID can only use
+the TVDB title when available. TMDb is also the artwork fallback according to
+the configured provider order.
+
+Posterizarr applies the corresponding manual settings from `config.json` (text,
+font, borders, and overlays) in an isolated temporary workspace. Dynamic Overlay
+YAML rules are not applied. The result is cached separately in
+`database/provider_posters`; the cache key includes asset type, IDs, season or
+episode coordinates, and relevant provider/language/render settings. Existing
+assets are never overwritten and no media-server upload is performed.
+
+Pass `create=false` for lookup only. Without `library`, an existing matching
+asset or API cache entry may be returned, but no new asset is created. When
+`library` is provided, only an existing asset in that library is returned; the
+API cache is not used. Ambiguous existing matches return `409` and require
+`library`. A TMDb key is
+required for TMDb lookup/fallback; a TVDB key is required for TVDB. Creating an
+asset requires PowerShell 7 and ImageMagick. Missing artwork returns `404`;
+rendering or upstream failures return `502` or `503`.
+
+```bash
+# Existing/default poster request (same URL as before)
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/poster/movie/603" --output poster.jpg
+
+# TVDB-first show season poster
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/603?tvdb_id=121361&asset_type=season&season_number=2" --output season.jpg
+
+# TMDb show season poster
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/603?provider=tmdb&asset_type=season&season_number=2" --output season.jpg
+
+# TVDB episode titlecard, with TMDb ID available for localized title fallback
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/121361?provider=tvdb&tmdb_id=603&asset_type=titlecard&season_number=2&episode_number=3" --output titlecard.jpg
+
+# TMDb episode titlecard
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/603?provider=tmdb&asset_type=titlecard&season_number=2&episode_number=3" --output titlecard.jpg
+```
+
+The API requires an authentication header. A consumer that only supplies a
+`url_poster` URL to Plex cannot use it directly unless it can provide that
+header; a Kometa integration would need to download the image with credentials
+and upload the downloaded file. Do not put an API key in a URL.
+
+### `GET /api/provider/v1/ratings/{media_type}/{item_id}`
+
+`media_type` is `movie` or `show`. With `provider=auto` (the default), a
+numeric `item_id` is treated as a TMDb ID and an IMDb ID beginning with `tt` is
+detected automatically. Set `provider=tmdb`, `provider=tvdb`, or
+`provider=imdb` to specify the ID type explicitly. Optional `tmdb_id`,
+`tvdb_id`, and `imdb_id` query parameters can supply additional identifiers.
+Posterizarr resolves missing cross-IDs through TMDb or TVDB where configured,
+then queries the configured TMDb, MDBList, SIMKL, and OMDb rating sources.
+**TVDB and IMDb here are identifier types, not new rating providers**; TVDB
+ratings themselves are not currently fetched. The response includes all IDs it
+resolved, omits unavailable ratings, and identifies the provider for each score.
+
+```bash
+# Existing TMDb form
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/603"
+
+# TVDB or IMDb identifier forms
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/show/121361?provider=tvdb"
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/tt0133093?provider=imdb"
+```
+
+The endpoint is not a full metadata API and does not yet support seasons,
+episodes, Floppy ratings, or the local IMDb dataset. Results do not write into
+the Dynamic Overlays ratings cache; successful responses are held in a separate
+in-memory cache for 15 minutes. Provider failures are reported in `providers`,
+and complete upstream failure returns `502`; missing rating-provider
+configuration returns `503`.
+
+```json
+{
+  "media_type": "movie",
+  "tmdb_id": 603,
+  "imdb_id": "tt0133093",
+  "scale": 10,
+  "ratings": {
+    "tmdb": {"value": 8.2, "source": "tmdb"},
+    "rt_critic": {"value": 8.3, "source": "mdblist"}
+  },
+  "providers": {"tmdb": "success", "mdblist": "success"}
+}
+```
+
+Kometa does not currently have a generic HTTP ratings-provider configuration.
+A Kometa feature request or adapter must register the Posterizarr rating
+variables, authenticate, map item IDs and consume this API. Existing Kometa
+configurations are unaffected.
+
+---
+
 ## Dynamic Overlays
 
 | Endpoint | Purpose |

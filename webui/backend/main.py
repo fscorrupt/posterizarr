@@ -2421,6 +2421,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from external_provider import create_provider_router
+
+def _external_provider_credentials():
+    config = config_db.export_to_json() if config_db else {}
+    return {"tmdb_token": config.get("tmdbtoken") or (config.get("ApiPart") or {}).get("tmdbtoken")}
+
+def _external_provider_settings():
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+    return get_dynamic_overlays_settings()
+
+app.include_router(create_provider_router(
+    lambda key: bool(config_db and config_db.validate_api_key(key)),
+    _external_provider_credentials,
+    _external_provider_settings,
+    lambda: db.get_all_choices() if db else [],
+    lambda: ASSETS_DIR,
+    lambda: config_db.export_to_json() if config_db else None,
+    lambda: SCRIPT_PATH,
+    lambda: BASE_DIR / "Overlayfiles",
+    lambda: DATABASE_DIR / "provider_posters",
+))
+
 @app.get("/api/onboarding/status")
 async def get_onboarding_status():
     """Return whether onboarding has been completed without exposing configuration or secrets."""

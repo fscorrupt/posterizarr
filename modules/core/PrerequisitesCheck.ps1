@@ -228,7 +228,7 @@ foreach ($file in $files) {
         }
 
         # Font handling...
-        if ($file.Extension -match "\.(ttf|otf)$" -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE') {
+        if ($file.Extension -match "\.(ttf|otf)$" -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE' -and -not $env:POSTERIZARR_API_WORK_ROOT) {
             $fontDestination = Join-Path -Path $Font_Cache -ChildPath $file.Name
             $needsFontCopy = $false
 
@@ -265,7 +265,7 @@ if ($copiedOverlays -eq 0 -and $copiedFonts -eq 0) {
 }
 
 # Refresh font cache if any fonts were actually copied
-if ($copiedFonts -gt 0 -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE') {
+if ($copiedFonts -gt 0 -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE' -and -not $env:POSTERIZARR_API_WORK_ROOT) {
     Write-Entry -Subtext "Updating ImageMagick font cache..." -Path $global:configLogging -Color Green -log Info
     & fc-cache -fv 1> $null 2> $null
 }

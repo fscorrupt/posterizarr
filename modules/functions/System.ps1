@@ -1033,7 +1033,11 @@ function GetHash {
     return $hashString
 }
 function Set-OSTypeAndScriptRoot {
-    if ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') {
+    if ($env:POSTERIZARR_API_WORK_ROOT) {
+        $global:ScriptRoot = $env:POSTERIZARR_API_WORK_ROOT
+        $global:OSType = if ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') { 'Docker' } else { [System.Environment]::OSVersion.Platform }
+    }
+    elseif ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') {
         $global:OSType = "Docker"
         $currentuser = whoami
         if ($currentuser -eq 'posterizarr' -or $currentuser -eq 'abc' -or $env:VIRTUAL_ENV -eq '/lsiopy' -or $env:POSTERIZARR_NON_ROOT -eq 'TRUE') {
@@ -1095,6 +1099,10 @@ function Get-DynamicOverlaysEnabled {
     param(
         [switch]$ForceCheck
     )
+
+    if ($env:POSTERIZARR_API_WORK_ROOT) {
+        return $false
+    }
 
     if (-not $ForceCheck -and $global:DynamicOverlaysEnabled -eq $true) {
         return $true
