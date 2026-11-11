@@ -1083,6 +1083,40 @@ async def fetch_tmdb_rating(
     return None
 
 
+async def fetch_tmdb_episode_rating(
+    tmdb_id: int,
+    season_number: int,
+    episode_number: int,
+    api_key: str,
+    client: httpx.AsyncClient,
+    outcomes: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[float], Optional[str]]:
+    """Fetch one TMDb episode score and its episode-level IMDb ID."""
+    if not tmdb_id or not api_key or season_number is None or episode_number is None:
+        return None, None
+
+    token = str(api_key).strip()
+    headers = {"Authorization": f"Bearer {token}"} if token.startswith("ey") or len(token) > 40 else {}
+    params = {"append_to_response": "external_ids"}
+    if not headers:
+        params["api_key"] = token
+    url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_number}/episode/{episode_number}"
+    outcomes = outcomes if outcomes is not None else {}
+    data = await _fetch_rating_json(client, "tmdb", url, outcomes, headers=headers, params=params, timeout=6.0)
+    if not data:
+        return None, None
+    imdb_id = (data.get("external_ids") or {}).get("imdb_id")
+    try:
+        score = float(data.get("vote_average"))
+        if 0 < score <= 10:
+            outcomes["tmdb"] = {"status": "success", "scores": ["tmdb"]}
+            return round(score, 1), imdb_id
+    except (TypeError, ValueError):
+        pass
+    outcomes["tmdb"] = {"status": "no_scores", "message": "TMDb has no rating for this episode"}
+    return None, imdb_id
+
+
 async def _pace_mdblist_request():
     global _MDBLIST_NEXT_REQUEST_AT
     with _MDBLIST_PACE_LOCK:

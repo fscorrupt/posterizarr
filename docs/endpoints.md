@@ -86,16 +86,24 @@ and upload the downloaded file. Do not put an API key in a URL.
 
 ### `GET /api/provider/v1/ratings/{media_type}/{item_id}`
 
-`media_type` is `movie` or `show`. With `provider=auto` (the default), a
-numeric `item_id` is treated as a TMDb ID and an IMDb ID beginning with `tt` is
-detected automatically. Set `provider=tmdb`, `provider=tvdb`, or
+`media_type` is `movie`, `show`, or `episode`. With `provider=auto` (the
+default), a numeric `item_id` is treated as a TMDb ID and an IMDb ID beginning
+with `tt` is detected automatically. Set `provider=tmdb`, `provider=tvdb`, or
 `provider=imdb` to specify the ID type explicitly. Optional `tmdb_id`,
 `tvdb_id`, and `imdb_id` query parameters can supply additional identifiers.
 Posterizarr resolves missing cross-IDs through TMDb or TVDB where configured,
 then queries the configured TMDb, MDBList, SIMKL, and OMDb rating sources.
 **TVDB and IMDb here are identifier types, not new rating providers**; TVDB
-ratings themselves are not currently fetched. The response includes all IDs it
-resolved, omits unavailable ratings, and identifies the provider for each score.
+ratings themselves are not fetched. The response includes all IDs it resolved,
+omits unavailable ratings, and identifies the provider for each score.
+
+Episode requests must include non-negative `season_number` and positive
+`episode_number`. For episodes, `item_id` is normally the series TMDb ID (or
+the series TVDB ID with `provider=tvdb`); an episode IMDb ID can also be used
+with `provider=imdb`. Posterizarr fetches the episode rating from TMDb, the
+MDBList episode-rating matrix when the account supports it, and OMDb when an
+episode IMDb ID is available. SIMKL and TVDB episode ratings are not currently
+supported. A TMDb show ID is needed for TMDb and MDBList episode lookups.
 
 ```bash
 # Existing TMDb form
@@ -104,14 +112,18 @@ curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/m
 # TVDB or IMDb identifier forms
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/show/121361?provider=tvdb"
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/tt0133093?provider=imdb"
+
+# Anime episode: Attack on Titan, season 1, episode 1 (TMDb show ID 1429)
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/1429?provider=tmdb&season_number=1&episode_number=1"
 ```
 
-The endpoint is not a full metadata API and does not yet support seasons,
-episodes, Floppy ratings, or the local IMDb dataset. Results do not write into
+The endpoint is not a full metadata API and does not yet support season-level
+ratings, Floppy ratings, or the local IMDb dataset. Results do not write into
 the Dynamic Overlays ratings cache; successful responses are held in a separate
-in-memory cache for 15 minutes. Provider failures are reported in `providers`,
-and complete upstream failure returns `502`; missing rating-provider
-configuration returns `503`.
+in-memory cache for 15 minutes. Episode cache entries are keyed by season and
+episode coordinates. Provider failures are reported in `providers`, and
+complete upstream failure returns `502`; missing rating-provider configuration
+returns `503`.
 
 ```json
 {
