@@ -587,6 +587,7 @@ class RatingsCacheManager:
         sort_desc: bool = True,
         source: Optional[str] = None,
         missing_only: bool = False,
+        score: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Paginated retrieval of cached media ratings with search and filter capabilities."""
         page = max(1, page)
@@ -629,12 +630,26 @@ class RatingsCacheManager:
             where_clauses.append("LOWER(COALESCE(source, '')) = ?")
             params.append(source.strip().lower())
 
-        if missing_only:
-            score_columns = (
-                "imdb_rating", "tmdb_rating", "rt_critic_rating", "rt_audience_rating",
-                "trakt_rating", "metacritic_rating", "letterboxd_rating", "mdblist_rating",
-                "simkl_rating", "mal_rating",
-            )
+        score_columns = (
+            "imdb_rating", "tmdb_rating", "rt_critic_rating", "rt_audience_rating",
+            "trakt_rating", "metacritic_rating", "letterboxd_rating", "mdblist_rating",
+            "simkl_rating", "mal_rating",
+        )
+        score_column = {
+            "imdb": "imdb_rating",
+            "tmdb": "tmdb_rating",
+            "rt_critic": "rt_critic_rating",
+            "rt_audience": "rt_audience_rating",
+            "trakt": "trakt_rating",
+            "metacritic": "metacritic_rating",
+            "letterboxd": "letterboxd_rating",
+            "mdblist_episode": "mdblist_rating",
+            "simkl": "simkl_rating",
+            "mal": "mal_rating",
+        }.get((score or "").strip().lower())
+        if score_column:
+            where_clauses.append(f"{score_column} IS NOT NULL")
+        elif missing_only or (score or "").strip().lower() == "missing":
             where_clauses.append("(" + " AND ".join(f"{column} IS NULL" for column in score_columns) + ")")
 
         if status:

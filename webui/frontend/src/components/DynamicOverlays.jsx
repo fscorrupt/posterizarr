@@ -792,7 +792,7 @@ export default function DynamicOverlays() {
   const [ratingsCacheStatus, setRatingsCacheStatus] = useState("all");
   const [ratingsCacheShowStatus, setRatingsCacheShowStatus] = useState("all");
   const [ratingsCacheSource, setRatingsCacheSource] = useState("all");
-  const [ratingsCacheMissingOnly, setRatingsCacheMissingOnly] = useState(false);
+  const [ratingsCacheScore, setRatingsCacheScore] = useState("all");
   const [ratingsCachePage, setRatingsCachePage] = useState(1);
   const [ratingsCacheLimit, setRatingsCacheLimit] = useState(25);
   const [ratingsCacheTotal, setRatingsCacheTotal] = useState(0);
@@ -3095,7 +3095,7 @@ export default function DynamicOverlays() {
     showStatus = ratingsCacheShowStatus,
     limit = ratingsCacheLimit,
     source = ratingsCacheSource,
-    missingOnly = ratingsCacheMissingOnly
+    score = ratingsCacheScore
   ) => {
     try {
       setRatingsCacheLoading(true);
@@ -3108,7 +3108,7 @@ export default function DynamicOverlays() {
       if (status && status !== "all") params.set("status", status);
       if (showStatus && showStatus !== "all") params.set("show_status", showStatus);
       if (source && source !== "all") params.set("source", source);
-      if (missingOnly) params.set("missing_only", "true");
+      if (score && score !== "all") params.set("score", score);
 
       const res = await fetch(`/api/dynamic-overlays/ratings-cache/entries?${params.toString()}`);
       const data = await res.json();
@@ -3193,7 +3193,7 @@ export default function DynamicOverlays() {
     poll();
     const timer = setInterval(poll, 2000);
     return () => { active = false; clearInterval(timer); };
-  }, [isRatingsCacheModalOpen, ratingsRefreshJob?.started_at, ratingsCachePage, ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit, ratingsCacheSource, ratingsCacheMissingOnly]);
+  }, [isRatingsCacheModalOpen, ratingsRefreshJob?.started_at, ratingsCachePage, ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit, ratingsCacheSource, ratingsCacheScore]);
 
   const handleResetRatingsCacheEntry = async (entry) => {
     const title = entry.title || entry.item_id || "item";
@@ -3244,7 +3244,7 @@ export default function DynamicOverlays() {
       fetchRatingsCacheItems(1, ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit);
     }, 300);
     return () => clearTimeout(timer);
-  }, [ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit, ratingsCacheSource, ratingsCacheMissingOnly, isRatingsCacheModalOpen]);
+  }, [ratingsCacheSearch, ratingsCacheServer, ratingsCacheMediaType, ratingsCacheStatus, ratingsCacheShowStatus, ratingsCacheLimit, ratingsCacheSource, ratingsCacheScore, isRatingsCacheModalOpen]);
 
 
   // 8. Open Raw YAML Editor
@@ -14429,16 +14429,30 @@ export default function DynamicOverlays() {
                 </select>
               </label>
 
-              <label className="flex items-center gap-2 text-xs text-theme-text cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={ratingsCacheMissingOnly}
+              <label className="flex items-center gap-2 text-[11px] font-semibold text-theme-muted uppercase tracking-wider">
+                <span>Rating score:</span>
+                <select
+                  aria-label="Filter by cached rating score"
+                  value={ratingsCacheScore}
                   onChange={(event) => {
-                    setRatingsCacheMissingOnly(event.target.checked);
+                    setRatingsCacheScore(event.target.value);
                     setRatingsCachePage(1);
                   }}
-                />
-                No rating scores
+                  className="min-w-36 bg-theme-card border border-theme rounded-lg px-2.5 py-1.5 text-xs font-medium normal-case text-theme-text"
+                >
+                  <option value="all">All Scores</option>
+                  <option value="missing">No Scores</option>
+                  <option value="imdb">IMDb</option>
+                  <option value="tmdb">TMDb</option>
+                  <option value="rt_critic">Rotten Tomatoes Critic</option>
+                  <option value="rt_audience">Rotten Tomatoes Audience</option>
+                  <option value="trakt">Trakt</option>
+                  <option value="metacritic">Metacritic</option>
+                  <option value="letterboxd">Letterboxd</option>
+                  <option value="mdblist_episode">MDBList Episode</option>
+                  <option value="simkl">SIMKL</option>
+                  <option value="mal">MyAnimeList</option>
+                </select>
               </label>
 
               {ratingsCacheAvailableShowStatuses.length > 0 && (
@@ -14477,7 +14491,7 @@ export default function DynamicOverlays() {
                   <Sparkles className="w-10 h-10 text-theme-muted/50 mb-1" />
                   <span className="text-sm font-semibold text-theme-text">No cached ratings found</span>
                   <p className="text-xs text-theme-muted max-w-sm">
-                    {ratingsCacheSearch || ratingsCacheServer !== "all" || ratingsCacheStatus !== "all" || ratingsCacheShowStatus !== "all" || ratingsCacheMediaType !== "all" || ratingsCacheSource !== "all" || ratingsCacheMissingOnly
+                    {ratingsCacheSearch || ratingsCacheServer !== "all" || ratingsCacheStatus !== "all" || ratingsCacheShowStatus !== "all" || ratingsCacheMediaType !== "all" || ratingsCacheSource !== "all" || ratingsCacheScore !== "all"
                       ? "Try adjusting your search query or filters."
                       : "Ratings will be cached here automatically from Plex, TMDb, or MDBList as overlays are synchronized."}
                   </p>

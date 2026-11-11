@@ -21702,6 +21702,7 @@ async def get_dynamic_overlays_ratings_cache_entries(
     show_status: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     missing_only: bool = Query(False),
+    score: Optional[str] = Query(None, pattern=r"^(imdb|tmdb|rt_critic|rt_audience|trakt|metacritic|letterboxd|mdblist_episode|simkl|mal|missing)$"),
     sort_by: str = Query("cached_at"),
     sort_desc: bool = Query(True)
 ):
@@ -21720,6 +21721,7 @@ async def get_dynamic_overlays_ratings_cache_entries(
             sort_desc=sort_desc,
             source=source,
             missing_only=missing_only,
+            score=score,
         )
         return {"success": True, **data}
     except Exception as e:
