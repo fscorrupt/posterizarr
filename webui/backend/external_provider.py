@@ -1,4 +1,4 @@
-from typing import Callable, Literal, Optional
+from typing import Callable, List, Literal, Optional
 from pathlib import Path
 import asyncio
 from collections import OrderedDict
@@ -219,7 +219,7 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
 
     @router.get("/ratings/{media_type}/{item_id}", dependencies=[Depends(authorize)])
     async def ratings(
-        media_type: Literal["movie", "show", "episode"],
+        media_type: Literal["movie", "show", "episode", "season"],
         item_id: str,
         provider: Literal["auto", "tmdb", "tvdb", "imdb"] = Query("auto"),
         tmdb_id: Optional[int] = Query(default=None, ge=1),
@@ -227,11 +227,20 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
         imdb_id: Optional[str] = Query(default=None, pattern=r"^tt\d{7,12}$"),
         season_number: Optional[int] = Query(default=None, ge=0),
         episode_number: Optional[int] = Query(default=None, ge=1),
+        episode_numbers: Optional[List[int]] = Query(default=None),
     ):
         import ratings_service
 
         if media_type == "episode" and (season_number is None or episode_number is None):
             raise HTTPException(status_code=400, detail="Episode ratings require season_number and episode_number")
+        if media_type == "season":
+            if season_number is None:
+                raise HTTPException(status_code=400, detail="Season ratings require season_number")
+            if not episode_numbers or any(number < 1 for number in episode_numbers):
+                raise HTTPException(status_code=400, detail="Season ratings require all positive episode_numbers")
+            if len(set(episode_numbers)) != len(episode_numbers):
+                raise HTTPException(status_code=400, detail="episode_numbers must be unique")
+            episode_numbers = sorted(episode_numbers)
         requested_provider = provider
         if provider == "auto":
             provider = "imdb" if re.fullmatch(r"tt\d{7,12}", item_id, re.IGNORECASE) else "tmdb"
@@ -254,12 +263,15 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
                          settings.get("omdb_api_key")]
         if media_type != "episode":
             provider_keys.append(settings.get("simkl_client_id"))
-        if not any(provider_keys):
+        if media_type == "season" and not settings.get("simkl_client_id"):
+            raise HTTPException(status_code=503, detail="SIMKL is required for anime season ratings")
+        if media_type != "season" and not any(provider_keys):
             raise HTTPException(status_code=503, detail="No rating providers are configured")
         requested_episode_imdb_id = imdb_id if media_type == "episode" else None
         scores = {}
         sources = {}
         outcomes = {}
+        metadata = {}
 
         def merge(values, provider):
             for name, value in ratings_service.normalize_provider_ratings(values).items():
@@ -274,32 +286,57 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             imdb_id = requested_episode_imdb_id if media_type == "episode" else resolved_imdb_id
             provider_keys.append(api.get("tvdbapi") or api.get("tvdbapikey"))
             fingerprint = hashlib.sha256(json.dumps(provider_keys, default=str).encode()).hexdigest()
-            cache_key = (media_type, tmdb_id, tvdb_id, imdb_id, season_number, episode_number, fingerprint)
+            cache_key = (media_type, tmdb_id, tvdb_id, imdb_id, season_number, episode_number,
+                         tuple(episode_numbers or ()), fingerprint)
             cached = rating_cache.get(cache_key)
             if cached and cached[0] > time.monotonic():
                 rating_cache.move_to_end(cache_key)
                 return format_rating_response(cached[1], item_id, requested_provider)
-            if media_type == "episode" and tmdb_key and tmdb_id:
+            if media_type == "season":
+                if tvdb_id:
+                    candidates, complete = await ratings_service.fetch_simkl_season_candidates(
+                        {"tvdb_id": str(tvdb_id)}, settings["simkl_client_id"], client)
+                    season_candidates = [
+                        {**candidate, "episode_numbers": (candidate.get("episodes_by_season") or {}).get(str(season_number), [])}
+                        for candidate in candidates
+                    ]
+                    selected, mapping_status = ratings_service.select_simkl_season_candidate(
+                        season_candidates, season_number, episode_numbers)
+                    if not complete:
+                        outcomes["simkl"] = {"status": "failed", "message": "SIMKL season mapping could not be verified"}
+                    elif selected:
+                        metadata["title"] = selected.get("title")
+                        season_scores = {key: value for key, value in (selected.get("ratings") or {}).items()
+                                         if key in ("simkl", "mal")}
+                        merge(season_scores, "simkl")
+                        outcomes["simkl"] = {"status": "success" if season_scores else "no_scores",
+                                             "scores": sorted(season_scores)}
+                    else:
+                        outcomes["simkl"] = {"status": "no_scores", "message": mapping_status}
+                else:
+                    outcomes["simkl"] = {"status": "no_scores", "message": "A TVDB series ID is required for season mapping"}
+            elif media_type == "episode" and tmdb_key and tmdb_id:
                 tmdb_score, episode_imdb_id = await ratings_service.fetch_tmdb_episode_rating(
-                    tmdb_id, season_number, episode_number, tmdb_key, client, outcomes=outcomes)
+                    tmdb_id, season_number, episode_number, tmdb_key, client, outcomes=outcomes, metadata=metadata)
                 imdb_id = imdb_id or episode_imdb_id
                 merge({"tmdb": tmdb_score}, "tmdb")
             elif media_type == "episode":
                 outcomes["tmdb"] = {"status": "no_scores", "message": "A TMDb show ID is required for episode ratings"}
             elif tmdb_key:
-                value = await ratings_service.fetch_tmdb_rating(tmdb_id, tmdb_key, client, media_type, outcomes=outcomes) if tmdb_id else None
+                value = await ratings_service.fetch_tmdb_rating(
+                    tmdb_id, tmdb_key, client, media_type, outcomes=outcomes, metadata=metadata) if tmdb_id else None
                 merge({"tmdb": value}, "tmdb")
             if media_type == "episode" and settings.get("mdblist_api_key") and tmdb_id:
                 episode_score = await ratings_service.fetch_mdblist_episode_rating(
                     tmdb_id, season_number, episode_number, settings["mdblist_api_key"], client, outcomes=outcomes)
                 merge({"mdblist_episode": episode_score}, "mdblist")
-            elif media_type != "episode" and settings.get("mdblist_api_key"):
+            elif media_type not in ("episode", "season") and settings.get("mdblist_api_key"):
                 merge(await ratings_service.fetch_mdblist_ratings(imdb_id, tmdb_id, settings["mdblist_api_key"], client,
                                                                   media_type, outcomes=outcomes), "mdblist")
-            if media_type != "episode" and settings.get("simkl_client_id"):
+            if media_type not in ("episode", "season") and settings.get("simkl_client_id"):
                 merge(await ratings_service.fetch_simkl_ratings(imdb_id, tmdb_id, settings["simkl_client_id"], client,
                                                                 media_type, outcomes=outcomes, tvdb_id=str(tvdb_id) if tvdb_id else None), "simkl")
-            if settings.get("omdb_api_key") and imdb_id:
+            if media_type != "season" and settings.get("omdb_api_key") and imdb_id:
                 merge(await ratings_service.fetch_omdb_ratings(imdb_id, settings["omdb_api_key"], client, outcomes), "omdb")
 
         values = {name: {"value": value, "source": sources[name]} for name, value in scores.items()}
@@ -307,8 +344,10 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
         if not values and statuses and all(status == "failed" for status in statuses.values()):
             raise HTTPException(status_code=502, detail="Configured rating providers are unavailable")
         result = {"media_type": media_type, "requested_id": item_id, "requested_provider": requested_provider,
-              "season_number": season_number if media_type == "episode" else None,
+              "title": metadata.get("title"),
+              "season_number": season_number if media_type in ("episode", "season") else None,
               "episode_number": episode_number if media_type == "episode" else None,
+              "episode_numbers": episode_numbers if media_type == "season" else None,
               "tmdb_id": tmdb_id, "tvdb_id": tvdb_id, "imdb_id": imdb_id, "scale": 10, "ratings": values,
                   "providers": statuses}
         if values and not any(status in ("failed", "skipped") for status in statuses.values()):

@@ -86,7 +86,7 @@ and upload the downloaded file. Do not put an API key in a URL.
 
 ### `GET /api/provider/v1/ratings/{media_type}/{item_id}`
 
-`media_type` is `movie`, `show`, or `episode`. With `provider=auto` (the
+`media_type` is `movie`, `show`, `episode`, or `season`. With `provider=auto` (the
 default), a numeric `item_id` is treated as a TMDb ID and an IMDb ID beginning
 with `tt` is detected automatically. Set `provider=tmdb`, `provider=tvdb`, or
 `provider=imdb` to specify the ID type explicitly. Optional `tmdb_id`,
@@ -104,6 +104,17 @@ with `provider=imdb`. Posterizarr fetches the episode rating from TMDb, the
 MDBList episode-rating matrix when the account supports it, and OMDb when an
 episode IMDb ID is available. SIMKL and TVDB episode ratings are not currently
 supported. A TMDb show ID is needed for TMDb and MDBList episode lookups.
+Season requests require non-negative `season_number` and the complete list of
+positive `episode_numbers`, supplied by repeating the query parameter once per
+episode. Use a TVDB series ID with `provider=tvdb`, or a TMDb series ID if
+Posterizarr can resolve its TVDB ID. Season ratings are currently for anime
+seasons with a unique, complete SIMKL mapping; the API returns the mapped
+SIMKL and MAL ratings supplied by SIMKL. Ambiguous, incomplete, or unmapped
+seasons return no season ratings. A SIMKL client ID is required.
+
+Responses include a `title` when metadata is available: TMDb provides movie,
+show, and episode titles; a matched SIMKL anime entry provides the season
+title. The field is `null` when no title can be resolved.
 
 ```bash
 # Existing TMDb form
@@ -115,19 +126,23 @@ curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/m
 
 # Anime episode: Attack on Titan, season 1, episode 1 (TMDb show ID 1429)
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/1429?provider=tmdb&season_number=1&episode_number=1"
+
+# Season request format: repeat episode_numbers for every episode in the season
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/season/YOUR_TVDB_SERIES_ID?provider=tvdb&season_number=2&episode_numbers=1&episode_numbers=2&episode_numbers=3"
 ```
 
-The endpoint is not a full metadata API and does not yet support season-level
-ratings, Floppy ratings, or the local IMDb dataset. Results do not write into
-the Dynamic Overlays ratings cache; successful responses are held in a separate
-in-memory cache for 15 minutes. Episode cache entries are keyed by season and
-episode coordinates. Provider failures are reported in `providers`, and
+The endpoint is not a full metadata API and does not yet support Floppy ratings
+or the local IMDb dataset. Results do not write into the Dynamic Overlays
+ratings cache; successful responses are held in a separate in-memory cache for
+15 minutes. Episode and season cache entries include their season coordinates
+and episode numbers. Provider failures are reported in `providers`, and
 complete upstream failure returns `502`; missing rating-provider configuration
 returns `503`.
 
 ```json
 {
   "media_type": "movie",
+  "title": "The Matrix",
   "tmdb_id": 603,
   "imdb_id": "tt0133093",
   "scale": 10,
@@ -136,6 +151,23 @@ returns `503`.
     "rt_critic": {"value": 8.3, "source": "mdblist"}
   },
   "providers": {"tmdb": "success", "mdblist": "success"}
+}
+```
+
+Example season response:
+
+```json
+{
+  "media_type": "season",
+  "title": "My Anime Season Two",
+  "season_number": 2,
+  "episode_numbers": [1, 2, 3],
+  "scale": 10,
+  "ratings": {
+    "simkl": {"value": 8.4, "source": "simkl"},
+    "mal": {"value": 8.6, "source": "simkl"}
+  },
+  "providers": {"simkl": "success"}
 }
 ```
 

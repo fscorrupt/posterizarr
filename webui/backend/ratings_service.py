@@ -1054,7 +1054,8 @@ async def fetch_tmdb_rating(
     api_key: str,
     client: httpx.AsyncClient,
     media_type: str = "movie",
-    outcomes: Optional[Dict[str, Any]] = None
+    outcomes: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Optional[float]:
     """Fetch vote_average directly from TMDb API with support for v3 API keys and v4 JWT tokens."""
     if not tmdb_id or not api_key:
@@ -1073,6 +1074,9 @@ async def fetch_tmdb_rating(
     outcomes = outcomes if outcomes is not None else {}
     data = await _fetch_rating_json(client, "tmdb", url, outcomes, headers=headers, params=params, timeout=6.0)
     if data:
+        title = data.get("name" if media_type == "show" else "title")
+        if metadata is not None and isinstance(title, str) and title.strip():
+            metadata["title"] = title.strip()
         try:
             avg = float(data.get("vote_average"))
             if 0 < avg <= 10:
@@ -1090,6 +1094,7 @@ async def fetch_tmdb_episode_rating(
     api_key: str,
     client: httpx.AsyncClient,
     outcomes: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[float], Optional[str]]:
     """Fetch one TMDb episode score and its episode-level IMDb ID."""
     if not tmdb_id or not api_key or season_number is None or episode_number is None:
@@ -1105,6 +1110,9 @@ async def fetch_tmdb_episode_rating(
     data = await _fetch_rating_json(client, "tmdb", url, outcomes, headers=headers, params=params, timeout=6.0)
     if not data:
         return None, None
+    title = data.get("name")
+    if metadata is not None and isinstance(title, str) and title.strip():
+        metadata["title"] = title.strip()
     imdb_id = (data.get("external_ids") or {}).get("imdb_id")
     try:
         score = float(data.get("vote_average"))
