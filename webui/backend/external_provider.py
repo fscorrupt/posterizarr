@@ -244,6 +244,11 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
     ):
         import ratings_service
 
+        logger.info(
+            "Ratings API request (media_type=%s, item_id=%s, provider=%s, season_number=%s, "
+            "episode_number=%s, server_type=%s)",
+            media_type, item_id, provider, season_number, episode_number, server_type,
+        )
         requested_provider = provider
         if provider == "auto":
             provider = "imdb" if re.fullmatch(r"tt\d{7,12}", item_id, re.IGNORECASE) else "tmdb"
