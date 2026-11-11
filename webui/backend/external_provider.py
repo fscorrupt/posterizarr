@@ -279,8 +279,9 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
         if media_type == "season":
             cached_scores = {key: cached_scores[key] for key in ("simkl", "mal")}
         normalized_scores = ratings_service.normalize_provider_ratings(cached_scores)
+        rating_sources = ratings_service.infer_cached_rating_sources(cached)
         ratings = {
-            name: {"value": value, "source": "posterizarr_cache"}
+            name: {"value": value, "source": rating_sources.get(name, "unknown")}
             for name, value in normalized_scores.items() if value is not None
         }
 

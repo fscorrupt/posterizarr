@@ -107,12 +107,14 @@ available for anime seasons already mapped to SIMKL; the cached row may include
 SIMKL and MAL scores. A cache miss or expired entry returns `404`.
 
 The response title and score values come from the cached row. Each rating's
-`source` is `posterizarr_cache`; individual provider provenance is not stored
-per score. The top-level `cache` object includes the cache record's server,
-timestamps, and record-level source. The `providers` object reports the most
-recent cached refresh statuses, not live provider status. Local IMDb dataset
-ratings are returned when they have already been written into the ratings
-cache.
+`source` identifies the provider recorded for that score (for example,
+`tmdb`, `mdblist`, `omdb`, `simkl`, or `imdb_dataset`). New refreshes persist
+this per-score provenance. For older entries, the API derives it from recorded
+refresh results where possible, then falls back to the cache record's source.
+The top-level `cache` object includes the cache record's server, timestamps, and
+record-level source. The `providers` object reports cached refresh statuses,
+not live provider status. Local IMDb dataset ratings are returned when they
+have already been written into the ratings cache.
 
 ```bash
 # Movie or show: use an ID already present in the ratings cache
@@ -145,8 +147,8 @@ missing season number. No provider credentials are needed to read cached data.
   "imdb_id": "tt0133093",
   "scale": 10,
   "ratings": {
-    "tmdb": {"value": 8.2, "source": "posterizarr_cache"},
-    "rt_critic": {"value": 8.3, "source": "posterizarr_cache"}
+    "tmdb": {"value": 8.2, "source": "tmdb"},
+    "rt_critic": {"value": 8.3, "source": "omdb"}
   },
   "providers": {"cache": "hit"},
   "cache": {
@@ -167,8 +169,8 @@ Example season response:
   "season_number": 1,
   "scale": 10,
   "ratings": {
-    "simkl": {"value": 8.4, "source": "posterizarr_cache"},
-    "mal": {"value": 8.6, "source": "posterizarr_cache"}
+    "simkl": {"value": 8.4, "source": "simkl"},
+    "mal": {"value": 8.6, "source": "simkl"}
   },
   "providers": {"cache": "hit"},
   "cache": {"server_type": "plex", "record_source": "simkl"}

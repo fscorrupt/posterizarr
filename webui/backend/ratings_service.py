@@ -83,6 +83,48 @@ EPISODE_RATING_SOURCE_COLUMNS = {
     "letterboxd": "letterboxd_rating",
     "mdblist_episode": "mdblist_rating",
 }
+RATING_SOURCE_KEYS = frozenset((
+    "imdb", "tmdb", "rt_critic", "rt_audience", "trakt", "metacritic",
+    "letterboxd", "simkl", "mal", "mdblist_episode",
+))
+
+
+def _parse_rating_sources(value):
+    if isinstance(value, dict):
+        return {key: source for key, source in value.items() if key in RATING_SOURCE_KEYS and source}
+    try:
+        parsed = json.loads(value or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {key: source for key, source in parsed.items() if key in RATING_SOURCE_KEYS and source}
+
+
+def infer_cached_rating_sources(cached):
+    sources = _parse_rating_sources(cached.get("rating_sources"))
+    record_source = cached.get("source")
+    if record_source == "imdb_dataset":
+        sources.setdefault("imdb", "imdb_dataset")
+    try:
+        details = json.loads(cached.get("last_refresh_details") or "{}")
+    except (TypeError, ValueError):
+        details = {}
+    provider_results = details.get("providers") if isinstance(details, dict) else {}
+    provider_order = (cached.get("server_type"), "tmdb", "mdblist", "simkl", "omdb")
+    candidates = {}
+    for provider in provider_order:
+        result = provider_results.get(provider) if isinstance(provider_results, dict) else None
+        if not isinstance(result, dict):
+            continue
+        for score in result.get("scores") or ():
+            if score in RATING_SOURCE_KEYS:
+                candidates.setdefault(score, []).append(provider)
+    for score in RATING_SOURCE_KEYS:
+        if score not in sources:
+            providers = candidates.get(score) or []
+            sources[score] = providers[0] if providers else (record_source or "unknown")
+    return sources
 
 
 class RatingsCacheManager:
@@ -183,7 +225,8 @@ class RatingsCacheManager:
                         "ALTER TABLE media_ratings_cache ADD COLUMN last_refresh_details TEXT;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN mdblist_rating REAL;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN season_number INTEGER;",
-                        "ALTER TABLE media_ratings_cache ADD COLUMN episode_number INTEGER;"
+                        "ALTER TABLE media_ratings_cache ADD COLUMN episode_number INTEGER;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN rating_sources TEXT;"
                     ]:
                         try:
                             conn.execute(col_sql)
@@ -235,6 +278,7 @@ class RatingsCacheManager:
                     return None
 
                 data = dict(row)
+                data["rating_sources"] = _parse_rating_sources(data.get("rating_sources"))
                 expires_at_str = data.get("expires_at")
                 if expires_at_str:
                     try:
@@ -325,6 +369,7 @@ class RatingsCacheManager:
                     continue
                 result = dict(row)
                 result["season_mapping"] = mapping
+                result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
                 return result
             return None
 
@@ -369,6 +414,7 @@ class RatingsCacheManager:
         if row is None:
             return None
         result = dict(row)
+        result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
         return result
 
     def get_season_mapping(self, server_type, item_id):
@@ -401,7 +447,7 @@ class RatingsCacheManager:
                     connection.execute(
                         "UPDATE media_ratings_cache SET imdb_rating = NULL, tmdb_rating = NULL, rt_critic_rating = NULL, "
                         "rt_audience_rating = NULL, trakt_rating = NULL, metacritic_rating = NULL, letterboxd_rating = NULL, "
-                        "simkl_rating = NULL, mal_rating = NULL, simkl_url = NULL, expires_at = ?, "
+                        "simkl_rating = NULL, mal_rating = NULL, simkl_url = NULL, rating_sources = NULL, expires_at = ?, "
                         "last_refresh_status = NULL, last_refresh_details = NULL WHERE server_type = ? AND item_id = ? AND media_type = 'season'",
                         (now, server_type.lower(), str(item_id)),
                     )
@@ -423,6 +469,7 @@ class RatingsCacheManager:
         ttl_days: Optional[int] = None,
         season_number: Optional[int] = None,
         episode_number: Optional[int] = None,
+        rating_sources: Optional[Dict[str, str]] = None,
     ):
         """Save or update ratings in the cache with computed TTL."""
         now = datetime.utcnow()
@@ -443,11 +490,23 @@ class RatingsCacheManager:
                 effective_ttl = TTL_RECENT_MEDIA_DAYS
 
         expires_at = now + timedelta(days=effective_ttl)
+        provided_sources = _parse_rating_sources(rating_sources)
+        if not provided_sources:
+            provided_sources = {
+                key: source for key, value in ratings.items()
+                if key in RATING_SOURCE_KEYS and value is not None
+            }
 
         with self.lock:
             try:
                 conn = self._get_connection()
                 with conn:
+                    existing = conn.execute(
+                        "SELECT rating_sources FROM media_ratings_cache WHERE server_type = ? AND item_id = ?",
+                        (server_type.lower(), str(item_id)),
+                    ).fetchone()
+                    saved_sources = _parse_rating_sources(existing["rating_sources"] if existing else None)
+                    saved_sources.update(provided_sources)
                     conn.execute(
                         """
                         INSERT INTO media_ratings_cache (
@@ -455,8 +514,8 @@ class RatingsCacheManager:
                             imdb_id, tmdb_id, imdb_rating, tmdb_rating,
                             rt_critic_rating, rt_audience_rating, trakt_rating,
                             metacritic_rating, letterboxd_rating, mdblist_rating, simkl_rating, mal_rating, simkl_url, source,
-                            cached_at, expires_at, season_number, episode_number
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            cached_at, expires_at, season_number, episode_number, rating_sources
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
                             title = excluded.title,
                             media_type = excluded.media_type,
@@ -476,6 +535,7 @@ class RatingsCacheManager:
                             simkl_url = COALESCE(excluded.simkl_url, media_ratings_cache.simkl_url),
                             season_number = COALESCE(excluded.season_number, media_ratings_cache.season_number),
                             episode_number = COALESCE(excluded.episode_number, media_ratings_cache.episode_number),
+                            rating_sources = excluded.rating_sources,
                             source = excluded.source,
                             cached_at = excluded.cached_at,
                             expires_at = excluded.expires_at;
@@ -504,6 +564,7 @@ class RatingsCacheManager:
                             expires_at.isoformat(),
                             season_number,
                             episode_number,
+                            json.dumps(saved_sources, sort_keys=True),
                         )
                     )
                 conn.close()
@@ -898,9 +959,19 @@ class RatingsCacheManager:
 
     def apply_imdb_mapping(self, entry_id, imdb_id, rating):
         with self.lock, closing(self._get_connection()) as connection, connection:
+            row = connection.execute(
+                "SELECT rating_sources FROM media_ratings_cache WHERE id = ? AND media_type = 'episode'",
+                (int(entry_id),),
+            ).fetchone()
+            rating_sources = _parse_rating_sources(row["rating_sources"] if row else None)
+            if rating is not None:
+                rating_sources["imdb"] = "imdb_dataset"
+            else:
+                rating_sources.pop("imdb", None)
             connection.execute(
-                "UPDATE media_ratings_cache SET imdb_id=?, imdb_rating=?, source=CASE WHEN ? IS NOT NULL THEN 'imdb_dataset' ELSE source END WHERE id=? AND media_type='episode'",
-                (imdb_id, rating, rating, int(entry_id)),
+                "UPDATE media_ratings_cache SET imdb_id=?, imdb_rating=?, rating_sources=?, "
+                "source=CASE WHEN ? IS NOT NULL THEN 'imdb_dataset' ELSE source END WHERE id=? AND media_type='episode'",
+                (imdb_id, rating, json.dumps(rating_sources, sort_keys=True), rating, int(entry_id)),
             )
             if connection.execute("SELECT 1 FROM sqlite_master WHERE name='ratings_refresh_retry'").fetchone():
                 connection.execute("DELETE FROM ratings_refresh_retry WHERE (server_type,item_id) IN (SELECT server_type,item_id FROM media_ratings_cache WHERE id=?)", (int(entry_id),))
@@ -1581,7 +1652,10 @@ async def resolve_season_ratings(server_type, item_id, title, parent_metadata, s
     if cache.save_season_mapping(server_type, item_id, mapping, invalidate=invalidate, expected_choice=expected_choice) is None:
         return {"_refresh_status": "failed", "_message": "Season mapping changed during lookup; retry with the new selection", "_providers": {}}
     if scores:
-        if not cache.save_ratings(server_type, item_id, "season", title, None, None, None, scores, source="simkl"):
+        if not cache.save_ratings(
+            server_type, item_id, "season", title, None, None, None, scores, source="simkl",
+            rating_sources={key: "simkl" for key in ("simkl", "mal") if scores.get(key) is not None},
+        ):
             raise RuntimeError("Could not save season ratings to cache")
         outcome, message = "success", "Season ratings resolved"
     else:
@@ -1824,6 +1898,7 @@ async def resolve_media_ratings(
                 "mal": cached.get("mal_rating"),
                 "_simkl_url": cached.get("simkl_url"),
                 "_source": cached.get("source"),
+                "_rating_sources": cached.get("rating_sources") or {},
                 "_cached": True
             }
 
@@ -1832,6 +1907,7 @@ async def resolve_media_ratings(
         enabled_sources = ["imdb", "tmdb", "tomatoes", "tomatoesaudience"]
 
     resolved: Dict[str, Any] = {}
+    rating_sources: Dict[str, str] = {}
     primary_source = "plex"
     outcomes: Dict[str, Any] = {}
 
@@ -1841,6 +1917,7 @@ async def resolve_media_ratings(
         for k, v in plex_ratings.items():
             if v is not None:
                 resolved[k] = v
+                rating_sources[k] = server_type
         outcomes["plex"] = {"status": "success" if resolved else "no_scores", "scores": sorted(resolved)}
 
     dataset_context = dict(rating_context or {})
@@ -1879,9 +1956,11 @@ async def resolve_media_ratings(
                 season_override = True
                 imdb_id = match.get("imdb_id")
                 resolved.pop("imdb", None)
+                rating_sources.pop("imdb", None)
             if match.get("rating") is not None and (resolved.get("imdb") is None or match.get("mode") in ("manual", "season")):
                 imdb_id = match["imdb_id"]
                 resolved["imdb"] = match["rating"]
+                rating_sources["imdb"] = "imdb_dataset"
                 primary_source = "imdb_dataset"
         except (OSError, sqlite3.Error, ValueError):
             logger.exception("[IMDb Dataset] Local lookup unavailable; using existing providers")
@@ -1914,6 +1993,7 @@ async def resolve_media_ratings(
                         score = float(details.get("vote_average"))
                         if "tmdb" in enabled_sources and 0 < score <= 10 and resolved.get("tmdb") is None:
                             resolved["tmdb"] = round(score, 1)
+                            rating_sources["tmdb"] = "tmdb"
                             primary_source = "tmdb"
                     except (TypeError, ValueError):
                         pass
@@ -1923,6 +2003,7 @@ async def resolve_media_ratings(
             tmdb_score = await fetch_tmdb_rating(tmdb_id, tmdb_api_key, local_client, media_type, outcomes=outcomes)
             if tmdb_score is not None:
                 resolved["tmdb"] = tmdb_score
+                rating_sources["tmdb"] = "tmdb"
                 primary_source = "tmdb"
 
         if imdb_id != dataset_checked_id or season_override:
@@ -1940,6 +2021,7 @@ async def resolve_media_ratings(
             )
             if mdblist_episode is not None:
                 resolved["mdblist_episode"] = mdblist_episode
+                rating_sources["mdblist_episode"] = "mdblist"
                 primary_source = "mdblist"
 
         if media_type != "episode" and mdblist_api_key and needs_external and (imdb_id or provider_tmdb_id):
@@ -1950,6 +2032,7 @@ async def resolve_media_ratings(
             for k, v in mdb_res.items():
                 if v is not None and resolved.get(k) is None:
                     resolved[k] = v
+                    rating_sources[k] = "mdblist"
             if mdb_res:
                 primary_source = "mdblist"
 
@@ -1958,6 +2041,8 @@ async def resolve_media_ratings(
             for source, value in simkl_result.items():
                 if resolved.get(source) is None:
                     resolved[source] = value
+                    if source in RATING_SOURCE_KEYS:
+                        rating_sources[source] = "simkl"
             if simkl_result:
                 primary_source = "simkl"
 
@@ -1969,6 +2054,7 @@ async def resolve_media_ratings(
             for k, v in omdb_res.items():
                 if v is not None and resolved.get(k) is None:
                     resolved[k] = v
+                    rating_sources[k] = "omdb"
             if omdb_res:
                 primary_source = "omdb"
 
@@ -1979,10 +2065,12 @@ async def resolve_media_ratings(
                 if c_val > 0:
                     if resolved.get("tmdb") is None:
                         resolved["tmdb"] = round(c_val, 1)
+                        rating_sources["tmdb"] = server_type
                         if primary_source == "plex":
                             primary_source = server_type
                     if resolved.get("imdb") is None and not tmdb_id and imdb_id:
                         resolved["imdb"] = round(c_val, 1)
+                        rating_sources["imdb"] = server_type
                         if primary_source == "plex":
                             primary_source = server_type
             except Exception:
@@ -1993,6 +2081,7 @@ async def resolve_media_ratings(
                 cr_val = float(server_critic_rating)
                 if cr_val > 0 and resolved.get("rt_critic") is None:
                     resolved["rt_critic"] = int(round(cr_val))
+                    rating_sources["rt_critic"] = server_type
                     if primary_source == "plex":
                         primary_source = server_type
             except Exception:
@@ -2004,6 +2093,9 @@ async def resolve_media_ratings(
 
     has_provider_failures = any(outcome["status"] in ("failed", "no_scores", "skipped") for outcome in outcomes.values())
     refresh_status = ("partial" if has_provider_failures else "success") if resolved else "failed"
+    for key, value in resolved.items():
+        if key in RATING_SOURCE_KEYS and value is not None:
+            rating_sources.setdefault(key, primary_source)
     if resolved:
         saved = ratings_cache.save_ratings(
             server_type=server_type,
@@ -2017,6 +2109,7 @@ async def resolve_media_ratings(
             source=primary_source,
             season_number=season_number if media_type == "episode" else None,
             episode_number=episode_number if media_type == "episode" else None,
+            rating_sources=rating_sources,
         )
         if not saved:
             raise RuntimeError("Could not save fresh ratings to cache")
@@ -2032,6 +2125,7 @@ async def resolve_media_ratings(
 
     has_fresh_scores = bool(resolved)
     cached_scores = ratings_cache.get_cached_ratings(server_type, str(item_id), allow_stale=True) or {}
+    cached_rating_sources = _parse_rating_sources(cached_scores.get("rating_sources"))
     cached_sources = []
     for key, column in (
         ("imdb", "imdb_rating"), ("tmdb", "tmdb_rating"), ("rt_critic", "rt_critic_rating"),
@@ -2043,6 +2137,7 @@ async def resolve_media_ratings(
             continue
         if resolved.get(key) is None and cached_scores.get(column) is not None:
             resolved[key] = cached_scores[column]
+            rating_sources[key] = cached_rating_sources.get(key) or cached_scores.get("source") or server_type
             cached_sources.append(key)
     if cached_sources:
         resolved["_cached_sources"] = cached_sources
@@ -2052,6 +2147,7 @@ async def resolve_media_ratings(
         resolved["_stale"] = bool(cached_sources)
 
     resolved["_source"] = primary_source
+    resolved["_rating_sources"] = rating_sources
     resolved["_cached"] = False
     resolved["_refresh_status"] = refresh_status
     resolved["_providers"] = outcomes
