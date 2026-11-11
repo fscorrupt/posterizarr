@@ -2379,6 +2379,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Posterizarr Web UI", lifespan=lifespan)
 
+
 # Add exception handler for validation errors
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -2421,7 +2422,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from external_provider import create_provider_router
+from external_provider import create_provider_router, log_ratings_api_errors
+app.middleware("http")(log_ratings_api_errors)
 
 def _external_provider_credentials():
     config = config_db.export_to_json() if config_db else {}

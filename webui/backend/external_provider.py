@@ -8,12 +8,26 @@ import os
 import re
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from provider_poster import poster_cache_path, render_poster
 
 logger = logging.getLogger(__name__)
+
+
+async def log_ratings_api_errors(request: Request, call_next):
+    path = request.url.path
+    if not path.startswith("/api/provider/v1/ratings/"):
+        return await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Unhandled ratings API middleware exception (method=%s, path=%s)", request.method, path)
+        raise
+    if response.status_code >= 500:
+        logger.error("Ratings API returned HTTP %s (method=%s, path=%s)", response.status_code, request.method, path)
+    return response
 
 
 def find_existing_posters(root, choices, media_type, asset_type, tmdb_id, tvdb_id, season_number, episode_number, library):
