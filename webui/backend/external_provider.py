@@ -9,7 +9,7 @@ import re
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from provider_poster import poster_cache_path, render_poster
 
@@ -333,7 +333,7 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
         if resolved_tvdb_id is not None and str(resolved_tvdb_id).isdigit():
             resolved_tvdb_id = int(resolved_tvdb_id)
 
-        return {
+        return JSONResponse(content={
             "media_type": media_type,
             "requested_id": item_id,
             "requested_provider": requested_provider,
@@ -354,6 +354,6 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
                 "expires_at": cached.get("expires_at"),
                 "record_source": cached.get("source"),
             },
-        }
+        })
 
     return router
