@@ -6648,13 +6648,16 @@ TMDb ID and an IMDb ID beginning with <code>tt</code> is detected automatically.
 <code>provider=tmdb</code> or <code>provider=imdb</code> to select the cached identifier explicitly.
 Optional <code>server_type</code> selects a cache entry from <code>plex</code>, <code>jellyfin</code>, <code>emby</code>,
 or another configured media server when IDs appear in multiple caches.</p>
-<p>Movie and show entries are matched by their cached TMDb or IMDb ID. Episode
-entries must be requested by the <strong>episode's IMDb ID</strong>; episode TMDb IDs and
-season/episode coordinates are not stored in the ratings cache. Season entries
-require <code>season_number</code> and can be found by TVDB series ID, or by TMDb/IMDb ID
+<p>Movie and show entries are matched by their cached TMDb or IMDb ID. Episodes
+can be matched by the **series TMDb ID plus <code>season_number</code> and
+episode_number<code>**, or directly by the episode's IMDb ID. Episode coordinates
+are now persisted in the ratings cache when ratings are refreshed; existing
+rows need a ratings refresh before they can be found by series ID and
+coordinates. Season entries
+require</code>season_number<code>and can be found by TVDB series ID, or by TMDb/IMDb ID
 when a matching cached show entry and season mapping exist. Season ratings are
 available for anime seasons already mapped to SIMKL; the cached row may include
-SIMKL and MAL scores. A cache miss or expired entry returns <code>404</code>.</p>
+SIMKL and MAL scores. A cache miss or expired entry returns</code>404`.</p>
 <p>The response title and score values come from the cached row. Each rating's
 <code>source</code> is <code>posterizarr_cache</code>; individual provider provenance is not stored
 per score. The top-level <code>cache</code> object includes the cache record's server,
@@ -6669,11 +6672,14 @@ cache.</p>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># IMDb ID lookup</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/movie/tt0133093?provider=imdb"</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># Episode: use its cached episode IMDb ID</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/episode/tt1234567?provider=imdb"</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># Anime episode: Attack on Titan S04E30 (series TMDb ID 1429)</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/episode/1429?provider=tmdb&amp;season_number=4&amp;episode_number=30"</span>
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># Anime season: TVDB ID and season number must match a cached season mapping</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/season/12345?provider=tvdb&amp;season_number=1"</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># Or request an episode directly by its cached IMDb ID</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/episode/tt27048168?provider=imdb"</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="c1"># Anime season: TVDB ID and season number must match a cached season mapping</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/ratings/season/12345?provider=tvdb&amp;season_number=1"</span>
 </code></pre></div>
 <p>The endpoint is not a full metadata API and does not yet support Floppy ratings.
 It neither refreshes nor writes cache entries. <code>404</code> means no unexpired cache
