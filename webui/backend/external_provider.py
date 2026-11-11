@@ -2,6 +2,7 @@ from typing import Callable, Literal, Optional
 from pathlib import Path
 import asyncio
 import json
+import logging
 import os
 import re
 
@@ -10,6 +11,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 
 from provider_poster import poster_cache_path, render_poster
+
+logger = logging.getLogger(__name__)
 
 
 def find_existing_posters(root, choices, media_type, asset_type, tmdb_id, tvdb_id, season_number, episode_number, library):
@@ -251,16 +254,23 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
         if media_type == "season" and not (tmdb_id or imdb_id or tvdb_id):
             raise HTTPException(status_code=400, detail="Use a cached show ID or TVDB ID for season ratings")
 
-        cached = await asyncio.to_thread(
-            ratings_service.ratings_cache.find_cached_ratings,
-            media_type,
-            tmdb_id=tmdb_id,
-            imdb_id=imdb_id,
-            tvdb_id=tvdb_id,
-            season_number=season_number,
-            episode_number=episode_number,
-            server_type=server_type,
-        )
+        try:
+            cached = await asyncio.to_thread(
+                ratings_service.ratings_cache.find_cached_ratings,
+                media_type,
+                tmdb_id=tmdb_id,
+                imdb_id=imdb_id,
+                tvdb_id=tvdb_id,
+                season_number=season_number,
+                episode_number=episode_number,
+                server_type=server_type,
+            )
+        except Exception as error:
+            logger.exception(
+                "Ratings cache lookup failed (media_type=%s, item_id=%s, server_type=%s)",
+                media_type, item_id, server_type,
+            )
+            raise HTTPException(status_code=500, detail="Ratings cache lookup failed") from error
         if cached is None:
             raise HTTPException(status_code=404, detail="No unexpired ratings cache entry matches this ID")
 
