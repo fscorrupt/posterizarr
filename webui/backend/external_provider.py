@@ -311,7 +311,10 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             )
             raise HTTPException(status_code=500, detail="Ratings cache lookup failed") from error
         if cached is None:
-            raise HTTPException(status_code=404, detail="No unexpired ratings cache entry matches this ID")
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "No unexpired ratings cache entry matches this ID"},
+            )
 
         cached_scores = {
             "imdb": cached.get("imdb_rating"),
