@@ -314,6 +314,90 @@ class RatingsCacheManager:
                 logger.error(f"[RatingsCache] Error reading cache ({server_type}, {item_id}): {e}")
                 return None
 
+    def find_cached_ratings_fast(self, media_type, tmdb_id=None, imdb_id=None, tvdb_id=None,
+                                 season_number=None, episode_number=None, server_type=None):
+        """Fast API-optimized cache lookup without expensive JOINs for seasons."""
+        if media_type not in ("movie", "show", "episode", "season"):
+            return None
+        now_iso = datetime.utcnow().isoformat()
+        
+        with self.lock, closing(self._get_connection()) as connection:
+            # Direct simple lookups - no expensive JOINs
+            if media_type == "season":
+                conditions = ["media_type = 'season'", "expires_at > ?"]
+                params = [now_iso]
+                if server_type:
+                    conditions.append("server_type = ?")
+                    params.append(str(server_type).strip().lower())
+                if season_number is not None:
+                    conditions.append("season_number = ?")
+                    params.append(int(season_number))
+                if tmdb_id:
+                    conditions.append("tmdb_id = ?")
+                    params.append(tmdb_id)
+                if imdb_id:
+                    conditions.append("imdb_id = ?")
+                    params.append(imdb_id)
+                
+                sql = "SELECT * FROM media_ratings_cache WHERE " + " AND ".join(conditions) + " ORDER BY cached_at DESC LIMIT 1"
+                row = connection.execute(sql, tuple(params)).fetchone()
+                if row:
+                    result = dict(row)
+                    result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+                    return result
+                return None
+            
+            # Episode lookup
+            if media_type == "episode":
+                conditions = ["media_type = 'episode'", "expires_at > ?"]
+                params = [now_iso]
+                if server_type:
+                    conditions.append("server_type = ?")
+                    params.append(str(server_type).strip().lower())
+                if tmdb_id and season_number is not None and episode_number is not None:
+                    conditions.extend([
+                        "tmdb_id = ?",
+                        "season_number = ?",
+                        "episode_number = ?"
+                    ])
+                    params.extend([tmdb_id, int(season_number), int(episode_number)])
+                elif imdb_id:
+                    conditions.append("imdb_id = ?")
+                    params.append(imdb_id)
+                else:
+                    return None
+                
+                sql = "SELECT * FROM media_ratings_cache WHERE " + " AND ".join(conditions) + " ORDER BY cached_at DESC LIMIT 1"
+                row = connection.execute(sql, tuple(params)).fetchone()
+                if row:
+                    result = dict(row)
+                    result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+                    return result
+                return None
+            
+            # Movie/Show lookup
+            conditions = ["media_type = ?", "expires_at > ?"]
+            params = [media_type, now_iso]
+            if server_type:
+                conditions.append("server_type = ?")
+                params.append(str(server_type).strip().lower())
+            if tmdb_id:
+                conditions.append("tmdb_id = ?")
+                params.append(tmdb_id)
+            elif imdb_id:
+                conditions.append("imdb_id = ?")
+                params.append(imdb_id)
+            else:
+                return None
+            
+            sql = "SELECT * FROM media_ratings_cache WHERE " + " AND ".join(conditions) + " ORDER BY cached_at DESC LIMIT 1"
+            row = connection.execute(sql, tuple(params)).fetchone()
+            if row:
+                result = dict(row)
+                result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+                return result
+            return None
+
     def find_cached_ratings(self, media_type, tmdb_id=None, imdb_id=None, tvdb_id=None,
                             season_number=None, episode_number=None, server_type=None):
         """Find one unexpired rating row by identifiers already stored in the cache."""

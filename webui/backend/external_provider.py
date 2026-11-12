@@ -295,7 +295,7 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
 
         try:
             cached = await asyncio.to_thread(
-                ratings_service.ratings_cache.find_cached_ratings,
+                ratings_service.ratings_cache.find_cached_ratings_fast,
                 media_type,
                 tmdb_id=tmdb_id,
                 imdb_id=imdb_id,
