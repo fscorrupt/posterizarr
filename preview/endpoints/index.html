@@ -6649,15 +6649,16 @@ TMDb ID and an IMDb ID beginning with <code>tt</code> is detected automatically.
 Optional <code>server_type</code> selects a cache entry from <code>plex</code>, <code>jellyfin</code>, <code>emby</code>,
 or another configured media server when IDs appear in multiple caches.</p>
 <p>Movie and show entries are matched by their cached TMDb or IMDb ID. Episodes
-can be matched by the **series TMDb ID plus <code>season_number</code> and
-episode_number<code>**, or directly by the episode's IMDb ID. Episode coordinates
-are now persisted in the ratings cache when ratings are refreshed; existing
-rows need a ratings refresh before they can be found by series ID and
-coordinates. Season entries
-require</code>season_number<code>and can be found by TVDB series ID, or by TMDb/IMDb ID
+can be matched by the <strong>series TMDb ID plus <code>season_number</code> and
+<code>episode_number</code></strong>, or directly by the episode's IMDb ID. Episode coordinates
+are persisted during ratings refreshes. On startup, a background migration
+fills missing coordinates for existing Plex, Jellyfin, and Emby cache rows
+using only media-server metadata; it does not refresh ratings or change cache
+expiry. Season entries require <code>season_number</code> and can be found by TVDB series
+ID, or by TMDb/IMDb ID
 when a matching cached show entry and season mapping exist. Season ratings are
 available for anime seasons already mapped to SIMKL; the cached row may include
-SIMKL and MAL scores. A cache miss or expired entry returns</code>404`.</p>
+SIMKL and MAL scores. A cache miss or expired entry returns <code>404</code>.</p>
 <p>The response title and score values come from the cached row. Each rating's
 <code>source</code> identifies the provider recorded for that score (for example,
 <code>tmdb</code>, <code>mdblist</code>, <code>omdb</code>, <code>simkl</code>, or <code>imdb_dataset</code>). New refreshes persist
