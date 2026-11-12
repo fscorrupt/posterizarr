@@ -127,6 +127,27 @@ def infer_cached_rating_sources(cached):
     return sources
 
 
+def _parse_rating_timestamps(value):
+    if isinstance(value, dict):
+        return {key: str(ts) for key, ts in value.items() if key in RATING_SOURCE_KEYS and ts}
+    try:
+        parsed = json.loads(value or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {key: str(ts) for key, ts in parsed.items() if key in RATING_SOURCE_KEYS and ts}
+
+
+def infer_cached_rating_timestamps(cached):
+    timestamps = _parse_rating_timestamps(cached.get("rating_updated_at"))
+    fallback = cached.get("last_refresh_at") or cached.get("cached_at")
+    for score in RATING_SOURCE_KEYS:
+        if score not in timestamps and fallback:
+            timestamps[score] = fallback
+    return timestamps
+
+
 class RatingsCacheManager:
     """Thread-safe SQLite cache for media ratings with tiered TTL."""
 
@@ -226,7 +247,8 @@ class RatingsCacheManager:
                         "ALTER TABLE media_ratings_cache ADD COLUMN mdblist_rating REAL;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN season_number INTEGER;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN episode_number INTEGER;",
-                        "ALTER TABLE media_ratings_cache ADD COLUMN rating_sources TEXT;"
+                        "ALTER TABLE media_ratings_cache ADD COLUMN rating_sources TEXT;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN rating_updated_at TEXT;"
                     ]:
                         try:
                             conn.execute(col_sql)
@@ -279,6 +301,7 @@ class RatingsCacheManager:
 
                 data = dict(row)
                 data["rating_sources"] = _parse_rating_sources(data.get("rating_sources"))
+                data["rating_updated_at"] = _parse_rating_timestamps(data.get("rating_updated_at"))
                 expires_at_str = data.get("expires_at")
                 if expires_at_str:
                     try:
@@ -344,6 +367,7 @@ class RatingsCacheManager:
                 if row:
                     result = dict(row)
                     result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+                    result["rating_updated_at"] = _parse_rating_timestamps(result.get("rating_updated_at"))
                     return result
                 return None
             
@@ -372,6 +396,7 @@ class RatingsCacheManager:
                 if row:
                     result = dict(row)
                     result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+                    result["rating_updated_at"] = _parse_rating_timestamps(result.get("rating_updated_at"))
                     return result
                 return None
             
@@ -395,6 +420,7 @@ class RatingsCacheManager:
             if row:
                 result = dict(row)
                 result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+                result["rating_updated_at"] = _parse_rating_timestamps(result.get("rating_updated_at"))
                 return result
             return None
 
@@ -454,6 +480,7 @@ class RatingsCacheManager:
                 result = dict(row)
                 result["season_mapping"] = mapping
                 result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+                result["rating_updated_at"] = _parse_rating_timestamps(result.get("rating_updated_at"))
                 return result
             return None
 
@@ -499,6 +526,7 @@ class RatingsCacheManager:
             return None
         result = dict(row)
         result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
+        result["rating_updated_at"] = _parse_rating_timestamps(result.get("rating_updated_at"))
         return result
 
     def get_episode_coordinate_backfill_batch(self, limit=500, after_id=0):
@@ -623,11 +651,16 @@ class RatingsCacheManager:
                 conn = self._get_connection()
                 with conn:
                     existing = conn.execute(
-                        "SELECT rating_sources FROM media_ratings_cache WHERE server_type = ? AND item_id = ?",
+                        "SELECT rating_sources, rating_updated_at FROM media_ratings_cache WHERE server_type = ? AND item_id = ?",
                         (server_type.lower(), str(item_id)),
                     ).fetchone()
                     saved_sources = _parse_rating_sources(existing["rating_sources"] if existing else None)
                     saved_sources.update(provided_sources)
+                    saved_timestamps = _parse_rating_timestamps(existing["rating_updated_at"] if existing else None)
+                    now_iso = now.isoformat()
+                    for key, val in ratings.items():
+                        if key in RATING_SOURCE_KEYS and val is not None:
+                            saved_timestamps[key] = now_iso
                     conn.execute(
                         """
                         INSERT INTO media_ratings_cache (
@@ -635,8 +668,8 @@ class RatingsCacheManager:
                             imdb_id, tmdb_id, imdb_rating, tmdb_rating,
                             rt_critic_rating, rt_audience_rating, trakt_rating,
                             metacritic_rating, letterboxd_rating, mdblist_rating, simkl_rating, mal_rating, simkl_url, source,
-                            cached_at, expires_at, season_number, episode_number, rating_sources
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            cached_at, expires_at, season_number, episode_number, rating_sources, rating_updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
                             title = excluded.title,
                             media_type = excluded.media_type,
@@ -657,6 +690,7 @@ class RatingsCacheManager:
                             season_number = COALESCE(excluded.season_number, media_ratings_cache.season_number),
                             episode_number = COALESCE(excluded.episode_number, media_ratings_cache.episode_number),
                             rating_sources = excluded.rating_sources,
+                            rating_updated_at = excluded.rating_updated_at,
                             source = excluded.source,
                             cached_at = excluded.cached_at,
                             expires_at = excluded.expires_at;
@@ -686,6 +720,7 @@ class RatingsCacheManager:
                             season_number,
                             episode_number,
                             json.dumps(saved_sources, sort_keys=True),
+                            json.dumps(saved_timestamps, sort_keys=True),
                         )
                     )
                 conn.close()
@@ -1081,18 +1116,21 @@ class RatingsCacheManager:
     def apply_imdb_mapping(self, entry_id, imdb_id, rating):
         with self.lock, closing(self._get_connection()) as connection, connection:
             row = connection.execute(
-                "SELECT rating_sources FROM media_ratings_cache WHERE id = ? AND media_type = 'episode'",
+                "SELECT rating_sources, rating_updated_at FROM media_ratings_cache WHERE id = ? AND media_type = 'episode'",
                 (int(entry_id),),
             ).fetchone()
             rating_sources = _parse_rating_sources(row["rating_sources"] if row else None)
+            rating_updated_at = _parse_rating_timestamps(row["rating_updated_at"] if row else None)
             if rating is not None:
                 rating_sources["imdb"] = "imdb_dataset"
+                rating_updated_at["imdb"] = datetime.utcnow().isoformat()
             else:
                 rating_sources.pop("imdb", None)
+                rating_updated_at.pop("imdb", None)
             connection.execute(
-                "UPDATE media_ratings_cache SET imdb_id=?, imdb_rating=?, rating_sources=?, "
+                "UPDATE media_ratings_cache SET imdb_id=?, imdb_rating=?, rating_sources=?, rating_updated_at=?, "
                 "source=CASE WHEN ? IS NOT NULL THEN 'imdb_dataset' ELSE source END WHERE id=? AND media_type='episode'",
-                (imdb_id, rating, json.dumps(rating_sources, sort_keys=True), rating, int(entry_id)),
+                (imdb_id, rating, json.dumps(rating_sources, sort_keys=True), json.dumps(rating_updated_at, sort_keys=True), rating, int(entry_id)),
             )
             if connection.execute("SELECT 1 FROM sqlite_master WHERE name='ratings_refresh_retry'").fetchone():
                 connection.execute("DELETE FROM ratings_refresh_retry WHERE (server_type,item_id) IN (SELECT server_type,item_id FROM media_ratings_cache WHERE id=?)", (int(entry_id),))
