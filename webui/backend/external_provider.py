@@ -167,8 +167,10 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
     router = APIRouter(prefix="/api/provider/v1", tags=["External provider"])
     render_lock = asyncio.Lock()
 
-    def authorize(x_api_key: Optional[str] = Header(default=None), authorization: Optional[str] = Header(default=None)):
-        token = x_api_key or (authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None)
+    def authorize(x_api_key: Optional[str] = Header(default=None), 
+                  authorization: Optional[str] = Header(default=None),
+                  api_key: Optional[str] = Query(default=None)):
+        token = api_key or x_api_key or (authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None)
         if not token or not validate_key(token):
             raise HTTPException(status_code=401, detail="A valid Posterizarr API key is required")
 
