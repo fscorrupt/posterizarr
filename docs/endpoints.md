@@ -97,11 +97,12 @@ or another configured media server when IDs appear in multiple caches.
 
 Movie and show entries are matched by their cached TMDb or IMDb ID. Episodes
 can be matched by the **series TMDb ID plus `season_number` and
-episode_number`**, or directly by the episode's IMDb ID. Episode coordinates
-are now persisted in the ratings cache when ratings are refreshed; existing
-rows need a ratings refresh before they can be found by series ID and
-coordinates. Season entries
-require `season_number` and can be found by TVDB series ID, or by TMDb/IMDb ID
+`episode_number`**, or directly by the episode's IMDb ID. Episode coordinates
+are persisted during ratings refreshes. On startup, a background migration
+fills missing coordinates for existing Plex, Jellyfin, and Emby cache rows
+using only media-server metadata; it does not refresh ratings or change cache
+expiry. Season entries require `season_number` and can be found by TVDB series
+ID, or by TMDb/IMDb ID
 when a matching cached show entry and season mapping exist. Season ratings are
 available for anime seasons already mapped to SIMKL; the cached row may include
 SIMKL and MAL scores. A cache miss or expired entry returns `404`.

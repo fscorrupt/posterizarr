@@ -417,6 +417,43 @@ class RatingsCacheManager:
         result["rating_sources"] = _parse_rating_sources(result.get("rating_sources"))
         return result
 
+    def get_episode_coordinate_backfill_batch(self, limit=500, after_id=0):
+        with self.lock, closing(self._get_connection()) as connection:
+            rows = connection.execute(
+                "SELECT id, server_type, item_id, tmdb_id, imdb_id FROM media_ratings_cache "
+                "WHERE media_type = 'episode' AND (season_number IS NULL OR episode_number IS NULL) "
+                "AND LOWER(server_type) IN ('plex', 'jellyfin', 'emby') AND id > ? "
+                "ORDER BY id LIMIT ?",
+                (int(after_id), max(1, min(int(limit), 2000))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def count_episodes_missing_coordinates(self):
+        with self.lock, closing(self._get_connection()) as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM media_ratings_cache WHERE media_type = 'episode' "
+                "AND (season_number IS NULL OR episode_number IS NULL) "
+                "AND LOWER(server_type) IN ('plex', 'jellyfin', 'emby')"
+            ).fetchone()
+        return int(row[0])
+
+    def save_episode_coordinates(self, server_type, item_id, season_number, episode_number):
+        try:
+            season_number, episode_number = int(season_number), int(episode_number)
+            if season_number < 0 or episode_number < 1:
+                return False
+        except (TypeError, ValueError):
+            return False
+        with self.lock, closing(self._get_connection()) as connection, connection:
+            cursor = connection.execute(
+                "UPDATE media_ratings_cache SET season_number = COALESCE(season_number, ?), "
+                "episode_number = COALESCE(episode_number, ?) "
+                "WHERE server_type = ? AND item_id = ? AND media_type = 'episode' "
+                "AND (season_number IS NULL OR episode_number IS NULL)",
+                (season_number, episode_number, str(server_type).lower(), str(item_id)),
+            )
+            return cursor.rowcount > 0
+
     def get_season_mapping(self, server_type, item_id):
         with self.lock, closing(self._get_connection()) as connection:
             row = connection.execute(

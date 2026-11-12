@@ -57,6 +57,7 @@ class RatingsRefreshService:
         self.season_parent_metadata = {}
         self.season_catalog_cache = {}
         self.deleted_item_cleanup = None
+        self.episode_coordinate_backfill_task = None
 
     def set_deleted_item_cleanup(self, callback):
         self.deleted_item_cleanup = callback
@@ -487,6 +488,97 @@ class RatingsRefreshService:
             rating_context=rating_context,
         )
 
+    async def backfill_episode_coordinates(self, credentials, batch_size=500):
+        """Populate missing episode coordinates from media-server metadata only."""
+        after_id = 0
+        updated = 0
+        attempted = 0
+        failed = 0
+        semaphore = asyncio.Semaphore(8)
+
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            while True:
+                rows = await asyncio.to_thread(self.cache.get_episode_coordinate_backfill_batch, batch_size, after_id)
+                if not rows:
+                    break
+                after_id = rows[-1]["id"]
+
+                async def backfill_row(row):
+                    nonlocal attempted, failed
+                    async with semaphore:
+                        server_type = str(row["server_type"]).lower()
+                        config = credentials.get(server_type) or {}
+                        if not config.get("enabled") or not config.get("url"):
+                            failed += 1
+                            return False
+                        try:
+                            if server_type == "plex":
+                                response = await client.get(
+                                    f"{config['url'].rstrip('/')}/library/metadata/{row['item_id']}",
+                                    headers={"X-Plex-Token": config.get("token") or "", "Accept": "application/xml"},
+                                )
+                                if response.status_code != 200:
+                                    failed += 1
+                                    return False
+                                root = fromstring(response.content)
+                                node = root if root.tag == "Video" else root.find(".//Video")
+                                if (node is None or node.get("type") != "episode"
+                                        or str(node.get("ratingKey")) != str(row["item_id"])):
+                                    failed += 1
+                                    return False
+                                season_number, episode_number = node.get("parentIndex"), node.get("index")
+                            else:
+                                response = await client.get(
+                                    f"{config['url'].rstrip('/')}/Items/{row['item_id']}",
+                                    headers={"X-Emby-Token": config.get("api_key") or ""},
+                                    params={"Fields": "IndexNumber,ParentIndexNumber"},
+                                )
+                                if response.status_code != 200:
+                                    failed += 1
+                                    return False
+                                item = response.json()
+                                if item.get("Type") != "Episode" or str(item.get("Id")) != str(row["item_id"]):
+                                    failed += 1
+                                    return False
+                                season_number = item.get("ParentIndexNumber")
+                                episode_number = item.get("IndexNumber")
+                            attempted += 1
+                            saved = await asyncio.to_thread(
+                                self.cache.save_episode_coordinates, server_type, row["item_id"],
+                                season_number, episode_number,
+                            )
+                            if not saved:
+                                failed += 1
+                            return saved
+                        except Exception:
+                            failed += 1
+                            return False
+
+                results = await asyncio.gather(*(backfill_row(row) for row in rows))
+                updated += sum(results)
+
+        remaining = await asyncio.to_thread(self.cache.count_episodes_missing_coordinates)
+        return {"updated": updated, "attempted": attempted, "failed": failed, "remaining": remaining}
+
+    async def _backfill_episode_coordinates_until_complete(self, config_path):
+        from overlay_sync_service import get_server_credentials
+
+        while True:
+            try:
+                credentials = await asyncio.to_thread(get_server_credentials, config_path)
+                result = await self.backfill_episode_coordinates(credentials)
+                logger.info(
+                    "[RatingsRefresh] Episode coordinate backfill: updated=%s attempted=%s failed=%s remaining=%s",
+                    result["updated"], result["attempted"], result["failed"], result["remaining"],
+                )
+                if result["remaining"] == 0:
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.exception("[RatingsRefresh] Episode coordinate backfill failed (%s)", type(error).__name__)
+            await asyncio.sleep(3600)
+
     async def _run(self, credentials, settings, entry_id, state):
         try:
             self.provider_run_state = RatingsProviderRunState()
@@ -573,6 +665,10 @@ class RatingsRefreshService:
     def start_periodic(self, config_path):
         if self.periodic_task is None or self.periodic_task.done():
             self.periodic_task = asyncio.create_task(self._periodic(config_path))
+        if self.episode_coordinate_backfill_task is None or self.episode_coordinate_backfill_task.done():
+            self.episode_coordinate_backfill_task = asyncio.create_task(
+                self._backfill_episode_coordinates_until_complete(config_path)
+            )
 
     async def _periodic(self, config_path):
         from dynamic_overlays_service import get_dynamic_overlays_settings
@@ -610,7 +706,7 @@ class RatingsRefreshService:
             await asyncio.sleep(60)
 
     async def stop(self):
-        for task in (self.periodic_task, self.task):
+        for task in (self.periodic_task, self.episode_coordinate_backfill_task, self.task):
             if task is not None and not task.done():
                 task.cancel()
                 try:
