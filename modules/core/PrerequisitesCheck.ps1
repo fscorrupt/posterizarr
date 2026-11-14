@@ -348,13 +348,19 @@ if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby
                 }
             }
         }
-        $checkFanart = $activeProviders -contains 'FANART'
-        $checkTMDB   = $activeProviders -contains 'TMDB'
-        $checkTVDB   = $activeProviders -contains 'TVDB'
+        $upperActiveProviders = @($activeProviders | ForEach-Object { "$_".ToUpper() })
+        $checkFanart = $upperActiveProviders -contains 'FANART'
+        $checkTMDB   = $upperActiveProviders -contains 'TMDB'
+        $checkTVDB   = $upperActiveProviders -contains 'TVDB'
     } else {
-        $checkFanart = $true
-        $checkTMDB   = $true
-        $checkTVDB   = $true
+        # In Simple mode, only validate providers that have credentials supplied or are the chosen favorite provider
+        $hasFanart = ($null -ne $global:FanartTvAPIKey -and $global:FanartTvAPIKey -ne '' -and $global:FanartTvAPIKey -ne 'FANARTAPIKEY')
+        $hasTMDB   = ($null -ne $global:tmdbtoken -and $global:tmdbtoken -ne '' -and $global:tmdbtoken -ne 'TMDBTOKEN')
+        $hasTVDB   = ($null -ne $global:tvdbapi -and $global:tvdbapi -ne '' -and $global:tvdbapi -ne 'TVDBAPIKEY')
+
+        $checkFanart = $hasFanart -or ($global:FavProvider -eq 'FANART')
+        $checkTMDB   = $hasTMDB -or ($global:FavProvider -eq 'TMDB')
+        $checkTVDB   = $hasTVDB -or ($global:FavProvider -eq 'TVDB')
     }
 
     Write-Entry -Message "Starting Provider Validation..." -Path $global:configLogging -Color White -log Info

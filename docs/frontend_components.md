@@ -37,7 +37,7 @@ The frontend follows a component-based architecture located entirely within `web
 
 
 - **`ConfigEditor.jsx`**: A dynamic form component for editing the `config.json`. It fetches tooltips from the backend and handles schema validation.
-- **`OnboardingModal.jsx`**: The comprehensive first-run setup wizard that guides users through configuring media servers, schedules, libraries, and notifications.
+- **`OnboardingModal.jsx`**: The comprehensive first-run setup wizard that guides users through configuring media servers, artwork providers (with optional TVDb/Fanart credentials and live provider activation), schedules, libraries, and notifications.
 - **`RunModes.jsx`**: Interface for selecting and triggering the various Posterizarr PowerShell modes (Normal, Backup, Sync, etc.).
 - **`SchedulerSettings.jsx`**: UI for managing cron jobs and automated schedules, supporting standard PowerShell execution modes as well as lightweight Python-based **Plex Sync** jobs with granular library selection and asset type toggles (collections, posters, seasons, title cards, backgrounds).
 - **`Blueprints.jsx`**: Interface for managing layout blueprints and recipes.

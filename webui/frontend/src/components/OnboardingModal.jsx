@@ -135,6 +135,7 @@ const runModes = [
   const [logoExifCheck, setLogoExifCheck] = useState(false);
   const [logoRevert, setLogoRevert] = useState(false);
   const [notificationType, setNotificationType] = useState('none'); // 'none', 'discord', 'apprise'
+  const [favProvider, setFavProvider] = useState("TMDB");
 
   const [plexValidated, setPlexValidated] = useState(false);
   const [jellyfinValidated, setJellyfinValidated] = useState(false);
@@ -188,6 +189,11 @@ const runModes = [
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const hasTmdb = Boolean(config.tmdbtoken?.trim());
+  const hasTvdb = Boolean(config.tvdbapi?.trim());
+  const hasFanart = Boolean(config.FanartTvAPIKey?.trim());
+  const hasAnyMetadataProvider = hasTmdb || hasTvdb;
+
   useEffect(() => {
     document.body.style.overflow = "hidden";
 
@@ -219,6 +225,11 @@ const runModes = [
 
             if (newConfig.Discord) setNotificationType('discord');
             else if (newConfig.AppriseUrl) setNotificationType('apprise');
+
+            const initialFav = (newConfig.FavProvider || newConfig.ApiPart?.FavProvider || "TMDB").toUpperCase();
+            if (initialFav === "TVDB" || initialFav === "TMDB") {
+              setFavProvider(initialFav);
+            }
             return newConfig;
           });
         }
@@ -281,6 +292,45 @@ const runModes = [
       // Enforce Uptime Kuma toggle
       if (finalConfig.UseUptimeKuma !== "true") {
           finalConfig.UptimeKumaUrl = "";
+      }
+
+      // Configure Active Providers based on entered credentials
+      const finishHasTmdb = Boolean(finalConfig.tmdbtoken?.trim());
+      const finishHasTvdb = Boolean(finalConfig.tvdbapi?.trim());
+      const finishHasFanart = Boolean(finalConfig.FanartTvAPIKey?.trim());
+
+      const chosenPrimary = (finishHasTvdb && !finishHasTmdb)
+        ? "TVDB"
+        : (finishHasTmdb && !finishHasTvdb)
+          ? "TMDB"
+          : (favProvider || "TMDB");
+
+      const activeProviders = [];
+      if (chosenPrimary === "TVDB") {
+        if (finishHasTvdb) activeProviders.push("TVDB");
+        if (finishHasTmdb) activeProviders.push("TMDB");
+      } else {
+        if (finishHasTmdb) activeProviders.push("TMDB");
+        if (finishHasTvdb) activeProviders.push("TVDB");
+      }
+      if (finishHasFanart) {
+        activeProviders.push("FANART");
+      }
+      // Always include local server as fallback
+      activeProviders.push("PLEX");
+
+      finalConfig.FavProvider = chosenPrimary;
+      finalConfig.ProviderPriorityMode = "Global";
+      finalConfig.ProviderOrder = activeProviders;
+      finalConfig.MovieProviderOrder = activeProviders;
+      finalConfig.ShowProviderOrder = activeProviders;
+
+      if (finalConfig.ApiPart && typeof finalConfig.ApiPart === "object") {
+        finalConfig.ApiPart.FavProvider = chosenPrimary;
+        finalConfig.ApiPart.ProviderPriorityMode = "Global";
+        finalConfig.ApiPart.ProviderOrder = activeProviders;
+        finalConfig.ApiPart.MovieProviderOrder = activeProviders;
+        finalConfig.ApiPart.ShowProviderOrder = activeProviders;
       }
 
       // Save config updates
@@ -613,57 +663,176 @@ const runModes = [
       case 2: // API Keys
         return (
           <div className="space-y-4 animate-fade-in flex flex-col h-full">
-            <h3 className="text-xl font-bold text-white mb-1">{t("onboarding.apiKeys")}</h3>
-            <p className="text-sm text-theme-muted mb-4">{t("onboarding.requiredToFetchArtwork")}</p>
+            <div className="shrink-0">
+              <h3 className="text-xl font-bold text-white mb-1">{t("onboarding.apiKeys")}</h3>
+              <p className="text-sm text-theme-muted">{t("onboarding.requiredToFetchArtwork")}</p>
+            </div>
 
             <div className="flex flex-col gap-3 flex-1 justify-center max-w-2xl mx-auto w-full">
-              <div className="p-3 bg-theme-bg/30 rounded-xl flex flex-row items-center gap-4 hover:bg-theme-bg/50 transition-colors">
+              {/* TMDb Card */}
+              <div className={`p-3 rounded-xl flex flex-row items-center gap-4 transition-colors ${hasTmdb ? "bg-theme-bg/50 border border-emerald-500/30" : "bg-theme-bg/30 border border-transparent hover:bg-theme-bg/50"}`}>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-sm font-medium text-white flex items-center">
-                      <img src="/tmdb.png" alt="TMDb" className="w-5 h-5 mr-2 object-contain rounded" /> {t("onboarding.tmdbApiTokenRequired")} <span className="ml-1 text-xs text-theme-primary">(Free)</span>
+                    <label className="text-sm font-medium text-white flex items-center flex-wrap gap-1.5">
+                      <img src="/tmdb.png" alt="TMDb" className="w-5 h-5 mr-1 object-contain rounded" />
+                      <span>{t("onboarding.tmdbApiTokenRequired")}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        {t("onboarding.badgeFreeInstant")}
+                      </span>
+                      {hasTmdb ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> {t("onboarding.badgeActive")}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-theme-muted">
+                          {hasTvdb ? t("onboarding.badgeOptional") : t("onboarding.badgeRequired", "Required (at least one)")}
+                        </span>
+                      )}
                     </label>
-                    <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">{t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
+                    <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">
+                      {t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </div>
                   <ClearableInput value={config.tmdbtoken} onChange={val => handleChange("tmdbtoken", val)} placeholder={t("onboarding.v3ApiKeyV4Token")} isPassword />
+                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">{t("onboarding.tmdbNote")}</p>
                 </div>
-                <div className="mt-6">
+                <div className="mt-2">
                   <ValidateButton type="tmdb" config={config} label={t("onboarding.test")} disabled={!config.tmdbtoken} />
                 </div>
               </div>
 
-              <div className="p-3 bg-theme-bg/30 rounded-xl flex flex-row items-center gap-4 hover:bg-theme-bg/50 transition-colors">
+              {/* TVDb Card */}
+              <div className={`p-3 rounded-xl flex flex-row items-center gap-4 transition-colors ${hasTvdb ? "bg-theme-bg/50 border border-blue-500/30" : "bg-theme-bg/30 border border-transparent hover:bg-theme-bg/50"}`}>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-sm font-medium text-white flex items-center">
-                      <img src="/tvdb.png" alt="TVDb" className="w-5 h-5 mr-2 object-contain rounded bg-white/10 p-0.5" /> {t("onboarding.tvdbApiKeyRequired")} <span className="ml-1 text-xs text-theme-primary">(Free)</span>
+                    <label className="text-sm font-medium text-white flex items-center flex-wrap gap-1.5">
+                      <img src="/tvdb.png" alt="TVDb" className="w-5 h-5 mr-1 object-contain rounded bg-white/10 p-0.5" />
+                      <span>{t("onboarding.tvdbApiKeyRequired")}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                        {t("onboarding.badgeProjectOrPin")}
+                      </span>
+                      {hasTvdb ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> {t("onboarding.badgeActive")}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-theme-muted">
+                          {t("onboarding.badgeOptional")}
+                        </span>
+                      )}
                     </label>
-                    <a href="https://thetvdb.com/api-information" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">{t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
+                    <a href="https://thetvdb.com/api-information" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">
+                      {t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </div>
                   <ClearableInput value={config.tvdbapi} onChange={val => handleChange("tvdbapi", val)} placeholder={t("onboarding.v4ApiKey")} isPassword />
-                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">Free for personal use. Consider subscribing to support their work!</p>
+                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">{t("onboarding.tvdbNote")}</p>
                 </div>
-                <div className="mt-6">
+                <div className="mt-2">
                   <ValidateButton type="tvdb" config={config} label={t("onboarding.test")} disabled={!config.tvdbapi} />
                 </div>
               </div>
 
-              <div className="p-3 bg-theme-bg/30 rounded-xl flex flex-row items-center gap-4 hover:bg-theme-bg/50 transition-colors">
+              {/* Fanart.tv Card */}
+              <div className={`p-3 rounded-xl flex flex-row items-center gap-4 transition-colors ${hasFanart ? "bg-theme-bg/50 border border-purple-500/30" : "bg-theme-bg/30 border border-transparent hover:bg-theme-bg/50"}`}>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-sm font-medium text-white flex items-center">
-                      <img src="/fanart.png" alt="Fanart" className="w-5 h-5 mr-2 object-contain rounded" /> {t("onboarding.fanartTvApiKeyRequired")} <span className="ml-1 text-xs text-theme-primary">(Free)</span>
+                    <label className="text-sm font-medium text-white flex items-center flex-wrap gap-1.5">
+                      <img src="/fanart.png" alt="Fanart" className="w-5 h-5 mr-1 object-contain rounded" />
+                      <span>{t("onboarding.fanartTvApiKeyRequired")}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-medium">
+                        (Free)
+                      </span>
+                      {hasFanart ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> {t("onboarding.badgeActive")}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-theme-muted">
+                          {t("onboarding.badgeOptional")}
+                        </span>
+                      )}
                     </label>
-                    <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">{t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
+                    <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">
+                      {t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </div>
                   <ClearableInput value={config.FanartTvAPIKey} onChange={val => handleChange("FanartTvAPIKey", val)} placeholder={t("onboarding.personalApiKey")} isPassword />
+                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">{t("onboarding.fanartNote")}</p>
                 </div>
-                <div className="mt-6">
+                <div className="mt-2">
                   <ValidateButton type="fanart" config={config} label={t("onboarding.test")} disabled={!config.FanartTvAPIKey} />
                 </div>
+              </div>
+
+              {/* Activated Providers Bar */}
+              <div className="p-3 bg-theme-bg/40 rounded-xl border border-white/5 flex flex-col gap-2 mt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-theme-primary" />
+                    {t("onboarding.activeProviders")}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {hasTmdb && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-medium">
+                        <Check className="w-3 h-3" /> TMDb
+                      </span>
+                    )}
+                    {hasTvdb && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1 font-medium">
+                        <Check className="w-3 h-3" /> TVDb
+                      </span>
+                    )}
+                    {hasFanart && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-medium">
+                        <Check className="w-3 h-3" /> Fanart.tv
+                      </span>
+                    )}
+                    <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-white/80 border border-white/10 flex items-center gap-1">
+                      <Server className="w-3 h-3" /> {t("onboarding.localServerFallback")}
+                    </span>
+                    {!hasTmdb && !hasTvdb && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {t("onboarding.atLeastOneProviderRequired")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Primary Provider Selector when both are present */}
+                {hasTmdb && hasTvdb && (
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+                    <span className="text-theme-muted font-medium">{t("onboarding.primaryProvider")}</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFavProvider("TMDB")}
+                        className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                          favProvider === "TMDB"
+                            ? "bg-theme-primary text-black shadow-sm"
+                            : "bg-white/5 text-theme-muted hover:bg-white/10"
+                        }`}
+                      >
+                        TMDb (Recommended)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFavProvider("TVDB")}
+                        className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                          favProvider === "TVDB"
+                            ? "bg-theme-primary text-black shadow-sm"
+                            : "bg-white/5 text-theme-muted hover:bg-white/10"
+                        }`}
+                      >
+                        TVDb
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-theme-muted">
+                  {t("onboarding.onlyConfiguredProvidersUsed")}
+                </p>
               </div>
             </div>
           </div>
@@ -1087,7 +1256,7 @@ const runModes = [
                   onClick={handleNext}
                   disabled={
                     (currentStep === 1 && !({ plex: plexValidated && plexLibsValid, jellyfin: jellyfinValidated && jellyfinLibsValid, emby: embyValidated && embyLibsValid, silo: siloValidated && siloLibsValid && config.SiloUrl && config.SiloAPIKey }[primaryServer])) ||
-                    (currentStep === 2 && (!config.tmdbtoken || !config.tvdbapi || !config.FanartTvAPIKey))
+                    (currentStep === 2 && !hasAnyMetadataProvider)
                   }
                   className="flex items-center px-5 py-2 bg-theme-primary text-black rounded-lg font-semibold shadow-md shadow-theme-primary/20 hover:bg-theme-accent hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >{t("onboarding.continue")}<ChevronRight className="w-4 h-4 ml-1" />

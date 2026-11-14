@@ -145,10 +145,11 @@ may require adapter updates.
 
     #### ApiPart
 
-    - `tvdbapi`: Your TVDB Project API key.
+    - `tvdbapi`: Your TVDB Project API key (Optional if TMDb is configured).
         - If you are a TVDB subscriber, you can append your PIN to the end of your API key in the format `YourApiKey#YourPin`. (It is important to include a `#` between the API key and the PIN.)
-    - `tmdbtoken`: Your TMDB API Read Access Token.
-    - `FanartTvAPIKey`: Your Fanart personal API key.
+        - Note: In initial setup and movie-only or TMDb-exclusive setups, supplying TVDb is entirely optional.
+    - `tmdbtoken`: Your TMDB API Read Access Token (Free and instant to generate; recommended primary metadata source).
+    - `FanartTvAPIKey`: Your Fanart personal API key (Optional supplementary provider for logos and backgrounds).
     - `PlexToken`: Your Plex token (Leave empty if not applicable).
     - `JellyfinAPIKey`: Your Jellyfin API key. (You can create an API key from inside Jellyfin at Settings > Advanced > Api Keys.)
     - `EmbyAPIKey`: Your Emby API key. (You can create an API key from inside Emby at Settings > Advanced > Api Keys.)

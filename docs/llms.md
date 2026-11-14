@@ -435,7 +435,7 @@ The configuration file `config.json` (modeled by `config.example.json`) contains
 - `basicAuthPassword` (str): Admin password (default: `"posterizarr"`).
 
 ### 2. `ApiPart`
-- `tvdbapi` (str): TVDB API key (supports `APIKEY#PIN` format for subscribers).
+- `tvdbapi` (str): TVDB API key (supports `APIKEY#PIN` format for subscribers; optional if TMDb is provided).
 - `tmdbtoken` (str): TMDB Read Access Bearer Token.
 - `FanartTvAPIKey` (str): Fanart.tv personal API key.
 - `PlexToken` (str): Plex authentication token.

@@ -269,7 +269,7 @@ $global:PosterMinWidth = $config.ApiPart.PosterMinWidth
 $global:PosterMinHeight = $config.ApiPart.PosterMinHeight
 $global:BgTcMinWidth = $config.ApiPart.BgTcMinWidth
 $global:BgTcMinHeight = $config.ApiPart.BgTcMinHeight
-$global:FavProvider = $config.ApiPart.FavProvider.ToUpper()
+$global:FavProvider = if ($config.ApiPart.FavProvider) { $config.ApiPart.FavProvider.ToUpper() } else { "TMDB" }
 $global:ProviderPriorityMode = if ($null -ne $config.ApiPart.ProviderPriorityMode) { $config.ApiPart.ProviderPriorityMode } else { "Simple" }
 
 $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.ApiPart.ProviderOrder } else { @("TMDB", "TVDB", "Fanart", "Plex") }
