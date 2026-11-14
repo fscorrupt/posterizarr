@@ -2196,12 +2196,13 @@ may require adapter updates.</p>
 </ul>
 <h4 id="apipart">ApiPart</h4>
 <ul>
-<li><code>tvdbapi</code>: Your TVDB Project API key.<ul>
+<li><code>tvdbapi</code>: Your TVDB Project API key (Optional if TMDb is configured).<ul>
 <li>If you are a TVDB subscriber, you can append your PIN to the end of your API key in the format <code>YourApiKey#YourPin</code>. (It is important to include a <code>#</code> between the API key and the PIN.)</li>
+<li>Note: In initial setup and movie-only or TMDb-exclusive setups, supplying TVDb is entirely optional.</li>
 </ul>
 </li>
-<li><code>tmdbtoken</code>: Your TMDB API Read Access Token.</li>
-<li><code>FanartTvAPIKey</code>: Your Fanart personal API key.</li>
+<li><code>tmdbtoken</code>: Your TMDB API Read Access Token (Free and instant to generate; recommended primary metadata source).</li>
+<li><code>FanartTvAPIKey</code>: Your Fanart personal API key (Optional supplementary provider for logos and backgrounds).</li>
 <li><code>PlexToken</code>: Your Plex token (Leave empty if not applicable).</li>
 <li><code>JellyfinAPIKey</code>: Your Jellyfin API key. (You can create an API key from inside Jellyfin at Settings &gt; Advanced &gt; Api Keys.)</li>
 <li><code>EmbyAPIKey</code>: Your Emby API key. (You can create an API key from inside Emby at Settings &gt; Advanced &gt; Api Keys.)</li>
