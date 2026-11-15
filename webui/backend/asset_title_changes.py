@@ -52,59 +52,165 @@ def _with_source_safety(job):
     return job
 
 
+def get_enabled_text_media_types(config):
+    """
+    Determine which media types have text overlays enabled in the configuration.
+    If a media type has AddText disabled, title changes on that media type are ignored
+    because no text is burned onto those images.
+    """
+    prereq = config.get("PrerequisitePart") or config
+    poster_part = config.get("PosterOverlayPart") or {}
+    season_part = config.get("SeasonPosterOverlayPart") or {}
+    tc_title_part = config.get("TitleCardTitleTextPart") or {}
+    tc_ep_part = config.get("TitleCardEPTextPart") or {}
+
+    tc_enabled = str(prereq.get("TitleCards", "false")).strip().lower() == "true"
+    tc_text = (
+        str(tc_title_part.get("AddEPTitleText", "false")).strip().lower() == "true" or
+        str(tc_ep_part.get("AddEPText", "false")).strip().lower() == "true"
+    )
+
+    season_enabled = str(prereq.get("SeasonPosters", "false")).strip().lower() == "true"
+    season_text = str(season_part.get("AddText", "false")).strip().lower() == "true"
+    season_override_name = str(
+        season_part.get("OverrideSeasonName") or
+        season_part.get("SeasonPosterOverrideSeasonName") or
+        config.get("SeasonPosterOverrideSeasonName") or
+        config.get("OverrideSeasonName") or
+        "false"
+    ).strip().lower() == "true"
+    # If SeasonPosterOverrideSeasonName is true, Posterizarr overrides the season name with
+    # a static string (e.g. "Season 1") rather than using the media server/metadata season name,
+    # so metadata season title changes do not affect the burned-on text.
+    season_tracks_metadata = season_enabled and season_text and not season_override_name
+
+    poster_enabled = str(prereq.get("Posters", "false")).strip().lower() == "true"
+    poster_text = str(poster_part.get("AddText", "false")).strip().lower() == "true"
+
+    return {
+        "episode": tc_enabled and tc_text,
+        "season": season_tracks_metadata,
+        "movie": poster_enabled and poster_text,
+        "show": poster_enabled and poster_text,
+    }
+
+
 def _record_kind(record):
     kind = str(record.get("Type") or "").strip().casefold()
+    title = str(record.get("Title") or "").strip()
     if kind == "episode":
-        match = re.search(r"\bS(\d+)E(\d+)\b", record["Title"], re.I)
+        match = re.search(r"\bS(\d+)E(\d+)\b", title, re.I)
         return ("episode", int(match[1]), int(match[2])) if match else None
+    if kind == "season":
+        match = re.search(r"\|\s*(?:Season|Staffel|Saison|Stagione|Temporada)?\s*(\d+)", title, re.I)
+        if not match:
+            match = re.search(r"\b(?:S|Season|Staffel)\s*(\d+)\b", title, re.I)
+        return ("season", int(match[1])) if match else None
+    if kind == "movie":
+        return ("movie",)
+    if kind == "show":
+        return ("show",)
     return None
 
 
 def _asset_path(record, kind, assets, library_folders):
-    media_type, season, episode = kind
-    if media_type != "episode":
-        return None
+    media_type = kind[0]
     root = str(record.get("Rootfolder") or "").replace("\\", "/")
     library = str(record.get("LibraryName") or "")
     if not root or not library or Path(root).is_absolute() or ".." in Path(root).parts:
         return None
-    filename = f"S{season:02d}E{episode:02d}"
-    relative = Path(library) / root / f"{filename}.jpg" if library_folders else Path(f"{root}_{filename}.jpg")
-    path = (assets / relative).resolve()
-    if not path.is_relative_to(assets.resolve()) or not path.is_file():
+
+    if media_type == "episode":
+        season, episode = kind[1], kind[2]
+        filename = f"S{season:02d}E{episode:02d}.jpg"
+        relative = Path(library) / root / filename if library_folders else Path(f"{root}_{filename}")
+        path = (assets / relative).resolve()
+        if path.is_relative_to(assets.resolve()) and path.is_file():
+            return path
         return None
-    return path
+
+    if media_type == "season":
+        season = kind[1]
+        filename = f"Season{season:02d}.jpg"
+        relative = Path(library) / root / filename if library_folders else Path(f"{root}_{filename}")
+        path = (assets / relative).resolve()
+        if path.is_relative_to(assets.resolve()) and path.is_file():
+            return path
+        return None
+
+    if media_type in ("movie", "show"):
+        if library_folders:
+            path = (assets / library / root / "poster.jpg").resolve()
+            if path.is_relative_to(assets.resolve()) and path.is_file():
+                return path
+        else:
+            path = (assets / f"{root}.jpg").resolve()
+            if path.is_relative_to(assets.resolve()) and path.is_file():
+                return path
+            alt = (assets / f"{root}_poster.jpg").resolve()
+            if alt.is_relative_to(assets.resolve()) and alt.is_file():
+                return alt
+        return None
+
+    return None
 
 
-def _placeholder(title):
-    return not title.strip() or bool(re.fullmatch(
-        r"(?:episode|folge|épisode|episodio|episódio)\s*#?\s*\d+(?:[.\-]\d+)?|tba|tbd|to be announced|untitled",
-        title.strip(), re.I))
+def _placeholder(title, media_type="episode"):
+    s = str(title or "").strip()
+    if not s:
+        return True
+    if media_type == "episode":
+        return bool(re.fullmatch(
+            r"(?:episode|folge|épisode|episodio|episódio)\s*#?\s*\d+(?:[.\-]\d+)?|tba|tbd|to be announced|untitled",
+            s, re.I))
+    if media_type == "season":
+        return bool(re.fullmatch(r"tba|tbd|to be announced|untitled", s, re.I))
+    return bool(re.fullmatch(r"tba|tbd|to be announced|untitled(?:\s+project)?", s, re.I))
 
 
-def _recorded_episode_title(record):
-    match = re.fullmatch(r"\s*S\d+E\d+\s*\|\s*(.*?)\s*", str(record.get("Title") or ""), re.I)
-    return match[1] if match and match[1] else None
+def _recorded_title(record, kind):
+    media_type = kind[0]
+    title_str = str(record.get("Title") or "").strip()
+    if media_type == "episode":
+        match = re.fullmatch(r"\s*S\d+E\d+\s*\|\s*(.*?)\s*", title_str, re.I)
+        return match[1] if match and match[1] else None
+    if media_type == "season":
+        parts = title_str.split("|", 1)
+        if len(parts) > 1:
+            return parts[1].strip()
+        return f"Season {kind[1]}"
+    if media_type in ("movie", "show"):
+        return title_str or None
+    return None
 
 
-def _same_episode_title(previous, current):
-    if isinstance(previous, str) and isinstance(current, str):
-        return previous.casefold() == current.casefold()
-    return previous == current
+def _same_title(previous, current, media_type="episode"):
+    if previous is None or current is None:
+        return previous == current
+    p = str(previous).strip().casefold()
+    c = str(current).strip().casefold()
+    if p == c:
+        return True
+    if media_type == "season":
+        norm_p = re.sub(r'^(?:season|staffel|saison|stagione|temporada)\s*0*(\d+)$', r'season \1', p)
+        norm_c = re.sub(r'^(?:season|staffel|saison|stagione|temporada)\s*0*(\d+)$', r'season \1', c)
+        if norm_p == norm_c:
+            return True
+    return False
 
 
-def _same_title_snapshot(previous, current):
+def _same_title_snapshot(previous, current, media_type="episode"):
     if previous is None or current is None:
         return False
     previous_values, current_values = json.loads(previous), json.loads(current)
     return len(previous_values) == len(current_values) and all(
-        _same_episode_title(old, new) for old, new in zip(previous_values, current_values))
+        _same_title(old, new, media_type) for old, new in zip(previous_values, current_values))
 
 
 def _unknown_text_block_reason(job):
     if is_media_server_source(job.get("source"), [job.get("server_url")]):
         return "media_server_source"
-    if _placeholder(str(job.get("title") or "")):
+    if _placeholder(str(job.get("title") or ""), job.get("media_type", "episode")):
         return "placeholder"
     try:
         source = urlsplit(str(job.get("source") or "").strip())
@@ -122,7 +228,7 @@ def _can_force_unknown_text(job):
 
 
 def _can_force_media_server_source(job):
-    return job.get("reason") == "media_server_source" and not _placeholder(str(job.get("title") or ""))
+    return job.get("reason") == "media_server_source" and not _placeholder(str(job.get("title") or ""), job.get("media_type", "episode"))
 
 
 def _can_force(job):
@@ -199,7 +305,9 @@ def _dismissal_fingerprint(job):
     return hashlib.sha256(json.dumps(state, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def _candidate_matches_filters(job, status_filter="all", reason_filter="all", review_type="all"):
+def _candidate_matches_filters(job, status_filter="all", reason_filter="all", review_type="all", media_type_filter="all"):
+    if media_type_filter not in ("", "all") and job.get("media_type") != media_type_filter:
+        return False
     if status_filter == "eligible" and job.get("status") != "ready":
         return False
     if status_filter == "blocked" and job.get("status") == "ready":
@@ -218,15 +326,16 @@ def _candidate_matches_filters(job, status_filter="all", reason_filter="all", re
 def _candidate_matches_search(job, search):
     search = str(search or "").strip().casefold()
     return not search or search in " ".join(
-        str(job.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title")
+        str(job.get(key) or "") for key in ("library", "parent_title", "folder", "old_title", "title", "media_type")
     ).casefold()
 
 
 class AssetTitleChanges:
-    def __init__(self, base_dir, assets_dir, library_folders=True):
+    def __init__(self, base_dir, assets_dir, library_folders=True, enabled_types=None):
         self.base_dir = Path(base_dir)
         self.assets = Path(assets_dir)
         self.library_folders = library_folders
+        self.enabled_types = enabled_types or {"episode": True, "season": True, "movie": True, "show": True}
         self.database = self.base_dir / "database" / "overlay_cache.db"
         self.database.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self.database)) as connection, connection:
@@ -248,14 +357,21 @@ class AssetTitleChanges:
         database = self.base_dir / "database" / "imagechoices.db"
         if not database.is_file():
             return []
+        active_types = [t for t, enabled in self.enabled_types.items() if enabled]
+        if not active_types:
+            return []
+        placeholders = ",".join("?" for _ in active_types)
         with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
             connection.row_factory = sqlite3.Row
-            records = [dict(row) for row in connection.execute("SELECT * FROM imagechoices WHERE LOWER(TRIM(Type)) = 'episode' ORDER BY id DESC")]
+            records = [dict(row) for row in connection.execute(
+                f"SELECT * FROM imagechoices WHERE LOWER(TRIM(Type)) IN ({placeholders}) ORDER BY id DESC",
+                [t.lower() for t in active_types]
+            )]
         seen = set()
         result = []
         for record in records:
             kind = _record_kind(record)
-            if not kind:
+            if not kind or not self.enabled_types.get(kind[0]):
                 continue
             path = _asset_path(record, kind, self.assets, self.library_folders)
             if path is None or str(path) in seen:
@@ -268,15 +384,21 @@ class AssetTitleChanges:
         from overlay_sync_service import _overlay_target_provider_ids
 
         server_key = server_type + ":" + hashlib.sha256(server_url.rstrip("/").encode()).hexdigest()
-        items = [item for item in items if item.get("type") == "episode"]
+        items = [item for item in items if self.enabled_types.get(item.get("type"))]
         by_id = {str(item["id"]): item for item in items}
         index = {}
         for item in items:
-            coordinates = (item["library"], item["type"], item.get("season"), item.get("episode"))
+            mtype = item["type"]
+            if mtype == "episode":
+                coord = (item["library"], mtype, item.get("season"), item.get("episode"))
+            elif mtype == "season":
+                coord = (item["library"], mtype, item.get("season"))
+            else:
+                coord = (item["library"], mtype)
             keys = [("root", root) for root in [item.get("root"), *(item.get("roots") or [])] if root]
             keys.extend((provider, str(value)) for provider, value in (item.get("provider_ids") or {}).items())
             for provider, value in keys:
-                index.setdefault((*coordinates, provider, value), {})[str(item["id"])] = item
+                index.setdefault((*coord, provider, value), {})[str(item["id"])] = item
         exclusions = {str(name).casefold() for name in excluded}
         jobs = []
         scan_id = uuid.uuid4().hex
@@ -291,17 +413,31 @@ class AssetTitleChanges:
                 library_name = record.get("LibraryName") or ""
                 if library_name.casefold() in exclusions or (library != "all" and library_name.casefold() != library.casefold()):
                     continue
-                season, episode = kind[1:]
+                media_type = kind[0]
+                if media_type == "episode":
+                    season, episode = kind[1], kind[2]
+                    coord = (library_name, media_type, season, episode)
+                elif media_type == "season":
+                    season, episode = kind[1], None
+                    coord = (library_name, media_type, season)
+                else:
+                    season, episode = None, None
+                    coord = (library_name, media_type)
+
                 baseline = baselines.get(str(path))
                 if baseline:
                     current = by_id.get(baseline[0])
-                    candidates = [current] if current and current["library"] == library_name and current.get("season") == season and current.get("episode") == episode else []
+                    candidates = [current] if current and current["library"] == library_name and (
+                        media_type != "episode" or (current.get("season") == season and current.get("episode") == episode)
+                    ) and (
+                        media_type != "season" or current.get("season") == season
+                    ) else []
                 else:
                     matches = {}
                     root = str(record.get("Rootfolder") or "").replace("\\", "/").rstrip("/").split("/")[-1]
                     keys = [("root", root), *_overlay_target_provider_ids(record).items()]
                     for provider, value in keys:
-                        matches.update(index.get((library_name, "episode", season, episode, provider, value), {}))
+                        matches.update(index.get((*coord, provider, value), {}))
                     candidates = list(matches.values())
                 if len(candidates) != 1:
                     continue
@@ -309,9 +445,9 @@ class AssetTitleChanges:
                 if not str(item["title"]).strip():
                     continue
                 render_title = item["title"]
-                parent_title = item.get("parent_title") or ""
+                parent_title = item.get("parent_title") or (item.get("title") if media_type != "episode" else "")
                 titles = json.dumps([render_title], ensure_ascii=True)
-                recorded_title = _recorded_episode_title(record)
+                recorded_title = _recorded_title(record, kind)
                 applied_titles = baseline[2] if baseline and baseline[2] is not None else json.dumps([recorded_title], ensure_ascii=True)
                 if not baseline:
                     connection.execute("INSERT OR IGNORE INTO asset_title_baselines (server_key, asset_path, item_id, titles, applied_titles) VALUES (?, ?, ?, ?, ?)",
@@ -319,11 +455,11 @@ class AssetTitleChanges:
                 elif baseline[2] is None:
                     connection.execute("UPDATE asset_title_baselines SET applied_titles = ? WHERE server_key = ? AND asset_path = ?",
                                        (applied_titles, server_key, str(path)))
-                if baseline and _same_episode_title(recorded_title, render_title) and str(record.get("TextTruncated")).lower() in ("false", "0"):
+                if baseline and _same_title(recorded_title, render_title, media_type) and str(record.get("TextTruncated")).lower() in ("false", "0"):
                     applied_titles = titles
                     connection.execute("UPDATE asset_title_baselines SET titles = ?, applied_titles = ? WHERE server_key = ? AND asset_path = ?",
                                        (titles, titles, server_key, str(path)))
-                if _same_title_snapshot(applied_titles, titles):
+                if _same_title_snapshot(applied_titles, titles, media_type):
                     continue
                 source = str(record.get("DownloadSource") or "").strip()
                 parsed = urlsplit(source)
@@ -333,7 +469,7 @@ class AssetTitleChanges:
                     reason = "media_server_source"
                 elif not old_title or str(record.get("TextTruncated") or "").lower() == "true":
                     reason = "unknown_text"
-                elif _placeholder(render_title):
+                elif _placeholder(render_title, media_type):
                     reason = "placeholder"
                 elif parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
                     reason = "missing_source"
@@ -343,16 +479,17 @@ class AssetTitleChanges:
                 prior = previous.get(candidate_id, {})
                 if reason == "media_server_source" and prior.get("reason") != reason:
                     logger.warning("[TitleChanges] Cannot recreate %s (%s): the original image was taken from a media server and may contain overlays; a provider original is required.", path.name, library_name)
-                requires_review = prior.get("requires_review", not baseline or _same_title_snapshot(baseline[1], titles))
+                requires_review = prior.get("requires_review", not baseline or _same_title_snapshot(baseline[1], titles, media_type))
+                poster_type = "titlecard" if media_type == "episode" else ("season" if media_type == "season" else "poster")
                 job = {"server_key": server_key, "server_type": server_type,
                              "server_url": server_url.rstrip("/"),
                              "item_id": str(item["id"]), "asset_path": str(path), "titles": titles,
                              "source": source, "library": library_name,
                              "provider_ids": item.get("provider_ids") or {},
                              "source_textless": str(record.get("Language") or "").casefold() == "textless",
-                             "folder": str(record["Rootfolder"]), "media_type": "episode",
+                             "folder": str(record["Rootfolder"]), "media_type": media_type,
                              "parent_id": str(item.get("parent_id") or item["id"]),
-                             "poster_type": "titlecard",
+                             "poster_type": poster_type,
                              "title": render_title, "parent_title": parent_title,
                              "season": season, "episode": episode,
                              "candidate_id": candidate_id, "old_title": old_title,
@@ -360,7 +497,7 @@ class AssetTitleChanges:
                              "status": "ready" if reason is None else "blocked",
                              "checked_at": datetime.now().isoformat(),
                              "preview_path": path.relative_to(self.assets.resolve()).as_posix()}
-                if _same_title_snapshot(prior.get("titles"), titles) and prior.get("source") == source and prior.get("last_error"):
+                if _same_title_snapshot(prior.get("titles"), titles, media_type) and prior.get("source") == source and prior.get("last_error"):
                     job["last_error"] = prior["last_error"]
                 if (candidate_id, _dismissal_fingerprint(job)) in dismissed:
                     continue
@@ -435,20 +572,21 @@ class AssetTitleChanges:
         shutil.rmtree(backup_dir, ignore_errors=True)
         return completed
 
-    def candidates(self, search="", limit=50, offset=0, status_filter="all", reason_filter="all", review_type="all"):
+    def candidates(self, search="", limit=50, offset=0, status_filter="all", reason_filter="all", review_type="all", media_type_filter="all"):
         with closing(sqlite3.connect(self.database)) as connection:
             rows = [_with_source_safety(json.loads(row[0])) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
-        rows = [row for row in rows if not _same_episode_title(row.get("old_title"), row.get("title")) and
-            _candidate_matches_search(row, search) and _candidate_matches_filters(row, status_filter, reason_filter, review_type)]
+        rows = [row for row in rows if not _same_title(row.get("old_title"), row.get("title"), row.get("media_type", "episode")) and
+            _candidate_matches_search(row, search) and _candidate_matches_filters(row, status_filter, reason_filter, review_type, media_type_filter)]
         return {"total": len(rows), "eligible": sum(row["status"] == "ready" for row in rows),
             "force_eligible": sum(row["status"] == "ready" or _can_force(row) for row in rows),
+            "enabled_types": self.enabled_types,
                 "entries": [{**{key: value for key, value in row.items() if key not in ("source", "asset_path", "server_url", "server_key", "titles")},
                              "force_recreatable": _can_force(row),
                              "rebuild_block_reason": _rebuild_block_reason(row)}
                             for row in rows[offset:offset + limit]]}
 
     def candidate_jobs(self, candidate_ids=None, search="", all_eligible=False, force_unknown_text=False,
-                       status_filter="all", reason_filter="all", review_type="all"):
+                       status_filter="all", reason_filter="all", review_type="all", media_type_filter="all"):
         with closing(sqlite3.connect(self.database)) as connection:
             rows = [_with_source_safety(json.loads(row[0])) for row in connection.execute("SELECT payload FROM episode_title_candidates ORDER BY library_name, asset_path")]
         selected = set(candidate_ids or [])
@@ -456,8 +594,8 @@ class AssetTitleChanges:
         for row in rows:
             candidate_selected = row["candidate_id"] in selected
             eligible = row["status"] == "ready" or (force_unknown_text and _can_force(row))
-            if (not eligible or _same_episode_title(row.get("old_title"), row.get("title"))
-                    or not _candidate_matches_filters(row, status_filter, reason_filter, review_type)):
+            if (not eligible or _same_title(row.get("old_title"), row.get("title"), row.get("media_type", "episode"))
+                    or not _candidate_matches_filters(row, status_filter, reason_filter, review_type, media_type_filter)):
                 continue
             if candidate_selected or (all_eligible and _candidate_matches_search(row, search)):
                 forced = bool(force_unknown_text and row["status"] != "ready")
@@ -483,7 +621,7 @@ class AssetTitleChanges:
         eligible = job and (job["status"] == "ready" or forced)
         if eligible and forced and job["reason"] == "media_server_source":
             job = {**job, "force_media_server_source": True}
-        return job if eligible and not _same_episode_title(job.get("old_title"), job.get("title")) else None
+        return job if eligible and not _same_title(job.get("old_title"), job.get("title"), job.get("media_type", "episode")) else None
 
     def acknowledge_replacement(self, asset_path, rendered_title):
         target = Path(asset_path).resolve()
@@ -494,7 +632,7 @@ class AssetTitleChanges:
             rows = connection.execute("SELECT payload FROM episode_title_candidates WHERE asset_path = ?", (str(target),)).fetchall()
             for row in rows:
                 job = json.loads(row[0])
-                if job.get("media_type") != "episode" or not _same_episode_title(job.get("title"), rendered_title):
+                if not _same_title(job.get("title"), rendered_title, job.get("media_type", "episode")):
                     continue
                 connection.execute("UPDATE asset_title_baselines SET titles = ?, applied_titles = ? WHERE server_key = ? AND asset_path = ? AND item_id = ?",
                                    (job["titles"], job["titles"], job["server_key"], job["asset_path"], job["item_id"]))
@@ -523,7 +661,9 @@ async def acknowledge_titlecard_replacement(base_dir, config_path, asset_path, r
         return 0
 
 
-async def fetch_title_items(client, server_type, credentials, library="all"):
+async def fetch_title_items(client, server_type, credentials, library="all", enabled_types=None):
+    if enabled_types is None:
+        enabled_types = {"episode": True, "season": False, "movie": False, "show": False}
     url = credentials["url"].rstrip("/")
     items = []
     if server_type == "plex":
@@ -532,99 +672,207 @@ async def fetch_title_items(client, server_type, credentials, library="all"):
         response.raise_for_status()
         for section in fromstring(response.content).findall("Directory"):
             name = section.get("title", "")
-            if section.get("type") != "show" or (library != "all" and name.casefold() != library.casefold()):
+            sec_type = section.get("type", "")
+            if library != "all" and name.casefold() != library.casefold():
                 continue
             if name.casefold() in {str(value).casefold() for value in credentials.get("excluded_libs", [])}:
                 continue
-            kinds = (2, 4)
-            nodes = []
-            for kind in kinds:
+
+            # Movie Libraries
+            if sec_type == "movie" and enabled_types.get("movie"):
                 start = 0
                 while True:
-                    response = await client.get(url + f"/library/sections/{section.get('key')}/all", headers=headers,
-                                                params={"type": kind, "includeGuids": 1, "X-Plex-Container-Start": start, "X-Plex-Container-Size": 500})
-                    response.raise_for_status()
-                    container = fromstring(response.content)
-                    page = [node for node in container if node.tag in ("Video", "Directory")]
-                    nodes.extend(page)
+                    res = await client.get(url + f"/library/sections/{section.get('key')}/all", headers=headers,
+                                           params={"type": 1, "includeGuids": 1, "X-Plex-Container-Start": start, "X-Plex-Container-Size": 500})
+                    res.raise_for_status()
+                    container = fromstring(res.content)
+                    page = [node for node in container if node.tag == "Video"]
+                    for node in page:
+                        paths = [loc.get("path") for loc in node.findall("Location") if loc.get("path")]
+                        roots = list(dict.fromkeys(p.replace("\\", "/").rstrip("/").split("/")[-1] for p in paths if p.rstrip("/\\")))
+                        identifiers = {guid.get("id", "").split("://")[0]: guid.get("id", "").split("://")[-1] for guid in node.findall("Guid")}
+                        items.append({"id": node.get("ratingKey"), "library": name, "type": "movie",
+                                      "title": node.get("title", ""), "parent_title": node.get("title", ""),
+                                      "parent_id": node.get("ratingKey"),
+                                      "root": roots[0] if roots else node.get("title", ""), "roots": roots,
+                                      "provider_ids": identifiers, "season": None, "episode": None})
                     start += len(page)
                     if not page or start >= int(container.get("totalSize") or container.get("size") or len(page)):
                         break
-            parents = {node.get("ratingKey"): node for node in nodes if node.get("type") == "show"}
-            folder_roots = {}
-            location_limit = asyncio.Semaphore(8)
 
-            async def locate_show(parent_id):
-                parent = parents[parent_id]
-                paths = [location.get("path") for location in parent.findall("Location") if location.get("path")]
-                if not paths:
-                    try:
-                        async with location_limit:
-                            response = await client.get(url + "/library/metadata/" + quote(str(parent_id), safe=""), headers=headers)
-                            response.raise_for_status()
-                        details = fromstring(response.content)
-                        paths = [location.get("path") for show in details.findall("Directory")
-                                 if show.get("ratingKey") == parent_id and show.get("type") == "show"
-                                 for location in show.findall("Location") if location.get("path")]
-                    except httpx.HTTPError:
-                        logger.warning("[TitleChanges] Could not retrieve folder metadata for Plex show %s; retaining identifier matching.", parent_id)
-                folder_roots[parent_id] = list(dict.fromkeys(
-                    path.replace("\\", "/").rstrip("/").split("/")[-1] for path in paths if path.rstrip("/\\")))
+            # TV Show Libraries
+            elif sec_type == "show" and (enabled_types.get("show") or enabled_types.get("season") or enabled_types.get("episode")):
+                kinds = []
+                # Always include kind 2 (Show) if season/episode is needed, to resolve parent shows and folder roots
+                kinds.append(2)
+                if enabled_types.get("season"):
+                    kinds.append(3)
+                if enabled_types.get("episode"):
+                    kinds.append(4)
+                kinds = list(dict.fromkeys(kinds))
 
-            parent_ids = {node.get("grandparentRatingKey") for node in nodes if node.get("type") == "episode"}
-            await asyncio.gather(*(locate_show(parent_id) for parent_id in parent_ids if parent_id in parents))
-            for node in nodes:
-                if node.get("type") != "episode":
-                    continue
-                parent = parents.get(node.get("grandparentRatingKey"))
-                if parent is None:
-                    continue
-                roots = folder_roots.get(parent.get("ratingKey"), [])
-                identifiers = {guid.get("id", "").split("://")[0]: guid.get("id", "").split("://")[-1] for guid in parent.findall("Guid")}
-                items.append({"id": node.get("ratingKey"), "library": name, "type": "episode",
-                              "title": node.get("title", ""), "parent_title": parent.get("title", ""),
-                              "parent_id": parent.get("ratingKey"),
-                              "root": roots[0] if roots else parent.get("title", ""), "roots": roots, "provider_ids": identifiers,
-                              "season": int(node.get("parentIndex")) if node.get("parentIndex") is not None else None,
-                              "episode": int(node.get("index")) if node.get("index") is not None else None})
+                nodes = []
+                for kind in kinds:
+                    start = 0
+                    while True:
+                        res = await client.get(url + f"/library/sections/{section.get('key')}/all", headers=headers,
+                                               params={"type": kind, "includeGuids": 1, "X-Plex-Container-Start": start, "X-Plex-Container-Size": 500})
+                        res.raise_for_status()
+                        container = fromstring(res.content)
+                        page = [node for node in container if node.tag in ("Video", "Directory")]
+                        nodes.extend(page)
+                        start += len(page)
+                        if not page or start >= int(container.get("totalSize") or container.get("size") or len(page)):
+                            break
+
+                parents = {node.get("ratingKey"): node for node in nodes if node.get("type") == "show"}
+                folder_roots = {}
+                location_limit = asyncio.Semaphore(8)
+
+                async def locate_show(parent_id):
+                    parent = parents[parent_id]
+                    paths = [location.get("path") for location in parent.findall("Location") if location.get("path")]
+                    if not paths:
+                        try:
+                            async with location_limit:
+                                r = await client.get(url + "/library/metadata/" + quote(str(parent_id), safe=""), headers=headers)
+                                r.raise_for_status()
+                            details = fromstring(r.content)
+                            paths = [loc.get("path") for show in details.findall("Directory")
+                                     if show.get("ratingKey") == parent_id and show.get("type") == "show"
+                                     for loc in show.findall("Location") if loc.get("path")]
+                        except httpx.HTTPError:
+                            logger.warning("[TitleChanges] Could not retrieve folder metadata for Plex show %s", parent_id)
+                    folder_roots[parent_id] = list(dict.fromkeys(
+                        path.replace("\\", "/").rstrip("/").split("/")[-1] for path in paths if path.rstrip("/\\")))
+
+                parent_ids = {node.get("grandparentRatingKey") for node in nodes if node.get("type") == "episode"}
+                parent_ids.update(node.get("parentRatingKey") for node in nodes if node.get("type") == "season")
+                if enabled_types.get("show"):
+                    parent_ids.update(node.get("ratingKey") for node in nodes if node.get("type") == "show")
+                await asyncio.gather(*(locate_show(parent_id) for parent_id in parent_ids if parent_id in parents))
+
+                for node in nodes:
+                    ntype = node.get("type")
+                    if ntype == "show" and enabled_types.get("show"):
+                        roots = folder_roots.get(node.get("ratingKey"), [])
+                        identifiers = {guid.get("id", "").split("://")[0]: guid.get("id", "").split("://")[-1] for guid in node.findall("Guid")}
+                        items.append({"id": node.get("ratingKey"), "library": name, "type": "show",
+                                      "title": node.get("title", ""), "parent_title": node.get("title", ""),
+                                      "parent_id": node.get("ratingKey"),
+                                      "root": roots[0] if roots else node.get("title", ""), "roots": roots,
+                                      "provider_ids": identifiers, "season": None, "episode": None})
+                    elif ntype == "season" and enabled_types.get("season"):
+                        parent = parents.get(node.get("parentRatingKey"))
+                        if parent is None:
+                            continue
+                        roots = folder_roots.get(parent.get("ratingKey"), [])
+                        identifiers = {guid.get("id", "").split("://")[0]: guid.get("id", "").split("://")[-1] for guid in parent.findall("Guid")}
+                        season_idx = int(node.get("index")) if node.get("index") is not None else None
+                        items.append({"id": node.get("ratingKey"), "library": name, "type": "season",
+                                      "title": node.get("title", ""), "parent_title": parent.get("title", ""),
+                                      "parent_id": parent.get("ratingKey"),
+                                      "root": roots[0] if roots else parent.get("title", ""), "roots": roots,
+                                      "provider_ids": identifiers,
+                                      "season": season_idx, "episode": None})
+                    elif ntype == "episode" and enabled_types.get("episode"):
+                        parent = parents.get(node.get("grandparentRatingKey"))
+                        if parent is None:
+                            continue
+                        roots = folder_roots.get(parent.get("ratingKey"), [])
+                        identifiers = {guid.get("id", "").split("://")[0]: guid.get("id", "").split("://")[-1] for guid in parent.findall("Guid")}
+                        items.append({"id": node.get("ratingKey"), "library": name, "type": "episode",
+                                      "title": node.get("title", ""), "parent_title": parent.get("title", ""),
+                                      "parent_id": parent.get("ratingKey"),
+                                      "root": roots[0] if roots else parent.get("title", ""), "roots": roots,
+                                      "provider_ids": identifiers,
+                                      "season": int(node.get("parentIndex")) if node.get("parentIndex") is not None else None,
+                                      "episode": int(node.get("index")) if node.get("index") is not None else None})
     elif server_type in ("jellyfin", "emby"):
         headers = {"X-Emby-Token": credentials["api_key"]}
         response = await client.get(url + "/Library/VirtualFolders", headers=headers)
         response.raise_for_status()
         for folder in response.json():
             name = folder.get("Name", "")
-            if folder.get("CollectionType") == "movies":
-                continue
+            is_movies = folder.get("CollectionType") == "movies"
             if library != "all" and name.casefold() != library.casefold():
                 continue
             if name.casefold() in {str(value).casefold() for value in credentials.get("excluded_libs", [])}:
                 continue
-            rows = []
-            while True:
-                response = await client.get(url + "/Items", headers=headers, params={
-                    "ParentId": folder.get("ItemId") or folder["Id"], "Recursive": "true",
-                    "IncludeItemTypes": "Series,Episode", "Fields": "Path,ProviderIds",
-                    "StartIndex": len(rows), "Limit": 500})
-                response.raise_for_status()
-                body = response.json()
-                page = body.get("Items", [])
-                rows.extend(page)
-                if not page or len(rows) >= body.get("TotalRecordCount", len(rows)):
-                    break
-            parents = {row["Id"]: row for row in rows if row.get("Type") == "Series"}
-            for row in rows:
-                if row.get("Type") != "Episode":
-                    continue
-                parent = parents.get(row.get("SeriesId"))
-                if parent is None:
-                    continue
-                path = str(parent.get("Path") or "").replace("\\", "/")
-                root = Path(path).name
-                items.append({"id": row["Id"], "library": name, "type": "episode", "title": row.get("Name", ""),
-                              "root": root or parent.get("Name", ""), "parent_title": parent.get("Name", ""),
-                              "parent_id": parent.get("Id"),
-                              "provider_ids": {key.casefold(): value for key, value in (parent.get("ProviderIds") or {}).items()},
-                              "season": row.get("ParentIndexNumber"), "episode": row.get("IndexNumber")})
+
+            if is_movies and enabled_types.get("movie"):
+                rows = []
+                while True:
+                    res = await client.get(url + "/Items", headers=headers, params={
+                        "ParentId": folder.get("ItemId") or folder["Id"], "Recursive": "true",
+                        "IncludeItemTypes": "Movie", "Fields": "Path,ProviderIds",
+                        "StartIndex": len(rows), "Limit": 500})
+                    res.raise_for_status()
+                    body = res.json()
+                    page = body.get("Items", [])
+                    rows.extend(page)
+                    if not page or len(rows) >= body.get("TotalRecordCount", len(rows)):
+                        break
+                for row in rows:
+                    path = str(row.get("Path") or "").replace("\\", "/")
+                    root = Path(path).parent.name if Path(path).is_file() else Path(path).name
+                    items.append({"id": row["Id"], "library": name, "type": "movie", "title": row.get("Name", ""),
+                                  "root": root or row.get("Name", ""), "parent_title": row.get("Name", ""),
+                                  "parent_id": row.get("Id"),
+                                  "provider_ids": {k.casefold(): v for k, v in (row.get("ProviderIds") or {}).items()},
+                                  "season": None, "episode": None})
+
+            elif not is_movies and (enabled_types.get("show") or enabled_types.get("season") or enabled_types.get("episode")):
+                req_types = ["Series"]
+                if enabled_types.get("season"):
+                    req_types.append("Season")
+                if enabled_types.get("episode"):
+                    req_types.append("Episode")
+                rows = []
+                while True:
+                    res = await client.get(url + "/Items", headers=headers, params={
+                        "ParentId": folder.get("ItemId") or folder["Id"], "Recursive": "true",
+                        "IncludeItemTypes": ",".join(req_types), "Fields": "Path,ProviderIds",
+                        "StartIndex": len(rows), "Limit": 500})
+                    res.raise_for_status()
+                    body = res.json()
+                    page = body.get("Items", [])
+                    rows.extend(page)
+                    if not page or len(rows) >= body.get("TotalRecordCount", len(rows)):
+                        break
+                parents = {row["Id"]: row for row in rows if row.get("Type") == "Series"}
+                for row in rows:
+                    row_type = row.get("Type")
+                    if row_type == "Series" and enabled_types.get("show"):
+                        path = str(row.get("Path") or "").replace("\\", "/")
+                        root = Path(path).name
+                        items.append({"id": row["Id"], "library": name, "type": "show", "title": row.get("Name", ""),
+                                      "root": root or row.get("Name", ""), "parent_title": row.get("Name", ""),
+                                      "parent_id": row.get("Id"),
+                                      "provider_ids": {k.casefold(): v for k, v in (row.get("ProviderIds") or {}).items()},
+                                      "season": None, "episode": None})
+                    elif row_type == "Season" and enabled_types.get("season"):
+                        parent = parents.get(row.get("SeriesId"))
+                        if parent is None:
+                            continue
+                        path = str(parent.get("Path") or "").replace("\\", "/")
+                        root = Path(path).name
+                        items.append({"id": row["Id"], "library": name, "type": "season", "title": row.get("Name", ""),
+                                      "root": root or parent.get("Name", ""), "parent_title": parent.get("Name", ""),
+                                      "parent_id": parent.get("Id"),
+                                      "provider_ids": {k.casefold(): v for k, v in (parent.get("ProviderIds") or {}).items()},
+                                      "season": row.get("IndexNumber"), "episode": None})
+                    elif row_type == "Episode" and enabled_types.get("episode"):
+                        parent = parents.get(row.get("SeriesId"))
+                        if parent is None:
+                            continue
+                        path = str(parent.get("Path") or "").replace("\\", "/")
+                        root = Path(path).name
+                        items.append({"id": row["Id"], "library": name, "type": "episode", "title": row.get("Name", ""),
+                                      "root": root or parent.get("Name", ""), "parent_title": parent.get("Name", ""),
+                                      "parent_id": parent.get("Id"),
+                                      "provider_ids": {k.casefold(): v for k, v in (parent.get("ProviderIds") or {}).items()},
+                                      "season": row.get("ParentIndexNumber"), "episode": row.get("IndexNumber")})
     return items
 
 
@@ -656,21 +904,20 @@ async def queued_episode_title_is_current(job, config_path):
             response = await client.get(f"{server['url']}/library/metadata/{quote(job['item_id'], safe='')}",
                                         headers={"X-Plex-Token": server["token"], "Accept": "application/xml"})
             response.raise_for_status()
-            item = fromstring(response.content).find("Video")
-            if item is None or item.get("type") != "episode" or str(item.get("ratingKey")) != job["item_id"]:
+            content = fromstring(response.content)
+            item = content.find("Video") or content.find("Directory")
+            if item is None or str(item.get("ratingKey")) != job["item_id"]:
                 return False
-            title, parent, season, episode = item.get("title"), item.get("grandparentRatingKey"), item.get("parentIndex"), item.get("index")
+            title = item.get("title")
         else:
             response = await client.get(f"{server['url']}/Items", params={"Ids": job["item_id"]},
                                         headers={"X-Emby-Token": server["api_key"]})
             response.raise_for_status()
-            items = [item for item in response.json().get("Items", []) if str(item.get("Id")) == job["item_id"] and item.get("Type") == "Episode"]
+            items = [item for item in response.json().get("Items", []) if str(item.get("Id")) == job["item_id"]]
             if len(items) != 1:
                 return False
-            item = items[0]
-            title, parent, season, episode = item.get("Name"), item.get("SeriesId"), item.get("ParentIndexNumber"), item.get("IndexNumber")
-    return (_same_episode_title(str(title or "").strip(), job["title"].strip()) and str(parent) == job["parent_id"]
-            and str(season) == str(job["season"]) and str(episode) == str(job["episode"]))
+            title = items[0].get("Name")
+    return _same_title(str(title or "").strip(), job["title"].strip(), job.get("media_type", "episode"))
 
 
 def create_title_monitor(base_dir, config_path):
@@ -682,7 +929,8 @@ def create_title_monitor(base_dir, config_path):
     if not assets:
         raise ValueError("assets_not_configured")
     library_folders = str(config.get("LibraryFolders", config.get("PrerequisitePart", {}).get("LibraryFolders", "true"))).lower() == "true"
-    return AssetTitleChanges(base_dir, resolve_configured_asset_path(assets), library_folders)
+    enabled_types = get_enabled_text_media_types(config)
+    return AssetTitleChanges(base_dir, resolve_configured_asset_path(assets), library_folders, enabled_types=enabled_types)
 
 
 async def _scan_title_changes(base_dir, config_path):
@@ -702,7 +950,7 @@ async def _scan_title_changes(base_dir, config_path):
             server_key = server_type + ":" + hashlib.sha256(server["url"].rstrip("/").encode()).hexdigest()
             active_keys.append(server_key)
             try:
-                items = await fetch_title_items(client, server_type, server)
+                items = await fetch_title_items(client, server_type, server, enabled_types=monitor.enabled_types)
                 jobs.extend(await asyncio.to_thread(monitor.plan, server_type, server["url"], items, excluded=server.get("excluded_libs", [])))
                 scanned_keys.add(server_key)
             except Exception as error:
@@ -765,7 +1013,8 @@ class EpisodeTitleReview:
             self.operation_lock.release()
 
     async def start_rebuild(self, base_dir, config_path, candidate_ids=None, all_eligible=False, search="",
-                            force_unknown_text=False, status_filter="all", reason_filter="all", review_type="all"):
+                            force_unknown_text=False, status_filter="all", reason_filter="all", review_type="all",
+                            media_type_filter="all"):
         from dynamic_overlays_service import get_dynamic_overlays_settings
 
         settings = get_dynamic_overlays_settings()
@@ -781,7 +1030,8 @@ class EpisodeTitleReview:
         try:
             monitor = await asyncio.to_thread(create_title_monitor, base_dir, config_path)
             selected = await asyncio.to_thread(monitor.candidate_jobs, candidate_ids, search, all_eligible,
-                                               force_unknown_text, status_filter, reason_filter, review_type)
+                                               force_unknown_text, status_filter, reason_filter, review_type,
+                                               media_type_filter)
             if not selected:
                 raise ValueError("nothing_selected")
             self._update(total=len(selected))

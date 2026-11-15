@@ -76,10 +76,12 @@ class QueueManager:
                                     WHERE id = ? AND status = 'pending'""", (existing[0],))
                             item_ids.append(existing[0])
                             continue
-                        parameters = {"episode_title_candidate_id": job["candidate_id"], "asset_type": "titlecard",
+                        asset_type = job.get("poster_type") or ("titlecard" if job.get("media_type") == "episode" else ("season" if job.get("media_type") == "season" else "poster"))
+                        parameters = {"episode_title_candidate_id": job["candidate_id"], "asset_type": asset_type,
+                                      "media_type": job.get("media_type", "episode"),
                                       "title_text": job["title"], "episode_title": job["title"],
                                       "library_name": job["library"], "folder_name": job["folder"],
-                                      "season_number": job["season"], "episode_number": job["episode"],
+                                      "season_number": job.get("season"), "episode_number": job.get("episode"),
                                       "force_unknown_text": job.get("force_unknown_text") is True,
                                       "process_with_overlays": True}
                         cursor = conn.execute("""INSERT INTO queue_items

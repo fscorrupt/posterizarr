@@ -748,7 +748,7 @@ public class AssetPathResolver
     public static string NormalizeCollectionName(string s)
     {
         if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-        var stripped = System.Text.RegularExpressions.Regex.Replace(s, @"[\[\(\{][^\]\)\}]*[\]\)\}]", "");
+        var stripped = System.Text.RegularExpressions.Regex.Replace(s, @"\s*[\[\(\{]boxset[\]\)\}]\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         stripped = stripped.Replace("&", "and");
         var cleaned = System.Text.RegularExpressions.Regex.Replace(stripped, @"[^a-zA-Z0-9]", "");
         return cleaned.ToLowerInvariant();

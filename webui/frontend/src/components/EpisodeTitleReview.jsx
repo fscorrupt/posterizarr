@@ -17,6 +17,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [reasonFilter, setReasonFilter] = useState("all");
   const [reviewType, setReviewType] = useState("all");
+  const [mediaTypeFilter, setMediaTypeFilter] = useState("all");
   const [includeUncertain, setIncludeUncertain] = useState(false);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState(new Set());
@@ -46,7 +47,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
       let delay = 15000;
       try {
         const params = new URLSearchParams({ search: query, limit: String(pageSize), offset: String(page * pageSize),
-          status_filter: statusFilter, reason_filter: reasonFilter, review_type: reviewType });
+          status_filter: statusFilter, reason_filter: reasonFilter, review_type: reviewType, media_type_filter: mediaTypeFilter });
         const response = await fetch(`${endpoint}?${params}`, { signal: controller.signal });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error("request_failed");
@@ -66,7 +67,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     };
     load();
     return () => { active = false; controller.abort(); clearTimeout(timer); };
-  }, [query, page, revision, enabled, dryRun, statusFilter, reasonFilter, reviewType]);
+  }, [query, page, revision, enabled, dryRun, statusFilter, reasonFilter, reviewType, mediaTypeFilter]);
 
   const fastStartedAt = fastStarting?.startedAt || (data.job?.fast_run ? data.job.started_at : null);
   useEffect(() => {
@@ -165,7 +166,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
     return next;
   });
 
-  const activeFilters = { status_filter: statusFilter, reason_filter: reasonFilter, review_type: reviewType };
+  const activeFilters = { status_filter: statusFilter, reason_filter: reasonFilter, review_type: reviewType, media_type_filter: mediaTypeFilter };
   const updateFilter = (setter) => (event) => {
     setter(event.target.value);
     setPage(0);
@@ -273,6 +274,17 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
             <option value="future">{text("future")}</option>
           </select>
         </label>
+        <label className="flex min-h-9 items-center gap-2 rounded-lg border border-theme bg-theme-card px-2 text-xs text-theme-muted">
+          <span>{text("filterMediaType") || "Media Type"}</span>
+          <select aria-label={text("filterMediaType") || "Media Type"} value={mediaTypeFilter} onChange={updateFilter(setMediaTypeFilter)}
+            className="max-w-40 bg-transparent py-2 text-theme-text">
+            <option value="all">{text("filterAll")}</option>
+            <option value="episode">{text("mediaTypes.episode") || "Episodes"}</option>
+            <option value="season">{text("mediaTypes.season") || "Seasons"}</option>
+            <option value="movie">{text("mediaTypes.movie") || "Movies"}</option>
+            <option value="show">{text("mediaTypes.show") || "Shows"}</option>
+          </select>
+        </label>
         <label className="flex min-h-9 items-center gap-2 text-xs text-amber-500">
           <input type="checkbox" checked={includeUncertain} disabled={busy || pending} onChange={event => {
             setIncludeUncertain(event.target.checked); setSelected(new Set());
@@ -305,7 +317,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
               <th className="w-10 p-3"><input ref={selectPageRef} type="checkbox" aria-label={text("selectPage")} checked={allOnPage}
                 disabled={!pageEntries.length || busy || loading || search !== query} onChange={togglePage} /></th>
               <th className="w-28 px-2 py-3">{text("preview")}</th>
-              <th className="w-44 px-2 py-3">{text("episode")}</th>
+              <th className="w-48 px-2 py-3">{text("mediaItem") || text("episode")}</th>
               <th className="px-2 py-3">{text("previous")}</th>
               <th className="px-2 py-3">{text("current")}</th>
               <th className="w-36 px-2 py-3">{text("status")}</th>
@@ -314,7 +326,15 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
           </thead>
           <tbody>
             {data.entries.map(entry => {
-              const coordinates = `S${String(entry.season).padStart(2, "0")}E${String(entry.episode).padStart(2, "0")}`;
+              const mtype = entry.media_type || "episode";
+              const isPoster = ["movie", "show", "season"].includes(mtype) || ["poster", "season"].includes(entry.poster_type);
+              const coordinates = mtype === "season"
+                ? (entry.season != null ? `Season ${entry.season}` : "Season")
+                : mtype === "movie"
+                  ? "Movie"
+                  : mtype === "show"
+                    ? "Show"
+                    : `S${String(entry.season ?? 0).padStart(2, "0")}E${String(entry.episode ?? 0).padStart(2, "0")}`;
               const preview = `/poster_assets/${entry.preview_path.split("/").map(encodeURIComponent).join("/")}`;
               const needsProvider = ["media_server_source", "missing_source", "source_has_text"].includes(entry.reason)
                 || (entry.reason === "unknown_text" && !entry.force_recreatable);
@@ -325,10 +345,20 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                     setSelected(current => { const next = new Set(current); if (checked) next.add(entry.candidate_id); else next.delete(entry.candidate_id); return next; });
                   }} /></td>
                 <td className="px-2 py-3"><a href={preview} target="_blank" rel="noreferrer" title={text("preview")}>
-                  <img src={preview} alt={`${entry.parent_title || entry.folder} ${coordinates}`} loading="lazy" className="aspect-video w-24 rounded object-contain bg-black/10" />
+                  <img src={preview} alt={`${entry.parent_title || entry.folder} ${coordinates}`} loading="lazy" className={`${isPoster ? "aspect-[2/3] w-14 object-cover" : "aspect-video w-24 object-contain"} rounded bg-black/10`} />
                 </a></td>
-                <td className="px-2 py-3 text-theme-text"><p className="break-words font-medium">{entry.parent_title || entry.folder}</p>
-                  <p className="mt-1 font-mono text-theme-muted">{coordinates}</p><p className="mt-1 break-words text-theme-muted">{entry.library} · {entry.server_type}</p></td>
+                <td className="px-2 py-3 text-theme-text">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="rounded px-1.5 py-0.5 text-[10px] uppercase font-mono tracking-wider bg-theme-primary/10 text-theme-primary font-medium">
+                      {text(`mediaTypes.${mtype}`) || mtype}
+                    </span>
+                    {mtype !== "movie" && mtype !== "show" && (
+                      <span className="font-mono text-xs text-theme-muted">{coordinates}</span>
+                    )}
+                  </div>
+                  <p className="mt-1 break-words font-medium">{entry.parent_title || entry.folder}</p>
+                  <p className="mt-1 break-words text-theme-muted">{entry.library} · {entry.server_type}</p>
+                </td>
                 <td className="break-words px-2 py-3 text-theme-muted">{entry.old_title || text("unknown")}</td>
                 <td className="break-words px-2 py-3 font-medium text-theme-text">{entry.title}</td>
                 <td className="px-2 py-3"><p className={entry.status === "ready" ? "text-emerald-500" : "text-amber-500"}>
@@ -339,16 +369,22 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                 <td className="px-2 py-3"><div className="flex items-center gap-1">{needsProvider && <button type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-primary hover:bg-theme-hover disabled:opacity-40"
                   aria-label={text("chooseProviderImage")} title={text("chooseProviderImage")} disabled={!canRebuild}
-                  onClick={() => setReplacementAsset({
-                    path: entry.preview_path, type: "titlecard", filename: `${coordinates}.jpg`, url: preview,
-                    _replacementMetadata: {title: entry.parent_title || entry.folder, show_title: entry.parent_title || entry.folder,
-                      folder_name: entry.folder, library_name: entry.library, asset_type: "titlecard", media_type: "tv",
-                      season_number: entry.season, episode_number: entry.episode},
-                    _dbData: { Type: "Episode", Title: entry.parent_title || entry.folder,
-                      EpisodeTitle: entry.title, Rootfolder: entry.folder, LibraryName: entry.library,
-                      tmdbid: entry.provider_ids?.tmdb || "", tvdbid: entry.provider_ids?.tvdb || "",
-                      imdbid: entry.provider_ids?.imdb || "", _attemptedEpisodeFetch: true }
-                  })}><ImagePlus className="h-4 w-4" /></button>}{(!needsProvider || entry.force_recreatable) && <button type="button" className={`flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-theme-hover disabled:opacity-40 ${entry.force_recreatable ? "border-amber-500/60 text-amber-500" : "border-theme text-theme-text"}`}
+                  onClick={() => {
+                    const assetType = entry.poster_type || (mtype === "episode" ? "titlecard" : (mtype === "season" ? "season" : "poster"));
+                    const mediaType = mtype === "movie" ? "movie" : "tv";
+                    const filename = mtype === "episode" ? `${coordinates}.jpg` : (mtype === "season" ? `Season${String(entry.season ?? 0).padStart(2, "0")}.jpg` : "poster.jpg");
+                    setReplacementAsset({
+                      path: entry.preview_path, type: assetType, filename, url: preview,
+                      _replacementMetadata: {title: entry.parent_title || entry.folder, show_title: entry.parent_title || entry.folder,
+                        folder_name: entry.folder, library_name: entry.library, asset_type: assetType, media_type: mediaType,
+                        season_number: entry.season, episode_number: entry.episode},
+                      _dbData: { Type: mtype === "movie" ? "Movie" : (mtype === "season" ? "Season" : (mtype === "show" ? "Show" : "Episode")),
+                        Title: entry.parent_title || entry.folder,
+                        EpisodeTitle: entry.title, Rootfolder: entry.folder, LibraryName: entry.library,
+                        tmdbid: entry.provider_ids?.tmdb || "", tvdbid: entry.provider_ids?.tvdb || "",
+                        imdbid: entry.provider_ids?.imdb || "", _attemptedEpisodeFetch: true }
+                    });
+                  }}><ImagePlus className="h-4 w-4" /></button>}{(!needsProvider || entry.force_recreatable) && <button type="button" className={`flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-theme-hover disabled:opacity-40 ${entry.force_recreatable ? "border-amber-500/60 text-amber-500" : "border-theme text-theme-text"}`}
                   aria-label={text(entry.force_recreatable ? "fastOne" : "rebuildOne")} title={text(entry.force_recreatable ? "fastOne" : "rebuildOne")}
                   disabled={!canRebuild || (entry.status !== "ready" && !entry.force_recreatable)}
                   onClick={() => setConfirmation(entry.force_recreatable

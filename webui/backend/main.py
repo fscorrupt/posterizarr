@@ -20937,6 +20937,7 @@ class EpisodeTitleRebuildRequest(BaseModel):
     status_filter: Literal["all", "eligible", "blocked"] = "all"
     reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = "all"
     review_type: Literal["all", "historical", "future"] = "all"
+    media_type_filter: Literal["all", "episode", "season", "movie", "show"] = "all"
     confirmed: bool = False
     force_unknown_text: bool = False
 
@@ -20952,6 +20953,7 @@ class EpisodeTitleFastRunRequest(BaseModel):
     status_filter: Literal["all", "eligible", "blocked"] = "all"
     reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = "all"
     review_type: Literal["all", "historical", "future"] = "all"
+    media_type_filter: Literal["all", "episode", "season", "movie", "show"] = "all"
     confirmed: bool = False
     force_unknown_text: bool = False
 
@@ -20972,6 +20974,7 @@ async def get_episode_title_changes(
     status_filter: Literal["all", "eligible", "blocked"] = Query("all"),
     reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = Query("all"),
     review_type: Literal["all", "historical", "future"] = Query("all"),
+    media_type_filter: Literal["all", "episode", "season", "movie", "show"] = Query("all"),
 ):
     from asset_title_changes import create_title_monitor, episode_title_review, title_regeneration_allowed
     from dynamic_overlays_service import get_dynamic_overlays_settings
@@ -20980,7 +20983,7 @@ async def get_episode_title_changes(
     try:
         monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
         result = await asyncio.to_thread(monitor.candidates, search, limit, offset,
-                         status_filter, reason_filter, review_type)
+                         status_filter, reason_filter, review_type, media_type_filter)
     except (ValueError, FileNotFoundError):
         result = {"entries": [], "total": 0, "eligible": 0}
     return {"success": True, **result, "job": episode_title_review.status(),
@@ -21016,6 +21019,7 @@ async def rebuild_episode_title_changes(request: EpisodeTitleRebuildRequest):
             force_unknown_text=request.force_unknown_text,
             status_filter=request.status_filter, reason_filter=request.reason_filter,
             review_type=request.review_type,
+            media_type_filter=request.media_type_filter,
         )
         return {"success": True, "job": job}
     except ValueError as error:
@@ -21042,7 +21046,7 @@ async def queue_episode_title_changes(request: EpisodeTitleRebuildRequest):
     monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
     jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
                                    request.all_eligible, request.force_unknown_text, request.status_filter,
-                                   request.reason_filter, request.review_type)
+                                   request.reason_filter, request.review_type, request.media_type_filter)
     if not jobs:
         raise HTTPException(status_code=400, detail="nothing_selected")
     queue_ids = await asyncio.to_thread(queue_manager.add_episode_title_items, jobs)
@@ -21122,7 +21126,7 @@ async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequ
         monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
         jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
                                       request.all_eligible, request.force_unknown_text, request.status_filter,
-                                      request.reason_filter, request.review_type)
+                                      request.reason_filter, request.review_type, request.media_type_filter)
         if not jobs:
             raise HTTPException(status_code=400, detail="nothing_selected")
         episode_title_review._update(total=len(jobs))

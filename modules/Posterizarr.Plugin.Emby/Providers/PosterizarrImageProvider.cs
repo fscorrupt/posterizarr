@@ -608,7 +608,7 @@ namespace Posterizarr.Plugin.Providers
         public static string NormalizeCollectionName(string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-            var stripped = Regex.Replace(s, @"[\[\(\{][^\]\)\}]*[\]\)\}]", "");
+            var stripped = Regex.Replace(s, @"\s*[\[\(\{]boxset[\]\)\}]\s*", "", RegexOptions.IgnoreCase);
             stripped = stripped.Replace("&", "and");
             var cleaned = Regex.Replace(stripped, @"[^a-zA-Z0-9]", "");
             return cleaned.ToLowerInvariant();
