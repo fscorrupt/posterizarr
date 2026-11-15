@@ -1049,6 +1049,7 @@ function Set-OSTypeAndScriptRoot {
     }
     elseif ($env:APP_DATA) {
         $global:ScriptRoot = $env:APP_DATA
+        $global:OSType = if ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') { 'Docker' } else { [System.Environment]::OSVersion.Platform }
     }
     Else {
         $global:ScriptRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
