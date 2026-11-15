@@ -196,6 +196,10 @@ def _same_title(previous, current, media_type="episode"):
         norm_c = re.sub(r'^(?:season|staffel|saison|stagione|temporada)\s*0*(\d+)$', r'season \1', c)
         if norm_p == norm_c:
             return True
+        norm_p_sp = re.sub(r'^(?:specials?|sp[ée]ciaux|sp[ée]cial|speciali|speciale|especiais|especial)$', 'specials', p)
+        norm_c_sp = re.sub(r'^(?:specials?|sp[ée]ciaux|sp[ée]cial|speciali|speciale|especiais|especial)$', 'specials', c)
+        if norm_p_sp == norm_c_sp and norm_p_sp == 'specials':
+            return True
     return False
 
 
@@ -517,12 +521,20 @@ class AssetTitleChanges:
             if not row:
                 return False
             job = _with_source_safety(json.loads(row[0]))
-            if not job.get("reason"):
-                return False
+            if job.get("titles") and job.get("server_key") and job.get("asset_path"):
+                connection.execute("UPDATE asset_title_baselines SET titles = ?, applied_titles = ? WHERE server_key = ? AND asset_path = ?",
+                                   (job["titles"], job["titles"], job["server_key"], job["asset_path"]))
             connection.execute("INSERT OR IGNORE INTO episode_title_candidate_dismissals (candidate_id, fingerprint, dismissed_at) VALUES (?, ?, ?)",
                                (candidate_id, _dismissal_fingerprint(job), datetime.now().isoformat()))
             connection.execute("DELETE FROM episode_title_candidates WHERE candidate_id = ?", (candidate_id,))
         return True
+
+    def dismiss_candidates(self, candidate_ids):
+        count = 0
+        for cid in candidate_ids:
+            if self.dismiss_candidate(cid):
+                count += 1
+        return count
 
     def detach_candidate_assets(self, jobs):
         backup_root = self.base_dir / "temp"
@@ -996,6 +1008,9 @@ class EpisodeTitleReview:
 
         if not get_dynamic_overlays_settings().get("enabled"):
             raise ValueError("master_off")
+        status = self.status()
+        if status.get("running") and status.get("phase") == "scanning":
+            return status
         self._reserve("scanning")
         self.task = asyncio.create_task(self._run_scan(base_dir, config_path))
         return self.status()

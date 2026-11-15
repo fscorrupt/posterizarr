@@ -392,6 +392,9 @@
       "rebuildOne": "Dieses Episodenbild neu erstellen",
       "chooseProviderImage": "Provider-Bild im Asset Replacer auswählen",
       "dismissCandidate": "Diesen Eintrag dauerhaft aus der Prüfung ausblenden",
+      "dismissSelected": "Ausgewählte ausblenden ({{count}})",
+      "dismissSelectedHint": "Ausgewählte Einträge ausblenden und aktuellen Bildtext akzeptieren",
+      "dismissedCount": "{{count}} Einträge ausgeblendet.",
       "fastOne": "Schnell: Normal Run für diese Episode",
       "forceTitle": "Trotz unbekanntem bisherigen Text neu erstellen?",
       "forceMessage": "Der bisherige Bildtext von {{episode}} ist unbekannt. Neuerstellung aus der gespeicherten textlosen Quelle mit dem aktuellen Titel \"{{title}}\" erzwingen? Das vorhandene Episodenbild wird ersetzt.",
@@ -424,7 +427,7 @@
       "partialScan": "Abgleich nicht vollständig: {{servers}}",
       "phases": { "idle": "Bereit", "scanning": "Titel werden abgeglichen", "rebuilding": "Episodenbilder werden erstellt", "preparing_fast_run": "Lokale Dateien werden vorbereitet", "normal_run": "Normal Run läuft", "finalizing_fast_run": "Ergebnisse werden abgeschlossen", "complete": "Abgeschlossen", "cancelled": "Abgebrochen", "failed": "Fehlgeschlagen" },
       "reasons": { "placeholder": "Noch kein endgültiger Titel", "missing_source": "Keine abrufbare Quelle gespeichert", "source_has_text": "Quelle nicht als textlos bestätigt", "unknown_text": "Bisheriger Bildtext nicht verlässlich bekannt", "media_server_source": "Original stammt vom Medienserver und kann Overlays enthalten. Ein Provider-Original ist erforderlich." },
-      "errors": { "request_failed": "Anfrage fehlgeschlagen. Bitte erneut versuchen.", "busy": "Ein anderer Auftrag ist noch aktiv.", "master_off": "Master Switch ist ausgeschaltet.", "rebuild_disabled": "Dry Run ist aktiv. Neuerstellung und Upload sind gesperrt.", "nothing_selected": "Keine geeigneten Einträge ausgewählt.", "unavailable": "Neuerstellung ist derzeit nicht verfügbar.", "scan_failed": "Titelabgleich fehlgeschlagen. Vorhandene Einträge bleiben erhalten.", "rebuild_failed": "Auftrag fehlgeschlagen. Nicht abgeschlossene Einträge bleiben erhalten.", "fast_run_failed": "Normal Run konnte nicht gestartet oder abgeschlossen werden. Lokale Originale wurden wiederhergestellt.", "not_completed": "Neuerstellung oder Upload nicht abgeschlossen" }
+      "errors": { "request_failed": "Anfrage fehlgeschlagen. Bitte erneut versuchen.", "busy": "Posterizarr oder ein anderer Auftrag ist derzeit aktiv. Bitte kurz warten.", "script_running": "Ein Skript- oder Scheduler-Lauf ist aktiv. Bitte warten, bis dieser beendet ist.", "overlay_sync_running": "Die automatische Overlay-Synchronisation ist gerade aktiv. Bitte kurz warten.", "queue_busy": "Die Warteschlange wird gerade abgearbeitet. Bitte kurz warten.", "cleanup_running": "Plex Image Cleanup läuft gerade.", "scan_already_running": "Ein Titelabgleich läuft bereits.", "master_off": "Master Switch ist ausgeschaltet.", "rebuild_disabled": "Dry Run ist aktiv. Neuerstellung und Upload sind gesperrt.", "nothing_selected": "Keine geeigneten Einträge ausgewählt.", "unavailable": "Neuerstellung ist derzeit nicht verfügbar.", "scan_failed": "Titelabgleich fehlgeschlagen. Vorhandene Einträge bleiben erhalten.", "rebuild_failed": "Auftrag fehlgeschlagen. Nicht abgeschlossene Einträge bleiben erhalten.", "fast_run_failed": "Normal Run konnte nicht gestartet oder abgeschlossen werden. Lokale Originale wurden wiederhergestellt.", "not_completed": "Neuerstellung oder Upload nicht abgeschlossen" }
     }
   },
   "runModes": {

@@ -20958,12 +20958,19 @@ class EpisodeTitleFastRunRequest(BaseModel):
     force_unknown_text: bool = False
 
 
-def ensure_episode_title_review_idle():
+def ensure_episode_title_review_idle(allow_sync: bool = False):
     from overlay_sync_service import is_overlay_sync_running
     from plex_image_cleanup import is_cleanup_running
 
-    if RUNNING_FILE.exists() or queue_processing_lock.locked() or (current_process and current_process.poll() is None) or is_overlay_sync_running() or is_cleanup_running():
-        raise HTTPException(status_code=409, detail="busy")
+    if RUNNING_FILE.exists() or (current_process and current_process.poll() is None):
+        raise HTTPException(status_code=409, detail="script_running")
+    if not allow_sync:
+        if is_overlay_sync_running():
+            raise HTTPException(status_code=409, detail="overlay_sync_running")
+        if queue_processing_lock.locked():
+            raise HTTPException(status_code=409, detail="queue_busy")
+        if is_cleanup_running():
+            raise HTTPException(status_code=409, detail="cleanup_running")
 
 
 @app.get("/api/dynamic-overlays/episode-title-changes")
@@ -20995,7 +21002,7 @@ async def get_episode_title_changes(
 async def scan_episode_title_changes():
     from asset_title_changes import episode_title_review
 
-    ensure_episode_title_review_idle()
+    ensure_episode_title_review_idle(allow_sync=True)
     try:
         job = await episode_title_review.start_scan(BASE_DIR, CONFIG_PATH)
         return {"success": True, "job": job}

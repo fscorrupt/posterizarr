@@ -4410,7 +4410,8 @@ function Invoke-ShowPosterCreation {
                                             Write-Entry -Subtext "Skipping asset move because text is truncated..." -Path $global:configLogging -Color Yellow -log Warning
                                         }
                                         $seasontemp = New-Object psobject
-                                        $seasontemp | Add-Member -MemberType NoteProperty -Name "Title" -Value $($Titletext + " | Season " + $global:SeasonNumber)
+                                        $loggedSeasonTitle = if (-not [string]::IsNullOrWhiteSpace($global:seasonTitle)) { $global:seasonTitle } else { "Season " + $global:SeasonNumber }
+                                        $seasontemp | Add-Member -MemberType NoteProperty -Name "Title" -Value $($Titletext + " | " + $loggedSeasonTitle)
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "Type" -Value 'Season'
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "Rootfolder" -Value $($entry.RootFoldername)
                                         $seasontemp | Add-Member -MemberType NoteProperty -Name "LibraryName" -Value $($entry.'Library Name')
@@ -4446,7 +4447,8 @@ function Invoke-ShowPosterCreation {
                                 $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
 
                                 $seasontemp = New-Object psobject
-                                $seasontemp | Add-Member -MemberType NoteProperty -Name "Title" -Value $($Titletext + " | Season " + $global:SeasonNumber)
+                                $loggedSeasonTitle = if (-not [string]::IsNullOrWhiteSpace($global:seasonTitle)) { $global:seasonTitle } else { "Season " + $global:SeasonNumber }
+                                $seasontemp | Add-Member -MemberType NoteProperty -Name "Title" -Value $($Titletext + " | " + $loggedSeasonTitle)
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "Type" -Value 'Season'
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "Rootfolder" -Value $($entry.RootFoldername)
                                 $seasontemp | Add-Member -MemberType NoteProperty -Name "LibraryName" -Value $($entry.'Library Name')

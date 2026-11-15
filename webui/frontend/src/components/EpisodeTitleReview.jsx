@@ -131,10 +131,20 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
       const response = await fetch(`${endpoint}/${action}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) {
-        const known = ["busy", "master_off", "rebuild_disabled", "nothing_selected", "unavailable", "fast_run_failed"];
-        throw new Error(known.includes(result.detail) ? result.detail : "request_failed");
+        const known = [
+          "busy", "script_running", "overlay_sync_running", "queue_busy",
+          "cleanup_running", "scan_already_running", "master_off",
+          "rebuild_disabled", "nothing_selected", "unavailable", "fast_run_failed"
+        ];
+        if (result?.detail && known.includes(result.detail)) {
+          throw new Error(result.detail);
+        }
+        if (response.status === 409) {
+          throw new Error("busy");
+        }
+        throw new Error("request_failed");
       }
       setData(current => ({ ...current, job: result.job || current.job }));
       if (action === "rebuild") setSelected(new Set());
@@ -147,7 +157,17 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         setNotice(text("fastRunStarted", { count: result.count }));
         setFastStarting(null);
       }
-      if (action === "dismiss") setSelected(current => { const next = new Set(current); next.delete(body.candidate_id); return next; });
+      if (action === "dismiss") {
+        setSelected(current => {
+          const next = new Set(current);
+          if (body.candidate_id) next.delete(body.candidate_id);
+          if (body.candidate_ids) body.candidate_ids.forEach(id => next.delete(id));
+          return next;
+        });
+        if (body.candidate_ids?.length > 1) {
+          setNotice(text("dismissedCount", { count: result.dismissed || body.candidate_ids.length }));
+        }
+      }
       setRevision(value => value + 1);
     } catch (failure) {
       setError(failure.message || "request_failed");
@@ -300,6 +320,11 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         <button type="button" className={actionClass} disabled={!canRebuild || !eligibleCount} onClick={() => setConfirmation({ ...activeFilters, all_eligible: true, search: query, count: eligibleCount, force_unknown_text: includeUncertain })}>
           <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildAll", { count: eligibleCount })}
         </button>
+        <button type="button" className={actionClass} disabled={pending || busy || loading || !selected.size}
+          title={text("dismissSelectedHint")}
+          onClick={() => post("dismiss", { candidate_ids: [...selected] })}>
+          <EyeOff className="h-4 w-4 shrink-0" />{text("dismissSelected", { count: selected.size })}
+        </button>
         <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !selected.size}
           onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain })}>
           <Zap className="h-4 w-4 shrink-0" />{text("fastSelected", { count: selected.size })}
@@ -390,10 +415,10 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                   onClick={() => setConfirmation(entry.force_recreatable
                     ? { fast_normal_run: true, candidate_ids: [entry.candidate_id], count: 1, force_unknown_text: true }
                     : { candidate_ids: [entry.candidate_id], count: 1 })}>
-                  {entry.force_recreatable ? <Zap className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</button>}{entry.reason && <button type="button"
+                  {entry.force_recreatable ? <Zap className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</button>}<button type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-muted hover:bg-theme-hover hover:text-theme-text disabled:opacity-40"
                   aria-label={text("dismissCandidate")} title={text("dismissCandidate")} disabled={pending || busy || loading || search !== query}
-                  onClick={() => post("dismiss", { candidate_id: entry.candidate_id })}><EyeOff className="h-4 w-4" /></button>}</div></td>
+                  onClick={() => post("dismiss", { candidate_id: entry.candidate_id })}><EyeOff className="h-4 w-4" /></button></div></td>
               </tr>;
             })}
             {!data.entries.length && <tr><td colSpan={7} className="p-8 text-center text-theme-muted">{loading ? text("loading") : text("empty")}</td></tr>}

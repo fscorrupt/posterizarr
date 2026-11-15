@@ -392,6 +392,9 @@
       "rebuildOne": "Recreate this episode titlecard",
       "chooseProviderImage": "Choose a provider image in Asset Replacer",
       "dismissCandidate": "Permanently hide this review entry",
+      "dismissSelected": "Hide selected ({{count}})",
+      "dismissSelectedHint": "Hide selected entries and accept current image text",
+      "dismissedCount": "{{count}} entries hidden.",
       "fastOne": "Fast: Normal Run for this episode",
       "forceTitle": "Recreate despite unknown previous text?",
       "forceMessage": "The previous image text for {{episode}} is unknown. Force recreation from the recorded textless source with the current title \"{{title}}\"? The existing titlecard will be replaced.",
@@ -424,7 +427,7 @@
       "partialScan": "Incomplete scan: {{servers}}",
       "phases": { "idle": "Ready", "scanning": "Comparing titles", "rebuilding": "Recreating episode titlecards", "preparing_fast_run": "Preparing local files", "normal_run": "Normal Run in progress", "finalizing_fast_run": "Finalizing results", "complete": "Complete", "cancelled": "Cancelled", "failed": "Failed" },
       "reasons": { "placeholder": "Waiting for a final title", "missing_source": "No downloadable source recorded", "source_has_text": "Source not confirmed textless", "unknown_text": "Previous image text is uncertain", "media_server_source": "Original was taken from a media server and may contain overlays. A provider original is required." },
-      "errors": { "request_failed": "Request failed. Please try again.", "busy": "Another task is still active.", "master_off": "The Master Switch is off.", "rebuild_disabled": "Dry Run is on. Recreation and uploads are blocked.", "nothing_selected": "No eligible entries selected.", "unavailable": "Recreation is currently unavailable.", "scan_failed": "Title scan failed. Existing entries are retained.", "rebuild_failed": "Task failed. Unfinished entries are retained.", "fast_run_failed": "Normal Run could not start or complete. Local originals were restored.", "not_completed": "Recreation or upload did not complete" }
+      "errors": { "request_failed": "Request failed. Please try again.", "busy": "Posterizarr or another task is currently active. Please wait.", "script_running": "A script or scheduled run is currently running. Please wait until it finishes.", "overlay_sync_running": "Overlay synchronization is running. Please wait a moment.", "queue_busy": "Queue is currently processing. Please wait.", "cleanup_running": "Plex Image Cleanup is running.", "scan_already_running": "A title scan is already running.", "master_off": "The Master Switch is off.", "rebuild_disabled": "Dry Run is on. Recreation and uploads are blocked.", "nothing_selected": "No eligible entries selected.", "unavailable": "Recreation is currently unavailable.", "scan_failed": "Title scan failed. Existing entries are retained.", "rebuild_failed": "Task failed. Unfinished entries are retained.", "fast_run_failed": "Normal Run could not start or complete. Local originals were restored.", "not_completed": "Recreation or upload did not complete" }
     }
   },
   "runModes": {
