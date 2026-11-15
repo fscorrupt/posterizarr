@@ -120,6 +120,47 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   const canQueue = enabled && !dryRun && data.can_rebuild && !pending && !loading && search === query;
   const actionClass = "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-theme px-3 py-2 text-xs font-medium text-theme-text hover:bg-theme-hover disabled:opacity-40 disabled:cursor-not-allowed";
 
+  const getConfirmTitle = () => {
+    if (!confirmation) return "";
+    if (confirmation.fast_normal_run) {
+      if (confirmation.count === 1 && confirmation.media_type) {
+        const key = `fastRunTitle_${confirmation.media_type}`;
+        const translated = text(key);
+        if (translated && translated !== key) return translated;
+      }
+      return text("fastRunTitle");
+    }
+    if (confirmation.force_unknown_text) {
+      return text("forceTitle");
+    }
+    if (confirmation.count === 1 && confirmation.media_type) {
+      const key = `confirmTitle_${confirmation.media_type}`;
+      const translated = text(key);
+      if (translated && translated !== key) return translated;
+    }
+    return text("confirmTitle");
+  };
+
+  const getConfirmMessage = () => {
+    if (!confirmation) return "";
+    if (confirmation.fast_normal_run) {
+      return text("fastRunMessage", { count: confirmation.count });
+    }
+    if (confirmation.force_unknown_text && confirmation.episode && !confirmation.media_server) {
+      return text("forceMessage", { episode: confirmation.episode, title: confirmation.title });
+    }
+    if (confirmation.count === 1) {
+      if (confirmation.media_type) {
+        const key = `confirmMessage_${confirmation.media_type}`;
+        const translated = text(key, { title: confirmation.item_title || confirmation.title || "" });
+        if (translated && translated !== key) return translated;
+      }
+      const singleText = text("confirmMessage_1");
+      if (singleText && singleText !== "confirmMessage_1") return singleText;
+    }
+    return text("confirmMessage", { count: confirmation.count || 0 });
+  };
+
   const post = async (action, body = {}) => {
     setPending(true);
     setError(null);
@@ -310,14 +351,14 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
             setIncludeUncertain(event.target.checked); setSelected(new Set());
           }} />{text("includeUncertain")}
         </label>
-        <button type="button" className={actionClass} disabled={!canRebuild || !selected.size} onClick={() => setConfirmation({ candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain })}>
+        <button type="button" className={actionClass} disabled={!canRebuild || !selected.size} onClick={() => setConfirmation({ candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain, media_type: mediaTypeFilter })}>
           <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildSelected", { count: selected.size })}
         </button>
         <button type="button" className={actionClass} disabled={!canQueue || !selected.size} title={text("queueHint")}
-          onClick={() => setConfirmation({ queue: true, candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain })}>
+          onClick={() => setConfirmation({ queue: true, candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain, media_type: mediaTypeFilter })}>
           <List className="h-4 w-4 shrink-0" />{text("queueSelected", { count: selected.size })}
         </button>
-        <button type="button" className={actionClass} disabled={!canRebuild || !eligibleCount} onClick={() => setConfirmation({ ...activeFilters, all_eligible: true, search: query, count: eligibleCount, force_unknown_text: includeUncertain })}>
+        <button type="button" className={actionClass} disabled={!canRebuild || !eligibleCount} onClick={() => setConfirmation({ ...activeFilters, all_eligible: true, search: query, count: eligibleCount, force_unknown_text: includeUncertain, media_type: mediaTypeFilter })}>
           <RotateCcw className="h-4 w-4 shrink-0" />{text("rebuildAll", { count: eligibleCount })}
         </button>
         <button type="button" className={actionClass} disabled={pending || busy || loading || !selected.size}
@@ -326,11 +367,11 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
           <EyeOff className="h-4 w-4 shrink-0" />{text("dismissSelected", { count: selected.size })}
         </button>
         <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !selected.size}
-          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain })}>
+          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, candidate_ids: [...selected], count: selected.size, force_unknown_text: includeUncertain, media_type: mediaTypeFilter })}>
           <Zap className="h-4 w-4 shrink-0" />{text("fastSelected", { count: selected.size })}
         </button>
         <button type="button" className={`${actionClass} border-amber-500/60 text-amber-500`} disabled={!canRebuild || !eligibleCount}
-          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, all_eligible: true, search: query, count: eligibleCount, force_unknown_text: includeUncertain })}>
+          onClick={() => setConfirmation({ ...activeFilters, fast_normal_run: true, all_eligible: true, search: query, count: eligibleCount, force_unknown_text: includeUncertain, media_type: mediaTypeFilter })}>
           <Zap className="h-4 w-4 shrink-0" />{text("fastRun", { count: eligibleCount })}
         </button>
       </div>
@@ -410,11 +451,11 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                         imdbid: entry.provider_ids?.imdb || "", _attemptedEpisodeFetch: true }
                     });
                   }}><ImagePlus className="h-4 w-4" /></button>}{(!needsProvider || entry.force_recreatable) && <button type="button" className={`flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-theme-hover disabled:opacity-40 ${entry.force_recreatable ? "border-amber-500/60 text-amber-500" : "border-theme text-theme-text"}`}
-                  aria-label={text(entry.force_recreatable ? "fastOne" : "rebuildOne")} title={text(entry.force_recreatable ? "fastOne" : "rebuildOne")}
+                  aria-label={entry.force_recreatable ? (text(`fastOne_${mtype}`) || text("fastOne")) : (text(`rebuildOne_${mtype}`) || text("rebuildOne"))} title={entry.force_recreatable ? (text(`fastOne_${mtype}`) || text("fastOne")) : (text(`rebuildOne_${mtype}`) || text("rebuildOne"))}
                   disabled={!canRebuild || (entry.status !== "ready" && !entry.force_recreatable)}
                   onClick={() => setConfirmation(entry.force_recreatable
-                    ? { fast_normal_run: true, candidate_ids: [entry.candidate_id], count: 1, force_unknown_text: true }
-                    : { candidate_ids: [entry.candidate_id], count: 1 })}>
+                    ? { fast_normal_run: true, candidate_ids: [entry.candidate_id], count: 1, force_unknown_text: true, media_type: mtype, item_title: entry.title || entry.parent_title }
+                    : { candidate_ids: [entry.candidate_id], count: 1, media_type: mtype, item_title: entry.title || entry.parent_title })}>
                   {entry.force_recreatable ? <Zap className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</button>}<button type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-theme text-theme-muted hover:bg-theme-hover hover:text-theme-text disabled:opacity-40"
                   aria-label={text("dismissCandidate")} title={text("dismissCandidate")} disabled={pending || busy || loading || search !== query}
@@ -437,11 +478,9 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
         onClose={() => { setReplacementAsset(null); setRevision(value => value + 1); }}
         onSuccess={() => setRevision(value => value + 1)} />}
       <ConfirmDialog isOpen={Boolean(confirmation)} onClose={() => setConfirmation(null)} type="warning"
-        title={text(confirmation?.fast_normal_run ? "fastRunTitle" : confirmation?.force_unknown_text ? "forceTitle" : "confirmTitle")}
+        title={getConfirmTitle()}
         message={[
-          confirmation?.fast_normal_run ? text("fastRunMessage", { count: confirmation.count })
-            : confirmation?.force_unknown_text && confirmation.episode && !confirmation.media_server ? text("forceMessage", { episode: confirmation.episode, title: confirmation.title })
-              : text("confirmMessage", { count: confirmation?.count || 0 }),
+          getConfirmMessage(),
           confirmation?.force_unknown_text && !confirmation?.fast_normal_run && !confirmation.episode ? text("forceBulkMessage", { count: confirmation.count }) : "",
           confirmation?.force_unknown_text && !confirmation?.fast_normal_run && (confirmation.media_server || !confirmation.episode) ? text("forceServerHint") : "",
           confirmation?.queue ? text("queueHint") : ""
