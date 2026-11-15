@@ -578,7 +578,11 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
 
   // Update search fields when metadata changes (when switching assets)
   useEffect(() => {
-    setSearchTitle(metadata.title || "");
+    setSearchTitle(
+      (metadata.asset_type === "season" || metadata.asset_type === "titlecard")
+        ? (metadata.show_title || metadata.title || "")
+        : (metadata.title || "")
+    );
     setSearchYear(metadata.year ? String(metadata.year) : "");
     // Reset previews when switching to a new asset
     setPreviews({ tmdb: [], tvdb: [], fanart: [] });
@@ -1108,7 +1112,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
   useEffect(() => {
     if (metadata.title) {
       let finalTitle = metadata.title;
-      if (metadata.asset_type === "season" && overrideSeasonName) {
+      if (metadata.asset_type === "season" && overrideSeasonName && !initialMetadata?.title && (!metadata.title || metadata.title.match(/^(Season|Staffel)\s*\d+$/i))) {
         if (metadata.season_number !== null && metadata.season_number !== undefined) {
           finalTitle = getSeasonPosterName(metadata.season_number, overrideSeasonName, seasonOverrideText, specialSeasonOverrideText);
         }

@@ -15310,8 +15310,8 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
     else:
         run_logger = logger
 
-    if title_regeneration and request.posterType != "titlecard":
-        raise ValueError("Automatic title regeneration only supports episode titlecards")
+    if title_regeneration and request.posterType not in ("titlecard", "season", "standard"):
+        raise ValueError(f"Automatic title regeneration does not support {request.posterType}")
 
     # Check if already running
     if current_process and current_process.poll() is None:
@@ -15439,7 +15439,9 @@ async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regen
     run_logger.info(f"Manual Run process started (PID: {current_process.pid})")
 
 async def regenerate_asset_title(job, manual=False):
-    if job.get("poster_type") != "titlecard" or job.get("media_type") != "episode":
+    media_type = job.get("media_type", "episode")
+    poster_type = job.get("poster_type", "titlecard")
+    if media_type not in ("episode", "season", "show", "movie"):
         return False
     from asset_title_changes import download_media_server_original, is_media_server_source, logger, title_regeneration_allowed
     from dynamic_overlays_service import get_dynamic_overlays_settings
@@ -15472,12 +15474,34 @@ async def regenerate_asset_title(job, manual=False):
         return False
     previous_stat = target.stat()
     try:
-        request = ManualModeRequest(
-            picturePath=source, titletext=job["title"],
-            folderName=job["folder"], libraryName=job["library"], posterType="titlecard",
-            mediaType="episode", seasonPosterName=str(job["season"]),
-            epTitleName=job["title"], episodeNumber=str(job["episode"]),
-        )
+        if media_type == "episode":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job["title"],
+                folderName=job["folder"], libraryName=job["library"], posterType="titlecard",
+                mediaType="episode", seasonPosterName=str(job.get("season") if job.get("season") is not None else ""),
+                epTitleName=job["title"], episodeNumber=str(job.get("episode") if job.get("episode") is not None else ""),
+            )
+        elif media_type == "season":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job.get("title") or job.get("parent_title"),
+                folderName=job["folder"], libraryName=job["library"], posterType="season",
+                mediaType="tv", seasonPosterName=str(job.get("season") if job.get("season") is not None else ""),
+            )
+        elif media_type == "show":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job["title"],
+                folderName=job["folder"], libraryName=job["library"], posterType="standard",
+                mediaType="show",
+            )
+        elif media_type == "movie":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job["title"],
+                folderName=job["folder"], libraryName=job["library"], posterType="standard",
+                mediaType="movie",
+            )
+        else:
+            return False
+
         with process_lock:
             if RUNNING_FILE.exists() or (current_process and current_process.poll() is None):
                 return False
@@ -15496,12 +15520,23 @@ async def regenerate_asset_title(job, manual=False):
     credentials = get_server_credentials(CONFIG_PATH).get(job["server_type"], {})
     if not credentials.get("enabled") or str(credentials.get("url") or "").rstrip("/") != job["server_url"]:
         return False
+
+    target_media_type = "movie" if media_type == "movie" else "show"
+    target_asset_type = "titlecard" if media_type == "episode" else ("season" if media_type == "season" else "poster")
+    target_item = {
+        "id": job["parent_id"] if media_type == "episode" else job["item_id"],
+        "server_type": job["server_type"],
+        "library_name": job["library"],
+        "media_type": target_media_type,
+        "asset_type": target_asset_type,
+        "season_number": job.get("season"),
+        "episode_number": job.get("episode"),
+        "force_reapply": False,
+    }
     result = await run_overlay_sync_task(
         target_server=job["server_type"], scope="incremental", library=job["library"],
         base_dir=BASE_DIR, config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
-        target_items=[{"id": job["parent_id"], "server_type": job["server_type"], "library_name": job["library"],
-                       "media_type": "show", "asset_type": "titlecard", "season_number": job["season"],
-                       "episode_number": job["episode"], "force_reapply": False}],
+        target_items=[target_item],
     )
     if not result.get("success") or result.get("stopped") or result.get("total_failed", 0):
         return False
@@ -15515,7 +15550,7 @@ async def regenerate_asset_title(job, manual=False):
         with open(rules_path, encoding="utf-8-sig") as rules_file:
             libraries = (yaml.safe_load(rules_file) or {}).get("libraries") or {}
         library_rules = {str(name).lower(): data.get("overlay_files") or data.get("overlays") or [] for name, data in libraries.items() if isinstance(data, dict)}
-        if resolve_library_rules(job["library"], "show", library_rules)[1]:
+        if resolve_library_rules(job["library"], target_media_type, library_rules)[1]:
             logger.warning("[TitleChanges] Configured overlay target was not processed: %s", target.name)
             return False
     content = target.read_bytes()
@@ -15524,7 +15559,7 @@ async def regenerate_asset_title(job, manual=False):
             response = await client.post(f"{credentials['url']}/library/metadata/{quote(job['item_id'], safe='')}/posters",
                                          headers={"X-Plex-Token": credentials["token"], "Content-Type": "image/jpeg"}, content=content)
             response.raise_for_status()
-            await _confirm_plex_titlecard(client, credentials["url"], job["item_id"], credentials["token"], content)
+            await _confirm_plex_titlecard(client, credentials["url"], job["item_id"], credentials["token"], content, artwork_type=target_asset_type)
         else:
             response = await client.post(f"{credentials['url']}/Items/{quote(job['item_id'], safe='')}/Images/Primary",
                                          headers={"X-Emby-Token": credentials["api_key"], "Content-Type": "image/jpeg"}, content=content)

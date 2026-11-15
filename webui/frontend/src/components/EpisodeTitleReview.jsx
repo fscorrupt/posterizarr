@@ -439,13 +439,18 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
                     const assetType = entry.poster_type || (mtype === "episode" ? "titlecard" : (mtype === "season" ? "season" : "poster"));
                     const mediaType = mtype === "movie" ? "movie" : "tv";
                     const filename = mtype === "episode" ? `${coordinates}.jpg` : (mtype === "season" ? `Season${String(entry.season ?? 0).padStart(2, "0")}.jpg` : "poster.jpg");
+                    const showTitle = entry.parent_title || entry.folder;
+                    const seasonTitle = entry.title || (entry.season === 0 ? "Specials" : `Season ${entry.season}`);
+                    const targetTitle = mtype === "season"
+                      ? seasonTitle
+                      : (mtype === "episode" ? showTitle : (entry.title || showTitle));
                     setReplacementAsset({
                       path: entry.preview_path, type: assetType, filename, url: preview,
-                      _replacementMetadata: {title: entry.parent_title || entry.folder, show_title: entry.parent_title || entry.folder,
+                      _replacementMetadata: {title: targetTitle, show_title: showTitle,
                         folder_name: entry.folder, library_name: entry.library, asset_type: assetType, media_type: mediaType,
                         season_number: entry.season, episode_number: entry.episode},
                       _dbData: { Type: mtype === "movie" ? "Movie" : (mtype === "season" ? "Season" : (mtype === "show" ? "Show" : "Episode")),
-                        Title: entry.parent_title || entry.folder,
+                        Title: mtype === "season" ? `${showTitle} | ${seasonTitle}` : (entry.title || showTitle),
                         EpisodeTitle: entry.title, Rootfolder: entry.folder, LibraryName: entry.library,
                         tmdbid: entry.provider_ids?.tmdb || "", tvdbid: entry.provider_ids?.tvdb || "",
                         imdbid: entry.provider_ids?.imdb || "", _attemptedEpisodeFetch: true }
