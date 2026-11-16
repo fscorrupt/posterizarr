@@ -1,8 +1,25 @@
 /**
  * Setup global fetch interceptor to automatically add Basic Auth credentials
  * This patches the native fetch function to include Authorization header
- * when credentials are stored in sessionStorage
+ * for same-origin requests when credentials are stored in sessionStorage or localStorage
  */
+
+function isSameOrigin(input) {
+  try {
+    const urlStr =
+      typeof input === "string"
+        ? input
+        : input instanceof Request
+        ? input.url
+        : input instanceof URL
+        ? input.href
+        : String(input);
+    const targetUrl = new URL(urlStr, window.location.href);
+    return targetUrl.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
 
 export function setupFetchInterceptor() {
   if (window.__fetchInterceptorInstalled) return;
@@ -14,8 +31,8 @@ export function setupFetchInterceptor() {
   window.fetch = function (input, init = {}) {
     const credentials = sessionStorage.getItem("auth_credentials") || localStorage.getItem("auth_credentials");
 
-    // If credentials exist, add Authorization header
-    if (credentials) {
+    // Only add Authorization header if credentials exist and target is same-origin
+    if (credentials && isSameOrigin(input)) {
       if (input instanceof Request) {
         if (!input.headers.has("Authorization")) {
           input.headers.set("Authorization", `Basic ${credentials}`);
@@ -34,7 +51,7 @@ export function setupFetchInterceptor() {
   };
 
   console.log(
-    "Fetch interceptor installed - Auth headers will be added automatically"
+    "Fetch interceptor installed - Auth headers will be added automatically for same-origin requests"
   );
 }
 

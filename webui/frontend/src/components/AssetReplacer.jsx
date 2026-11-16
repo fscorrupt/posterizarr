@@ -2663,8 +2663,10 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTarg
 
   const handleDownload = async (e) => {
     e.stopPropagation();
+    const downloadUrl = preview.original_url || preview.url;
     try {
-      const response = await fetch(preview.original_url || preview.url);
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -2682,7 +2684,20 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTarg
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error("Download failed:", error);
+      console.error("Blob download failed, falling back to direct link:", error);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      const source = preview.source?.toLowerCase() || "image";
+      const lang = preview.language || "";
+      const timestamp = Date.now();
+      const extension =
+        preview.original_url?.split(".").pop()?.split("?")[0] || "jpg";
+      a.download = `${source}_${lang}_${timestamp}.${extension}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   };
 
