@@ -96,8 +96,8 @@
 
                 Write-Entry -Subtext "Fetching Library ID: $($Library.ID) | Start: $searchsize | Total: $totalContentSize" -Path $global:configLogging -Color Cyan -log Debug
 
-                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1, includeStreams=1 and includeElements=Stream populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1&includeElements=Stream" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content

@@ -93,7 +93,7 @@
 
                 # Get Episode
                 $seasonId = $seasonItem.Id
-                $episodes = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?ParentId=$seasonId&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,Settings,Tags,Width,Height,MediaStreams&IncludeItemTypes=Episode" -Headers $global:OtherMediaServerHeaders
+                $episodes = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?ParentId=$seasonId&Recursive=true&Fields=Width,Height,MediaStreams&IncludeItemTypes=Episode" -Headers $global:OtherMediaServerHeaders
                 $episodeItem = $episodes.Items | Where-Object { $_.IndexNumber -eq $episodeIndex }
 
                 if (-not $episodeItem) {

@@ -142,8 +142,8 @@ function Select-SameLocationMatch {
                 $PlexHeaders['X-Plex-Container-Start'] = $searchsize
                 $PlexHeaders['X-Plex-Container-Size'] = '1000'
 
-                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1, includeStreams=1 and includeElements=Stream populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1&includeElements=Stream" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -585,18 +585,52 @@ function Select-SameLocationMatch {
         if ($otherlib.Name -notin $LibstoExclude) {
             if ($otherlib.CollectionType -eq 'movies') {
                 Write-Entry -Subtext "Getting all Itmes from [$($otherlib.Name)] with item id [$($otherlib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
-                $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
-                $OtherAllMovies.Add($Querytemp)
+                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
+                try {
+                    $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $OtherAllMovies.Add($Querytemp)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve movies from [$($otherlib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
             }
             if ($otherlib.CollectionType -eq 'tvshows') {
                 Write-Entry -Subtext "Getting all Itmes from [$($otherlib.Name)] with item id [$($otherlib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags&IncludeItemTypes=Series&CollapseBoxSetItems=false"
-                $allEpisodesquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,Settings,Tags&IncludeItemTypes=Episode&CollapseBoxSetItems=false"
-                $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders
-                $QuerytempEpisodes = Invoke-RestMethod -Method Get -Uri $allEpisodesquery -Headers $global:OtherMediaServerHeaders
-                $OtherAllShows.Add($Querytempshow)
-                $OtherAllEpisodes.Add($QuerytempEpisodes)
+                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags&IncludeItemTypes=Series&CollapseBoxSetItems=false"
+                try {
+                    $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $OtherAllShows.Add($Querytempshow)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve shows from [$($otherlib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
+
+                $episodeLimit = 1000
+                $episodeStartIndex = 0
+                $syncEpisodesList = [System.Collections.Generic.List[object]]::new()
+                $totalEpisodeRecords = $null
+
+                do {
+                    $pagedEpisodesQuery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&IncludeItemTypes=Episode&CollapseBoxSetItems=false&StartIndex=$episodeStartIndex&Limit=$episodeLimit"
+                    try {
+                        $pagedResult = Invoke-RestMethod -Method Get -Uri $pagedEpisodesQuery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    }
+                    catch {
+                        Write-Entry -Message "Failed to retrieve episodes from [$($otherlib.Name)] (StartIndex: $episodeStartIndex): $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        break
+                    }
+
+                    if ($pagedResult -and $pagedResult.Items -and $pagedResult.Items.Count -gt 0) {
+                        $syncEpisodesList.AddRange($pagedResult.Items)
+                        $episodeStartIndex += $pagedResult.Items.Count
+                        $totalEpisodeRecords = $pagedResult.TotalRecordCount
+                    }
+                    else {
+                        break
+                    }
+                } while ($totalEpisodeRecords -and $episodeStartIndex -lt $totalEpisodeRecords)
+
+                $OtherAllEpisodes.Add([PSCustomObject]@{ Items = $syncEpisodesList })
             }
         }
     }

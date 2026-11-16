@@ -128,18 +128,70 @@
             }
             if ($slib.CollectionType -eq 'movies') {
                 Write-Entry -Subtext "Getting all Itmes from [$($slib.Name)] with item id [$($slib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
-                $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
-                $AllMovies.Add($Querytemp)
+                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
+                try {
+                    $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $AllMovies.Add($Querytemp)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve movies from [$($slib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
             }
             if ($slib.CollectionType -eq 'tvshows') {
                 Write-Entry -Subtext "Getting all Itmes from [$($slib.Name)] with item id [$($slib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Series&CollapseBoxSetItems=false"
-                $allEpisodesquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,Settings,Tags,Width,Height,MediaStreams&IncludeItemTypes=Episode&CollapseBoxSetItems=false"
-                $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders
-                $QuerytempEpisodes = Invoke-RestMethod -Method Get -Uri $allEpisodesquery -Headers $global:OtherMediaServerHeaders
-                $AllShows.Add($Querytempshow)
-                $AllEpisodes.Add($QuerytempEpisodes)
+                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Series&CollapseBoxSetItems=false"
+                try {
+                    $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $AllShows.Add($Querytempshow)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve shows from [$($slib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
+
+                $episodeLimit = 1000
+                $episodeStartIndex = 0
+                $libEpisodesList = [System.Collections.Generic.List[object]]::new()
+                $fieldsParam = if ($global:TitleCards -eq 'true') { "&Fields=Width,Height,MediaStreams" } else { "" }
+                $totalEpisodeRecords = $null
+
+                do {
+                    $pagedEpisodesQuery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true$fieldsParam&IncludeItemTypes=Episode&CollapseBoxSetItems=false&StartIndex=$episodeStartIndex&Limit=$episodeLimit"
+                    try {
+                        $pagedResult = Invoke-RestMethod -Method Get -Uri $pagedEpisodesQuery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    }
+                    catch {
+                        Write-Entry -Message "Failed to retrieve episodes from [$($slib.Name)] (StartIndex: $episodeStartIndex): $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        break
+                    }
+
+                    if ($pagedResult -and $pagedResult.Items -and $pagedResult.Items.Count -gt 0) {
+                        foreach ($ep in $pagedResult.Items) {
+                            if ($ep.MediaStreams) {
+                                $vid = $ep.MediaStreams | Where-Object Type -eq 'Video' | Select-Object -First 1
+                                $currentRange = ($UseEmby -eq 'true') ? $vid.ExtendedVideoType : $vid.VideoRangeType
+                                $subTypeDesc = $vid.ExtendedVideoSubTypeDescription
+                                if ($currentRange -and $currentRange -ne 'None') {
+                                    if ($subTypeDesc -match 'Profile.*HDR10' -or $vid.VideoRangeType -match 'HDR10|EL' -or $vid.ExtendedVideoType -match 'HDR10|EL') {
+                                        $currentRange = "DOVIHDR10"
+                                    }
+                                } else {
+                                    $currentRange = "None"
+                                }
+                                $ep | Add-Member -MemberType NoteProperty -Name "ComputedVideoRange" -Value $currentRange -Force
+                                $ep | Add-Member -MemberType NoteProperty -Name "SubTypeDesc" -Value $subTypeDesc -Force
+                                $ep.MediaStreams = $null
+                            }
+                            $libEpisodesList.Add($ep)
+                        }
+                        $episodeStartIndex += $pagedResult.Items.Count
+                        $totalEpisodeRecords = $pagedResult.TotalRecordCount
+                    }
+                    else {
+                        break
+                    }
+                } while ($totalEpisodeRecords -and $episodeStartIndex -lt $totalEpisodeRecords)
+
+                $AllEpisodes.Add([PSCustomObject]@{ Items = $libEpisodesList })
             }
         }
     }
@@ -476,25 +528,37 @@
             $Episodes = ($SeasonEpisodes.IndexNumber -join ',')
             $Thumbs = ($SeasonEpisodes.ImageTags.Primary -join ',')
             $VideoRangesArray = foreach ($ep in $SeasonEpisodes) {
-                $vid = $ep.MediaStreams | Where-Object Type -eq 'Video' | Select-Object -First 1
-
-                # Determine the base HDR string (Emby uses ExtendedVideoType, Jellyfin uses VideoRangeType)
-                $currentRange = ($UseEmby -eq 'true') ? $vid.ExtendedVideoType : $vid.VideoRangeType
-
-                if ($currentRange -and $currentRange -ne 'None') {
-                    Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Video Description: $($currentRange)" -Path $global:configLogging -Color Cyan -log Debug
-                    if ($UseEmby -eq 'true' -and $vid.ExtendedVideoSubTypeDescription -and $vid.ExtendedVideoSubTypeDescription -ne 'None') {
-                        Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Sub Video Description: $($vid.ExtendedVideoSubTypeDescription)" -Path $global:configLogging -Color Cyan -log Debug
+                if ($ep.ComputedVideoRange) {
+                    $currentRange = $ep.ComputedVideoRange
+                    if ($currentRange -ne 'None') {
+                        Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Video Description: $($currentRange)" -Path $global:configLogging -Color Cyan -log Debug
+                        if ($UseEmby -eq 'true' -and $ep.SubTypeDesc -and $ep.SubTypeDesc -ne 'None') {
+                            Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Sub Video Description: $($ep.SubTypeDesc)" -Path $global:configLogging -Color Cyan -log Debug
+                        }
                     }
-                    # Refine for Dolby Vision + HDR10 Hybrid (Profile 7 or 8)
-                    if ($vid.ExtendedVideoSubTypeDescription -match 'Profile.*HDR10' -or $vid.VideoRangeType -match 'HDR10|EL' -or $vid.ExtendedVideoType -match 'HDR10|EL') {
-                        $currentRange = "DOVIHDR10"
-                    }
-
                     $currentRange
                 }
                 else {
-                    "None"
+                    $vid = $ep.MediaStreams | Where-Object Type -eq 'Video' | Select-Object -First 1
+
+                    # Determine the base HDR string (Emby uses ExtendedVideoType, Jellyfin uses VideoRangeType)
+                    $currentRange = ($UseEmby -eq 'true') ? $vid.ExtendedVideoType : $vid.VideoRangeType
+
+                    if ($currentRange -and $currentRange -ne 'None') {
+                        Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Video Description: $($currentRange)" -Path $global:configLogging -Color Cyan -log Debug
+                        if ($UseEmby -eq 'true' -and $vid.ExtendedVideoSubTypeDescription -and $vid.ExtendedVideoSubTypeDescription -ne 'None') {
+                            Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Sub Video Description: $($vid.ExtendedVideoSubTypeDescription)" -Path $global:configLogging -Color Cyan -log Debug
+                        }
+                        # Refine for Dolby Vision + HDR10 Hybrid (Profile 7 or 8)
+                        if ($vid.ExtendedVideoSubTypeDescription -match 'Profile.*HDR10' -or $vid.VideoRangeType -match 'HDR10|EL' -or $vid.ExtendedVideoType -match 'HDR10|EL') {
+                            $currentRange = "DOVIHDR10"
+                        }
+
+                        $currentRange
+                    }
+                    else {
+                        "None"
+                    }
                 }
             }
             $EpisodeVideoRanges = ($VideoRangesArray -join ',')
@@ -658,8 +722,10 @@
     # Export the formatted data to CSV
     $FormattedData | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\OtherMediaServerEpisodeExport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
     $Episodedata = $FormattedData
-    if ($AllEpisodes) {
+    if ($AllEpisodes -and $AllEpisodes.Items.Count -gt 0) {
         Write-Entry -Subtext "Found '$($AllEpisodes.Items.count)' Episodes across $($Episodedata.Count) seasons..." -Path $global:configLogging -Color Cyan -log Info
+    } else {
+        Write-Entry -Subtext "Found '0' Episodes across $($Episodedata.Count) seasons..." -Path $global:configLogging -Color Yellow -log Warn
     }
 
     $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'Series' }
