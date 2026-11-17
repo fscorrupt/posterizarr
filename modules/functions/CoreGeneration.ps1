@@ -3465,15 +3465,11 @@ function Invoke-ShowPosterCreation {
                     $global:PosterWithText = $null
                     $global:ImageMagickError = $null
                     $global:TextlessPoster = $null
-                    if ([string]::IsNullOrWhiteSpace($entry.SeasonNames)) {
-                        $global:seasonNames = @()
-                    } else {
-                        $global:seasonNames = @($entry.SeasonNames -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-                    }
-                    $global:SeasonRatingKeys = if (-not [string]::IsNullOrWhiteSpace($entry.SeasonRatingKeys)) { $entry.SeasonRatingKeys -split ',' } else { @() }
-                    $global:seasonNumbers = if (-not [string]::IsNullOrWhiteSpace($entry.seasonNumbers)) { $entry.seasonNumbers -split ',' } else { @() }
-                    $global:PlexSeasonUrls = if (-not [string]::IsNullOrWhiteSpace($entry.PlexSeasonUrls)) { $entry.PlexSeasonUrls -split ',' } else { @() }
-                    if ($null -ne $entry.OtherMediaServerSeasonUrls -and -not [string]::IsNullOrWhiteSpace($entry.OtherMediaServerSeasonUrls)) { $global:OtherMediaServerSeasonUrls = $entry.OtherMediaServerSeasonUrls.Split(",") } else { $global:OtherMediaServerSeasonUrls = @() }
+                    $global:seasonNames = $entry.SeasonNames -split ';'
+                    $global:SeasonRatingKeys = $entry.SeasonRatingKeys -split ','
+                    $global:seasonNumbers = $entry.seasonNumbers -split ','
+                    $global:PlexSeasonUrls = $entry.PlexSeasonUrls -split ','
+                    if ($null -ne $entry.OtherMediaServerSeasonUrls) { $global:OtherMediaServerSeasonUrls = $entry.OtherMediaServerSeasonUrls.Split(",") } else { $global:OtherMediaServerSeasonUrls = @() }
                     for ($i = 0; $i -lt $global:seasonNames.Count; $i++) {
                         $SkippingText = 'false'
                         $Seasonpostersearchtext = $null

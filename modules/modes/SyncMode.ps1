@@ -135,7 +135,6 @@ function Select-SameLocationMatch {
             # Initialize variables for pagination
             $searchsize = 0
             $totalContentSize = 1
-            $useStreams = ($Library.Type -eq 'movie')
 
             # Loop until all content is retrieved
             do {
@@ -143,28 +142,8 @@ function Select-SameLocationMatch {
                 $PlexHeaders['X-Plex-Container-Start'] = $searchsize
                 $PlexHeaders['X-Plex-Container-Size'] = '1000'
 
-                # Fetch content from Plex server (includeGuids=1 populates external GUIDs; includeStreams=1 populates media streams for movie libraries)
-                $queryUrl = if ($useStreams) {
-                    "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1"
-                } else {
-                    "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1"
-                }
-
-                $response = $null
-                try {
-                    $response = Invoke-PlexWebRequest -Uri $queryUrl -Headers $PlexHeaders
-                }
-                catch {
-                    if ($useStreams) {
-                        Write-Entry -Subtext "Plex query with includeStreams failed for library '$($Library.Name)' (ID: $($Library.ID)). Retrying without streams: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
-                        $useStreams = $false
-                        $queryUrl = "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1"
-                        $response = Invoke-PlexWebRequest -Uri $queryUrl -Headers $PlexHeaders
-                    }
-                    else {
-                        throw
-                    }
-                }
+                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
