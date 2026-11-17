@@ -1,4 +1,4 @@
-﻿function Invoke-MoviePosterCreation {
+function Invoke-MoviePosterCreation {
     param (
         $entry
     )
