@@ -18084,7 +18084,22 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                     total = int(container.get("totalSize", container.get("size", 0)))
                     for item in root.findall(".//*[@title]"):
                         rating_key = item.get("ratingKey", "")
-                        has_logo = True # Assume true, let frontend onError handle 404s
+                        images = item.findall("./Image")
+                        logo_elem = item.find("./Image[@type='clearLogo']")
+                        updated_at = item.get("updatedAt", "")
+
+                        if logo_elem is not None and logo_elem.get("url"):
+                            raw_logo_url = logo_elem.get("url")
+                            logo_path = raw_logo_url if raw_logo_url.startswith("/") else f"/{raw_logo_url}"
+                            has_logo = True
+                            logo_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}{logo_path}')}"
+                        elif images:
+                            has_logo = False
+                            logo_url = None
+                        else:
+                            has_logo = True
+                            logo_path = f"/library/metadata/{rating_key}/clearLogo?t={updated_at}" if updated_at else f"/library/metadata/{rating_key}/clearLogo"
+                            logo_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}{logo_path}')}"
 
                         items.append({
                             "title": item.get("title", ""),
@@ -18092,7 +18107,7 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                             "type": item.get("type", ""),
                             "ratingKey": rating_key,
                             "hasLogo": has_logo,
-                            "logoUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/clearLogo')}"
+                            "logoUrl": logo_url
                         })
 
             elif request.server_type == "silo":
@@ -18230,6 +18245,7 @@ def invalidate_media_server_thumb_cache(rating_key: Optional[str] = None):
 async def proxy_media_server_image(
     server_type: str,
     url: str,
+    request: Request,
     t: Optional[str] = None,
     _cb: Optional[str] = None,
     force: bool = False
@@ -18308,8 +18324,14 @@ async def proxy_media_server_image(
     if not cached_img_path.is_relative_to(THUMB_CACHE_DIR.resolve()) or not cached_meta_path.is_relative_to(THUMB_CACHE_DIR.resolve()):
         raise HTTPException(status_code=400, detail="Invalid cache path")
 
+    # Check if client requested cache bypass (e.g. via force, _cb, t, or Ctrl+Shift+R Cache-Control header)
+    cache_control = request.headers.get("cache-control", "").lower()
+    pragma = request.headers.get("pragma", "").lower()
+    hard_reload = "no-cache" in cache_control or "no-cache" in pragma
+    bypass_cache = force or bool(_cb) or bool(t) or hard_reload
+
     # Fast path: serve directly from disk cache if exists and not forced
-    if not force and not _cb and cached_img_path.is_file() and cached_img_path.stat().st_size > 0:
+    if not bypass_cache and cached_img_path.is_file() and cached_img_path.stat().st_size > 0:
         content_type = "image/jpeg"
         if cached_meta_path.is_file():
             try:
@@ -18364,7 +18386,7 @@ async def proxy_media_server_image(
                 media_type=content_type,
                 headers={
                     "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
-                    "X-Posterizarr-Cache": "MISS"
+                    "X-Posterizarr-Cache": "BYPASS" if bypass_cache else "MISS"
                 }
             )
     except HTTPException:
@@ -18602,6 +18624,7 @@ async def upload_media_server_logo(request: UploadLogoRequest):
         os.unlink(temp_logo)
 
         if upload_resp.status_code in [200, 201, 204]:
+            invalidate_media_server_thumb_cache(safe_item_id)
             return {"success": True}
         return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}"}
 

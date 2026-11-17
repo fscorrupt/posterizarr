@@ -137,6 +137,7 @@ const LogoBrowser = () => {
   const [selectedItemForLogo, setSelectedItemForLogo] = useState(null);
   const [showLogoSearch, setShowLogoSearch] = useState(false);
   const [updatedLogos, setUpdatedLogos] = useState({});
+  const [cacheBuster, setCacheBuster] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Setup click outside for sort dropdown
@@ -254,11 +255,14 @@ const LogoBrowser = () => {
     }
   }, [activeLibrary]);
 
-  const fetchItems = async (preserveState = false) => {
+  const fetchItems = async (preserveState = false, forceRefresh = false) => {
     setLoadingItems(true);
     if (!preserveState) {
         setSearchTerm("");
         setCurrentPage(1);
+    }
+    if (forceRefresh) {
+        setCacheBuster(Date.now());
     }
 
     // Attempting to resolve the live library ID if it's not present (needed by backend)
@@ -524,7 +528,7 @@ const LogoBrowser = () => {
                 </div>
 
                 <button
-                  onClick={fetchItems}
+                  onClick={() => fetchItems(true, true)}
                   disabled={loadingItems}
                   className="flex items-center gap-2 px-3 py-2 bg-theme-bg hover:bg-theme-hover border border-theme hover:border-theme-primary/50 disabled:opacity-50 rounded-lg text-theme-text text-sm font-medium transition-all shadow-sm"
                 >
@@ -634,7 +638,11 @@ const LogoBrowser = () => {
                     <div className="aspect-[16/9] bg-theme-bg/50 relative flex items-center justify-center p-2">
                         {item.hasLogo && item.logoUrl && (
                             <img
-                                src={updatedLogos[item.ratingKey] ? `${item.logoUrl}&t=${updatedLogos[item.ratingKey]}` : item.logoUrl}
+                                src={
+                                    updatedLogos[item.ratingKey]
+                                        ? `${item.logoUrl}&t=${updatedLogos[item.ratingKey]}`
+                                        : (cacheBuster ? `${item.logoUrl}&_cb=${cacheBuster}` : item.logoUrl)
+                                }
                                 alt={item.title}
                                 className="w-full h-full object-contain filter drop-shadow-md"
                                 loading="lazy"
