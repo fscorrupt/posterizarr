@@ -713,7 +713,7 @@ function Invoke-MoviePosterCreation {
 
                                                     if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                         Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                     }
                                                     else {
                                                         Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -842,7 +842,7 @@ function Invoke-MoviePosterCreation {
     
                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                             }
                                             else {
                                                 Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -1507,7 +1507,7 @@ function Invoke-MoviePosterCreation {
 
                                                     if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                         Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                     }
                                                     else {
                                                         Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -1635,7 +1635,7 @@ function Invoke-MoviePosterCreation {
     
                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                             }
                                             else {
                                                 Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -2443,7 +2443,7 @@ function Invoke-ShowPosterCreation {
 
                                                 if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                     Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                 }
                                                 else {
                                                     Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -2571,7 +2571,7 @@ function Invoke-ShowPosterCreation {
     
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         else {
                                             Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -3279,7 +3279,7 @@ function Invoke-ShowPosterCreation {
 
                                                 if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                     Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                 }
                                                 else {
                                                     Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -3407,7 +3407,7 @@ function Invoke-ShowPosterCreation {
     
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         else {
                                             Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -4351,7 +4351,7 @@ function Invoke-ShowPosterCreation {
 
                                                     if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                         Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                     }
                                                     else {
                                                         Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -4480,7 +4480,7 @@ function Invoke-ShowPosterCreation {
     
                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                             }
                                             else {
                                                 Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -5217,7 +5217,7 @@ function Invoke-TitleCardCreation {
 
                                                 if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                     Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                 }
                                                 else {
                                                     Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -5348,7 +5348,7 @@ function Invoke-TitleCardCreation {
     
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         else {
                                             Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -5926,7 +5926,7 @@ function Invoke-TitleCardCreation {
 
                                                 if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                     Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                    Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                 }
                                                 else {
                                                     Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -6056,7 +6056,7 @@ function Invoke-TitleCardCreation {
     
                                         if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                             Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                            Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                         }
                                         else {
                                             Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -6709,7 +6709,7 @@ function Invoke-TitleCardCreation {
 
                                                                     if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                                         Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                                        Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                                     }
                                                                     else {
                                                                         Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
@@ -6839,7 +6839,7 @@ function Invoke-TitleCardCreation {
     
                                                             if ($Upload.StatusCode -ne 200 -and $Upload.StatusCode -ne 201) {
                                                                 Write-Entry -Subtext "Upload failed: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color Red -log Error
-                                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan-log Debug
+                                                                Write-Entry -Subtext "Response body:`n$($Upload.Content)" -Path $global:configLogging -Color Cyan -log Debug
                                                             }
                                                             else {
                                                                 Write-Entry -Subtext "Upload OK: HTTP $($Upload.StatusCode)" -Path $global:configLogging -Color White -log Debug
