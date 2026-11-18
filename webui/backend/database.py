@@ -4,7 +4,7 @@ Database module for ImageChoices tracking
 
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import logging
 import csv
 import threading
@@ -227,20 +227,72 @@ class ImageChoicesDB:
 
     # NEW METHODS FOR RUNTIME HISTORY & ANALYTICS
 
-    def get_assets_created_between(self, start_date: str, end_date: str) -> List[sqlite3.Row]:
-        """Get assets created within a specific time range"""
+    def get_assets_created_between(
+        self,
+        start_date: str,
+        end_date: str,
+        s_eu: Optional[str] = None,
+        e_eu: Optional[str] = None,
+        run_id: Optional[int] = None,
+        additional_ranges: Optional[List[Tuple[str, str]]] = None,
+    ) -> List[sqlite3.Row]:
+        """Get assets created or updated within a specific time range or linked by run_id"""
         with self.lock:
             try:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                # Use >= and <= to include the boundaries
-                cursor.execute(
-                    "SELECT * FROM imagechoices WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC",
-                    (start_date, end_date)
-                )
+
+                # 1. If run_id is supplied and column exists, attempt direct run_id lookup
+                try:
+                    cursor.execute("PRAGMA table_info(imagechoices)")
+                    cols = [row["name"] for row in cursor.fetchall()]
+                    if "run_id" in cols and run_id:
+                        cursor.execute(
+                            "SELECT * FROM imagechoices WHERE run_id = ? ORDER BY id DESC",
+                            (run_id,),
+                        )
+                        run_rows = cursor.fetchall()
+                        if run_rows:
+                            conn.close()
+                            return run_rows
+                except Exception as e_col:
+                    logger.debug(f"run_id column check: {e_col}")
+
+                # 2. Match by created_at or updated_at using replace(..., 'T', ' ')
+                # This ensures ISO strings like '2026-10-21T06:53:20' match '2026-10-21 06:53:20' correctly.
+                where_clauses = [
+                    "(replace(created_at, 'T', ' ') >= ? AND replace(created_at, 'T', ' ') <= ?)",
+                    "(replace(updated_at, 'T', ' ') >= ? AND replace(updated_at, 'T', ' ') <= ?)",
+                ]
+                params = [start_date, end_date, start_date, end_date]
+
+                if s_eu and e_eu:
+                    where_clauses.append("(created_at >= ? AND created_at <= ?)")
+                    params.extend([s_eu, e_eu])
+                    where_clauses.append("(updated_at >= ? AND updated_at <= ?)")
+                    params.extend([s_eu, e_eu])
+
+                if additional_ranges:
+                    for r_start, r_end in additional_ranges:
+                        where_clauses.append("(replace(created_at, 'T', ' ') >= ? AND replace(created_at, 'T', ' ') <= ?)")
+                        where_clauses.append("(replace(updated_at, 'T', ' ') >= ? AND replace(updated_at, 'T', ' ') <= ?)")
+                        params.extend([r_start, r_end, r_start, r_end])
+
+                sql = f"SELECT * FROM imagechoices WHERE ({' OR '.join(where_clauses)}) ORDER BY COALESCE(updated_at, created_at) DESC"
+                cursor.execute(sql, params)
                 rows = cursor.fetchall()
+
+                # Deduplicate by id if ranges overlap
+                seen_ids = set()
+                unique_rows = []
+                for row in rows:
+                    row_id = row["id"] if "id" in row.keys() else id(row)
+                    if row_id not in seen_ids:
+                        seen_ids.add(row_id)
+                        unique_rows.append(row)
+
                 conn.close()
-                return rows
+                return unique_rows
             except sqlite3.Error as e:
                 logger.error(f"Error getting assets by date range: {e}")
                 if 'conn' in locals():
@@ -353,6 +405,25 @@ class ImageChoicesDB:
                 if 'conn' in locals():
                     conn.close()
                 return None
+
+    def get_choices_by_rootfolder(self, rootfolder: str) -> List[sqlite3.Row]:
+        """Get all choices for a Rootfolder"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM imagechoices WHERE Rootfolder = ? ORDER BY id DESC",
+                    (rootfolder,),
+                )
+                rows = cursor.fetchall()
+                conn.close()
+                return rows
+            except sqlite3.Error as e:
+                logger.error(f"Error getting choices by Rootfolder: {e}")
+                if 'conn' in locals():
+                    conn.close()
+                return []
 
     def update_choice(self, record_id: int, **kwargs):
         """Update an existing choice and auto-update 'updated_at'"""
@@ -642,6 +713,28 @@ class ImageChoicesDB:
                     conn.rollback()
                     conn.close()
                 return False
+
+    def delete_skipped_items_for_media(self, server_type: str, media_item_id: str) -> int:
+        """Delete skipped-item records for a media item removed from its server."""
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.execute(
+                    "DELETE FROM skipped_items WHERE LOWER(server_type) = ? AND item_id = ?",
+                    (server_type.lower(), str(media_item_id)),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return deleted
+            except sqlite3.Error as e:
+                logger.error("Error deleting skipped records for %s item %s: %s", server_type, media_item_id, e)
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def update_skipped_item_metadata(self, item_id: int, poster_path: str, year: str, overview: str, media_url: str, asset_type: str) -> bool:
         """Update metadata for a skipped item"""

@@ -4,7 +4,7 @@ FROM --platform=$BUILDPLATFORM node:current-alpine3.24 AS frontend-builder
 WORKDIR /app/frontend
 
 # Copy frontend files and install dependencies
-COPY webui/frontend/package*.json ./
+COPY webui/frontend/package.json webui/frontend/package-lock.json ./
 RUN npm install --force
 
 COPY webui/frontend/ ./
@@ -128,6 +128,8 @@ RUN chmod +x /app/start.sh
 
 # Set working directory and permissions
 WORKDIR /config
+# Runtime only: .NET named mutexes need a writable $HOME/.dotnet (set after build steps so root doesn't pre-create it)
+ENV HOME="/tmp"
 USER nobody:nogroup
 VOLUME ["/config"]
 

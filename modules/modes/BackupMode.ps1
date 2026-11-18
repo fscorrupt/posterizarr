@@ -1,5 +1,8 @@
 #region Backup Mode
-if ($UsePlex -eq 'true') {
+if ($UseSilo -eq 'true') {
+    Invoke-SiloArtworkBackup
+}
+elseif ($UsePlex -eq 'true') {
     MassDownloadPlexArtwork
 }
 Else {

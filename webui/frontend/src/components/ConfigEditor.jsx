@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Save,
@@ -402,6 +405,7 @@ function ConfigEditor() {
         setHasUnsavedChanges(false);
         if (authChanging) {
           sessionStorage.removeItem("auth_credentials");
+          localStorage.removeItem("auth_credentials");
           window.location.replace(window.location.href);
           return;
         }
@@ -435,7 +439,9 @@ function ConfigEditor() {
     setHasUnsavedChanges(true);
   };
 
-  const getDisplayName = (key) => displayNames[key] ? displayNames[key] : key.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim();
+    const getDisplayName = (key) => key === "UseSilo" || key.startsWith("Silo")
+        ? t(`silo.fields.${key}`, { defaultValue: displayNames[key] || key })
+        : displayNames[key] ? displayNames[key] : key.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim();
 
   // Filtering & Search Logic
 
@@ -666,9 +672,11 @@ function ConfigEditor() {
   const displayedGroups = getVisibleGroups();
 
   return (
-    <div className="space-y-6">
+        <div className="workspace-page space-y-6">
+            <WorkspaceHeader title="Configuration" subtitle={activeTab} />
+            <SiloSupportNotice enabled={String(config?.UseSilo ?? config?.SiloPart?.UseSilo).toLowerCase() === "true"} />
       {/* Header */}
-      <div className="sticky top-[85px] z-30 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-theme-card/95 backdrop-blur-md border border-theme rounded-xl p-4 shadow-md">
+            <div className="workspace-toolbar sticky top-16 z-30 bg-theme-card flex-col md:flex-row items-start md:items-center justify-between">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-muted" />
           <input
@@ -700,7 +708,7 @@ function ConfigEditor() {
 
       <div className="flex gap-6">
          {!searchQuery && (
-            <div className="w-64 flex-shrink-0 bg-theme-card rounded-xl border border-theme p-2 overflow-y-auto hidden lg:block h-fit sticky top-6">
+            <div className="w-56 flex-shrink-0 p-2 overflow-y-auto hidden lg:block h-fit sticky top-36 border-r border-theme">
                 <div className="mb-2 px-3 py-2 text-xs font-semibold text-theme-muted uppercase tracking-wider">Config Groups</div>
                 {Object.entries(tabs).map(([tabName, tabData]) => (
                     <button key={tabName} onClick={() => navigate(tabData.path)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-all text-left ${activeTab === tabName ? "bg-theme-primary/10 text-theme-primary border border-theme-primary/30" : "text-theme-text hover:bg-theme-hover"}`}>
@@ -798,7 +806,7 @@ function ConfigEditor() {
                                         {/* If Searching: Flat List */}
                                         {searchQuery ? (
                                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                {fields.map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} />)}
+                                                {fields.map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} />)}
 
                                                 {/* API Key Manager (In Search) */}
                                                 {groupName === "WebUI Settings" && (
@@ -820,7 +828,7 @@ function ConfigEditor() {
                                                             </div>
                                                         )}
                                                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                            {categorizedFields[category].map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} />)}
+                                                            {categorizedFields[category].map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} />)}
                                                         </div>
                                                     </div>
                                                 ))}
@@ -851,8 +859,8 @@ function ConfigEditor() {
 
       {/* Previews */}
       {previewOverlay && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewOverlay(null)}>
-          <div className="bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewOverlay(null)}>
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-theme flex justify-between items-center"><h3 className="font-bold text-theme-text">Preview: {previewOverlay}</h3><button onClick={() => setPreviewOverlay(null)}><X className="w-5 h-5 text-theme-muted hover:text-theme-text" /></button></div>
             <div className="p-8 bg-gray-900 flex justify-center relative">
                <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
@@ -863,8 +871,8 @@ function ConfigEditor() {
       )}
 
       {previewFont && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewFont(null)}>
-          <div className="bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewFont(null)}>
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-theme flex justify-between items-center"><h3 className="font-bold text-theme-text">Font Preview: {previewFont}</h3><button onClick={() => setPreviewFont(null)}><X className="w-5 h-5 text-theme-muted hover:text-theme-text" /></button></div>
             <div className="p-6 bg-white text-black space-y-4 max-h-[60vh] overflow-y-auto">
                 {["The Quick Brown Fox", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", "0123456789"].map((text, i) => (
@@ -881,9 +889,310 @@ function ConfigEditor() {
   );
 }
 
+// Dedicated editor for Per-Library Overrides with stable item keys, live duplicate validation, and custom background order
+const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors, commonInputClass, setHasUnsavedChanges }) => {
+    const dictValue = value && typeof value === 'object' ? value : {};
+
+    const [items, setItems] = useState(() => {
+        return Object.entries(dictValue).map(([k, v], idx) => ({
+            id: `lib-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: k,
+            data: v || {
+                PreferredLanguageOrder: ["en"],
+                ApplyToPoster: true,
+                ApplyToSeason: true,
+                ApplyToBackground: true,
+                ApplyToLogo: true,
+                EnableBackgroundLanguageOrderOverride: false,
+                PreferredBackgroundLanguageOrder: [],
+                EnableProviderOrderOverride: false,
+                ProviderOrder: ["TMDB", "TVDB", "Fanart", "Plex"]
+            }
+        }));
+    });
+
+    const lastEmittedRef = useRef(JSON.stringify(dictValue));
+
+    useEffect(() => {
+        const incoming = JSON.stringify(value && typeof value === 'object' ? value : {});
+        if (incoming !== lastEmittedRef.current) {
+            lastEmittedRef.current = incoming;
+            const dict = value && typeof value === 'object' ? value : {};
+            setItems(
+                Object.entries(dict).map(([k, v], idx) => ({
+                    id: `lib-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    name: k,
+                    data: v || {
+                        PreferredLanguageOrder: ["en"],
+                        ApplyToPoster: true,
+                        ApplyToSeason: true,
+                        ApplyToBackground: true,
+                        ApplyToLogo: true,
+                        EnableBackgroundLanguageOrderOverride: false,
+                        PreferredBackgroundLanguageOrder: [],
+                        EnableProviderOrderOverride: false,
+                        ProviderOrder: ["TMDB", "TVDB", "Fanart", "Plex"]
+                    }
+                }))
+            );
+        }
+    }, [value]);
+
+    useEffect(() => {
+        return () => {
+            if (setValidationErrors) {
+                setValidationErrors(prev => {
+                    if (!prev || !prev.LibraryLanguageOverrides) return prev;
+                    const next = { ...prev };
+                    delete next.LibraryLanguageOverrides;
+                    return next;
+                });
+            }
+        };
+    }, [setValidationErrors]);
+
+    const commitItems = (nextItems) => {
+        setItems(nextItems);
+        if (setHasUnsavedChanges) setHasUnsavedChanges(true);
+
+        const counts = {};
+        nextItems.forEach(it => {
+            const clean = it.name.trim().toLowerCase();
+            if (clean) counts[clean] = (counts[clean] || 0) + 1;
+        });
+
+        const duplicateNames = [];
+        let hasEmpty = false;
+
+        nextItems.forEach(it => {
+            const clean = it.name.trim();
+            if (!clean) {
+                hasEmpty = true;
+            } else if (counts[clean.toLowerCase()] > 1 && !duplicateNames.includes(clean)) {
+                duplicateNames.push(clean);
+            }
+        });
+
+        if (setValidationErrors) {
+            if (duplicateNames.length > 0) {
+                setValidationErrors(prev => ({
+                    ...prev,
+                    LibraryLanguageOverrides: `Duplicate library override: "${duplicateNames.join(', ')}"`
+                }));
+            } else if (hasEmpty) {
+                setValidationErrors(prev => ({
+                    ...prev,
+                    LibraryLanguageOverrides: "Library override name cannot be empty"
+                }));
+            } else {
+                setValidationErrors(prev => {
+                    if (!prev || !prev.LibraryLanguageOverrides) return prev;
+                    const next = { ...prev };
+                    delete next.LibraryLanguageOverrides;
+                    return next;
+                });
+            }
+        }
+
+        if (duplicateNames.length === 0 && !hasEmpty) {
+            const newDict = {};
+            nextItems.forEach(it => {
+                const trimmed = it.name.trim();
+                if (trimmed) {
+                    newDict[trimmed] = it.data;
+                }
+            });
+            lastEmittedRef.current = JSON.stringify(newDict);
+            onChange(newDict);
+        }
+    };
+
+    const handleUpdateName = (id, newName) => {
+        const next = items.map(it => it.id === id ? { ...it, name: newName } : it);
+        commitItems(next);
+    };
+
+    const handleUpdateData = (id, patch) => {
+        const next = items.map(it => it.id === id ? { ...it, data: { ...(it.data || {}), ...patch } } : it);
+        commitItems(next);
+    };
+
+    const handleRemoveItem = (id) => {
+        const next = items.filter(it => it.id !== id);
+        commitItems(next);
+    };
+
+    const handleAddItem = () => {
+        let baseName = "Library Name";
+        let newName = baseName;
+        let counter = 1;
+        const existingNames = items.map(it => it.name.trim().toLowerCase());
+        while (existingNames.includes(newName.toLowerCase())) {
+            counter++;
+            newName = `${baseName} ${counter}`;
+        }
+        const newItem = {
+            id: `lib-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: newName,
+            data: {
+                PreferredLanguageOrder: ["en"],
+                ApplyToPoster: true,
+                ApplyToSeason: true,
+                ApplyToBackground: true,
+                ApplyToLogo: true,
+                EnableBackgroundLanguageOrderOverride: false,
+                PreferredBackgroundLanguageOrder: [],
+                EnableProviderOrderOverride: false,
+                ProviderOrder: ["TMDB", "TVDB", "Fanart", "Plex"]
+            }
+        };
+        commitItems([...items, newItem]);
+    };
+
+    const nameCounts = {};
+    items.forEach(it => {
+        const clean = it.name.trim().toLowerCase();
+        if (clean) nameCounts[clean] = (nameCounts[clean] || 0) + 1;
+    });
+
+    return (
+        <div className="space-y-4">
+            {items.map((item) => {
+                const trimmed = item.name.trim();
+                const isDuplicate = trimmed && nameCounts[trimmed.toLowerCase()] > 1;
+                const isEmpty = !trimmed;
+                const fieldError = isDuplicate ? "Library already has an override" : (isEmpty ? "Library name cannot be empty" : null);
+                const isCheckedBackground = item.data?.ApplyToBackground ?? true;
+
+                return (
+                    <div key={item.id} className="flex flex-col gap-3 p-4 bg-theme-bg/30 border border-theme rounded-lg relative group transition-all">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-1">
+                                <label className="block text-xs font-medium text-theme-muted mb-1">Library Name</label>
+                                <input
+                                    className={`${commonInputClass} font-mono text-sm ${fieldError ? "border-red-500 focus:border-red-500 focus:ring-red-500/20 bg-red-500/5 text-red-300" : ""}`}
+                                    value={item.name}
+                                    placeholder="Library Name"
+                                    onChange={(e) => handleUpdateName(item.id, e.target.value)}
+                                    disabled={disabled}
+                                />
+                                {fieldError && (
+                                    <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1 font-medium">
+                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {fieldError}
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => handleRemoveItem(item.id)}
+                                className="p-2.5 mt-5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 flex-shrink-0 transition-colors"
+                                disabled={disabled}
+                                title="Remove Library Override"
+                            >
+                                <Trash2 className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="pt-3 border-t border-theme/50">
+                            <LanguageOrderSelector
+                                value={item.data?.PreferredLanguageOrder || []}
+                                onChange={(newOrder) => handleUpdateData(item.id, { PreferredLanguageOrder: newOrder })}
+                                helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
+                            />
+                            <div className="flex flex-wrap gap-x-4 gap-y-3 mt-3 pl-1">
+                                {["Poster", "Season", "Background", "Logo"].map((type) => {
+                                    const isChecked = item.data?.[`ApplyTo${type}`] ?? true;
+                                    return (
+                                        <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={(e) => handleUpdateData(item.id, { [`ApplyTo${type}`]: e.target.checked })}
+                                                disabled={disabled}
+                                                className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                            />
+                                            {type}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Optional Separate Background Language Order */}
+                            {isCheckedBackground && (
+                                <div className="mt-4 pt-3 border-t border-theme/50">
+                                    <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={item.data?.EnableBackgroundLanguageOrderOverride ?? false}
+                                            onChange={(e) => handleUpdateData(item.id, { EnableBackgroundLanguageOrderOverride: e.target.checked })}
+                                            disabled={disabled}
+                                            className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                        />
+                                        Separate Background Language Order (Optional)
+                                    </label>
+
+                                    {(item.data?.EnableBackgroundLanguageOrderOverride) && (
+                                        <div className="pl-6">
+                                            <LanguageOrderSelector
+                                                value={item.data?.PreferredBackgroundLanguageOrder || []}
+                                                onChange={(newOrder) => handleUpdateData(item.id, { PreferredBackgroundLanguageOrder: newOrder })}
+                                                helpText="Select custom language order for backgrounds in this library (e.g. textless 'xx' first). If left empty, backgrounds follow the main library order above."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Optional Provider Order Override */}
+                            <div className="mt-4 pt-3 border-t border-theme/50">
+                                <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={item.data?.EnableProviderOrderOverride ?? false}
+                                        onChange={(e) => handleUpdateData(item.id, { EnableProviderOrderOverride: e.target.checked })}
+                                        disabled={disabled}
+                                        className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
+                                    />
+                                    Enable Provider Order Override
+                                </label>
+
+                                {(item.data?.EnableProviderOrderOverride) && (
+                                    <div className="pl-6">
+                                        <ProviderOrderSelector
+                                            value={item.data?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]}
+                                            onChange={(newOrder) => handleUpdateData(item.id, { ProviderOrder: newOrder })}
+                                            helpText="Select the specific provider priority for this library."
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
+
+            <button
+                onClick={handleAddItem}
+                className="w-full py-3 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-theme-primary transition-all flex items-center justify-center gap-2 text-sm font-medium"
+                disabled={disabled}
+            >
+                <Plus className="w-5 h-5" /> Add Library Override
+            </button>
+            {items.length === 0 && (
+                <p className="text-[10px] text-theme-muted italic">
+                    Language order for specific libraries. Applies to posters, seasons and backgrounds for this library; title cards keep their textless-first preference automatically.
+                </p>
+            )}
+        </div>
+    );
+};
+
 // Extracted Setting Card Component for cleaner main loop
-const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges }) => {
+const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges, setValidationErrors }) => {
+    const { t } = useTranslation();
     const value = usingFlatStructure ? config[settingKey] : config[groupName]?.[settingKey];
+        const settingTooltip = settingKey === "UseSilo" || settingKey.startsWith("Silo")
+            ? t(`silo.tooltips.${settingKey}`, { defaultValue: tooltips[settingKey] || "" })
+            : tooltips[settingKey];
     const isWide = (settingKey === "NewLineOnSpecificSymbols" && groupName === "Text Formatting") || settingKey.includes("ResolutionOverlays") || settingKey.includes("LibstoExclude") || settingKey === "AgregarrTriggerEnabled";
     const uniqueId = `setting-${groupName}-${settingKey}`;
     const fieldKey = usingFlatStructure ? settingKey : `${groupName}.${settingKey}`;
@@ -903,17 +1212,17 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     const renderInput = () => {
         // Validation Fields (Tokens/Keys) - Use PasswordInput for secrecy + Validate Button
         const renderValidate = (type, placeholder) => (
-            <div className="flex gap-2">
-                <div className="relative flex-1">
+            <div className="flex min-w-0 flex-col sm:flex-row gap-2">
+                <div className="relative min-w-0 flex-1">
                     <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder={placeholder} />
                 </div>
-                <ValidateButton type={type} config={config} label="Validate" onSuccess={showSuccess} onError={showError} disabled={disabled} />
+                <ValidateButton type={type} config={config} label={type === "silo" ? t("silo.validate") : "Validate"} onSuccess={showSuccess} onError={showError} disabled={disabled} />
             </div>
         );
 
         if (settingKey === "PlexToken") return (
-            <div className="flex gap-2">
-                <div className="relative flex-1">
+            <div className="flex min-w-0 flex-col xl:flex-row gap-2">
+                <div className="relative min-w-0 flex-1">
                     <PasswordInput value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} placeholder={disabled ? "Enable Plex first" : "Enter Plex Token"} />
                 </div>
                 <PlexOAuthButton onTokenReceived={(token) => updateValue(fieldKey, token)} disabled={disabled} className="shrink-0" />
@@ -922,6 +1231,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         );
         if (settingKey === "JellyfinAPIKey") return renderValidate("jellyfin", disabled ? "Enable Jellyfin first" : "Enter Jellyfin API Key");
         if (settingKey === "EmbyAPIKey") return renderValidate("emby", disabled ? "Enable Emby first" : "Enter Emby API Key");
+        if (settingKey === "SiloAPIKey") return renderValidate("silo", t("silo.apiKeyPlaceholder"));
         if (settingKey === "tmdbtoken") return renderValidate("tmdb", "Enter TMDB Token");
         if (settingKey === "tvdbapi") return renderValidate("tvdb", "Enter TVDB API Key");
         if (settingKey === "FanartTvAPIKey") return renderValidate("fanart", "Enter Fanart API Key");
@@ -950,13 +1260,13 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                 <div className="space-y-3">
                     <div className={`flex flex-wrap gap-2 p-3 bg-theme-bg/50 rounded-lg border border-theme min-h-[52px] ${disabled ? "opacity-50" : ""}`}>
                         {symbols.map((symbol, idx) => (
-                            <div key={idx} className="flex items-center gap-1 bg-theme-card border border-theme-primary/30 rounded px-2 py-1 group focus-within:border-theme-primary transition-all">
+                            <div key={idx} className="flex min-w-0 max-w-full items-center gap-1 bg-theme-card border border-theme-primary/30 rounded px-2 py-1 group focus-within:border-theme-primary transition-all">
                                 <input
                                     type="text"
                                     value={symbol}
                                     onChange={(e) => handleUpdateSymbol(idx, e.target.value)}
                                     disabled={disabled}
-                                    className="bg-transparent border-none focus:ring-0 p-0 text-xs font-mono text-theme-primary min-w-[20px]"
+                                    className="max-w-full bg-transparent border-none focus:ring-0 p-0 text-xs font-mono text-theme-primary min-w-[20px]"
                                     style={{ width: `${Math.max(symbol.length, 1) + 0.5}ch` }}
                                     placeholder={isSkipWord ? "Word" : "⎵"}
                                 />
@@ -982,145 +1292,33 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                         </button>
                     )}
                     <p className="text-[10px] text-theme-muted italic">
-                        {isSkipWord ? "Words are preserved exactly as typed. Wrap in slashes to use Regex (e.g. /pattern/)" : "Spaces are preserved exactly as typed inside the boxes."}
+                        {isSkipWord ? t("configEditor.skipWordsHelp") : "Spaces are preserved exactly as typed inside the boxes."}
                     </p>
+                    {isSkipWord && (
+                        <div className="min-w-0 space-y-2 text-[10px] leading-relaxed text-theme-muted">
+                            <div>
+                                <code className="block max-w-full overflow-x-auto text-theme-text">{String.raw`/(?i)^\s*tba\s*$/`}</code>
+                                <span>{t("configEditor.skipWordsTbaExample")}</span>
+                            </div>
+                            <div>
+                                <code className="block max-w-full overflow-x-auto text-theme-text">{String.raw`/(?i)^(?:folge|episode)\s*#?\s*[0-9]+(?:\.[0-9]+)?\s*$/`}</code>
+                                <span>{t("configEditor.skipWordsEpisodeExample")}</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
         if (settingKey === "LibraryLanguageOverrides") {
-            // One language order per library, applied to posters/seasons/backgrounds
-            // for that library (title cards keep their own textless-first lead).
-            // A single field per library instead of one per asset type, since the
-            // real intent is "this library is German/French/etc", not four
-            // settings to keep in sync.
-            const dictValue = value && typeof value === 'object' ? value : {};
-
-            const handleUpdateKey = (oldKey, newKey) => {
-                const newDict = { ...dictValue };
-                if (oldKey !== newKey) {
-                    delete newDict[oldKey];
-                }
-                newDict[newKey] = dictValue[oldKey] || { PreferredLanguageOrder: [] };
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleUpdateOrder = (key, newOrder) => {
-                const newDict = { ...dictValue };
-                newDict[key] = { ...(dictValue[key] || {}), PreferredLanguageOrder: newOrder };
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleRemovePair = (keyToRemove) => {
-                const newDict = { ...dictValue };
-                delete newDict[keyToRemove];
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleAddPair = () => {
-                const newDict = { ...dictValue, "Library Name": { PreferredLanguageOrder: ["en"], ApplyToPoster: true, ApplyToSeason: true, ApplyToBackground: true, ApplyToLogo: true } };
-                updateValue(fieldKey, newDict);
-            };
-
-            const handleToggleApplyTo = (key, type, value) => {
-                const newDict = { ...dictValue };
-                newDict[key] = { ...(dictValue[key] || {}), [`ApplyTo${type}`]: value };
-                updateValue(fieldKey, newDict);
-            };
-
             return (
-                <div className="space-y-4">
-                    {Object.entries(dictValue).map(([k, v], idx) => (
-                        <div key={idx} className="flex flex-col gap-3 p-4 bg-theme-bg/30 border border-theme rounded-lg relative group transition-all">
-                            <div className="flex items-center gap-3">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-medium text-theme-muted mb-1">Library Name</label>
-                                    <input
-                                        className={`${commonInputClass} font-mono text-sm`}
-                                        value={k}
-                                        placeholder="Library Name"
-                                        onChange={(e) => handleUpdateKey(k, e.target.value)}
-                                        disabled={disabled}
-                                    />
-                                </div>
-                                <button
-                                    onClick={() => handleRemovePair(k)}
-                                    className="p-2.5 mt-5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 flex-shrink-0 transition-colors"
-                                    disabled={disabled}
-                                    title="Remove Library Override"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            <div className="pt-3 border-t border-theme/50">
-                                <LanguageOrderSelector
-                                    value={v?.PreferredLanguageOrder || []}
-                                    onChange={(newOrder) => handleUpdateOrder(k, newOrder)}
-                                    helpText="Select which asset types this override applies to (title cards keep their textless-first preference automatically):"
-                                />
-                                <div className="flex gap-4 mt-3 pl-1">
-                                    {["Poster", "Season", "Background", "Logo"].map((type) => {
-                                        const isChecked = v?.[`ApplyTo${type}`] ?? true;
-                                        return (
-                                            <label key={type} className="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-text cursor-pointer transition-colors">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isChecked}
-                                                    onChange={(e) => handleToggleApplyTo(k, type, e.target.checked)}
-                                                    disabled={disabled}
-                                                    className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
-                                                />
-                                                {type}
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                                <div className="mt-4 pt-3 border-t border-theme/50">
-                                    <label className="flex items-center gap-2 text-sm text-theme hover:text-theme-primary cursor-pointer transition-colors mb-3">
-                                        <input
-                                            type="checkbox"
-                                            checked={v?.EnableProviderOrderOverride ?? false}
-                                            onChange={(e) => {
-                                                const newDict = { ...dictValue };
-                                                newDict[k] = { ...(dictValue[k] || {}), EnableProviderOrderOverride: e.target.checked };
-                                                updateValue(fieldKey, newDict);
-                                            }}
-                                            disabled={disabled}
-                                            className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary/50 bg-theme-bg/50 cursor-pointer"
-                                        />
-                                        Enable Provider Order Override
-                                    </label>
-                                    
-                                    {(v?.EnableProviderOrderOverride) && (
-                                        <div className="pl-6">
-                                            <ProviderOrderSelector 
-                                                value={v?.ProviderOrder || ["TMDB", "TVDB", "Fanart", "Plex"]} 
-                                                onChange={(newOrder) => {
-                                                    const newDict = { ...dictValue };
-                                                    newDict[k] = { ...(dictValue[k] || {}), ProviderOrder: newOrder };
-                                                    updateValue(fieldKey, newDict);
-                                                }}
-                                                helpText="Select the specific provider priority for this library."
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                    <button
-                        onClick={handleAddPair}
-                        className="w-full py-3 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-theme-primary transition-all flex items-center justify-center gap-2 text-sm font-medium"
-                        disabled={disabled}
-                    >
-                        <Plus className="w-5 h-5" /> Add Library Override
-                    </button>
-                    {Object.keys(dictValue).length === 0 && (
-                        <p className="text-[10px] text-theme-muted italic">
-                            Language order for specific libraries. Applies to posters, seasons and backgrounds for this library; title cards keep their textless-first preference automatically.
-                        </p>
-                    )}
-                </div>
+                <LibraryOverridesEditor
+                    value={value}
+                    onChange={(newDict) => updateValue(fieldKey, newDict)}
+                    disabled={disabled}
+                    setValidationErrors={setValidationErrors}
+                    commonInputClass={commonInputClass}
+                    setHasUnsavedChanges={setHasUnsavedChanges}
+                />
             );
         }
         if (settingKey === "NewLineWords" || settingKey === "TmdbLanguageMappings") {
@@ -1254,8 +1452,8 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
         if (settingKey.includes("ProviderOrder") && settingKey !== "OverrideProviderOrder") return <ProviderOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LanguageOrder")) return <LanguageOrderSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} label={getDisplayName(settingKey)} helpText={tooltips[settingKey]} />;
         if (settingKey.includes("LibstoExclude")) {
-            const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : "emby";
-            return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={tooltips[settingKey]} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
+            const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : settingKey.includes("Silo") ? "silo" : "emby";
+            return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={settingTooltip} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
         }
         if (settingKey === "FavProvider") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none uppercase`}><option value="tmdb">TMDB</option><option value="tvdb">TVDB</option><option value="fanart">FANART</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "ProviderPriorityMode") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="Simple">Simple (Favorite Provider)</option><option value="Global">Global Custom Order</option><option value="PerMediaType">Per-Media Type Custom Order</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
@@ -1281,17 +1479,19 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                      setHasUnsavedChanges(true);
                      return;
                  }
-                 if (["UsePlex", "UseJellyfin", "UseEmby"].includes(settingKey) && checked) {
+                 if (["UsePlex", "UseJellyfin", "UseEmby", "UseSilo"].includes(settingKey) && checked) {
                      const updates = {};
-                     const target = settingKey === "UsePlex" ? "Plex" : settingKey === "UseJellyfin" ? "Jellyfin" : "Emby";
+                     const target = settingKey.replace(/^Use/, "");
                      if (usingFlatStructure) {
                          updates.UsePlex = target==="Plex"?"true":"false"; updates.UseJellyfin = target==="Jellyfin"?"true":"false"; updates.UseEmby = target==="Emby"?"true":"false";
+                         updates.UseSilo = target === "Silo" ? "true" : "false";
                          setConfig({ ...config, ...updates });
                      } else {
                          const newConfig = { ...config };
                          if(newConfig.PlexPart) newConfig.PlexPart.UsePlex = target==="Plex"?"true":"false";
                          if(newConfig.JellyfinPart) newConfig.JellyfinPart.UseJellyfin = target==="Jellyfin"?"true":"false";
                          if(newConfig.EmbyPart) newConfig.EmbyPart.UseEmby = target==="Emby"?"true":"false";
+                         newConfig.SiloPart = { ...newConfig.SiloPart, UseSilo: target === "Silo" ? "true" : "false" };
                          setConfig(newConfig);
                      }
                      setHasUnsavedChanges(true);
@@ -1301,7 +1501,10 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             };
             return (
                 <div className={`flex items-center justify-between h-[42px] px-4 bg-theme-bg rounded-lg border border-theme transition-all ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}>
-                    <div className="text-sm font-medium text-theme-text">{getDisplayName(settingKey)} {disabled && <span className="text-xs text-theme-muted ml-2">(Disabled)</span>}</div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-theme-text">
+                        {["UsePlex", "UseJellyfin", "UseEmby", "UseSilo"].includes(settingKey) && <MediaServerLogo server={settingKey.replace(/^Use/, "")} className="h-4 w-4" />}
+                        {getDisplayName(settingKey)} {disabled && <span className="text-xs text-theme-muted ml-2">(Disabled)</span>}
+                    </div>
                     <label className={`relative inline-flex items-center ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                         <input type="checkbox" checked={isEnabled} disabled={disabled} onChange={(e) => handleChange(e.target.checked)} className="sr-only peer" />
                         <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-theme-primary rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-primary"></div>
@@ -1327,17 +1530,17 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     return (
         <div id={uniqueId} className={`border border-theme rounded-xl p-4 bg-theme-card/50 shadow-sm ${isWide ? 'xl:col-span-2' : ''}`}>
             <div className="space-y-2">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0"> {/* FIX: Removed overflow-hidden, added min-w-0 */}
                         <label className="text-sm font-semibold text-theme-text truncate" title={getDisplayName(settingKey)}>{getDisplayName(settingKey)}</label>
-                        {tooltips[settingKey] && (
-                            <Tooltip text={tooltips[settingKey]}>
+                        {settingTooltip && (
+                            <Tooltip text={settingTooltip}>
                                 <HelpCircle className="w-3.5 h-3.5 text-theme-muted hover:text-theme-primary cursor-help flex-shrink-0 transition-colors" />
                             </Tooltip>
                         )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                        <span className="text-[10px] font-mono text-theme-muted bg-theme-bg px-1.5 py-0.5 rounded border border-theme/50 select-all">{settingKey}</span>
+                    <div className="flex min-w-0 max-w-full items-center gap-2">
+                        <span className="min-w-0 text-[10px] font-mono text-theme-muted bg-theme-bg px-1.5 py-0.5 rounded border border-theme/50 select-all break-all">{settingKey}</span>
                         {/* JUMP BUTTON */}
                         {searchQuery && (
                             <button

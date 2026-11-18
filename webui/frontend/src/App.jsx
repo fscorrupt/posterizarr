@@ -36,6 +36,7 @@ import AutoTriggers from "./components/AutoTriggers";
 import SchedulerSettings from "./components/SchedulerSettings";
 import RunModes from "./components/RunModes";
 import AssetOverview from "./components/AssetOverview";
+import ImageQuarantine from "./components/ImageQuarantine";
 import RuntimeHistory from "./components/RuntimeHistory";
 import PlexExport from "./components/PlexExport";
 import JellyfinEmbyExport from "./components/JellyfinEmbyExport";
@@ -49,6 +50,7 @@ import TestGallery from "./components/TestGallery";
 import QueueView from "./components/QueueView";
 import Blueprints from "./components/Blueprints";
 import OnboardingModal from "./components/OnboardingModal";
+import DynamicOverlays from "./components/DynamicOverlays";
 
 function AppContent() {
   const { isCollapsed } = useSidebar();
@@ -162,7 +164,7 @@ function AppContent() {
       fetch("/api/config")
         .then(res => res.json())
         .then(data => {
-          // If onboarding_completed is explicitly false or doesn't exist but we seeded it, 
+          // If onboarding_completed is explicitly false or doesn't exist but we seeded it,
           // check if we need to show the onboarding modal.
           // In config_database.py we seeded it in _root if it was empty.
           if (data && data._root && data._root.onboarding_completed === false) {
@@ -233,7 +235,10 @@ function AppContent() {
   return (
     <>
       {/* Onboarding Modal - highest priority */}
-      {showOnboarding && <OnboardingModal onComplete={() => { setShowOnboarding(false); navigate("/how-it-works"); }} />}
+      {showOnboarding && <OnboardingModal onComplete={(openDynamicOverlaysSetup) => {
+        setShowOnboarding(false);
+        navigate(openDynamicOverlaysSetup ? "/dynamic-overlays?setupWizard=1" : "/how-it-works");
+      }} />}
 
       {/* Loading Screen Overlay - shown over the UI during login transition */}
       {showLoadingScreen && (
@@ -243,12 +248,12 @@ function AppContent() {
       )}
 
       {/* Main App - rendered in background while loading screen is shown */}
-      <div className="min-h-screen bg-gradient-to-br from-theme-dark via-theme-darker to-theme-dark text-theme-text">
+      <div className="app-shell min-h-screen text-theme-text">
         <TopNavbar />
         <Sidebar />
 
         <main
-          className={`pt-16 transition-all duration-300 ${isCollapsed ? "md:ml-20" : "md:ml-80"
+          className={`app-content pt-16 transition-all duration-300 ${isCollapsed ? "md:ml-20" : "md:ml-64"
             }`}
         >
           {/* Extra padding on mobile for sidebar menu */}
@@ -263,6 +268,7 @@ function AppContent() {
                 <Route path="/manual-assets" element={<ManualAssets />} />
                 {/* Route for Backup Assets - pointing to GalleryHub which handles the rendering */}
                 <Route path="/asset-backups" element={<GalleryHub />} />
+                <Route path="/image-quarantine" element={<ImageQuarantine />} />
                 <Route path="/asset-overview" element={<AssetOverview />} />
                 <Route path="/runtime-history" element={<RuntimeHistory />} />
                 <Route
@@ -291,6 +297,7 @@ function AppContent() {
 
                 <Route path="/test-gallery" element={<TestGallery />} />
                 <Route path="/blueprints" element={<Blueprints />} />
+                <Route path="/dynamic-overlays" element={<DynamicOverlays />} />
 
                 <Route
                   path="/config"

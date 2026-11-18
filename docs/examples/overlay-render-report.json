@@ -1,0 +1,317 @@
+[
+  {
+    "file": "7.webp",
+    "edition": "poster-cinema",
+    "title": "Dune (2021)",
+    "asset": "poster.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "97bac9211318892c30271c55051465178802bf01bee91ffcb7e3f267b8bd1266",
+    "layers": [
+      "resolution",
+      "multi_rating_imdb",
+      "multi_rating_tmdb",
+      "multi_rating_letterboxd"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "8.webp",
+    "edition": "poster-vault",
+    "title": "Alien (1979)",
+    "asset": "poster.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "bc0c8cf8a470629f71f679d50a745f66dd94185dd6cf60fd2ef6c524052ae038",
+    "layers": [
+      "20th Century Studios",
+      "single_rating",
+      "resolution_banner"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "9.webp",
+    "edition": "poster-scoreboard",
+    "title": "Interstellar (2014)",
+    "asset": "poster.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "e043e3e0098ba53c088368fbff3c29a42d1a59b86432c3df2f400fcc3b7ebec5",
+    "layers": [
+      "multi_rating_imdb",
+      "multi_rating_tomatoes",
+      "multi_rating_tmdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "10.webp",
+    "edition": "poster-polyglot",
+    "title": "Dune Part Two (2024)",
+    "asset": "poster.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "2512c78e81d4b06f5e27822edd581100ee49bc435898fffab7c82ade1a083288",
+    "layers": [
+      "german",
+      "english",
+      "japanese",
+      "resolution",
+      "multi_rating_imdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "11.webp",
+    "edition": "show-languages",
+    "title": "Arcane (2021)",
+    "asset": "poster.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "53a2ff8161929eabe1cb47343168c64528b373e7b6db1cdb819da5885420b7a8",
+    "layers": [
+      "multi_rating_imdb",
+      "multi_rating_tmdb",
+      "language_flag_de",
+      "language_flag_en",
+      "language_flag_ja"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "12.webp",
+    "edition": "show-audio",
+    "title": "Breaking Bad (2008)",
+    "asset": "poster.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "bc3db867378e631dca463d6f144a1723b6b7c93b97e4d31f224c1b7d1eaf3840",
+    "layers": [
+      "language_flag_de",
+      "language_flag_en",
+      "audio_codec_truehd_atmos"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "13.webp",
+    "edition": "show-minimal",
+    "title": "Severance (2022)",
+    "asset": "poster.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "ed84e4c24327c386e6845268b07f9aead2aa8bfb3a545a0c6ad3deb3715cb545",
+    "layers": [
+      "returning_shows",
+      "Apple TV",
+      "resolution",
+      "multi_rating_imdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "14.webp",
+    "edition": "season-premiere",
+    "title": "Arcane (2021)",
+    "asset": "Season01.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "215068921de91cd6cf67d36ad429032c42f0c86b69b5fcc78861511c9e7dfb29",
+    "layers": [
+      "Netflix",
+      "resolution",
+      "multi_rating_imdb",
+      "multi_rating_tmdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "15.webp",
+    "edition": "season-scoreboard",
+    "title": "Breaking Bad (2008)",
+    "asset": "Season01.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "a521c1e74c4f734d5cf8c2206ef7b22d39534610b54d6d5f2b286d3eb0315260",
+    "layers": [
+      "multi_rating_imdb",
+      "multi_rating_tomatoes",
+      "multi_rating_tmdb",
+      "audio_codec_truehd_atmos"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "16.webp",
+    "edition": "season-languages",
+    "title": "Severance (2022)",
+    "asset": "Season01.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "ab038f311149a00900e7f2856a0780d5be71c375029cc957fe3a116ed0985849",
+    "layers": [
+      "multi_rating_imdb",
+      "language_flag_de",
+      "language_flag_en",
+      "language_flag_ja"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "17.webp",
+    "edition": "season-spotlight",
+    "title": "The Last of Us (2023)",
+    "asset": "Season01.jpg",
+    "dimensions": [
+      800,
+      1200
+    ],
+    "source_sha256": "4f468648cb1d489c280d00946dc1529001c9aa6ca58dca9924ec129717023031",
+    "layers": [
+      "resolution_banner",
+      "multi_rating_imdb",
+      "multi_rating_tmdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "18.webp",
+    "edition": "titlecard-cinema",
+    "title": "Arcane (2021)",
+    "asset": "S01E01.jpg",
+    "dimensions": [
+      1440,
+      810
+    ],
+    "source_sha256": "d73cc41f37f8727e8f7e9ca1b8719804921f2fbcc6ea8633876a2a9b7a36ac48",
+    "layers": [
+      "resolution",
+      "multi_rating_imdb",
+      "multi_rating_tmdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "19.webp",
+    "edition": "titlecard-scoreboard",
+    "title": "Breaking Bad (2008)",
+    "asset": "S01E01.jpg",
+    "dimensions": [
+      1440,
+      810
+    ],
+    "source_sha256": "80ac807608f74f5413f714d0fd3fc9e051da743040d7b6836daa24e48ec0f08c",
+    "layers": [
+      "runtime_info",
+      "multi_rating_imdb",
+      "multi_rating_tmdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "20.webp",
+    "edition": "titlecard-languages",
+    "title": "Arcane (2021)",
+    "asset": "S01E02.jpg",
+    "dimensions": [
+      1440,
+      810
+    ],
+    "source_sha256": "a3c5a7759856b4a8267f68fcfdc74d914f8dd471088d79839587df678ee01525",
+    "layers": [
+      "german",
+      "english",
+      "japanese",
+      "multi_rating_imdb"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "21.webp",
+    "edition": "titlecard-minimal",
+    "title": "Breaking Bad (2008)",
+    "asset": "S01E02.jpg",
+    "dimensions": [
+      1440,
+      810
+    ],
+    "source_sha256": "6d2be0449e2070763d5ff87fca8f863876ffa7569cb11cd7afa21f9e0ddbceac",
+    "layers": [
+      "Dolby-TrueHD-Atmos",
+      "resolution"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "22.webp",
+    "edition": "titlecard-anime-canon",
+    "title": "Naruto (2002)",
+    "asset": "S01E01.jpg",
+    "dimensions": [
+      1440,
+      810
+    ],
+    "source_sha256": "70ed76bf3f887ad7cc0f1896384b9956438f105e328eb172be7d716f1f7bec5f",
+    "layers": [
+      "japanese",
+      "english",
+      "multi_rating_imdb",
+      "multi_rating_mal",
+      "anime"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "23.webp",
+    "edition": "titlecard-anime-filler",
+    "title": "Naruto (2002)",
+    "asset": "S01E02.jpg",
+    "dimensions": [
+      1440,
+      810
+    ],
+    "source_sha256": "4841f7829a8a52300695f2daedbe822e444d2d93bf2e8960357a9249c5ce0ec3",
+    "layers": [
+      "Dolby-TrueHD-Atmos",
+      "anime"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  },
+  {
+    "file": "24.webp",
+    "edition": "titlecard-anime-mixed",
+    "title": "Naruto (2002)",
+    "asset": "S01E03.jpg",
+    "dimensions": [
+      1440,
+      810
+    ],
+    "source_sha256": "0e922e3bc451fe7b263ee7fb3fb999faf9c4c763ff494d7f8c04482f33b6d2d0",
+    "layers": [
+      "resolution",
+      "anime"
+    ],
+    "metadata": "illustrative, not measured media metadata"
+  }
+]

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Upload, X, Loader2 } from "lucide-react";
+import SiloSupportNotice from "../SiloSupportNotice";
 
 const API_URL = "/api";
 
@@ -61,43 +62,53 @@ const RestoreModeModal = React.memo(({ show, onClose, onStart, loading, status, 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
-        <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
+    <div
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overscroll-contain"
+      onClick={onClose}
+    >
+      <div
+        className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl animate-in fade-in duration-200 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-theme-primary px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl flex items-center justify-between shrink-0">
           <div className="flex items-center">
-            <Upload className="w-6 h-6 mr-3 text-white" />
-            <h3 className="text-xl font-bold text-white">Restore Mode</h3>
+            <Upload className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3 text-white" />
+            <h3 className="text-lg sm:text-xl font-bold text-white">Restore Mode</h3>
           </div>
           <button onClick={onClose} className="text-white/80 hover:text-white transition-all p-1 hover:bg-white/10 rounded">
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div
+          className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0 overscroll-contain"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
+          <SiloSupportNotice scope="backup" />
           <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded mb-4">
             <p className="text-blue-200 font-medium mb-2">Restores local backups back to your media server.</p>
             <p className="text-blue-100 text-sm">This will look into your backup folder and upload posters and backgrounds for your libraries directly without processing them with overlays.</p>
           </div>
-          
+
           <div className="space-y-4">
             <label className="block text-sm font-medium text-theme-text mb-2">What would you like to restore?</label>
             <div className="flex flex-col sm:flex-row gap-4 mb-4">
               <label className="flex items-center gap-2 cursor-pointer bg-theme-bg p-3 rounded-lg border border-theme hover:border-theme-primary transition-all">
-                <input 
-                  type="radio" 
-                  name="restoreScope" 
-                  value="all" 
-                  checked={restoreScope === "all"} 
+                <input
+                  type="radio"
+                  name="restoreScope"
+                  value="all"
+                  checked={restoreScope === "all"}
                   onChange={() => setRestoreScope("all")}
                   className="w-4 h-4 text-theme-primary focus:ring-theme-primary border-theme-muted"
                 />
                 <span className="text-theme-text">Restore All Libraries</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer bg-theme-bg p-3 rounded-lg border border-theme hover:border-theme-primary transition-all">
-                <input 
-                  type="radio" 
-                  name="restoreScope" 
-                  value="specific" 
-                  checked={restoreScope === "specific"} 
+                <input
+                  type="radio"
+                  name="restoreScope"
+                  value="specific"
+                  checked={restoreScope === "specific"}
                   onChange={() => setRestoreScope("specific")}
                   className="w-4 h-4 text-theme-primary focus:ring-theme-primary border-theme-muted"
                 />
@@ -154,7 +165,7 @@ const RestoreModeModal = React.memo(({ show, onClose, onStart, loading, status, 
             )}
           </div>
         </div>
-        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex justify-between border-t-2 border-theme mt-auto">
+        <div className="bg-theme-bg px-4 sm:px-6 py-3 sm:py-4 rounded-b-xl flex justify-between border-t-2 border-theme shrink-0">
           <button onClick={onClose} className="px-6 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all">Cancel</button>
           <button onClick={handleStart} disabled={loading || (status && status.running)} className="px-6 py-2 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all text-white flex items-center shadow-lg">
             <Upload className="w-5 h-5 mr-2" />

@@ -37,6 +37,9 @@ class QueueManager:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            cursor.execute("""CREATE INDEX IF NOT EXISTS idx_queue_episode_title_active
+                ON queue_items(json_extract(overlay_params, '$.episode_title_candidate_id'))
+                WHERE source_type = 'episode_title' AND status IN ('pending', 'processing')""")
             conn.commit()
             conn.close()
 
@@ -54,6 +57,41 @@ class QueueManager:
             conn.close()
             logger.info(f"Queue item added: {item_id} ({asset_path})")
             return item_id
+
+    def add_episode_title_items(self, jobs):
+        item_ids = []
+        with self.lock:
+            conn = self._get_connection()
+            try:
+                with conn:
+                    for job in jobs:
+                        existing = conn.execute("""SELECT id FROM queue_items
+                            WHERE source_type = 'episode_title' AND status IN ('pending', 'processing')
+                            AND json_extract(overlay_params, '$.episode_title_candidate_id') = ?
+                            ORDER BY id LIMIT 1""", (job["candidate_id"],)).fetchone()
+                        if existing:
+                            if job.get("force_unknown_text") is True:
+                                conn.execute("""UPDATE queue_items SET overlay_params =
+                                    json_set(overlay_params, '$.force_unknown_text', json('true'))
+                                    WHERE id = ? AND status = 'pending'""", (existing[0],))
+                            item_ids.append(existing[0])
+                            continue
+                        asset_type = job.get("poster_type") or ("titlecard" if job.get("media_type") == "episode" else ("season" if job.get("media_type") == "season" else "poster"))
+                        parameters = {"episode_title_candidate_id": job["candidate_id"], "asset_type": asset_type,
+                                      "media_type": job.get("media_type", "episode"),
+                                      "title_text": job["title"], "episode_title": job["title"],
+                                      "library_name": job["library"], "folder_name": job["folder"],
+                                      "season_number": job.get("season"), "episode_number": job.get("episode"),
+                                      "force_unknown_text": job.get("force_unknown_text") is True,
+                                      "process_with_overlays": True}
+                        cursor = conn.execute("""INSERT INTO queue_items
+                            (asset_path, source_type, source_data, overlay_params, status)
+                            VALUES (?, 'episode_title', ?, ?, 'pending')""",
+                            (job["preview_path"], job["candidate_id"], json.dumps(parameters)))
+                        item_ids.append(cursor.lastrowid)
+            finally:
+                conn.close()
+        return list(dict.fromkeys(item_ids))
 
     def get_queue(self):
         """Get all items in the queue."""
@@ -140,24 +178,25 @@ class QueueManager:
             return []
 
         try:
-            clean_ids = [int(i) for i in item_ids]
+            clean_ids = list(dict.fromkeys(int(i) for i in item_ids))
         except (ValueError, TypeError):
             logger.error(f"Invalid item_ids provided to get_items_by_ids: {item_ids}")
             return []
 
-        placeholders = ','.join('?' for _ in clean_ids)
-
-        query = f"SELECT * FROM queue_items WHERE id IN ({placeholders}) AND status = 'pending' ORDER BY created_at ASC"
-
         with self.lock:
+            conn = None
             try:
                 conn = self._get_connection()
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-
-                cursor.execute(query, clean_ids)  # nosec B608
-                rows = cursor.fetchall()
-                conn.close()
+                rows = []
+                for start in range(0, len(clean_ids), 500):
+                    batch = clean_ids[start:start + 500]
+                    placeholders = ','.join('?' for item_id in batch)
+                    query = f"SELECT * FROM queue_items WHERE id IN ({placeholders}) AND status = 'pending'"
+                    cursor.execute(query, batch)  # nosec B608
+                    rows.extend(cursor.fetchall())
+                rows.sort(key=lambda row: (row['created_at'], row['id']))
 
                 items = []
                 for row in rows:
@@ -172,6 +211,9 @@ class QueueManager:
             except sqlite3.Error as e:
                 logger.error(f"Database error in get_items_by_ids: {e}")
                 return []
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def clear_queue(self):
         """Delete all items from the queue."""

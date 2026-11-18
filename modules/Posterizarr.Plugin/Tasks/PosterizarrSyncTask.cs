@@ -62,7 +62,23 @@ public class PosterizarrSyncTask : IScheduledTask
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance?.Configuration;
-        if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
+        if (config == null)
+        {
+            return;
+        }
+
+        if (config.EnablePlexSync)
+        {
+            if (!config.UpdateCollection)
+            {
+                _logger.LogInformation("[Posterizarr] Plex Direct Sync is enabled and Collection sync is disabled. Skipping local asset sync task.");
+                return;
+            }
+
+            _logger.LogInformation("[Posterizarr] Plex Direct Sync is enabled. Local asset sync will only process Collections (BoxSets).");
+        }
+
+        if (string.IsNullOrEmpty(config.AssetFolderPath))
         {
             _logger.LogWarning("[Posterizarr] AssetFolderPath is not configured. Aborting sync.");
             return;
@@ -77,7 +93,9 @@ public class PosterizarrSyncTask : IScheduledTask
 
         var query = new InternalItemsQuery
         {
-            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Season, BaseItemKind.Episode, BaseItemKind.BoxSet },
+            IncludeItemTypes = config.EnablePlexSync
+                ? new[] { BaseItemKind.BoxSet }
+                : new[] { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Season, BaseItemKind.Episode, BaseItemKind.BoxSet },
             Recursive = true,
             IsVirtualItem = false
         };

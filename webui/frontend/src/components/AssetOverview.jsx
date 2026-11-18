@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
 import {
   AlertTriangle,
   Globe,
@@ -267,9 +269,13 @@ const AssetRow = React.memo(
 
             {/* Poster Thumbnail for Skipped View */}
             {isSkippedView && asset.server_type && asset.item_id && (
-              <div 
-                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
-                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Preview ${asset.Title}`}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }}
+                className={`shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-20 h-12 sm:w-32 sm:h-20' : 'w-12 h-[72px] sm:w-20 sm:h-28'
                 }`}
                 onClick={() => {
                   if (onPreviewImage) {
@@ -293,12 +299,16 @@ const AssetRow = React.memo(
                 />
               </div>
             )}
-            
+
             {/* Poster Thumbnail for Active Actions / General */}
             {isActiveView && asset.poster_url && (
-              <div 
-                className={`hidden sm:block shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
-                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-32 h-20' : 'w-20 h-28'
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Preview ${asset.Title}`}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }}
+                className={`shrink-0 rounded overflow-hidden bg-theme-card border border-theme relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity ${
+                  asset.Type?.toLowerCase() === 'episode' || asset.Type?.toLowerCase() === 'background' ? 'w-20 h-12 sm:w-32 sm:h-20' : 'w-12 h-[72px] sm:w-20 sm:h-28'
                 }`}
                 onClick={() => {
                   if (onPreviewImage) {
@@ -517,7 +527,7 @@ const AssetRow = React.memo(
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-wrap items-start gap-2">
             {isSkippedView ? (
               <>
                 <button
@@ -621,6 +631,7 @@ const AssetOverview = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("active");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedType, setSelectedType] = useState("All Types");
   const [selectedLibrary, setSelectedLibrary] = useState("All Libraries");
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
@@ -633,7 +644,8 @@ const AssetOverview = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
     const saved = localStorage.getItem("asset-overview-items-per-page");
-    return saved ? parseInt(saved) : 25;
+    const count = parseInt(saved);
+    return [25, 50, 100, 200, 500].includes(count) ? count : 25;
   });
 
   // Selection state for bulk actions
@@ -674,56 +686,102 @@ const AssetOverview = () => {
   const categoryDropdownRef = useRef(null);
   const statusDropdownRef = useRef(null);
   const itemsPerPageDropdownRef = useRef(null);
+  const requestControllerRef = useRef(null);
+  const selectionRecordsRef = useRef(new Map());
+  const categoryKey = {
+    [t("assetOverview.assetsWithIssues")]: "assets_with_issues",
+    [t("assetOverview.missingAssets")]: "missing_assets",
+    [t("assetOverview.missingAssetsAtFavProvider")]: "missing_assets_fav_provider",
+    [t("assetOverview.nonPrimaryLang")]: "non_primary_lang",
+    [t("assetOverview.nonPrimaryProvider")]: "non_primary_provider",
+    [t("assetOverview.truncatedTextCategory")]: "truncated_text",
+  }[selectedCategory] || "";
+  const requestQuery = new URLSearchParams({
+    limit: itemsPerPage,
+    offset: (currentPage - 1) * itemsPerPage,
+    tab: activeTab,
+    category: categoryKey,
+    status: selectedStatus,
+    search: debouncedSearch,
+    asset_type: selectedType === "All Types" ? "" : selectedType,
+    library: selectedLibrary === "All Libraries" ? "" : selectedLibrary,
+  }).toString();
+  const requestQueryRef = useRef(requestQuery);
+  requestQueryRef.current = requestQuery;
+  const filterKey = JSON.stringify([itemsPerPage, activeTab, categoryKey, selectedStatus, debouncedSearch, selectedType, selectedLibrary]);
+  const previousFiltersRef = useRef(filterKey);
 
   // Fetch data from API
   const fetchData = async () => {
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const query = requestQueryRef.current;
     setLoading(true);
     setError(null);
     try {
-      if (activeTab === "active") {
-        const response = await fetch("/api/assets/overview");
-        if (!response.ok) throw new Error(t("assetOverview.fetchError"));
-        const result = await response.json();
-        setData(result);
-      } else {
-        const response = await fetch("/api/assets/skipped");
-        if (!response.ok) throw new Error(t("assetOverview.fetchError"));
-        const result = await response.json();
-        setData({
-          categories: {
-            skipped: {
-              count: result.length,
-              assets: result,
-            }
-          }
-        });
+      const response = await fetch(`/api/assets/overview/page?${query}`, { signal: controller.signal });
+      if (!response.ok) throw new Error(t("assetOverview.fetchError"));
+      const result = await response.json();
+      if (controller.signal.aborted || query !== requestQueryRef.current) return;
+      setData(result);
+      const requestedLimit = Number(new URLSearchParams(query).get("limit"));
+      const correctedPage = Math.floor(result.offset / requestedLimit) + 1;
+      if (Number.isInteger(correctedPage) && correctedPage !== currentPage) {
+        setCurrentPage(correctedPage);
       }
     } catch (err) {
-      setError(err.message);
+      if (!controller.signal.aborted && query === requestQueryRef.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && query === requestQueryRef.current) setLoading(false);
     }
   };
 
+  const fetchAllMatches = async () => {
+    const query = new URLSearchParams(requestQueryRef.current);
+    query.set("all_matches", "true");
+    query.set("offset", "0");
+    const response = await fetch(`/api/assets/overview/page?${query}`);
+    if (!response.ok) throw new Error(t("assetOverview.fetchError"));
+    return (await response.json()).assets;
+  };
+
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const filtersChanged = previousFiltersRef.current !== filterKey;
+    previousFiltersRef.current = filterKey;
+    if (filtersChanged && currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
     fetchData();
-  }, [t, activeTab]); // Added t and activeTab dependencies
+    return () => requestControllerRef.current?.abort();
+  }, [t, requestQuery]);
 
   // Reset filters when changing tabs
-  useEffect(() => {
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
     setSelectedCategory("All Categories");
     setSelectedStatus("Unresolved");
     setSelectedType("All Types");
     setSelectedLibrary("All Libraries");
     setSearchQuery("");
-  }, [activeTab]);
+    setDebouncedSearch("");
+    setCurrentPage(1);
+  };
 
   // Clear selection and reset page when filters change
   useEffect(() => {
     setSelectedAssetIds(new Set());
+    selectionRecordsRef.current.clear();
     setCurrentPage(1);
   }, [
-    searchQuery,
+    debouncedSearch,
+    activeTab,
     selectedType,
     selectedLibrary,
     selectedCategory,
@@ -1019,6 +1077,7 @@ const AssetOverview = () => {
       isOpen: true,
       title: t("assetOverview.skipTitle", { defaultValue: "Skip Asset" }),
       message: t("assetOverview.skipMessage", {
+        title: asset.Title,
         defaultValue: `Are you sure you want to skip "${asset.Title}"? It will be ignored in future Posterizarr runs.`,
       }),
       confirmText: t("assetOverview.skipConfirm", { defaultValue: "Skip" }),
@@ -1055,6 +1114,7 @@ const AssetOverview = () => {
       isOpen: true,
       title: t("assetOverview.unskipTitle", { defaultValue: "Unskip Asset" }),
       message: t("assetOverview.unskipMessage", {
+        title: asset.Title,
         defaultValue: `Are you sure you want to unskip "${asset.Title}"? It will be restored in Posterizarr on the next run.`,
       }),
       confirmText: t("assetOverview.unskipConfirm", { defaultValue: "Unskip" }),
@@ -1064,7 +1124,7 @@ const AssetOverview = () => {
           const response = await fetch(`/api/assets/unskip`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
               id: asset.id,
               item_id: asset.item_id,
               server_type: asset.server_type
@@ -1075,7 +1135,7 @@ const AssetOverview = () => {
             const errData = await response.json().catch(() => ({}));
             throw new Error(errData.detail || "Failed to unskip asset");
           }
-          
+
           showSuccess(t("assetOverview.unskipSuccess", { title: asset.Title }));
           await fetchData();
         } catch (error) {
@@ -1130,6 +1190,8 @@ const AssetOverview = () => {
 
   // Handle toggling selection of a single asset
   const handleToggleSelection = (assetId) => {
+    const asset = displayedAssets.find((item) => item.id === assetId);
+    if (asset) selectionRecordsRef.current.set(assetId, asset);
     setSelectedAssetIds((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(assetId)) {
@@ -1143,23 +1205,19 @@ const AssetOverview = () => {
 
   // Handle selecting/deselecting all displayed assets
   const handleSelectAll = () => {
-    if (
-      selectedAssetIds.size === displayedAssets.length &&
-      displayedAssets.length > 0
-    ) {
-      setSelectedAssetIds(new Set());
-    } else {
-      setSelectedAssetIds(new Set(displayedAssets.map((asset) => asset.id)));
-    }
+    displayedAssets.forEach((asset) => selectionRecordsRef.current.set(asset.id, asset));
+    setSelectedAssetIds((previous) => {
+      const next = new Set(previous);
+      displayedAssets.forEach((asset) => allDisplayedSelected ? next.delete(asset.id) : next.add(asset.id));
+      return next;
+    });
   };
 
   // Handle bulk mark as resolved (for selected items)
   const handleBulkMarkAsResolved = async () => {
     if (selectedAssetIds.size === 0) return;
     setIsBulkProcessing(true);
-    const selectedAssets = allAssets.filter((asset) =>
-      selectedAssetIds.has(asset.id)
-    );
+    const selectedAssets = Array.from(selectedAssetIds, (id) => selectionRecordsRef.current.get(id)).filter(Boolean);
 
     try {
       let successCount = 0;
@@ -1308,7 +1366,7 @@ const AssetOverview = () => {
         showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
       }
     } catch (error) {
-      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+      showError(t("assetOverview.refreshMetadataError", { error: error.message }));
     } finally {
       setIsBulkProcessing(false);
     }
@@ -1329,7 +1387,7 @@ const AssetOverview = () => {
         showError(t("assetOverview.refreshMetadataFailed", { defaultValue: "Failed to start metadata refresh" }));
       }
     } catch (error) {
-      showError(t("assetOverview.refreshMetadataError", { defaultValue: `Error: ${error.message}` }));
+      showError(t("assetOverview.refreshMetadataError", { error: error.message }));
     } finally {
       setIsBulkProcessing(false);
     }
@@ -1339,8 +1397,7 @@ const AssetOverview = () => {
   // ++ REFACTORED: Bulk Mark All Filtered (to use new modal)
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   const handleBulkMarkAllFilteredAsResolved = () => {
-    const assetsToProcess = filteredAssets;
-    if (assetsToProcess.length === 0) {
+    if (totalCount === 0) {
       showError(t("assetOverview.noAssetsToMark"));
       return;
     }
@@ -1349,10 +1406,10 @@ const AssetOverview = () => {
       isOpen: true,
       title: t("assetOverview.bulkMarkAllFilteredTitle"),
       message: t("assetOverview.bulkMarkAllFilteredConfirm", {
-        count: assetsToProcess.length,
+        count: totalCount,
       }),
       confirmText: t("assetOverview.confirmMarkAll", {
-        count: assetsToProcess.length,
+        count: totalCount,
       }),
       confirmColor: "primary",
       onConfirm: runBulkMarkAllFilteredResolved,
@@ -1361,10 +1418,10 @@ const AssetOverview = () => {
 
   const runBulkMarkAllFilteredResolved = async () => {
     setConfirmModalState({ isOpen: false });
-    const assetsToProcess = filteredAssets;
     setIsBulkProcessing(true);
 
     try {
+      const assetsToProcess = await fetchAllMatches();
       let successCount = 0;
       let failCount = 0;
 
@@ -1435,8 +1492,7 @@ const AssetOverview = () => {
   // ++ NEW: Bulk Delete All Filtered (for all filtered items)
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   const handleBulkDeleteAllFiltered = () => {
-    const assetsToProcess = filteredAssets;
-    if (assetsToProcess.length === 0) {
+    if (totalCount === 0) {
       showError(t("assetOverview.noAssetsToDelete"));
       return;
     }
@@ -1445,10 +1501,10 @@ const AssetOverview = () => {
       isOpen: true,
       title: t("assetOverview.bulkDeleteAllFilteredTitle"),
       message: t("assetOverview.bulkDeleteAllFilteredConfirm", {
-        count: assetsToProcess.length,
+        count: totalCount,
       }),
       confirmText: t("assetOverview.confirmDeleteAll", {
-        count: assetsToProcess.length,
+        count: totalCount,
       }),
       confirmColor: "danger",
       onConfirm: runBulkDeleteAllFiltered,
@@ -1456,13 +1512,12 @@ const AssetOverview = () => {
   };
 
   const runBulkDeleteAllFiltered = async () => {
-    const assetsToProcess = filteredAssets;
-    const recordIds = assetsToProcess.map(asset => asset.id);
-
     setConfirmModalState({ isOpen: false });
     setIsBulkProcessing(true);
 
     try {
+      const assetsToProcess = await fetchAllMatches();
+      const recordIds = assetsToProcess.map(asset => asset.id);
       const response = await fetch("/api/assets/bulk-delete-assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1508,68 +1563,8 @@ const AssetOverview = () => {
   };
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-  // Get all assets from all categories
-  const allAssets = useMemo(() => {
-    if (!data) return [];
-    const assets = new Map();
-    Object.values(data.categories).forEach((category) => {
-      category.assets.forEach((asset) => {
-        if (!assets.has(asset.id)) {
-          assets.set(asset.id, asset);
-        }
-      });
-    });
-    return Array.from(assets.values());
-  }, [data]);
-
-  // Get unique types and libraries for filters
-  const types = useMemo(() => {
-    let assetsToFilter = allAssets;
-    if (selectedStatus === "Resolved") {
-      assetsToFilter = assetsToFilter.filter(
-        (asset) =>
-          asset.Manual === "Yes" ||
-          asset.Manual === "true" ||
-          asset.Manual === true
-      );
-    } else if (selectedStatus === "Unresolved") {
-      assetsToFilter = assetsToFilter.filter(
-        (asset) =>
-          !asset.Manual ||
-          (asset.Manual !== "Yes" &&
-            asset.Manual !== "true" &&
-            asset.Manual !== true)
-      );
-    }
-    const uniqueTypes = new Set(
-      assetsToFilter.map((a) => a.Type).filter(Boolean)
-    );
-    return ["All Types", ...Array.from(uniqueTypes).sort()];
-  }, [allAssets, selectedStatus]);
-
-  const libraries = useMemo(() => {
-    let assetsToFilter = allAssets;
-    if (selectedStatus === "Resolved") {
-      assetsToFilter = assetsToFilter.filter(
-        (asset) =>
-          asset.Manual === "Yes" ||
-          asset.Manual === "true" ||
-          asset.Manual === true
-      );
-    } else if (selectedStatus === "Unresolved") {
-      assetsToFilter = assetsToFilter.filter(
-        (asset) =>
-          !asset.Manual ||
-          (asset.Manual !== "Yes" &&
-            asset.Manual !== "true" &&
-            asset.Manual !== true)
-      );
-    }
-    const uniqueLibs = new Set(
-      assetsToFilter.map((a) => a.LibraryName).filter(Boolean)
-    );
-    return ["All Libraries", ...Array.from(uniqueLibs).sort()];
-  }, [allAssets, selectedStatus]);
+  const types = ["All Types", ...(data?.types || [])];
+  const libraries = ["All Libraries", ...(data?.libraries || [])];
 
   // Category cards configuration
   const categoryCards = useMemo(() => {
@@ -1578,7 +1573,7 @@ const AssetOverview = () => {
       {
         key: "assets_with_issues",
         label: t("assetOverview.assetsWithIssues"),
-        count: data.categories.assets_with_issues.count,
+        count: data.categories.assets_with_issues?.count || 0,
         icon: AlertTriangle,
         color: "text-yellow-400",
         bgColor: "bg-gradient-to-br from-yellow-900/30 to-yellow-950/20",
@@ -1588,7 +1583,7 @@ const AssetOverview = () => {
       {
         key: "missing_assets",
         label: t("assetOverview.missingAssets"),
-        count: data.categories.missing_assets.count,
+        count: data.categories.missing_assets?.count || 0,
         icon: FileQuestion,
         color: "text-red-400",
         bgColor: "bg-gradient-to-br from-red-900/30 to-red-950/20",
@@ -1598,7 +1593,7 @@ const AssetOverview = () => {
       {
         key: "missing_assets_fav_provider",
         label: t("assetOverview.missingAssetsAtFavProvider"),
-        count: data.categories.missing_assets_fav_provider.count,
+        count: data.categories.missing_assets_fav_provider?.count || 0,
         icon: Star,
         color: "text-orange-400",
         bgColor: "bg-gradient-to-br from-orange-900/30 to-orange-950/20",
@@ -1608,7 +1603,7 @@ const AssetOverview = () => {
       {
         key: "non_primary_lang",
         label: t("assetOverview.nonPrimaryLang"),
-        count: data.categories.non_primary_lang.count,
+        count: data.categories.non_primary_lang?.count || 0,
         icon: Globe,
         color: "text-sky-400",
         bgColor: "bg-gradient-to-br from-sky-900/30 to-sky-950/20",
@@ -1618,7 +1613,7 @@ const AssetOverview = () => {
       {
         key: "non_primary_provider",
         label: t("assetOverview.nonPrimaryProvider"),
-        count: data.categories.non_primary_provider.count,
+        count: data.categories.non_primary_provider?.count || 0,
         icon: Database,
         color: "text-emerald-400",
         bgColor: "bg-gradient-to-br from-emerald-900/30 to-emerald-950/20",
@@ -1628,7 +1623,7 @@ const AssetOverview = () => {
       {
         key: "truncated_text",
         label: t("assetOverview.truncatedTextCategory"),
-        count: data.categories.truncated_text.count,
+        count: data.categories.truncated_text?.count || 0,
         icon: Type,
         color: "text-purple-400",
         bgColor: "bg-gradient-to-br from-purple-900/30 to-purple-950/20",
@@ -1638,67 +1633,11 @@ const AssetOverview = () => {
     ];
   }, [data, t]);
 
-  // Filter assets based on selected category and filters
-  const filteredAssets = useMemo(() => {
-    if (!data) return [];
-    let assets = [];
-    if (selectedCategory === "All Categories") {
-      assets = allAssets;
-    } else {
-      const categoryCard = categoryCards.find(
-        (card) => card.label === selectedCategory
-      );
-      const categoryKey = categoryCard?.key;
-      assets = categoryKey ? data.categories[categoryKey]?.assets || [] : [];
-    }
-    if (selectedStatus === "Resolved") {
-      assets = assets.filter(
-        (asset) =>
-          asset.Manual === "Yes" ||
-          asset.Manual === "true" ||
-          asset.Manual === true
-      );
-    } else if (selectedStatus === "Unresolved") {
-      assets = assets.filter(
-        (asset) =>
-          !asset.Manual ||
-          (asset.Manual !== "Yes" &&
-            asset.Manual !== "true" &&
-            asset.Manual !== true)
-      );
-    }
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      assets = assets.filter(
-        (asset) =>
-          asset.Title?.toLowerCase().includes(query) ||
-          asset.Rootfolder?.toLowerCase().includes(query)
-      );
-    }
-    if (selectedType !== "All Types") {
-      assets = assets.filter((asset) => asset.Type === selectedType);
-    }
-    if (selectedLibrary !== "All Libraries") {
-      assets = assets.filter((asset) => asset.LibraryName === selectedLibrary);
-    }
-    return assets;
-  }, [
-    data,
-    selectedCategory,
-    selectedStatus,
-    searchQuery,
-    selectedType,
-    selectedLibrary,
-    allAssets,
-    categoryCards,
-  ]);
-
   // Pagination Logic
-  const totalPages = Math.ceil(filteredAssets.length / itemsPerPage);
-  const displayedAssets = filteredAssets.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const totalCount = data?.total_count || 0;
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  const displayedAssets = data?.assets || [];
+  const allDisplayedSelected = displayedAssets.length > 0 && displayedAssets.every((asset) => selectedAssetIds.has(asset.id));
 
   // Get tags for an asset
   const getAssetTags = (asset) => {
@@ -1864,7 +1803,7 @@ const AssetOverview = () => {
   };
 
   // Loading state
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -1894,11 +1833,13 @@ const AssetOverview = () => {
 
   // Main Render
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6" aria-busy={loading}>
+      <WorkspaceHeader title={t("assetOverview.title")} />
+      <SiloSupportNotice scope="skipTags" />
       {/* Tabs */}
       <div className="flex border-b border-theme-muted/30">
         <button
-          onClick={() => setActiveTab("active")}
+          onClick={() => handleTabChange("active")}
           className={`px-6 py-3 font-semibold text-sm transition-colors relative ${
             activeTab === "active"
               ? "text-theme-primary"
@@ -1911,7 +1852,7 @@ const AssetOverview = () => {
           )}
         </button>
         <button
-          onClick={() => setActiveTab("skipped")}
+          onClick={() => handleTabChange("skipped")}
           className={`px-6 py-3 font-semibold text-sm transition-colors relative ${
             activeTab === "skipped"
               ? "text-theme-primary"
@@ -1964,7 +1905,8 @@ const AssetOverview = () => {
       )}
 
       {/* Filters */}
-      <div className="bg-theme-card border border-theme rounded-lg p-4">
+      {/* backdrop-filter makes each card a stacking context; this layer keeps filter menus above the list. */}
+      <div className="relative z-20 bg-theme-card border border-theme rounded-lg p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           {activeTab === "active" && (
             <>
@@ -2208,7 +2150,7 @@ const AssetOverview = () => {
           </div>
         </div>
       )}
-      <div className="bg-theme-card border border-theme rounded-lg p-6">
+      <div className="relative z-0 bg-theme-card border border-theme rounded-lg p-6">
         {/* Bulk Action Toolbar */}
         {selectedAssetIds.size > 0 && (
           <div className="mb-4 p-4 bg-theme-primary/10 border border-theme-primary rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -2275,35 +2217,36 @@ const AssetOverview = () => {
         )}
 
         {/* Grid Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between mb-4">
           <h2 className="text-xl font-bold text-theme-text">
             {selectedCategory === "All Categories"
               ? t("assetOverview.allAssets")
               : selectedCategory}
             <span className="text-theme-muted ml-2">
-              ({filteredAssets.length})
+              ({totalCount})
             </span>
           </h2>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
             {/* Select All Button */}
             {displayedAssets.length > 0 && (
               <button
                 onClick={handleSelectAll}
+                disabled={loading}
                 className="flex items-center gap-2 px-4 py-2 bg-theme-primary hover:bg-theme-primary/80 rounded-lg text-sm font-medium transition-all shadow-sm"
                 title={t(
-                  selectedAssetIds.size === displayedAssets.length
+                  allDisplayedSelected
                     ? "gallery.deselectPage"
                     : "gallery.selectPage"
                 )}
               >
-                {selectedAssetIds.size === displayedAssets.length ? (
+                {allDisplayedSelected ? (
                   <Square className="w-4 h-4 text-white" />
                 ) : (
                   <CheckSquare className="w-4 h-4 text-white" />
                 )}
                 <span className="text-white">
-                  {selectedAssetIds.size === displayedAssets.length
+                  {allDisplayedSelected
                     ? t("gallery.deselectPage")
                     : t("gallery.selectPage")}
                 </span>
@@ -2311,10 +2254,10 @@ const AssetOverview = () => {
             )}
 
             {/* Mark All Filtered as Resolved (Refactored) */}
-            {filteredAssets.length > 0 && selectedStatus !== "Resolved" && activeTab !== "skipped" && (
+            {totalCount > 0 && selectedStatus !== "Resolved" && activeTab !== "skipped" && (
               <button
                 onClick={handleBulkMarkAllFilteredAsResolved}
-                disabled={isBulkProcessing}
+                disabled={isBulkProcessing || loading}
                 className="flex items-center gap-2 px-4 py-2 bg-theme-primary/80 hover:bg-theme-primary disabled:bg-theme-primary/50 rounded-lg text-sm font-medium transition-all shadow-sm text-white"
                 title={t("assetOverview.markAllFilteredTooltip")}
               >
@@ -2325,17 +2268,17 @@ const AssetOverview = () => {
                 )}
                 <span className="text-white">
                   {t("assetOverview.markAllFiltered", {
-                    count: filteredAssets.length,
+                    count: totalCount,
                   })}
                 </span>
               </button>
             )}
 
             {/* <-- ADDED: Bulk Delete All Filtered Button --> */}
-            {filteredAssets.length > 0 && activeTab !== "skipped" && (
+            {totalCount > 0 && activeTab !== "skipped" && (
               <button
                 onClick={handleBulkDeleteAllFiltered}
-                disabled={isBulkProcessing}
+                disabled={isBulkProcessing || loading}
                 className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-800 disabled:bg-red-700/50 rounded-lg text-sm font-medium transition-all shadow-sm text-white"
                 title={t("assetOverview.deleteAllFilteredTooltip")}
               >
@@ -2346,7 +2289,7 @@ const AssetOverview = () => {
                 )}
                 <span className="text-white">
                   {t("assetOverview.deleteAllFiltered", {
-                    count: filteredAssets.length,
+                    count: totalCount,
                   })}
                 </span>
               </button>
@@ -2380,7 +2323,11 @@ const AssetOverview = () => {
         </div>
 
         {/* Asset List */}
-        {filteredAssets.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center py-12" role="status" aria-label={t("assetOverview.loading")}>
+            <Loader2 className="w-8 h-8 animate-spin text-theme-primary" aria-hidden="true" />
+          </div>
+        ) : totalCount === 0 ? (
           <div className="text-center py-12">
             <FileQuestion className="w-16 h-16 text-theme-muted mx-auto mb-4" />
             <p className="text-theme-muted">
@@ -2431,7 +2378,7 @@ const AssetOverview = () => {
         )}
 
         {/* Pagination */}
-        {(totalPages > 1 || filteredAssets.length > itemsPerPage) && (
+        {(totalPages > 1 || totalCount > itemsPerPage) && (
           <div className="mt-8 space-y-6">
             <div className="flex justify-center">
               <div className="inline-flex items-center gap-3 px-6 py-3 bg-theme-bg border border-theme-border rounded-xl shadow-md">
@@ -2501,11 +2448,11 @@ const AssetOverview = () => {
       */}
       {confirmModalState.isOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
+          className="app-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
           onClick={() => !isBulkProcessing && setConfirmModalState({ isOpen: false })}
         >
           <div
-            className="relative w-full max-w-lg p-6 bg-theme-card border border-theme rounded-lg shadow-xl"
+            className="app-dialog-panel relative w-full max-w-lg p-6 bg-theme-card border border-theme rounded-lg shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-4">

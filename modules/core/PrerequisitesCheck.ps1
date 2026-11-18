@@ -82,6 +82,10 @@ Else {
         $RunMode = "SyncEmby"
         Write-Entry -Message "SyncEmby running file created..." -Path $global:configLogging -Color White -log Info
     }
+    Elseif ($SyncSilo) {
+        $RunMode = "syncsilo"
+        Write-Entry -Message "Silo mirror running file created..." -Path $global:configLogging -Color White -log Info
+    }
     Elseif ($Backup) {
         $RunMode = "Backup"
         Write-Entry -Message "Backup running file created..." -Path $global:configLogging -Color White -log Info
@@ -224,7 +228,7 @@ foreach ($file in $files) {
         }
 
         # Font handling...
-        if ($file.Extension -match "\.(ttf|otf)$" -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE') {
+        if ($file.Extension -match "\.(ttf|otf)$" -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE' -and -not $env:POSTERIZARR_API_WORK_ROOT) {
             $fontDestination = Join-Path -Path $Font_Cache -ChildPath $file.Name
             $needsFontCopy = $false
 
@@ -261,7 +265,7 @@ if ($copiedOverlays -eq 0 -and $copiedFonts -eq 0) {
 }
 
 # Refresh font cache if any fonts were actually copied
-if ($copiedFonts -gt 0 -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE') {
+if ($copiedFonts -gt 0 -and $env:POSTERIZARR_NON_ROOT -eq 'TRUE' -and -not $env:POSTERIZARR_API_WORK_ROOT) {
     Write-Entry -Subtext "Updating ImageMagick font cache..." -Path $global:configLogging -Color Green -log Info
     & fc-cache -fv 1> $null 2> $null
 }
@@ -287,6 +291,10 @@ if (!$SyncJelly -and !$SyncEmby) {
     if ($UseEmby -eq 'true') {
         # Check Emby now:
         CheckEmbyAccess -EmbyUrl $EmbyUrl -EmbyAPI $EmbyAPIKey
+    }
+    if ($UseSilo -eq 'true') {
+        try { Initialize-SiloCatalog }
+        catch { HandleScriptExit -Message "Silo access failed: $($_.Exception.Message)" }
     }
 }
 # Check overlay artwork for poster, background, and titlecard dimensions
@@ -322,7 +330,7 @@ if (-not $module) {
 }
 
 # Only connect if DisableOnlineAssetFetch is not set to false, and not running a mode that skips online search
-if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby -and !$Backup -and !$Manual -and !$PosterReset -and !$Restore) {
+if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby -and !$SyncSilo -and !$Backup -and !$Manual -and !$PosterReset -and !$Restore) {
     if ($global:UseCustomProviderOrder) {
         $activeProviders = @($global:ProviderOrder)
         if ($global:ProviderPriorityMode -eq 'PerMediaType') {
@@ -340,13 +348,19 @@ if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby
                 }
             }
         }
-        $checkFanart = $activeProviders -contains 'FANART'
-        $checkTMDB   = $activeProviders -contains 'TMDB'
-        $checkTVDB   = $activeProviders -contains 'TVDB'
+        $upperActiveProviders = @($activeProviders | ForEach-Object { "$_".ToUpper() })
+        $checkFanart = $upperActiveProviders -contains 'FANART'
+        $checkTMDB   = $upperActiveProviders -contains 'TMDB'
+        $checkTVDB   = $upperActiveProviders -contains 'TVDB'
     } else {
-        $checkFanart = $true
-        $checkTMDB   = $true
-        $checkTVDB   = $true
+        # In Simple mode, only validate providers that have credentials supplied or are the chosen favorite provider
+        $hasFanart = ($null -ne $global:FanartTvAPIKey -and $global:FanartTvAPIKey -ne '' -and $global:FanartTvAPIKey -ne 'FANARTAPIKEY')
+        $hasTMDB   = ($null -ne $global:tmdbtoken -and $global:tmdbtoken -ne '' -and $global:tmdbtoken -ne 'TMDBTOKEN')
+        $hasTVDB   = ($null -ne $global:tvdbapi -and $global:tvdbapi -ne '' -and $global:tvdbapi -ne 'TVDBAPIKEY')
+
+        $checkFanart = $hasFanart -or ($global:FavProvider -eq 'FANART')
+        $checkTMDB   = $hasTMDB -or ($global:FavProvider -eq 'TMDB')
+        $checkTVDB   = $hasTVDB -or ($global:FavProvider -eq 'TVDB')
     }
 
     Write-Entry -Message "Starting Provider Validation..." -Path $global:configLogging -Color White -log Info
@@ -357,7 +371,7 @@ if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby
         Add-FanartTVAPIKey -ProjectKey $FanartTvAPIKey
         try {
             $fanartTestUrl = "https://webservice.fanart.tv/v3/movies/10195?api_key=$FanartTvAPIKey"
-            Invoke-RestMethod -Uri $fanartTestUrl -Method Get -ErrorAction Stop | Out-Null
+            Invoke-RestMethod -Uri $fanartTestUrl -Method Get -TimeoutSec 30 -ErrorAction Stop | Out-Null
             Write-Entry -Subtext "Fanart.tv API Key is valid." -Path $global:configLogging -Color Green -log Info
         } catch {
             Write-Entry -Subtext "Fanart.tv API Key validation failed. Error: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
@@ -386,7 +400,7 @@ if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby
 
             try {
                 $tmdbTestUrl = "https://api.themoviedb.org/3/authentication"
-                Invoke-RestMethod -Uri $tmdbTestUrl -Headers $global:headers -Method Get -ErrorAction Stop | Out-Null
+                Invoke-RestMethod -Uri $tmdbTestUrl -Headers $global:headers -Method Get -TimeoutSec 30 -ErrorAction Stop | Out-Null
                 Write-Entry -Subtext "TMDB Token is valid." -Path $global:configLogging -Color Green -log Info
             } catch {
                 Write-Entry -Subtext "TMDB Token validation failed. Error: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
@@ -405,6 +419,7 @@ if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby
         $maxRetries = 6
         $retryCount = 0
         $success = $false
+        $retryErrors = @()
         Write-Entry -Message "  Validating TVDB API Key (Fetching Token)..." -Path $global:configLogging -Color Yellow -log Info
 
         while (-not $success -and $retryCount -lt $maxRetries) {
@@ -429,41 +444,42 @@ if ($global:DisableOnlineAssetFetch -eq 'false' -and !$SyncJelly -and !$SyncEmby
                 }
 
                 # Make tvdb the POST request
-                $global:tvdbtoken = (Invoke-RestMethod -Uri $global:apiUrl -Headers $global:tvdbtokenheader -Method Post -Body $global:requestBody).data.token
-                $global:tvdbheader = @{}
-                $global:tvdbheader.Add("accept", "application/json")
-                $global:tvdbheader.Add("Authorization", "Bearer $global:tvdbtoken")
-
+                $global:tvdbtoken = (Invoke-RestMethod -Uri $global:apiUrl -Headers $global:tvdbtokenheader -Method Post -Body $global:requestBody -TimeoutSec 30 -ErrorAction Stop).data.token
                 if ($global:tvdbtoken) {
+                    $global:tvdbheader = @{}
+                    $global:tvdbheader.Add("accept", "application/json")
+                    $global:tvdbheader.Add("Authorization", "Bearer $global:tvdbtoken")
                     $success = $true
                     Write-Entry -Subtext "TVDB API Key is valid (Token received)." -Path $global:configLogging -Color Green -log Info
+                }
+                else {
+                    $retryErrors += "TVDB login response did not contain a token."
                 }
 
             }
             catch {
+                $retryErrors += $_.Exception.Message
+            }
+
+            if (-not $success) {
                 $retryCount++
 
                 if ($retryCount -lt $maxRetries) {
                     Start-Sleep -Seconds 10  # Wait for 10 seconds before the next retry
                 }
-                else {
-                    if ($global:FavProvider -eq 'TVDB') {
-                        Write-Entry -Subtext "Could not receive a TVDB Token - $($retryCount)/$($maxRetries). Error: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                        if ($_.Exception.Message -match '\(401\)|\(403\)') {
-                            Write-Entry -Subtext "You may have used a legacy API key in your config file. Please use a 'Project Api Key'." -Path $global:configLogging -Color Red -log Error
-                        }
-                        $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $global:errorCount" -Path $global:configLogging -Color Red -log Error
+            }
+        }
 
-                        # Clear Running File
-                        HandleScriptExit -Message "Could not receive a TVDB Token"
-                    }
-                    Else {
-                        Write-Entry -Subtext "Could not receive a TVDB Token - $($retryCount)/$($maxRetries) - you may have used an legacy API key in your config file. Please use an 'Project Api Key'" -Path $global:configLogging -Color Red -log Error
-                        $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $global:errorCount" -Path $global:configLogging -Color Red -log Error
+        if (-not $success) {
+            $errorSummary = ($retryErrors | Select-Object -Unique) -join '; '
+            Write-Entry -Subtext "Could not receive a TVDB Token - $($retryCount)/$($maxRetries). Error: $errorSummary" -Path $global:configLogging -Color Red -log Error
+            if ($errorSummary -match '\(401\)|\(403\)') {
+                Write-Entry -Subtext "You may have used a legacy API key in your config file. Please use a 'Project Api Key'." -Path $global:configLogging -Color Red -log Error
+            }
+            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $global:errorCount" -Path $global:configLogging -Color Red -log Error
 
-                        break
-                    }
-                }
+            if ($global:FavProvider -eq 'TVDB') {
+                HandleScriptExit -Message "Could not receive a TVDB Token"
             }
         }
     }

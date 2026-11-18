@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -17,6 +18,7 @@ using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Querying;
 using System.Text.Json.Serialization;
 using Posterizarr.Plugin.Configuration;
+using Posterizarr.Plugin.Tasks;
 
 namespace Posterizarr.Plugin.Services
 {
@@ -384,6 +386,83 @@ namespace Posterizarr.Plugin.Services
             }
         }
 
+        private static string ResolveLinks(string path, HashSet<string> resolvingLinks)
+        {
+            var fullPath = Path.GetFullPath(path);
+            var pathRoot = Path.GetPathRoot(fullPath)!;
+            var currentPath = pathRoot;
+            var segments = fullPath.Substring(pathRoot.Length).Split(
+                new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var segment in segments)
+            {
+                var candidate = Path.Combine(currentPath, segment);
+                FileSystemInfo info = Directory.Exists(candidate)
+                    ? new DirectoryInfo(candidate)
+                    : new FileInfo(candidate);
+                var target = info.ResolveLinkTarget(false);
+                if (target == null)
+                {
+                    currentPath = candidate;
+                    continue;
+                }
+
+                var linkPath = Path.GetFullPath(candidate);
+                if (!resolvingLinks.Add(linkPath))
+                {
+                    throw new IOException("A symbolic link cycle was detected.");
+                }
+
+                try
+                {
+                    var targetPath = target.FullName;
+                    if (!Path.IsPathRooted(targetPath))
+                    {
+                        targetPath = Path.Combine(Path.GetDirectoryName(linkPath)!, targetPath);
+                    }
+                    currentPath = ResolveLinks(targetPath, resolvingLinks);
+                }
+                finally
+                {
+                    resolvingLinks.Remove(linkPath);
+                }
+            }
+
+            return Path.GetFullPath(currentPath);
+        }
+
+        private static bool TryResolveSafeAssetPath(string assetFolder, string path, out string resolvedPath)
+        {
+            resolvedPath = string.Empty;
+            try
+            {
+                var comparison = Path.DirectorySeparatorChar == '\\'
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+                var linkComparer = Path.DirectorySeparatorChar == '\\'
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal;
+                var resolvedRoot = ResolveLinks(assetFolder, new HashSet<string>(linkComparer));
+                var candidate = ResolveLinks(path, new HashSet<string>(linkComparer));
+                var rootPrefix = Path.EndsInDirectorySeparator(resolvedRoot)
+                    ? resolvedRoot
+                    : resolvedRoot + Path.DirectorySeparatorChar;
+
+                if (!candidate.StartsWith(rootPrefix, comparison) || !File.Exists(candidate))
+                {
+                    return false;
+                }
+
+                resolvedPath = candidate;
+                return true;
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                return false;
+            }
+        }
+
         private void HandleAssetUpdatedEvent(AssetEventPayload payload, PluginConfiguration config)
         {
             _logger.Info("[Posterizarr WS] Received real-time update event: {0} for '{1}' (Folder: '{2}')",
@@ -428,12 +507,17 @@ namespace Posterizarr.Plugin.Services
             }
 
             // 2. Canonicalize path and ensure it strictly resides within AssetFolderPath root
-            string normalizedRoot = Path.GetFullPath(config.AssetFolderPath)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            string normalizedRoot = Path.GetFullPath(config.AssetFolderPath);
+            string rootPrefix = Path.EndsInDirectorySeparator(normalizedRoot)
+                ? normalizedRoot
+                : normalizedRoot + Path.DirectorySeparatorChar;
+            var pathComparison = Path.DirectorySeparatorChar == '\\'
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
 
             string fullTargetFile = Path.GetFullPath(Path.Combine(config.AssetFolderPath, relativeForTarget.Replace('/', Path.DirectorySeparatorChar)));
 
-            if (!fullTargetFile.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            if (!fullTargetFile.StartsWith(rootPrefix, pathComparison))
             {
                 _logger.Warn("[Posterizarr Security] Path traversal blocked! Target '{0}' escapes asset root '{1}'", fullTargetFile, normalizedRoot);
                 return;
@@ -452,6 +536,13 @@ namespace Posterizarr.Plugin.Services
                 _logger.Warn("[Posterizarr WS] Asset file does not exist on disk at '{0}'. Verify that Emby's Root Asset Folder Path ('{1}') is correctly mounted to Posterizarr's asset directory.", fullTargetFile, config.AssetFolderPath);
                 return;
             }
+
+            if (!TryResolveSafeAssetPath(config.AssetFolderPath, fullTargetFile, out var resolvedTargetFile))
+            {
+                _logger.Warn("[Posterizarr Security] Rejected asset path outside the configured root: '{0}'", fullTargetFile);
+                return;
+            }
+            fullTargetFile = resolvedTargetFile;
 
             _logger.Info("[Posterizarr WS] Processing real-time update for '{0}' (Type: {1}, Folder: '{2}')",
                 payload.Title ?? payload.FolderName, payload.AssetType, payload.FolderName);
@@ -508,6 +599,25 @@ namespace Posterizarr.Plugin.Services
                     }, 0);
 
                     _libraryManager.UpdateItem(boxSet, boxSet.GetParent(), ItemUpdateType.ImageUpdate);
+
+                    if (config.EnablePlexSync)
+                    {
+                        try
+                        {
+                            var dataFolder = Plugin.Instance?.DataFolderPath ?? Path.Combine(AppContext.BaseDirectory, "data");
+                            var plexCache = new PlexSyncCacheManager(dataFolder, _logger);
+                            plexCache.Load();
+                            if (plexCache.Invalidate(boxSet.Id, collImageType))
+                            {
+                                plexCache.Save();
+                                LogDebug("Invalidated Plex sync cache for '{0}' ({1}) to allow Plex/Kometa sync override.", boxSet.Name, collImageType);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Warn("[Posterizarr WS] Failed to invalidate Plex sync cache for BoxSet {0}: {1}", boxSet.Id, ex.Message);
+                        }
+                    }
                 }
 
                 return;
@@ -634,6 +744,25 @@ namespace Posterizarr.Plugin.Services
                     }, 0);
 
                     _libraryManager.UpdateItem(targetItem, targetItem.GetParent(), ItemUpdateType.ImageUpdate);
+
+                    if (config.EnablePlexSync)
+                    {
+                        try
+                        {
+                            var dataFolder = Plugin.Instance?.DataFolderPath ?? Path.Combine(AppContext.BaseDirectory, "data");
+                            var plexCache = new PlexSyncCacheManager(dataFolder, _logger);
+                            plexCache.Load();
+                            if (plexCache.Invalidate(targetItem.Id, imageType))
+                            {
+                                plexCache.Save();
+                                LogDebug("Invalidated Plex sync cache for '{0}' ({1}) to allow Plex/Kometa sync override.", targetItem.Name, imageType);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Warn("[Posterizarr WS] Failed to invalidate Plex sync cache for item {0}: {1}", targetItem.Id, ex.Message);
+                        }
+                    }
 
                     _logger.Info("[Posterizarr WS] SUCCESS: Real-time image update applied to '{0}' ({1}) in Emby!",
                         targetItem.Name, imageType);

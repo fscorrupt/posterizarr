@@ -7,6 +7,7 @@
         $Mode = "normal"
         Write-Entry -Message "Normal Mode Started..." -Path $global:configLogging -Color White -log Info
     }
+    $global:Mode = $Mode
     Write-Entry -Message "Query plex libs..." -Path $global:configLogging -Color White -log Info
     $retryCount = 0
     $maxRetries = 3
@@ -95,8 +96,8 @@
 
                 Write-Entry -Subtext "Fetching Library ID: $($Library.ID) | Start: $searchsize | Total: $totalContentSize" -Path $global:configLogging -Color Cyan -log Debug
 
-                # Fetch content from Plex server (includeGuids=1 populates external GUIDs directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -168,6 +169,11 @@
                     }
                     if (-not $itemGuid -or -not $itemLocation) {
                         $needFullMetadata = $true
+                    }
+                    elseif ($contentquery -eq 'video' -and ($UsePosterResolutionOverlays -eq 'true' -or $UseBackgroundResolutionOverlays -eq 'true')) {
+                        if (-not $itemNode.media.part.stream) {
+                            $needFullMetadata = $true
+                        }
                     }
                 }
 
@@ -370,23 +376,13 @@
                     $Labels = ""
                 }
                 $FileMetadata = $Metadata.MediaContainer.$contentquery.media.part.stream
-                $Resolution = $null
-                # Get Resolution
-                if ($FileMetadata) {
-                    $FileMetadata | ForEach-Object {
-                        if ($_.streamType -eq '1') {
-                            $Resolution = $_.displayTitle
-                        }
-                    }
-                }
+                $Resolution = Get-MediaItemResolution -FileMetadata $FileMetadata -Media $Metadata.MediaContainer.$contentquery.media -Location $location -LibraryName $Library.Name -MatchedPath $Matchedpath -Type $Metadata.MediaContainer.$contentquery.type
                 $temp = New-Object psobject
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Name" -Value $Library.Name
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $Metadata.MediaContainer.$contentquery.type
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $($Library.language.split("-")[0])
                 $temp | Add-Member -MemberType NoteProperty -Name "title" -Value $($item.title)
-                if ($FileMetadata) {
-                    $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
-                }
+                $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
                 $temp | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $($item.originalTitle)
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $SeasonNames
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $SeasonNumbers
@@ -451,7 +447,7 @@
     if ($global:runspaceStats) { $global:runspaceStats['SkipTBACount'] = 0 }
     $global:SkipJapTitleCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['SkipJapTitleCount'] = 0 }
-    
+
     # Initialize Summary Counts to prevent leakage between scheduled runs
     $FallbackCount = $null
     $TextlessCount = $null
@@ -580,9 +576,7 @@
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "Path" -Value $showentry.Path
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "OtherMediaServerBackgroundUrl" -Value $showentry.OtherMediaServerBackgroundUrl
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "PlexBackgroundUrl" -Value $showentry.PlexBackgroundUrl
-                if ($FileMetadata) {
-                    $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
-                }
+                $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
                 $global:Episodedata.Add($tempseasondata)
                 Write-Entry -Subtext "  Found [$($tempseasondata.'Show Name')] of type $($tempseasondata.Type) for season $($tempseasondata.'Season Number')" -Path $global:configLogging -Color Cyan -log Debug
                 Write-Entry -Subtext "--------------------------------------------------------------------------------" -Path $global:configLogging -Color Cyan -log Debug
@@ -638,6 +632,7 @@
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "title" -Value $null
+        $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $null
@@ -649,10 +644,12 @@
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "ratingKey" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Path" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "RootFoldername" -Value $null
+        $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "extraFolder" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "MultipleVersions" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "PlexPosterUrl" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "PlexBackgroundUrl" -Value $null
         $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "PlexSeasonUrls" -Value $null
+        $PlexLibDummycsv | Add-Member -MemberType NoteProperty -Name "Labels" -Value $null
 
         $PlexLibDummycsv | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\PlexLibexport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
         Write-Entry -Message "No PlexLibexport.csv found, creating dummy file for you..." -Path $global:configLogging -Color White -log Info
@@ -689,13 +686,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-MoviePosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -709,13 +709,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-ShowPosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -730,13 +733,16 @@
                 foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
                 if ($state['FanartTvAPIKey']) {
                     Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
                 }
-
                 function Runspace-Initialized {}
             }
             $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
             & $StateAssignerSb
+
+            if ($state['FanartTvAPIKey']) {
+                Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+            }
 
             Invoke-TitleCardCreation -episode $_
         } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -746,7 +752,8 @@
     if ($AssetCleanup -eq 'true') {
         $ImagesCleared = 0
         $PathsCleared = 0
-        $savedsizestring = 0
+        [long]$SavedSpace = 0
+        $savedsizestring = "{0:N2} MB" -f 0
         Write-Entry -Subtext "Starting Asset Cleanup, this can take some time..." -Path $global:configLogging -Color Yellow -log Info
         Write-Entry -Subtext "Only removing Artwork with posterizarr exif data" -Path $global:configLogging -Color Cyan -log Info
         $processedDirectories = [System.Collections.Generic.List[object]]::new()
@@ -764,7 +771,15 @@
                 $uncheckedItemPath = $uncheckedItem + ".jpg"
 
                 if (Test-IsPosterizarrAsset -Path $uncheckedItemPath) {
-                    Remove-Item -LiteralPath $uncheckedItemPath -Force
+                    try {
+                        $assetSize = (Get-Item -LiteralPath $uncheckedItemPath -ErrorAction Stop).Length
+                        Remove-Item -LiteralPath $uncheckedItemPath -Force -ErrorAction Stop
+                    }
+                    catch {
+                        Write-Entry -Subtext "Could not remove artwork: $uncheckedItemPath - $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                        continue
+                    }
+                    $SavedSpace += $assetSize
                     $ImagesCleared++
                     Write-Entry -Subtext "Artwork Removed: $uncheckedItemPath" -Path $global:configLogging -Color Yellow -log Info
 
@@ -783,15 +798,24 @@
 
         # Cleanup empty Asset dirs
         if ($LibraryFolders -eq 'true') {
-            # After all files are removed get all empty directories at once
-            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force | Where-Object { -not $_.GetFileSystemInfos() }
+            # NAS/OS metadata that should not keep an otherwise empty folder alive
+            $junkNames = [System.Collections.Generic.HashSet[string]]::new([string[]]@('@eaDir', '.DS_Store', 'Thumbs.db', 'desktop.ini'), [System.StringComparer]::OrdinalIgnoreCase)
+            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force |
+                Where-Object { $_.FullName -notmatch '[\\/]@eaDir([\\/]|$)' } |
+                Sort-Object { $_.FullName.Length } -Descending
 
             # Loop through the pre-filtered list
             foreach ($dir in $dirs2delete) {
-                # Increment counter
+                if (@($dir.GetFileSystemInfos() | Where-Object { -not $junkNames.Contains($_.Name) }).Count -ne 0) { continue }
+
+                try {
+                    Remove-Item -LiteralPath $dir.FullName -Recurse -Force -Confirm:$false -ErrorAction Stop | Out-Null
+                }
+                catch {
+                    Write-Entry -Subtext "Could not remove empty directory: $($dir.FullName) - $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    continue
+                }
                 $PathsCleared++
-                # Remove the empty directory
-                Remove-Item -LiteralPath $dir.FullName -Force -Confirm:$false | Out-Null
 
                 # Log the action
                 Write-Entry -Subtext "Removed empty directory: $($dir.FullName)" -Path $global:configLogging -Color Yellow -log Info
@@ -800,38 +824,12 @@
         if ($ImagesCleared -ge '1' -or $PathsCleared -ge '1') {
             Write-Entry -Message "Asset Cleanup overview..." -Path $global:configLogging -Color Green -log Info
         }
-        # Check new dir Size
         if ($ImagesCleared -ge '1') {
-            $newtotalSize = Get-ChildItem $AssetPath -Recurse | Measure-Object -Property Length -Sum
-            # Convert bytes to kilobytes, megabytes, or gigabytes as needed
-            if ($newtotalSize.Sum -gt 1GB) {
-                $newtotalSizeString = "{0:N2} GB" -f ($newtotalSize.Sum / 1GB)
-            }
-            elseif ($newtotalSize.Sum -gt 1MB) {
-                $newtotalSizeString = "{0:N2} MB" -f ($newtotalSize.Sum / 1MB)
-            }
-            elseif ($newtotalSize.Sum -gt 1KB) {
-                $newtotalSizeString = "{0:N2} KB" -f ($newtotalSize.Sum / 1KB)
-            }
-            else {
-                $newtotalSizeString = "$($newtotalSize.Sum) bytes"
-            }
-
-            # Saved space
-            $SavedSpace = $global:totalSize - $newtotalSize.Sum
-
-            # Convert bytes to kilobytes, megabytes, or gigabytes as needed
-            if ($SavedSpace -gt 1GB) {
+            if ($SavedSpace -ge 1GB) {
                 $savedsizestring = "{0:N2} GB" -f ($SavedSpace / 1GB)
             }
-            elseif ($SavedSpace -gt 1MB) {
-                $savedsizestring = "{0:N2} MB" -f ($SavedSpace / 1MB)
-            }
-            elseif ($SavedSpace -gt 1KB) {
-                $savedsizestring = "{0:N2} KB" -f ($SavedSpace / 1KB)
-            }
             else {
-                $savedsizestring = "$SavedSpace bytes"
+                $savedsizestring = "{0:N2} MB" -f ($SavedSpace / 1MB)
             }
 
             if ($ImagesCleared -ge '1') {
@@ -979,6 +977,21 @@
     }
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "up" -ping $executionTime.TotalMilliseconds
+    }
+
+    # Notify Dynamic Overlays service to composite and push newly created artwork
+    if (($posterCount -gt 0) -and ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled)) {
+        try {
+            $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
+            $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
+            $body = @{
+                target_server = "all"
+                scope = "incremental"
+                library = "all"
+            } | ConvertTo-Json
+            Invoke-RestMethod -Uri $syncUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction SilentlyContinue | Out-Null
+            Write-Entry -Subtext "Notified Dynamic Overlays service to composite and push new artwork." -Path $global:configLogging -Color DarkMagenta -log Info
+        } catch {}
     }
 
 

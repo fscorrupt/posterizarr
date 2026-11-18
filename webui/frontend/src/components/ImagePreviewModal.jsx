@@ -82,6 +82,59 @@ function parseCollectionSummary(summary) {
   };
 }
 
+function PreviewArtwork({ src, thumbnailSrc, name }) {
+  const { t } = useTranslation();
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const showThumbnail = thumbnailSrc && !thumbnailFailed && !loaded;
+
+  return (
+    <div className="relative w-full h-[45dvh] lg:h-[84dvh] flex items-center justify-center" aria-busy={!loaded && !failed}>
+      {showThumbnail && (
+        <img
+          src={thumbnailSrc}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-contain rounded"
+          onError={() => setThumbnailFailed(true)}
+        />
+      )}
+      {!failed && (
+        <img
+          src={src}
+          alt={name}
+          decoding="async"
+          className={`absolute inset-0 w-full h-full object-contain drop-shadow-2xl rounded ${loaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={async (event) => {
+            try {
+              await event.currentTarget.decode();
+              setLoaded(true);
+            } catch {
+              setFailed(true);
+            }
+          }}
+          onError={() => setFailed(true)}
+        />
+      )}
+      {!loaded && !failed && (
+        <RefreshCw className="absolute w-8 h-8 text-white animate-spin drop-shadow" aria-hidden="true" />
+      )}
+      {failed && !showThumbnail && (
+        <div className="text-center flex flex-col items-center justify-center">
+          <div className="p-4 rounded-full bg-theme-primary/20 inline-block mb-4">
+            <ImageIcon className="w-16 h-16 text-theme-primary" />
+          </div>
+          <p className="text-white text-lg font-semibold mb-2">
+            {t("gallery.previewNotAvailable")}
+          </p>
+          <p className="text-gray-400 text-sm">{t("gallery.useFileExplorer")}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Global Image Preview Modal Component
  * Displays a full-screen preview of an image with metadata and action buttons
@@ -104,13 +157,15 @@ function ImagePreviewModal({
   onDelete,
   onReplace,
   isDeleting = false,
-  cacheBuster = Date.now(),
+  cacheBuster,
   formatDisplayPath,
   formatTimestamp,
   getMediaType,
   getTypeColor,
 }) {
   const { t } = useTranslation();
+  const [defaultCacheBuster] = useState(Date.now);
+  const imageVersion = cacheBuster ?? defaultCacheBuster;
 
   // Get the display media type - use type from backend if available, otherwise fallback
   const getDisplayMediaType = () => {
@@ -335,7 +390,8 @@ function ImagePreviewModal({
           let foundMatch = null;
 
           // Check ImageChoices DB FIRST because it has perfectly formatted Titles like 'S01E01 | Pilot' and actual 'Season' records
-          const choicesRes = await fetch("/api/imagechoices");
+          const rf = encodeURIComponent(rootfolder);
+          const choicesRes = await fetch(`/api/imagechoices?rootfolder=${rf}`);
           if (choicesRes.ok) {
             const choicesData = await choicesRes.json();
             foundMatch = findBestMatch(choicesData, false);
@@ -343,7 +399,7 @@ function ImagePreviewModal({
 
           // Check Plex Export DB if not found in ImageChoices
           if (!foundMatch) {
-            const plexRes = await fetch("/api/plex-export/library");
+            const plexRes = await fetch(`/api/plex-export/library?rootfolder=${rf}`);
             if (plexRes.ok) {
               const plexData = await plexRes.json();
               if (plexData.success && plexData.data) {
@@ -354,7 +410,7 @@ function ImagePreviewModal({
 
           // Check Jellyfin/Emby Export DB if still not found
           if (!foundMatch) {
-            const otherRes = await fetch("/api/other-media-export/library");
+            const otherRes = await fetch(`/api/other-media-export/library?rootfolder=${rf}`);
             if (otherRes.ok) {
               const otherData = await otherRes.json();
               if (otherData.success && otherData.data) {
@@ -387,50 +443,39 @@ function ImagePreviewModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-3 md:p-6 lg:p-8"
+      className="app-dialog-backdrop fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-3 md:p-6 lg:p-8"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-6xl xl:max-w-7xl 2xl:max-w-[1550px] max-h-[92vh] bg-theme-card rounded-xl overflow-hidden shadow-2xl border border-theme/60 flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Image preview"
+        className="app-dialog-panel relative w-full min-w-0 max-w-6xl xl:max-w-7xl 2xl:max-w-[1550px] max-h-[calc(100dvh-1.5rem)] lg:max-h-[92dvh] bg-theme-card rounded-lg overflow-y-auto lg:overflow-hidden overscroll-contain shadow-2xl border border-theme/60 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-20 p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg transition-colors border border-white/10"
+          aria-label="Close image preview"
+          className="absolute top-3 right-3 z-20 p-2 min-w-11 min-h-11 bg-black/60 hover:bg-black/80 text-white rounded-lg transition-colors border border-white/10"
         >
           <X className="w-6 h-6" />
         </button>
 
-        <div className="w-full flex flex-col md:flex-row max-h-[92vh]">
+        <div className="w-full min-w-0 flex flex-col lg:flex-row lg:max-h-[92dvh]">
           {/* Image */}
-          <div className="flex-1 flex items-center justify-center bg-black/95 p-4 md:p-8 min-h-[350px] relative overflow-hidden">
-            <img
-              src={`${selectedImage.url}?t=${cacheBuster}`}
-              alt={selectedImage.name}
-              className="max-w-full max-h-[84vh] object-contain drop-shadow-2xl rounded"
-              onError={(e) => {
-                e.target.style.display = "none";
-                e.target.nextSibling.style.display = "flex";
-              }}
+          <div className="flex-1 min-w-0 flex items-center justify-center bg-black/95 p-3 sm:p-4 lg:p-8 min-h-[180px] lg:min-h-[350px] relative overflow-hidden">
+            <PreviewArtwork
+              key={`${selectedImage.url}:${imageVersion}`}
+              src={`${selectedImage.url}${selectedImage.url.includes("?") ? "&" : "?"}t=${imageVersion}`}
+              thumbnailSrc={/^\/(poster_assets|manual_poster_assets|backup_assets|test|images)\//.test(selectedImage.url)
+                ? `/api/thumbnail?path=${encodeURIComponent(selectedImage.url)}&t=${imageVersion}`
+                : null}
+              name={selectedImage.name}
             />
-            <div
-              className="text-center flex-col items-center justify-center"
-              style={{ display: "none" }}
-            >
-              <div className="p-4 rounded-full bg-theme-primary/20 inline-block mb-4">
-                <ImageIcon className="w-16 h-16 text-theme-primary" />
-              </div>
-              <p className="text-white text-lg font-semibold mb-2">
-                {t("gallery.previewNotAvailable")}
-              </p>
-              <p className="text-gray-400 text-sm">
-                {t("gallery.useFileExplorer")}
-              </p>
-            </div>
           </div>
 
           {/* Info Panel */}
-          <div className="w-full md:w-[460px] lg:w-[500px] xl:w-[560px] shrink-0 p-6 md:p-7 bg-theme-card border-t md:border-t-0 md:border-l border-theme/50 overflow-y-auto max-h-[92vh] custom-scrollbar">
+          <div className="w-full min-w-0 lg:w-[500px] xl:w-[560px] shrink-0 p-4 sm:p-6 lg:p-7 bg-theme-card border-t lg:border-t-0 lg:border-l border-theme/50 lg:overflow-y-auto lg:max-h-[92dvh] custom-scrollbar break-words [overflow-wrap:anywhere]">
             <h3 className="text-xl font-bold text-theme-text mb-4">
               Asset Details
             </h3>

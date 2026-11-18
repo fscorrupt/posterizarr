@@ -10,6 +10,7 @@
     $global:collectionCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['collectionCount'] = 0 }
     $Mode = "manual"
+    $global:Mode = "manual"
 
     Write-Entry -Message "Manual Poster Creation Started" -Path $global:configLogging -Color DarkMagenta -log Info
 
@@ -407,20 +408,37 @@
                 $computedSeasonTitle = if ($null -ne $seasonNum) { "Season $seasonNum" } else { "Season" }
             }
 
-            # Apply capitalization for Season text
-            if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
-                $joinedTitle = $computedSeasonTitle.ToUpper()
+            # Handle Season Text vs Show Title on Season
+            if ($MainPSBoundParameters.ContainsKey('Titletext') -and [string]::IsNullOrWhiteSpace($Titletext)) {
+                Write-Entry -Subtext "Skipping Season Poster text because Titletext was explicitly left blank/empty." -Path $global:configLogging -Color Yellow -log Info
+                $computedSeasonTitle = ""
+                $joinedTitle = ""
+                $ShowjoinedTitle = ""
+            }
+            elseif ($MainPSBoundParameters.ContainsKey('Titletext') -and -not [string]::IsNullOrWhiteSpace($Titletext) -and $AddShowTitletoSeason -ne 'true') {
+                $computedSeasonTitle = $Titletext
+                if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
+                    $joinedTitle = $computedSeasonTitle.ToUpper()
+                }
+                else {
+                    $joinedTitle = $computedSeasonTitle
+                }
+                $ShowjoinedTitle = ""
             }
             else {
-                $joinedTitle = $computedSeasonTitle
-            }
+                if ($SeasonfontAllCaps -eq 'true' -or ($SeasonfontAllCaps -ne 'false' -and $fontAllCaps -eq 'true')) {
+                    $joinedTitle = $computedSeasonTitle.ToUpper()
+                }
+                else {
+                    $joinedTitle = $computedSeasonTitle
+                }
 
-            # Show Title on Season text
-            if ($ShowOnSeasonfontAllCaps -eq 'true') {
-                $ShowjoinedTitle = $titletext.ToUpper()
-            }
-            else {
-                $ShowjoinedTitle = $titletext
+                if ($ShowOnSeasonfontAllCaps -eq 'true') {
+                    $ShowjoinedTitle = $titletext.ToUpper()
+                }
+                else {
+                    $ShowjoinedTitle = $titletext
+                }
             }
         }
         elseif ($CollectionCard) {
@@ -488,7 +506,11 @@
             }
         }
         if ($SeasonPoster) {
-            Write-Entry -Subtext "Processing Season Poster for: `"$Titletext | $joinedTitle`"" -Path $global:configLogging -Color White -log Info
+            if ([string]::IsNullOrWhiteSpace($joinedTitle)) {
+                Write-Entry -Subtext "Processing Season Poster (Textless)" -Path $global:configLogging -Color White -log Info
+            } else {
+                Write-Entry -Subtext "Processing Season Poster for: `"$Titletext | $joinedTitle`"" -Path $global:configLogging -Color White -log Info
+            }
         }
         elseif ($Titletext -match '^(http|https)://' -or $Titletext -match '\.(png|jpg|jpeg|webp)$') {
             Write-Entry -Subtext "Processing Poster/Logo for: `"$FolderName`"" -Path $global:configLogging -Color White -log Info
@@ -804,16 +826,27 @@
 
                 $joinedTitlePointSize = $joinedTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
 
-                if ($SeasonPoster -and $AddSeasonText -eq 'true') {
-                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing
-                    Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
+                if ($SeasonPoster -and ($AddSeasonText -eq 'true' -or $AddShowTitletoSeason -eq 'true')) {
+                    if ($AddSeasonText -eq 'true' -and -not [string]::IsNullOrWhiteSpace($joinedTitle)) {
+                        $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing
+                        Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
 
-                    # Add Stroke for Season Text
-                    if ($AddSeasonTextStroke -eq 'true') {
-                        $Arguments = "`"$PosterImage`" -gravity center -background None -layers Flatten `( -size `"$Seasonboxsize`" -background none `( -font `"$fontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Seasonstrokecolor`" -stroke `"$Seasonstrokecolor`" -strokewidth `"$Seasonstrokewidth`" -size `"$Seasonboxsize`" -background none -interline-spacing `"$SeasonlineSpacing`" -gravity `"$Seasontextgravity`" caption:`"$joinedTitle`" `) `( -font `"$fontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Seasonfontcolor`" -stroke none -size `"$Seasonboxsize`" -background none -interline-spacing `"$SeasonlineSpacing`" -gravity `"$Seasontextgravity`" caption:`"$joinedTitle`" `) -gravity `"$ShowOnSeasontextgravity`" -composite -trim +repage -extent `"$Seasonboxsize`" `) -gravity south -geometry +0`"$Seasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                        # Add Stroke for Season Text
+                        if ($AddSeasonTextStroke -eq 'true') {
+                            $Arguments = "`"$PosterImage`" -gravity center -background None -layers Flatten `( -size `"$Seasonboxsize`" -background none `( -font `"$fontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Seasonstrokecolor`" -stroke `"$Seasonstrokecolor`" -strokewidth `"$Seasonstrokewidth`" -size `"$Seasonboxsize`" -background none -interline-spacing `"$SeasonlineSpacing`" -gravity `"$Seasontextgravity`" caption:`"$joinedTitle`" `) `( -font `"$fontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Seasonfontcolor`" -stroke none -size `"$Seasonboxsize`" -background none -interline-spacing `"$SeasonlineSpacing`" -gravity `"$Seasontextgravity`" caption:`"$joinedTitle`" `) -gravity `"$ShowOnSeasontextgravity`" -composite -trim +repage -extent `"$Seasonboxsize`" `) -gravity south -geometry +0`"$Seasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                        }
+                        Else {
+                            $Arguments = "`"$PosterImage`" -gravity center -background None -layers Flatten `( -font `"$fontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Seasonfontcolor`" -size `"$Seasonboxsize`" -background none -interline-spacing `"$SeasonlineSpacing`" -gravity `"$Seasontextgravity`" caption:`"$joinedTitle`" -trim +repage -extent `"$Seasonboxsize`" `) -gravity south -geometry +0`"$Seasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                        }
+
+                        # Execute Season Text Command
+                        Write-Entry -Subtext "    Applying Season Poster text: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
+                        $logEntry = "`"$magick`" $Arguments"
+                        $logEntry | Write-MagickLog
+                        InvokeMagickCommand -Command $magick -Arguments $Arguments
                     }
-                    Else {
-                        $Arguments = "`"$PosterImage`" -gravity center -background None -layers Flatten `( -font `"$fontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Seasonfontcolor`" -size `"$Seasonboxsize`" -background none -interline-spacing `"$SeasonlineSpacing`" -gravity `"$Seasontextgravity`" caption:`"$joinedTitle`" -trim +repage -extent `"$Seasonboxsize`" `) -gravity south -geometry +0`"$Seasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                    elseif ($AddSeasonText -eq 'true') {
+                        Write-Entry -Subtext "    Skipping Season Poster text: no text specified (empty/blank)." -Path $global:configLogging -Color Yellow -log Info
                     }
 
                     # Add Show Title / Logo to Season
@@ -822,10 +855,10 @@
                             # Logo Logic
                             if ($Titletext -match "(?i)\.svg") {
                                 Write-Entry -Subtext "Detected SVG. Applying High-Res settings for Show Logo on Season." -Path $global:configLogging -Color Cyan -log Info
-                                $ShowOnSeasonArguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                $ShowOnSeasonArguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                             }
                             else {
-                                $ShowOnSeasonArguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                                $ShowOnSeasonArguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$ShowOnSeasonboxsize`" `) -gravity `"$ShowOnSeasontextgravity`" -geometry +0+`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                             }
                         }
                         else {
@@ -837,16 +870,8 @@
                                 $ShowOnSeasonArguments = "`"$PosterImage`" -gravity center -background None -layers Flatten `( -font `"$fontImagemagick`" -pointsize `"$showoptimalFontSize`" -fill `"$ShowOnSeasonfontcolor`" -size `"$ShowOnSeasonboxsize`" -background none -interline-spacing `"$ShowOnSeasonlineSpacing`" -gravity `"$ShowOnSeasontextgravity`" caption:`"$ShowjoinedTitle`" -trim +repage -extent `"$ShowOnSeasonboxsize`" `) -gravity south -geometry +0`"$ShowOnSeasontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                             }
                         }
-                    }
 
-                    # Execute Season Text Command
-                    Write-Entry -Subtext "    Applying Season Poster text: `"$joinedTitle`"" -Path $global:configLogging -Color White -log Info
-                    $logEntry = "`"$magick`" $Arguments"
-                    $logEntry | Write-MagickLog
-                    InvokeMagickCommand -Command $magick -Arguments $Arguments
-
-                    # Execute Show Title / Logo Command
-                    if ($AddShowTitletoSeason -eq 'true') {
+                        # Execute Show Title / Logo Command
                         if ($isLogo) {
                             Write-Entry -Subtext "    Applying showTitle logo..." -Path $global:configLogging -Color White -log Info
                         } else {
@@ -863,10 +888,10 @@
                         $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                         if ($Titletext -match "(?i)\.svg") {
                             Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                            $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         else {
-                            $Arguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$Collectionboxsize`" `) -gravity `"$Collectiontextgravity`" -geometry +0+`"$Collectiontext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                     } else {
                         $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $CollectionfontImagemagick -box_width $CollectionMaxWidth  -box_height $CollectionMaxHeight -min_pointsize $CollectionminPointSize -max_pointsize $CollectionmaxPointSize -lineSpacing $CollectionlineSpacing
@@ -940,10 +965,10 @@
                         $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                         if ($Titletext -match "(?i)\.svg") {
                             Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                            $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         else {
-                            $Arguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$Backgroundboxsize`" `) -gravity `"$Backgroundtextgravity`" -geometry +0+`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
 
                         Write-Entry -Subtext "    Applying logo..." -Path $global:configLogging -Color White -log Info
@@ -970,10 +995,10 @@
                         $colorEffect = Get-LogoColorEffect -ImagePath $_chkLogo
                         if ($Titletext -match "(?i)\.svg") {
                             Write-Entry -Subtext "Detected SVG. Applying High-Res settings." -Path $global:configLogging -Color Cyan -log Info
-                            $Arguments = "`"$PosterImage`" ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none -density 300 `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         else {
-                            $Arguments = "`"$PosterImage`" ( -background none `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
+                            $Arguments = "`"$PosterImage`" -colorspace sRGB ( -background none `"$LogoSource`" $colorEffect -resize `"$boxsize`" `) -gravity `"$textgravity`" -geometry +0+`"$text_offset`" -quality $global:outputQuality -composite `"$PosterImage`""
                         }
                         Write-Entry -Subtext "    Applying logo..." -Path $global:configLogging -Color White -log Info
                     }
@@ -1030,7 +1055,25 @@
         # This design choice prioritizes data integrity and gives users control over when and how their media server metadata is updated, especially in scenarios where image processing might be complex or prone to errors
         # By ensuring that media server updates only occur after successful image processing, we can maintain a more reliable and consistent user experience, reducing the likelihood of issues caused by failed image manipulations while still providing the convenience of automatic updates when desired.
         # Additionally, the media server update logic is designed to be flexible and adaptable to different server types (Plex, Emby, Jellyfin) and various asset types (movies, shows, seasons, episodes), allowing for a wide range of use cases and configurations while still maintaining a clear and structured approach to updating media metadata based on the processed images.
-        if ($Upload2Plex -eq 'true' -or $UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
+        if ($global:DynamicOverlaysEnabled -eq $true -or $DynamicOverlaysEnabled -eq $true) {
+            Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct media server upload in Manual Mode. Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+        }
+        elseif ($UseSilo -eq 'true' -and $TitleCard) {
+            Write-Entry -Message "Manual Mode: Silo does not support episode artwork uploads. Title card was created locally only (no media server upload)." -Path $global:configLogging -Color Yellow -log Warning
+        }
+        elseif ($UseSilo -eq 'true' -and $CollectionCard) {
+            $collectionTitle = (($FolderName -replace '\\', '/').TrimEnd('/') -split '/')[-1]
+            $libraryIds = @($global:SiloLibraries | Where-Object { $_.Name -eq $LibraryName -and $_.Name -notin $LibstoExclude } | ForEach-Object ItemId)
+            $collections = @(Get-SiloCollection -Path '/admin/collections' -Query @{ limit = 200 } | Where-Object {
+                $_.title -eq $collectionTitle -and @(@($_.library_id) + @($_.library_ids) | Where-Object { $_ -in $libraryIds }).Count -gt 0
+            })
+            if ($collections.Count -eq 1) {
+                Send-SiloCollectionArtwork -CollectionId $collections[0].id -ImagePath $PosterImage
+            } else {
+                Write-Entry -Message 'Silo collection upload skipped: no unique collection in the selected library.' -Path $global:configLogging -Color Yellow -log Warning
+            }
+        }
+        elseif ($Upload2Plex -eq 'true' -or $UseJellyfin -eq 'true' -or $UseEmby -eq 'true' -or $UseSilo -eq 'true') {
             Write-Entry -Message "Manual Mode: Updating Media Server artwork..." -Path $global:configLogging -Color Cyan -log Info
 
             $FinalTargetID = $null
@@ -1041,31 +1084,50 @@
             $SearchTerm = $Titletext
             if ([string]::IsNullOrWhiteSpace($SearchTerm) -or $SeasonPoster -or $TitleCard) {
                 # Titletext is the poster text, not the show name (or it's empty). Derive show name from FolderName.
-                if ($FolderName -match "^([^\(]+?)\s*(?:\(\d{4}\)|$)") {
+                if ($FolderName -match "^(.+?)\s*\(\d{4}\)") {
                     $SearchTerm = $Matches[1].Trim()
                 } else {
-                    $SearchTerm = $FolderName
+                    $SearchTerm = ($FolderName -replace '\s*[\{\[][^\}\]]*[\}\]]', '').Trim()
                 }
                 Write-Entry -Subtext "Derived Media Server Search Term from FolderName: '$SearchTerm' (Titletext was '$Titletext')" -Path $global:configLogging -Color Cyan -log Debug
             }
 
             if ($UsePlex -eq 'true') {
-                $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($SearchTerm))"
+                $baseItem = $null
 
-                Write-Entry -Subtext "Plex Search URI: $(RedactMediaServerUrl -url $searchUrl)" -Path $global:configLogging -Color Cyan -log Debug
-
-                [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
-
-                if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) {
-                    $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                # Resolve by folder name (titles can differ from Arr-sanitized folder names)
+                try {
+                    $baseItem = Resolve-PlexItemByFolder -LibraryName $LibraryName -FolderName $FolderName
                 }
-                else {
-                    $baseItem = $searchXml.MediaContainer.directory | Where-Object { $_.type -eq 'show' -and $_.librarySectionTitle -eq $LibraryName }
+                catch {
+                    Write-Entry -Subtext "Plex folder path lookup failed: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    $baseItem = $null
                 }
 
-                if (-not $baseItem -and -not ($MoviePosterCard)) {
-                    Write-Entry -Subtext "Plex match failed for Show '$SearchTerm'. Retrying search as 'movie' type..." -Path $global:configLogging -Color Yellow -log Info
-                    $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                if (-not $baseItem) {
+                    Write-Entry -Subtext "Falling back to Plex title search..." -Path $global:configLogging -Color Yellow -log Info
+                    $searchUrl = "$PlexUrl/search?query=$([uri]::EscapeDataString($SearchTerm))"
+
+                    Write-Entry -Subtext "Plex Search URI: $(RedactMediaServerUrl -url $searchUrl)" -Path $global:configLogging -Color Cyan -log Debug
+
+                    [xml]$searchXml = (Invoke-PlexWebRequest -Uri $searchUrl -Headers $extraPlexHeaders).content
+
+                    if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) {
+                        $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                    }
+                    else {
+                        $baseItem = $searchXml.MediaContainer.directory | Where-Object { $_.type -eq 'show' -and $_.librarySectionTitle -eq $LibraryName }
+                    }
+
+                    if (-not $baseItem -and -not ($MoviePosterCard)) {
+                        Write-Entry -Subtext "Plex match failed for Show '$SearchTerm'. Retrying search as 'movie' type..." -Path $global:configLogging -Color Yellow -log Info
+                        $baseItem = $searchXml.MediaContainer.video | Where-Object { $_.type -eq 'movie' -and $_.librarySectionTitle -eq $LibraryName }
+                    }
+
+                    if (@($baseItem).Count -gt 1) {
+                        Write-Entry -Message "Plex title search for '$SearchTerm' returned $(@($baseItem).Count) items in library '$LibraryName'. Aborting upload to avoid applying artwork to the wrong item." -Path $global:configLogging -Color Red -log Error
+                        $baseItem = $null
+                    }
                 }
 
                 if ($baseItem) {
@@ -1074,39 +1136,73 @@
                 }
                 else {
                     Write-Entry -Message "No Plex match found for '$SearchTerm' in library '$LibraryName'." -Path $global:configLogging -Color Red -log Error
+                    if ($FolderName -notmatch '[\{\[](tvdb|tmdb|imdb)(id)?-') {
+                        Write-Entry -Subtext "Action required: Folder '$FolderName' has no {tvdb-...}/{tmdb-...}/{imdb-...} tag and its name does not match the Plex title. Add an ID tag (and year) to the folder name in Sonarr/Radarr, then rerun to upload." -Path $global:configLogging -Color Yellow -log Warning
+                    }
+                    else {
+                        Write-Entry -Subtext "Action required: Folder '$FolderName' could not be matched to a Plex item in '$LibraryName'. Check that Plex has scanned this folder and that its ID tag matches the Plex metadata, then rerun to upload." -Path $global:configLogging -Color Yellow -log Warning
+                    }
                     $FinalTargetID = $null
                 }
             }
-            elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
+            elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true' -or $UseSilo -eq 'true') {
                 $SearchType = if ($MoviePosterCard -or ($BackgroundCard -and $PosterType -eq "Movie Background")) { "Movie" } else { "Series" }
-                $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=$SearchType&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false"
-
-                Write-Entry -Subtext "JF/Emby Search URI: $(RedactMediaServerUrl -url $searchUri)" -Path $global:configLogging -Color Cyan -log Debug
-                $results = Invoke-RestMethod -Uri $searchUri -Headers $global:OtherMediaServerHeaders
-
-                $baseItem = $results.Items | Where-Object { $_.Path -match [regex]::Escape($FolderName) }
-
-                if (-not $baseItem -and $SearchType -eq "Series") {
-                    Write-Entry -Subtext "Precision match failed for Series '$FolderName'. Retrying search as 'Movie' type..." -Path $global:configLogging -Color Yellow -log Info
-
-                    $retrySearchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Movie&Fields=Path&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false"
-                    $retryResults = Invoke-RestMethod -Uri $retrySearchUri -Headers $global:OtherMediaServerHeaders
-                    $baseItem = $retryResults.Items | Where-Object { $_.Path -match [regex]::Escape($FolderName) }
-
-                    if ($baseItem) {
-                        Write-Entry -Subtext "Successfully recovered! Found precise Movie match: $($baseItem.Name)" -Path $global:configLogging -Color Green -log Info
-                        $SearchType = "Movie"
-                    }
+                # Series Path is the show folder, Movie Path is the video file inside the movie folder
+                $folderMatches = {
+                    param($item)
+                    $p = ("$($item.Path)" -replace '\\', '/').TrimEnd('/')
+                    if (-not $p) { return $false }
+                    $leafName = ($p -split '/')[-1]
+                    $parentName = (($p -replace '/[^/]*$', '') -split '/')[-1]
+                    return ($leafName -eq $FolderName) -or ($item.Type -eq 'Movie' -and $parentName -eq $FolderName)
                 }
-                if (-not $baseItem) {
-                    Write-Entry -Message "No precise path match found for '$FolderName' as Series or Movie." -Path $global:configLogging -Color Red -log Error
-                    Write-Entry -Subtext "Aborting upload to prevent applying artwork to incorrect media item." -Path $global:configLogging -Color Yellow -log Warning
 
-                    $FinalTargetID = $null
+                if ($UseSilo -eq 'true') {
+                    $baseItem = @($global:SiloItems.Values | Where-Object { $_.Type -in @('Movie', 'Series') -and $_.SiloLibraryName -eq $LibraryName -and (& $folderMatches $_) })
                 }
                 else {
+                    # The same folder name can exist in several libraries (e.g. 'TV Shows' and '4K TV Shows')
+                    $libraryFilter = ''
+                    try {
+                        $virtualFolders = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Library/VirtualFolders" -Headers $global:OtherMediaServerHeaders
+                        $libraryId = ($virtualFolders | Where-Object { $_.Name -eq $LibraryName } | Select-Object -First 1).ItemId
+                        if ($libraryId) { $libraryFilter = "&ParentId=$libraryId" }
+                    }
+                    catch {
+                        Write-Entry -Subtext "Could not resolve library '$LibraryName' on media server: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    }
+
+                    $searchUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Series,Movie&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&Recursive=true&SearchTerm=$([uri]::EscapeDataString($SearchTerm))&CollapseBoxSetItems=false$libraryFilter"
+                    Write-Entry -Subtext "JF/Emby Search URI: $(RedactMediaServerUrl -url $searchUri)" -Path $global:configLogging -Color Cyan -log Debug
+                    $results = Invoke-RestMethod -Uri $searchUri -Headers $global:OtherMediaServerHeaders
+                    $baseItem = @($results.Items | Where-Object { & $folderMatches $_ })
+
+                    if ($baseItem.Count -eq 0) {
+                        Write-Entry -Subtext "Title search did not return folder '$FolderName'. Scanning all Series/Movies by path..." -Path $global:configLogging -Color Yellow -log Info
+                        $allUri = "$OtherMediaServerUrl/Items?IncludeItemTypes=Series,Movie&Fields=Path&Recursive=true&CollapseBoxSetItems=false$libraryFilter"
+                        $allResults = Invoke-RestMethod -Uri $allUri -Headers $global:OtherMediaServerHeaders
+                        $baseItem = @($allResults.Items | Where-Object { & $folderMatches $_ })
+                    }
+                }
+
+                if ($baseItem.Count -eq 1) {
+                    $baseItem = $baseItem[0]
+                    if ($baseItem.Type -ne $SearchType) {
+                        Write-Entry -Subtext "Folder '$FolderName' resolved to a $($baseItem.Type) instead of a $SearchType." -Path $global:configLogging -Color Yellow -log Info
+                        $SearchType = $baseItem.Type
+                    }
                     $FinalTargetID = $baseItem.Id
                     Write-Entry -Subtext "Base Item Found: $($baseItem.Name) (ID: $FinalTargetID)" -Path $global:configLogging -Color Cyan -log Debug
+                }
+                else {
+                    if ($baseItem.Count -gt 1) {
+                        Write-Entry -Message "Folder '$FolderName' matched $($baseItem.Count) items on the media server." -Path $global:configLogging -Color Red -log Error
+                    }
+                    else {
+                        Write-Entry -Message "No precise path match found for '$FolderName' as Series or Movie." -Path $global:configLogging -Color Red -log Error
+                    }
+                    Write-Entry -Subtext "Action required: Make sure the media server has scanned folder '$FolderName' (in library '$LibraryName') and that only one item points to it, then rerun to upload." -Path $global:configLogging -Color Yellow -log Warning
+                    $FinalTargetID = $null
                 }
             }
 
@@ -1117,6 +1213,9 @@
                         $drillUri = "$PlexUrl/library/metadata/$FinalTargetID/children"
                         [xml]$children = (Invoke-PlexWebRequest -Uri $drillUri -Headers $extraPlexHeaders).content
                         $FinalTargetID = ($children.MediaContainer.Directory | Where-Object { [int]$_.index -eq [int]$global:SeasonNumber }).ratingKey
+                    }
+                    elseif ($UseSilo -eq 'true') {
+                        $FinalTargetID = $global:SiloSeasons["$($FinalTargetID):$([int]$global:SeasonNumber)"].content_id
                     }
                     else {
                         $drillUri = "$OtherMediaServerUrl/Items?ParentId=$FinalTargetID&IncludeItemTypes=Season&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams"
@@ -1149,10 +1248,10 @@
                             $uri = "$PlexUrl/library/metadata/$FinalTargetID/$($plexTargetType)"
 
                             Write-Entry -Subtext "Attempting Plex Post to: $(RedactMediaServerUrl -url $uri)" -Path $global:configLogging -Color Cyan -log Debug
-                            
+
                             # Using -InFile instead of -Body with ReadAllBytes to prevent "Error while copying content to a stream"
-                            $Upload = Invoke-WebRequest -Uri $uri -Method Post -Headers $extraPlexHeaders -InFile $PosterImage -ContentType 'image/jpeg' -ErrorAction Stop
-                            
+                            $Upload = Invoke-WebRequest -Uri $uri -Method Post -Headers $extraPlexHeaders -InFile ([Management.Automation.WildcardPattern]::Escape($PosterImage)) -ContentType 'image/jpeg' -ErrorAction Stop
+
                             Write-Entry -Subtext "Manual Plex Upload Success: $PosterImage" -Path $global:configLogging -Color Green -log Info
                             $global:UploadCount = Increment-GlobalStat 'UploadCount'
                         }
@@ -1162,8 +1261,14 @@
                     }
                     else {
                         Write-Entry -Subtext "Calling UploadOtherMediaServerArtwork for ID $FinalTargetID" -Path $global:configLogging -Color Cyan -log Debug
-                        UploadOtherMediaServerArtwork -itemId $FinalTargetID -imageType $FinalImageType -imagePath $PosterImage
-                        $global:UploadCount = Increment-GlobalStat 'UploadCount'
+                        try {
+                            UploadOtherMediaServerArtwork -itemId $FinalTargetID -imageType $FinalImageType -imagePath $PosterImage
+                            # Send-SiloArtwork counts its own uploads
+                            if ($UseSilo -ne 'true') { $global:UploadCount = Increment-GlobalStat 'UploadCount' }
+                        }
+                        catch {
+                            Write-Entry -Subtext "Manual media server upload failed: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        }
                     }
                 }
             }
@@ -1189,7 +1294,7 @@
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Type" -Value $PosterType
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Rootfolder" -Value $FolderName
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "LibraryName" -Value $LibraryName
-        $CSVtemp | Add-Member -MemberType NoteProperty -Name "Language" -Value 'false'
+        $CSVtemp | Add-Member -MemberType NoteProperty -Name "Language" -Value $(if ($env:POSTERIZARR_TITLE_REGENERATION -eq '1') { 'Textless' } else { 'false' })
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Fallback" -Value 'false'
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "TextTruncated" -Value $(if ($global:IsTruncated) { 'true' } else { 'false' })
         $CSVtemp | Add-Member -MemberType NoteProperty -Name "Download Source" -Value $PicturePath
@@ -1218,6 +1323,8 @@
             Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
             Collections          = if ($collectionCount) { $collectionCount } Else { 0 }
             Mode                 = $Mode
+            "Title regeneration" = ($env:POSTERIZARR_TITLE_REGENERATION -eq '1')
+            "Managed ImageChoices SHA256" = $(if ($env:POSTERIZARR_TITLE_REGENERATION -eq '1' -and (Test-Path -LiteralPath "$global:ScriptRoot\Logs\ImageChoices.csv")) { (Get-FileHash -LiteralPath "$global:ScriptRoot\Logs\ImageChoices.csv" -Algorithm SHA256).Hash } else { "" })
             Runtime              = $($hours.ToString() + ":" + $minutes.ToString() + ":" + $seconds.ToString())
             Errors               = if ($errorCount) { $errorCount } Else { 0 }
             Fallbacks            = if ($FallbackCount) { $FallbackCount } Else { 0 }
@@ -1254,6 +1361,21 @@
     }
     if ($global:UptimeKumaUrl) {
         Send-UptimeKumaWebhook -status "up" -ping $executionTime.TotalMilliseconds
+    }
+
+    # Notify Dynamic Overlays service to composite and push newly created artwork
+    if (($posterCount -gt 0) -and ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled) -and $env:POSTERIZARR_TITLE_REGENERATION -ne '1') {
+        try {
+            $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
+            $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
+            $body = @{
+                target_server = "all"
+                scope = "incremental"
+                library = "all"
+            } | ConvertTo-Json
+            Invoke-RestMethod -Uri $syncUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction SilentlyContinue | Out-Null
+            Write-Entry -Subtext "Notified Dynamic Overlays service to composite and push new artwork." -Path $global:configLogging -Color DarkMagenta -log Info
+        } catch {}
     }
 
 

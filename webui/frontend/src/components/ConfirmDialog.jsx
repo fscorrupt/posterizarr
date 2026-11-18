@@ -33,16 +33,19 @@ const ConfirmDialog = ({
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4 animate-fadeIn"
+      className="app-dialog-backdrop fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-3 sm:p-4 animate-fadeIn"
       onClick={onClose}
     >
       <div
-        className="bg-theme-card border border-theme rounded-lg max-w-md w-full p-6 animate-scaleIn"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title || t("confirmDialog.title")}
+        className="app-dialog-panel bg-theme-card border border-theme rounded-lg max-w-md w-full max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain p-4 sm:p-6 animate-scaleIn"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start gap-4 mb-4">
+        <div className="flex items-start gap-3 sm:gap-4 mb-4">
           <div
-            className={`w-12 h-12 ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 ${
               type === "danger" ? "bg-red-500/10" : "bg-yellow-500/10"
             } rounded-full flex items-center justify-center flex-shrink-0`}
           >
@@ -52,7 +55,7 @@ const ConfirmDialog = ({
               }`}
             />
           </div>
-          <div>
+          <div className="min-w-0 break-words [overflow-wrap:anywhere]">
             <h3 className="text-lg font-semibold text-theme-text mb-2">
               {title || t("confirmDialog.title")}
             </h3>
@@ -69,16 +72,16 @@ const ConfirmDialog = ({
           </div>
         </div>
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex flex-col-reverse min-[400px]:flex-row gap-2 sm:gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-theme-hover hover:bg-theme-bg-dark text-theme-text rounded-lg transition-colors"
+            className="min-h-11 px-4 py-2 bg-theme-hover hover:bg-theme-bg-dark text-theme-text rounded-lg transition-colors whitespace-normal break-words"
           >
             {cancelText || t("confirmDialog.cancel")}
           </button>
           <button
             onClick={handleConfirm}
-            className={`px-4 py-2 ${buttonColors[type]} text-white rounded-lg transition-colors`}
+            className={`min-h-11 px-4 py-2 ${buttonColors[type]} text-white rounded-lg transition-colors whitespace-normal break-words`}
           >
             {confirmText || t("confirmDialog.confirm")}
           </button>

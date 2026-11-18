@@ -1,8 +1,54 @@
+function Invoke-PosterizarrMutexLock {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Action,
+        [int]$TimeoutMilliseconds = -1
+    )
+
+    $processLock = [string]::Intern("PosterizarrLock:$Name")
+    $mutex = $null
+    $lockAcquired = $false
+    [System.Threading.Monitor]::Enter($processLock)
+    try {
+        if (-not $global:PosterizarrNamedMutexUnsupported) {
+            try {
+                $mutexName = if ($IsWindows) { "Global\$Name" } else { $Name }
+                $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+                try {
+                    if ($TimeoutMilliseconds -lt 0) {
+                        $lockAcquired = $mutex.WaitOne()
+                    } else {
+                        $lockAcquired = $mutex.WaitOne($TimeoutMilliseconds)
+                    }
+                } catch [System.Threading.AbandonedMutexException] {
+                    $lockAcquired = $true
+                }
+            } catch [System.IO.IOException] {
+                # Some .NET builds (e.g. Alpine PowerShell 7.6) can't create named mutexes; stop retrying, Monitor lock still applies
+                $global:PosterizarrNamedMutexUnsupported = $true
+            } catch {}
+        }
+
+        & $Action
+    } finally {
+        try {
+            if ($mutex) {
+                try {
+                    if ($lockAcquired) { $mutex.ReleaseMutex() }
+                } finally {
+                    $mutex.Dispose()
+                }
+            }
+        } finally {
+            [System.Threading.Monitor]::Exit($processLock)
+        }
+    }
+}
+
 function Increment-GlobalStat {
     param([string]$StatName)
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrStatsMutex")
-    try {
-        $mutex.WaitOne() | Out-Null
+
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrStatsMutex' -Action {
         $val = 0
         if ($global:runspaceStats.ContainsKey($StatName)) {
             $val = $global:runspaceStats[$StatName] + 1
@@ -13,9 +59,6 @@ function Increment-GlobalStat {
         }
         Set-Variable -Name $StatName -Value $val -Scope Global -Force
         return $val
-    } finally {
-        $mutex.ReleaseMutex()
-        $mutex.Dispose()
     }
 }
 function Sync-GlobalStats {
@@ -369,27 +412,19 @@ function Get-TextSizeFromCache {
     param([Parameter(Mandatory)][string]$Key, [string]$Path = $Global:TextSizeCachePath)
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
 
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrTextSizeCacheMutex")
-    $hasMutex = $false
-    try {
-        $hasMutex = $mutex.WaitOne(5000)
-        $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop
-        if (-not $raw) { return $null }
+    return Invoke-PosterizarrMutexLock -Name 'PosterizarrTextSizeCacheMutex' -TimeoutMilliseconds 5000 -Action {
+        try {
+            $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop
+            if (-not $raw) { return $null }
 
-        $db = $raw | ConvertFrom-Json -ErrorAction Stop
-        if ($db.PSObject.Properties.Name -contains $Key) { return $db.$Key }
-    }
-    catch {
-        # If any file read or json parse error occurs, return null (miss)
+            $db = $raw | ConvertFrom-Json -ErrorAction Stop
+            if ($db.PSObject.Properties.Name -contains $Key) { return $db.$Key }
+        } catch {
+            # If any file read or json parse error occurs, return null (miss)
+            return $null
+        }
         return $null
     }
-    finally {
-        if ($hasMutex) {
-            $mutex.ReleaseMutex()
-        }
-        $mutex.Dispose()
-    }
-    return $null
 }
 function InvokeIMChecks {
     # Check for latest Imagemagick Version
@@ -419,7 +454,7 @@ function InvokeIMChecks {
     if ($global:OSType -eq "Docker") {
         #$OSVersionTag = (Get-Content /etc/os-release | Select-String -Pattern "^PRETTY_NAME=").ToString().Split('=')[1].Trim('"').replace('Alpine Linux ', '')
         $Url = "https://pkgs.alpinelinux.org/package/edge/community/x86_64/imagemagick"
-        $response = Invoke-WebRequest -Uri $url
+        $response = Invoke-WebRequest -Uri $url -TimeoutSec 30
         $htmlContent = $response.Content
         $regexPattern = '<th class="header">Version<\/th>\s*<td>\s*<strong[^>]*>([\d\.]+-r\d+)<\/strong>'
         $Versionmatching = [regex]::Matches($htmlContent, $regexPattern)
@@ -442,7 +477,7 @@ function InvokeIMChecks {
     Elseif ($global:OSType -eq "Win32NT") {
         try {
             $Url = "https://imagemagick.org/archive/binaries/?C=M;O=D"
-            $result = Invoke-WebRequest -Uri $Url -ErrorAction Stop
+            $result = Invoke-WebRequest -Uri $Url -TimeoutSec 30 -ErrorAction Stop
 
             $global:LatestImagemagickversion = ($result.links.href |
                 Where-Object { $_ -like '*portable-Q16-HDRI-x64.zip' } |
@@ -451,11 +486,11 @@ function InvokeIMChecks {
         catch {
             # Fallback to GitHub API if direct access is forbidden or fails
             Write-Entry -Subtext "Primary method failed. Falling back to GitHub API..." -Path $global:configLogging -Color Yellow -log Debug
-            $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get).tag_name
+            $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get -TimeoutSec 30).tag_name
         }
     }
     Else {
-        $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get).tag_name
+        $global:LatestImagemagickversion = (Invoke-RestMethod -Uri "https://api.github.com/repos/ImageMagick/ImageMagick/releases/latest" -Method Get -TimeoutSec 30).tag_name
     }
     if ($global:LatestImagemagickversion) {
         $global:LatestImagemagickversiontemp = $global:LatestImagemagickversion
@@ -471,7 +506,7 @@ function InvokeIMChecks {
             if ($global:OSType -ne "Docker") {
                 Write-Entry -Subtext "Downloading the latest Imagemagick portable version for you..." -Path $global:configLogging -Color Cyan -log Info
                 $magickUrl = "https://imagemagick.org/archive/binaries/magick"
-                Invoke-WebRequest -Uri $magickUrl -OutFile "$global:ScriptRoot/magick"
+                Invoke-WebRequest -Uri $magickUrl -OutFile "$global:ScriptRoot/magick" -TimeoutSec 300
                 chmod +x "$global:ScriptRoot/magick"
                 Write-Entry -Subtext "Made the portable Magick executable..." -Path $global:configLogging -Color Green -log Info
             }
@@ -497,7 +532,7 @@ function Output-ConfigJson {
         # For any string longer than 1 char, show the first char and then redact.
         return $value.Substring(0, 1) + '****'
     }
-    $redactKeys = @("tvdbapi", "tmdbtoken", "fanarttvapikey", "plextoken", "jellyfinapikey", "embyapikey", "embyurl", "jellyfinurl", "discord", "plexurl", "UptimeKumaUrl", "AppriseUrl", "basicAuthPassword", "basicAuthUsername")
+    $redactKeys = @("tvdbapi", "tmdbtoken", "fanarttvapikey", "plextoken", "jellyfinapikey", "embyapikey", "siloapikey", "silourl", "embyurl", "jellyfinurl", "discord", "plexurl", "UptimeKumaUrl", "AppriseUrl", "basicAuthPassword", "basicAuthUsername")
     $indent = '  ' * $indentLevel
 
     if ($indentLevel -eq 0) {
@@ -696,7 +731,22 @@ function Set-LibraryLanguageOverride {
 
         $posterOrder = if ($applyToPoster) { $order } else { $global:DefaultPreferredLanguageOrder }
         $seasonOrder = if ($applyToSeason) { $order } else { $global:DefaultPreferredSeasonLanguageOrder }
-        $backgroundOrder = if ($applyToBackground) { $order } else { $global:DefaultPreferredBackgroundLanguageOrder }
+
+        $enableBgLangOverride = if ($null -ne $override.EnableBackgroundLanguageOrderOverride) { [bool]$override.EnableBackgroundLanguageOrderOverride } else { $false }
+        $hasCustomBgOrder = ($override.PreferredBackgroundLanguageOrder -and $override.PreferredBackgroundLanguageOrder.Count -gt 0)
+
+        $backgroundOrder = if ($applyToBackground) {
+            if ($enableBgLangOverride -and $hasCustomBgOrder) {
+                $override.PreferredBackgroundLanguageOrder
+            } elseif ($null -eq $override.EnableBackgroundLanguageOrderOverride -and $hasCustomBgOrder) {
+                $override.PreferredBackgroundLanguageOrder
+            } else {
+                $order
+            }
+        } else {
+            $global:DefaultPreferredBackgroundLanguageOrder
+        }
+
         $logoOrder = if ($applyToLogo) { $order } else { $global:DefaultLogoLanguageOrder }
 
         $tcOrder = if ($order -and $order[0] -eq 'xx') { $order } else { @('xx') + $order }
@@ -789,19 +839,162 @@ function Test-PathPermissions {
     }
 }
 function Get-Resolution {
-    param ($Width)
-    switch ($true) {
-        ($Width -ge 7680) { return "8K" }
-        ($Width -ge 5120) { return "5K" }
-        ($Width -ge 3840) { return "4K" }
-        ($Width -ge 2560) { return "1440p" }
-        ($Width -ge 1920) { return "1080p" }
-        ($Width -ge 1280) { return "720p" }
-        ($Width -ge 854) { return "480p" }
-        ($Width -ge 640) { return "360p" }
-        ($Width -ge 426) { return "240p" }
-        default { return "unknown" }
+    param ($Width, $Height, $videoResolution)
+    if ($videoResolution) {
+        switch -Regex ($videoResolution) {
+            '4k|2160' { return "4K" }
+            '1080'    { return "1080p" }
+            '720'     { return "720p" }
+            '480'     { return "480p" }
+            '576'     { return "576p" }
+        }
     }
+    if ($Width) {
+        $w = [int]$Width
+        switch ($true) {
+            ($w -ge 7600) { return "8K" }
+            ($w -ge 5000) { return "5K" }
+            ($w -ge 3800) { return "4K" }
+            ($w -ge 2500 -and (-not $Height -or [int]$Height -ge 1400)) { return "1440p" }
+            ($w -ge 1800) { return "1080p" }
+            ($w -ge 1200) { return "720p" }
+            ($w -ge 800)  { return "480p" }
+            ($w -ge 600)  { return "360p" }
+            ($w -ge 400)  { return "240p" }
+            default { return "unknown" }
+        }
+    }
+    if ($Height) {
+        $h = [int]$Height
+        switch ($true) {
+            ($h -ge 4000) { return "8K" }
+            ($h -ge 2800) { return "5K" }
+            ($h -ge 1600) { return "4K" }
+            ($h -ge 1300) { return "1440p" }
+            ($h -ge 800)  { return "1080p" }
+            ($h -ge 540)  { return "720p" }
+            ($h -ge 400)  { return "480p" }
+            default { return "unknown" }
+        }
+    }
+    return "unknown"
+}
+function Get-MediaItemResolution {
+    param(
+        $FileMetadata,
+        $Media,
+        $Location,
+        $LibraryName = $null,
+        $MatchedPath = $null,
+        $Type = $null
+    )
+
+    $Resolution = $null
+    $hasDoVi = $false
+    $hasHDR = $false
+    $streamRes = $null
+
+    # 1. Inspect Stream if present
+    if ($FileMetadata) {
+        $streams = @($FileMetadata)
+        foreach ($s in $streams) {
+            if ($s.streamType -eq '1') {
+                if ($s.displayTitle) {
+                    $streamRes = $s.displayTitle
+                }
+                if ($s.DOVIPresent -eq '1' -or $s.DOVIProfile -or $s.displayTitle -match '(?i)(DoVi|Dolby[-. ]?Vision|\bDV\b)' -or $s.title -match '(?i)(DoVi|Dolby[-. ]?Vision|\bDV\b)') {
+                    $hasDoVi = $true
+                }
+                if ($s.colorTransfer -match '(?i)(smpte2084|arib|hdr)' -or $s.colorPrimaries -match '(?i)bt2020' -or $s.displayTitle -match '(?i)HDR' -or $s.title -match '(?i)HDR') {
+                    $hasHDR = $true
+                }
+            }
+        }
+    }
+
+    # 2. Determine base resolution
+    $baseResolution = $null
+    if ($streamRes -match '^(4K|2160)') {
+        $baseResolution = '4K'
+    }
+    elseif ($streamRes -match '^1080') {
+        $baseResolution = '1080p'
+    }
+    elseif ($streamRes -match '^720') {
+        $baseResolution = '720p'
+    }
+
+    if (-not $baseResolution -and $Media) {
+        $mediaObj = if ($Media -is [System.Collections.IList] -or $Media.Count -gt 1) { $Media[0] } else { $Media }
+        if ($mediaObj.videoResolution) {
+            switch -Regex ($mediaObj.videoResolution) {
+                '4k|2160' { $baseResolution = '4K' }
+                '1080'    { $baseResolution = '1080p' }
+                '720'     { $baseResolution = '720p' }
+                '480'     { $baseResolution = '480p' }
+                '576'     { $baseResolution = '576p' }
+            }
+        }
+        if (-not $baseResolution -and $mediaObj.width) {
+            $baseResolution = Get-Resolution -Width $mediaObj.width -Height $mediaObj.height
+            if ($baseResolution -eq "unknown") { $baseResolution = $null }
+        }
+    }
+
+    # Fallback to Location / filename
+    if (-not $baseResolution -and $Location) {
+        if ($Location -match '(?i)(2160p?|4K|UHD)') { $baseResolution = '4K' }
+        elseif ($Location -match '(?i)(1080p?|FHD)') { $baseResolution = '1080p' }
+        elseif ($Location -match '(?i)720p?') { $baseResolution = '720p' }
+        elseif ($Location -match '(?i)(480p?|SD)') { $baseResolution = '480p' }
+    }
+
+    # If Show / Directory type with no base resolution yet, check LibraryName and MatchedPath
+    if (-not $baseResolution -and ($Type -eq 'show' -or -not $Location)) {
+        $combinedContext = "$LibraryName $MatchedPath"
+        if ($combinedContext -match '(?i)(4K|2160|UHD)') { $baseResolution = '4K' }
+        elseif ($combinedContext -match '(?i)1080') { $baseResolution = '1080p' }
+        elseif ($combinedContext -match '(?i)720') { $baseResolution = '720p' }
+    }
+
+    # 3. Check Location for HDR / DoVi tokens
+    if ($Location) {
+        if ($Location -match '(?i)(\bDV\b|\bDoVi\b|Dolby[-. ]?Vision)') {
+            $hasDoVi = $true
+        }
+        if ($Location -match '(?i)(\bHDR10Plus\b|\bHDR10\+\b|\bHDR10\b|\bHDR\b|\bPQ\b|\bHLG\b)') {
+            $hasHDR = $true
+        }
+    }
+
+    # 4. Construct final Resolution string compatible with CoreGeneration overlay matching
+    if ($streamRes -match '(4K|2160).*((DoVi|Dolby).*HDR|HDR.*(DoVi|Dolby))') {
+        $Resolution = $streamRes
+    }
+    elseif ($hasDoVi -and $hasHDR -and $baseResolution -eq '4K') {
+        $Resolution = "$baseResolution DoVi/HDR10"
+    }
+    elseif ($hasDoVi -and $baseResolution -eq '4K') {
+        $Resolution = "$baseResolution DoVi"
+    }
+    elseif ($hasHDR -and $baseResolution -eq '4K') {
+        $Resolution = "$baseResolution HDR10"
+    }
+    elseif ($baseResolution) {
+        $Resolution = $baseResolution
+    }
+    elseif ($streamRes) {
+        $Resolution = $streamRes
+    }
+    else {
+        $Resolution = $null
+    }
+
+    if ($Resolution -and $global:configLogging) {
+        Write-Entry -Subtext "Resolved media resolution: [$Resolution] for [$(Split-Path $Location -Leaf)]" -Path $global:configLogging -Color Cyan -log Debug
+    }
+
+    return $Resolution
 }
 function Get-CPUModel {
     if ($Platform -eq 'Docker') {
@@ -840,7 +1033,11 @@ function GetHash {
     return $hashString
 }
 function Set-OSTypeAndScriptRoot {
-    if ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') {
+    if ($env:POSTERIZARR_API_WORK_ROOT) {
+        $global:ScriptRoot = $env:POSTERIZARR_API_WORK_ROOT
+        $global:OSType = if ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') { 'Docker' } else { [System.Environment]::OSVersion.Platform }
+    }
+    elseif ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') {
         $global:OSType = "Docker"
         $currentuser = whoami
         if ($currentuser -eq 'posterizarr' -or $currentuser -eq 'abc' -or $env:VIRTUAL_ENV -eq '/lsiopy' -or $env:POSTERIZARR_NON_ROOT -eq 'TRUE') {
@@ -852,11 +1049,75 @@ function Set-OSTypeAndScriptRoot {
     }
     elseif ($env:APP_DATA) {
         $global:ScriptRoot = $env:APP_DATA
+        $global:OSType = if ($env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*') { 'Docker' } else { [System.Environment]::OSVersion.Platform }
     }
     Else {
         $global:ScriptRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
         $global:OSType = [System.Environment]::OSVersion.Platform
     }
+}
+function Get-DynamicOverlaysSettings {
+    <#
+    .SYNOPSIS
+        Discovers and returns the parsed dynamic_overlays_settings.json object or $null.
+    #>
+    $candidatePaths = @()
+    if ($env:APP_DATA) {
+        $candidatePaths += "$env:APP_DATA/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($IsLinux -or (Test-Path "/.dockerenv")) {
+        $candidatePaths += "/config/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($global:ScriptRoot) {
+        $candidatePaths += "$global:ScriptRoot/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($global:AppRoot) {
+        $candidatePaths += "$global:AppRoot/dynamic_overlays/dynamic_overlays_settings.json"
+    }
+    if ($PSScriptRoot) {
+        $localParent = (Get-Item $PSScriptRoot).Parent.Parent.FullName
+        if ($localParent) {
+            $candidatePaths += (Join-Path $localParent "dynamic_overlays/dynamic_overlays_settings.json")
+        }
+    }
+
+    foreach ($path in $candidatePaths) {
+        if ($path -and (Test-Path $path)) {
+            try {
+                return (Get-Content -Path $path -Raw | ConvertFrom-Json)
+            }
+            catch {}
+        }
+    }
+    return $null
+}
+
+function Get-DynamicOverlaysEnabled {
+    <#
+    .SYNOPSIS
+        Checks whether the Dynamic Overlays feature is enabled in dynamic_overlays_settings.json.
+    #>
+    param(
+        [switch]$ForceCheck
+    )
+
+    if ($env:POSTERIZARR_API_WORK_ROOT) {
+        return $false
+    }
+
+    if (-not $ForceCheck -and $global:DynamicOverlaysEnabled -eq $true) {
+        return $true
+    }
+
+    $settings = Get-DynamicOverlaysSettings
+    $isEnabled = [bool]($settings -and $settings.enabled -eq $true)
+    $global:DynamicOverlaysEnabled = $isEnabled
+    return $isEnabled
+}
+function Invoke-PosterizarrLogLock {
+    param([scriptblock]$Action)
+
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrLogMutex' -Action $Action
 }
 function Write-Entry {
     [CmdletBinding()]
@@ -1020,13 +1281,8 @@ function Write-Entry {
 "@
         }
         Write-Host $Header
-        $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrLogMutex")
-        try {
-            $mutex.WaitOne() | Out-Null
+        Invoke-PosterizarrLogLock {
             try { $Header | Out-File $Path -Append -ErrorAction Stop } catch {}
-        } finally {
-            $mutex.ReleaseMutex()
-            $mutex.Dispose()
         }
         $global:HeaderWritten = $true
     }
@@ -1061,10 +1317,7 @@ function Write-Entry {
             $lineToWrite = $FormattedLine1
         }
 
-        $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrLogMutex")
-        try {
-            $mutex.WaitOne() | Out-Null
-
+        Invoke-PosterizarrLogLock {
             if ($Subtext) {
                 Write-Host $FormattedLineWritehost -NoNewline
                 Write-Host $Subtext -ForegroundColor $Color
@@ -1079,9 +1332,6 @@ function Write-Entry {
             } catch {
                 # Silently continue if log file is locked by another process
             }
-        } finally {
-            $mutex.ReleaseMutex()
-            $mutex.Dispose()
         }
     }
 }
@@ -1112,7 +1362,7 @@ function CheckJson {
     try {
         $AttributeChanged = $null
         # Download the default configuration JSON file from the URL
-        $defaultConfig = Invoke-RestMethod -Uri $jsonExampleUrl -Method Get -ErrorAction Stop
+        $defaultConfig = Invoke-RestMethod -Uri $jsonExampleUrl -Method Get -TimeoutSec 30 -ErrorAction Stop
 
         # Read the existing configuration file if it exists
         if (Test-Path $jsonFilePath) {
@@ -1338,7 +1588,7 @@ function Get-Platform {
 }
 function Get-LatestScriptVersion {
     try {
-        return Invoke-RestMethod -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/Release.txt" -Method Get -ErrorAction Stop
+        return Invoke-RestMethod -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/Release.txt" -Method Get -TimeoutSec 30 -ErrorAction Stop
     }
     catch {
         Write-Entry -Subtext "Could not query latest script version, Error: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
@@ -1382,7 +1632,7 @@ function CheckConfigFile {
 
     if (!(Test-Path (Join-Path $ScriptRoot 'config.json'))) {
         Write-Entry -Message "Config File missing, downloading it for you..." -Path $global:configLogging -Color White -log Info
-        Invoke-WebRequest -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/config.example.json" -OutFile "$ScriptRoot\config.json"
+        Invoke-WebRequest -Uri "https://github.com/fscorrupt/posterizarr/raw/$($Branch)/config.example.json" -OutFile "$ScriptRoot\config.json" -TimeoutSec 30
         Write-Entry -Subtext "Config File downloaded here: '$ScriptRoot\config.json'" -Path $global:configLogging -Color White -log Info
         Write-Entry -Subtext "Please configure the config file according to GitHub, Exit script now..." -Path $global:configLogging -Color Yellow -log Warning
         # Clear Running File
@@ -1396,7 +1646,7 @@ function Test-And-Download {
     )
 
     if (!(Test-Path $destination)) {
-        Invoke-WebRequest -Uri $url -OutFile $destination
+        Invoke-WebRequest -Uri $url -OutFile $destination -TimeoutSec 300
     }
 }
 function RedactMediaServerUrl {

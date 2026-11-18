@@ -8,6 +8,7 @@ param (
     [switch]$dev, # Required for trigger dev branch
     [switch]$SyncJelly, # Required for Jellyfin Sync trigger
     [switch]$SyncEmby, # Required for Emby Sync trigger
+    [switch]$SyncSilo,
     [switch]$PosterReset, # Required for Poster Reset trigger
     [switch]$SeasonPoster, # Required for Manual Trigger
     [switch]$TitleCard, # Required for Manual Trigger
@@ -76,7 +77,7 @@ for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
     }
 }
 
-$CurrentScriptVersion = "3.3.8"
+$CurrentScriptVersion = "4.0.1"
 $global:HeaderWritten = $false
 $ProgressPreference = 'SilentlyContinue'
 
@@ -103,7 +104,7 @@ if (-not (Test-Path -Path "$PSScriptRoot\modules\core\Variables.ps1")) {
 
     try {
         Write-Host "Downloading latest $branch modules..." -ForegroundColor Cyan
-        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -ErrorAction Stop
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -TimeoutSec 300 -ErrorAction Stop
 
         Write-Host "Extracting..." -ForegroundColor Cyan
         Expand-Archive -Path $zipPath -DestinationPath $tempExtractPath -Force -ErrorAction Stop
@@ -160,6 +161,9 @@ elseif ($Backup) {
 }
 elseif ($Restore) {
     . "$PSScriptRoot\modules\modes\RestoreMode.ps1"
+}
+elseif ($SyncSilo) {
+    Invoke-SiloPlexMirror
 }
 elseif ($SyncJelly -or $SyncEmby) {
     . "$PSScriptRoot\modules\modes\SyncMode.ps1"

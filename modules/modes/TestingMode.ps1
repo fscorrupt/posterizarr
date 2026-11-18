@@ -97,6 +97,7 @@
     # =================================================================================
 
     $Mode = "testing"
+    $global:Mode = "testing"
 
     Write-Entry -Message "Poster Testing Started" -Path $global:configLogging -Color DarkMagenta -log Info
     Write-Entry -Subtext "I will now create a few posters for you with different text lengths using your current configuration settings." -Path $global:configLogging -Color Yellow -log Warning

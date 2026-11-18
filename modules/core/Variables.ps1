@@ -269,7 +269,7 @@ $global:PosterMinWidth = $config.ApiPart.PosterMinWidth
 $global:PosterMinHeight = $config.ApiPart.PosterMinHeight
 $global:BgTcMinWidth = $config.ApiPart.BgTcMinWidth
 $global:BgTcMinHeight = $config.ApiPart.BgTcMinHeight
-$global:FavProvider = $config.ApiPart.FavProvider.ToUpper()
+$global:FavProvider = if ($config.ApiPart.FavProvider) { $config.ApiPart.FavProvider.ToUpper() } else { "TMDB" }
 $global:ProviderPriorityMode = if ($null -ne $config.ApiPart.ProviderPriorityMode) { $config.ApiPart.ProviderPriorityMode } else { "Simple" }
 
 $global:ProviderOrder = if ($null -ne $config.ApiPart.ProviderOrder) { $config.ApiPart.ProviderOrder } else { @("TMDB", "TVDB", "Fanart", "Plex") }
@@ -398,9 +398,21 @@ if ($UseEmby -eq 'true') {
     $global:ReplaceThumbwithBackdropExclusively = if ($config.EmbyPart.ReplaceThumbwithBackdropExclusively) { "$($config.EmbyPart.ReplaceThumbwithBackdropExclusively)".tolower() } else { 'false' }
 }
 
+$UseSilo = "$($config.SiloPart.UseSilo)".ToLower()
+if ($UseSilo -eq 'true') {
+    $OtherMediaServerUrl = $config.SiloPart.SiloUrl
+    $OtherMediaServerApiKey = $config.ApiPart.SiloAPIKey
+    $UseOtherMediaServer = 'true'
+    $LibstoExclude = $config.SiloPart.LibstoExclude
+    $global:SiloProfileId = $config.SiloPart.SiloProfileId
+    $global:UploadExistingAssets = "$($config.SiloPart.UploadExistingAssets)".ToLower()
+    $global:ReplaceThumbwithBackdrop = 'false'
+    $global:ReplaceThumbwithBackdropExclusively = 'false'
+}
+
 $global:OtherMediaServerHeaders = @{}
 if ($OtherMediaServerApiKey) {
-    $global:OtherMediaServerHeaders["Authorization"] = "MediaBrowser Token=`"$OtherMediaServerApiKey`""
+    $global:OtherMediaServerHeaders["Authorization"] = if ($UseSilo -eq 'true') { "Bearer $OtherMediaServerApiKey" } else { "MediaBrowser Token=`"$OtherMediaServerApiKey`"" }
 }
 
 # Count how many media servers are enabled
@@ -408,6 +420,7 @@ $enabledServers = 0
 if ($UseEmby -eq 'true') { $enabledServers++ }
 if ($UseJellyfin -eq 'true') { $enabledServers++ }
 if ($UsePlex -eq 'true') { $enabledServers++ }
+if ($UseSilo -eq 'true') { $enabledServers++ }
 
 # If more than one media server is enabled, exit with an error
 if ($enabledServers -gt 1) {
@@ -427,6 +440,16 @@ $AssetPath = RemoveTrailingSlash $config.PrerequisitePart.AssetPath
 $BackupPath = RemoveTrailingSlash $config.PrerequisitePart.BackupPath
 $ManualAssetPath = RemoveTrailingSlash $config.PrerequisitePart.ManualAssetPath
 $Upload2Plex = "$($config.PrerequisitePart.PlexUpload)".ToLower()
+
+# Check if Dynamic Overlays is enabled
+$global:DynamicOverlaysEnabled = Get-DynamicOverlaysEnabled
+$DynamicOverlaysEnabled = $global:DynamicOverlaysEnabled
+
+if ($global:DynamicOverlaysEnabled) {
+    $Upload2Plex = 'false'
+    $global:UploadExistingAssets = 'false'
+    Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct media server uploads (Upload2Plex=false, UploadExistingAssets=false). Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+}
 $SkipAddText = "$($config.PrerequisitePart.SkipAddText)".ToLower()
 $SkipLocalPosterTextAdd = "$($config.PrerequisitePart.SkipLocalPosterTextAdd)".ToLower()
 $SkipLocalBackgroundTextAdd = "$($config.PrerequisitePart.SkipLocalBackgroundTextAdd)".ToLower()
@@ -452,7 +475,7 @@ $TextFallback = "$($config.PrerequisitePart.LogoTextFallback)".ToLower()
 $global:UseClearlogo = "$($config.PrerequisitePart.UseClearlogo)".ToLower()
 $global:UseClearart = "$($config.PrerequisitePart.UseClearart)".ToLower()
 $TextlessPosterBypass = "$($config.PrerequisitePart.TextlessPosterBypass)".ToLower()
-$global:LogoExifCheck = if ($LogoExifCheck -or ($MainPSBoundParameters -and $MainPSBoundParameters.ContainsKey('LogoExifCheck') -and $MainPSBoundParameters['LogoExifCheck'])) { 'true' } elseif ($config.PrerequisitePart.LogoExifCheck) { "$($config.PrerequisitePart.LogoExifCheck)".ToLower() } else { 'false' }
+$global:LogoExifCheck = [bool]$(if ($LogoExifCheck -or ($MainPSBoundParameters -and $MainPSBoundParameters.ContainsKey('LogoExifCheck') -and $MainPSBoundParameters['LogoExifCheck'])) { $true } elseif ($config.PrerequisitePart.LogoExifCheck -and "$($config.PrerequisitePart.LogoExifCheck)".ToLower() -eq 'true') { $true } else { $false })
 
 # Check if its a Network Share
 if ($AssetPath.StartsWith("\")) {

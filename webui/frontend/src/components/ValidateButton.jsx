@@ -47,6 +47,14 @@ const ValidateButton = ({
           };
           break;
 
+        case "silo":
+          requestBody = {
+            url: (config.SiloUrl || config.SiloPart?.SiloUrl)?.trim(),
+            api_key: (config.SiloAPIKey || config.ApiPart?.SiloAPIKey)?.trim(),
+            profile_id: (config.SiloProfileId || config.SiloPart?.SiloProfileId)?.trim() || null,
+          };
+          break;
+
         case "tmdb":
           requestBody = {
             token: config.tmdbtoken?.trim(),
@@ -110,14 +118,18 @@ const ValidateButton = ({
       setLastResult(result);
 
       // Callback notifications
-      const resultMessage = result.message || result.detail || `${label} failed`;
+      const resultMessage = type === "silo"
+        ? result.valid
+          ? t("silo.validationSuccess", { version: result.server_version || "", count: result.library_count ?? 0 })
+          : t(result.message_key || "silo.validationFailed", result.message_params || {})
+        : result.message || result.detail || `${label} failed`;
       if (result.valid) {
         if (onSuccess) onSuccess(resultMessage);
       } else {
         if (onError) onError(resultMessage);
       }
     } catch (error) {
-      const errorMessage = `Validation failed: ${error.message}`;
+      const errorMessage = type === "silo" ? t("silo.requestFailed") : `Validation failed: ${error.message}`;
       setLastResult({ valid: false, message: errorMessage });
       if (onError) onError(errorMessage);
     } finally {

@@ -1,0 +1,60 @@
+name: Deploy Docs Preview
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-pages-branch
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy dev docs preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.13
+
+      - name: Install documentation builder
+        run: python -m pip install -r docs-requirements.txt
+
+      - name: Generate artwork gallery
+        run: python docs/tools/build_artwork_gallery.py
+
+      - name: Build with Zensical
+        run: zensical build --clean
+
+      - name: Checkout GitHub Pages branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: pages
+          fetch-depth: 0
+
+      - name: Replace preview and preserve production
+        shell: bash
+        run: |
+          mkdir -p pages/preview
+          rsync -a --delete site/ pages/preview/
+          touch pages/.nojekyll pages/preview/.nojekyll
+          git -C pages config user.name github-actions[bot]
+          git -C pages config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git -C pages add -A
+          if ! git -C pages diff --cached --quiet; then
+            git -C pages commit -m "Deploy docs preview from ${GITHUB_SHA}"
+            git -C pages push origin gh-pages
+          fi
+
+      - name: Print preview URL
+        run: echo "Preview available at https://fscorrupt.github.io/posterizarr/preview/"

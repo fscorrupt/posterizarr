@@ -23,8 +23,8 @@ export function AuthProvider({ children }) {
 
   const checkAuthStatus = async () => {
     try {
-      // Check if credentials are stored in sessionStorage
-      const storedCredentials = sessionStorage.getItem("auth_credentials");
+      // Check if credentials are stored in sessionStorage or localStorage
+      const storedCredentials = sessionStorage.getItem("auth_credentials") || localStorage.getItem("auth_credentials");
 
       // Call the /api/auth/check endpoint to see if auth is enabled
       const response = await fetch("/api/auth/check", {
@@ -66,12 +66,15 @@ export function AuthProvider({ children }) {
   };
 
   const login = (credentials) => {
+    sessionStorage.setItem("auth_credentials", credentials);
+    localStorage.setItem("auth_credentials", credentials);
     setAuthCredentials(credentials);
     setIsAuthenticated(true);
   };
 
   const logout = () => {
     sessionStorage.removeItem("auth_credentials");
+    localStorage.removeItem("auth_credentials");
     setAuthCredentials(null);
     setIsAuthenticated(false);
   };

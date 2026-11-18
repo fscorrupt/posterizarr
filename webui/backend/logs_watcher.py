@@ -18,6 +18,8 @@ import time
 import threading
 import asyncio
 import csv
+import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -44,6 +46,7 @@ class LogsWatcher:
         broadcast_callback=None,
         loop=None,
         assets_dir: Optional[Path] = None,
+        on_run_complete_callback=None,
     ):
         """
         Initialize the logs watcher
@@ -56,6 +59,7 @@ class LogsWatcher:
             broadcast_callback: Async callback to broadcast asset events to WebSocket clients
             loop: Running asyncio event loop for threadsafe dispatch
             assets_dir: Path to the assets directory
+            on_run_complete_callback: Callback triggered when a run completes (e.g. dynamic overlays sync)
         """
         self.logs_dir = Path(logs_dir)
         self.db = db_instance
@@ -64,10 +68,13 @@ class LogsWatcher:
         self.broadcast_callback = broadcast_callback
         self.loop = loop
         self.assets_dir = Path(assets_dir) if assets_dir else None
+        self.on_run_complete_callback = on_run_complete_callback
         self.csv_broadcast_lock = threading.Lock()
         self.last_csv_row_count = 0
         self.last_first_row_sig = ""
         self.last_csv_inode: Optional[int] = None
+        self.pending_overlay_rows: List[Dict[str, Any]] = []
+        self.overlay_sync_timer: Optional[threading.Timer] = None
 
         self.observer: Any = None  # watchdog.observers.Observer instance
         self.handler: Any = None  # LogsFileHandler instance
@@ -950,6 +957,27 @@ class LogsWatcher:
 
                     # Also check for any new image choices appended during this run
                     self._process_new_imagechoices_and_broadcast()
+
+                    # Auto-trigger Dynamic Overlays Sync if callback configured
+                    if getattr(self, "overlay_sync_timer", None):
+                        try:
+                            self.overlay_sync_timer.cancel()
+                        except Exception:
+                            pass
+                        self.overlay_sync_timer = None
+
+                    managed_title_run = mode == "manual" and self._title_regeneration_metadata().get("Title regeneration") is True
+                    if managed_title_run:
+                        logger.info("[LogsWatcher] Episode title recreation owns its overlay sync; automatic completion sync skipped.")
+                    elif getattr(self, "on_run_complete_callback", None):
+                        try:
+                            logger.info(f"[LogsWatcher] Auto-triggering Dynamic Overlays sync after {mode} completion...")
+                            with self.csv_broadcast_lock:
+                                rows_to_sync = list(getattr(self, "pending_overlay_rows", []))
+                                self.pending_overlay_rows = []
+                            self.on_run_complete_callback(source=f"watcher {mode} completion", target_items=rows_to_sync)
+                        except Exception as sync_err:
+                            logger.error(f"[LogsWatcher] Error triggering overlay sync: {sync_err}")
                 else:
                     logger.warning(f"[WARN]  No runtime data parsed from {json_path.name}")
 
@@ -971,6 +999,24 @@ class LogsWatcher:
     def _row_signature(self, row: dict) -> str:
         """Create a compact fingerprint string for an ImageChoices row."""
         return f"{row.get('Title', '')}|{row.get('Rootfolder', '')}|{row.get('LibraryName', '')}|{row.get('Type', '')}|{row.get('Download Source', '')}"
+
+    def _title_regeneration_metadata(self):
+        try:
+            with open(self.logs_dir / "manual.json", encoding="utf-8-sig") as metadata_file:
+                metadata = json.load(metadata_file)
+            return metadata if isinstance(metadata, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _title_regeneration_owns_csv(self, csv_path):
+        callback = getattr(self, "title_regeneration_active_callback", None)
+        if callback and callback():
+            return True
+        metadata = self._title_regeneration_metadata()
+        digest = metadata.get("Managed ImageChoices SHA256")
+        if metadata.get("Title regeneration") is not True or not digest:
+            return False
+        return hashlib.sha256(csv_path.read_bytes()).hexdigest().casefold() == str(digest).casefold()
 
     def _process_new_imagechoices_and_broadcast(self):
         """Check ImageChoices.csv for new rows and broadcast real-time update events."""
@@ -1027,6 +1073,35 @@ class LogsWatcher:
                 self.last_csv_row_count = total_rows
                 self.last_first_row_sig = first_sig
                 logger.info(f"[WS-Events] Detected {len(new_rows)} new entries in ImageChoices.csv to broadcast")
+
+                if not hasattr(self, "pending_overlay_rows") or self.pending_overlay_rows is None:
+                    self.pending_overlay_rows = []
+                managed_title_run = self._title_regeneration_owns_csv(csv_path)
+                if not managed_title_run:
+                    self.pending_overlay_rows.extend(new_rows)
+
+                # Schedule debounced instant overlay sync for newly created media assets
+                if not managed_title_run and getattr(self, "on_run_complete_callback", None):
+                    def _trigger_instant_overlay():
+                        with self.csv_broadcast_lock:
+                            if not self.pending_overlay_rows:
+                                return
+                            rows_to_sync = list(self.pending_overlay_rows)
+                            self.pending_overlay_rows = []
+                        try:
+                            logger.info(f"[LogsWatcher] Auto-triggering instant Dynamic Overlays sync for {len(rows_to_sync)} newly generated asset(s)...")
+                            self.on_run_complete_callback(source="instant asset creation", target_items=rows_to_sync)
+                        except Exception as e:
+                            logger.error(f"[LogsWatcher] Error triggering instant overlay sync: {e}")
+
+                    if getattr(self, "overlay_sync_timer", None):
+                        try:
+                            self.overlay_sync_timer.cancel()
+                        except Exception:
+                            pass
+                    self.overlay_sync_timer = threading.Timer(3.0, _trigger_instant_overlay)
+                    self.overlay_sync_timer.daemon = True
+                    self.overlay_sync_timer.start()
 
                 for row in new_rows:
                     self._broadcast_single_row(row)
@@ -1258,6 +1333,7 @@ def create_logs_watcher(
     broadcast_callback=None,
     loop=None,
     assets_dir: Optional[Path] = None,
+    on_run_complete_callback=None,
 ) -> LogsWatcher:
     """
     Factory function to create and configure a LogsWatcher
@@ -1270,6 +1346,7 @@ def create_logs_watcher(
         broadcast_callback: Async callback to broadcast asset events to WebSocket clients
         loop: Running asyncio event loop for threadsafe dispatch
         assets_dir: Path to the assets directory
+        on_run_complete_callback: Callback invoked when a background run finishes
 
     Returns:
         Configured LogsWatcher instance
@@ -1298,6 +1375,7 @@ def create_logs_watcher(
         broadcast_callback=broadcast_callback,
         loop=loop,
         assets_dir=assets_dir,
+        on_run_complete_callback=on_run_complete_callback,
     )
 
     logger.info("[OK] LogsWatcher instance created successfully")

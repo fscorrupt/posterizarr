@@ -11,6 +11,11 @@
 
 The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to work alongside the [Posterizarr](https://github.com/fscorrupt/posterizarr) automation script, allowing your media server to utilize locally generated or managed assets (posters, backgrounds, title cards) as metadata.
 
+For supported native overlays, Posterizarr can [upload directly to Emby](dynamic_overlays.md).
+Plex mirroring is optional, not a prerequisite for overlays. Keep local-image sync,
+direct overlay uploads, and Plex mirroring scoped so they do not compete over the
+same artwork.
+
 !!! tip "Middleware purpose"
     This middleware does not allow you to browse, search, or download assets.
     Its sole purpose is to replace the default artwork by mapping library items to your local file system.
@@ -21,12 +26,14 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds, Seasons, and Title Cards.
 *   **Real-Time WebSocket Sync:** Connects directly to Posterizarr's event stream. Automatically refreshes Emby library items immediately when artwork is created, edited, or overlay-processed in Posterizarr.
+*   **Optional Plex Artwork Mirroring:** Mirrors active Plex artwork into Emby for movies, TV series, seasons, episode title cards, and backdrops. Detects changes via Plex artwork version timestamps, independently of which tool produced it.
+*   **Hybrid Sync (Combined Real-Time & Plex Sync):** Run real-time WebSocket sync and Plex Direct Sync together. New Posterizarr artwork applies via events, while scheduled Plex sync runs replace it whenever the selected Plex artwork differs.
 *   **Scheduled Sync Task:** Registers a background task to keep library images in sync with your local assets automatically on a customized schedule.
 
 ## Installation
 
-!!! warning
-    Only use this if you are not syncing from Plex, as it will overwrite your synced items with locally created assets from Posterizarr.
+!!! tip "Optional Plex artwork source"
+    Enable **Plex Direct Sync** only when Plex should be the source of artwork for this workflow. It can mirror Posterizarr's native overlay results or other selected Plex artwork. Direct native uploads to Emby do not require this option.
 
 1.  Download the latest version of `Posterizarr.Plugin.Emby.dll` from the [GitHub Releases](https://github.com/fscorrupt/posterizarr/releases).
 2.  Copy `Posterizarr.Plugin.Emby.dll` into your Emby Server's plugin directory:
@@ -44,12 +51,48 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
     *   **Enable Real-Time Sync (WebSocket):** Check this box to enable instant updates.
     *   **Posterizarr URL:** Enter your Posterizarr server URL (e.g., `http://192.168.1.50:8000` or `http://localhost:8000`).
     *   **Posterizarr API Key (Required):** Enter your Posterizarr API key. The key is transmitted securely via the `X-API-Key` HTTP header and is mandatory for WebSocket authentication.
-6. Click **Save**.
-7. Go to your **Dashboard** → **Libraries**.
-8. Manage a library (e.g., Movies).
-9. Enable **Posterizarr** under the **Image Fetchers** settings.
-10. Ensure it is prioritized according to your preferences.
-11. Refresh metadata (**Search for missing metadata** → **Replace existing images**) for your library to pick up local assets for the first time.
+6. **Plex Direct Sync Settings (Optional):**
+    *   **Enable Plex Direct Sync:** Check this box to mirror artwork directly from Plex.
+    *   **Plex Server URL:** Base URL of your Plex server (e.g., `http://192.168.1.50:32400`).
+    *   **Plex Token:** Your Plex authentication token (`X-Plex-Token`).
+    *   **Libraries to Sync (Optional):** Comma-separated list of Plex libraries to sync, or leave blank for all.
+    *   **Artwork Types:** Choose which artwork types to mirror (Posters, TV Shows, Seasons, Titlecards, Backdrops).
+7. Click **Save**.
+8. Go to your **Dashboard** → **Libraries**.
+9. Manage a library (e.g., Movies).
+10. Enable **Posterizarr** under the **Image Fetchers** settings.
+11. Ensure it is prioritized according to your preferences.
+12. Refresh metadata (**Search for missing metadata** → **Replace existing images**) for your library to pick up local assets for the first time.
+
+## Combining Real-Time Sync & Plex Direct Sync (Hybrid Mode)
+
+You can enable both **Real-Time Sync** and **Plex Direct Sync** simultaneously to get the best of both worlds:
+
+```mermaid
+flowchart TD
+    subgraph Instant["1. Instant Real-Time Sync"]
+        A[Posterizarr finishes rendering] -->|WebSocket event| B[Emby Plugin applies artwork immediately]
+        B --> C[Plex sync cache invalidated for item]
+    end
+
+    subgraph Scheduled["2. Scheduled Plex Direct Sync"]
+        D[Scheduled Plex Sync runs] --> E{Compare Plex artwork with Emby}
+        E -->|Different artwork| F[Plex sync wins: applies selected Plex artwork]
+        E -->|Identical| G[Skips re-save & updates cache]
+    end
+
+    Instant -.-> Scheduled
+```
+
+* **Instant Updates:** You don't have to wait for a daily or scheduled Plex sync task to see fresh artwork in Emby. The WebSocket listener updates Emby immediately upon rendering.
+* **Plex Source Priority:** When the scheduled Plex Sync task runs, **the selected Plex artwork takes precedence**, including artwork produced by native Dynamic Overlays or another uploader. Identical artwork avoids redundant downloads and disk writes.
+
+### Local Collection Syncing in Plex Sync Mode
+
+Since Plex Direct Sync only mirrors movie, show, season, title card, and backdrop artwork (Plex does not sync collection artwork directly), Collections are managed locally:
+* When **Enable Plex Direct Sync** is active, the **Update Collections** checkbox remains active and selectable, while movie and TV checkboxes are disabled to prevent overwriting Plex artwork.
+* The scheduled **Posterizarr Sync Task** will automatically restrict its run exclusively to **Collections (BoxSets)**.
+* Image lookup is strictly confined to collection asset directories (`Collections/`, `Collections/<Library>`, `<Library>/Collections`), bypassing individual media folders.
 
 ## Real-Time Synchronization (WebSocket)
 

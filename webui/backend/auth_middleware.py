@@ -35,10 +35,35 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         logger.info(f"AUTH: Middleware Initialized (Enabled: {self.enabled}, User: {self.username})")
 
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        if not hashed_password:
+            return False
+        # Direct check for plain text password (in case config holds plain text)
+        if secrets.compare_digest(plain_password, hashed_password):
+            return True
         try:
             return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
-        except ValueError:
+        except (ValueError, Exception):
             return False
+
+    def _is_browser_origin(self, request: Request) -> bool:
+        referer = request.headers.get("referer", "")
+        origin = request.headers.get("origin", "")
+        host = request.headers.get("host", "")
+        fwd_host = request.headers.get("x-forwarded-host", "")
+
+        sec_fetch_site = request.headers.get("sec-fetch-site", "").lower()
+        if sec_fetch_site in ("same-origin", "same-site"):
+            return True
+
+        hosts = [h.strip() for h in (host, fwd_host) if h and h.strip()]
+        for h in hosts:
+            h_clean = h.split(":")[0].lower()
+            if referer and (h.lower() in referer.lower() or h_clean in referer.lower()):
+                return True
+            if origin and (h.lower() in origin.lower() or h_clean in origin.lower()):
+                return True
+
+        return False
 
     def _load_config(self) -> dict:
         default_config = {"enabled": False, "username": "admin", "password": ""}
@@ -52,7 +77,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
 
             # --- ROBUST CONFIG LOADING ---
             # 1. Look for settings in the "WebUI" group (Nested)
-            webui = config.get("WebUI", {})
+            webui = config.get("WebUI", {}) if isinstance(config.get("WebUI"), dict) else {}
             enabled_nested = webui.get("basicAuthEnabled")
             user_nested = webui.get("basicAuthUsername")
             pass_nested = webui.get("basicAuthPassword")
@@ -69,8 +94,8 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
 
             # Convert to boolean safely
             self.enabled = str(enabled_val).lower() in ["true", "1", "yes"]
-            self.username = user_val
-            self.password_hash = pass_val
+            self.username = str(user_val).strip()
+            self.password_hash = str(pass_val).strip()
 
         except Exception as e:
             logger.error(f"AUTH: Error loading config: {e}")
@@ -83,7 +108,16 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         
         # 1. API Key Check (Always check this first)
-        api_key_candidate = request.query_params.get("api_key") or request.query_params.get("secret") or request.headers.get("X-API-Key")
+        auth_header = request.headers.get("Authorization") or request.headers.get("authorization") or ""
+        api_key_candidate = (
+            request.query_params.get("api_key") 
+            or request.query_params.get("secret") 
+            or request.headers.get("X-API-Key")
+            or request.headers.get("x-api-key")
+        )
+        if not api_key_candidate and auth_header.lower().startswith("bearer "):
+            api_key_candidate = auth_header[7:].strip()
+
         is_api_key_valid = False
         if api_key_candidate and self.auth_db:
             if self.auth_db.validate_api_key(api_key_candidate):
@@ -113,20 +147,23 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         # 3. Identify "Browser-Based" assets that need to bypass strict Basic Auth
         browser_assets = (
             "/api/fonts/preview/", 
+            "/api/fonts/download/",
             "/api/overlayfiles/preview/", 
             "/api/thumbnail",
+            "/api/proxy/poster",
+            "/api/media-server/image",
+            "/api/dynamic-overlays/preview",
+            "/api/dynamic-overlays/sample-image",
+            "/api/dynamic-overlays/custom-preview-image",
             "/poster_assets/",
             "/manual_poster_assets/",
             "/backup_assets/",
             "/test/",
-            "/images/"
+            "/images/",
+            "/blueprint-previews/"
         )
         if path.startswith(browser_assets):
-            referer = request.headers.get("referer", "")
-            host = request.headers.get("host", "")
-
-            # Only allow if the request is coming from your own app's URL
-            if host and referer and host in referer:
+            if self._is_browser_origin(request):
                 return await call_next(request)
 
         # 4. Whitelist Static Files & Frontend (CRITICAL FIX)
@@ -139,16 +176,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         if not self.enabled:
             # Prevent direct API access to sensitive endpoints without browser headers
             if path.startswith("/api/config") or path.startswith("/api/auth/keys"):
-                referer = request.headers.get("referer", "")
-                origin = request.headers.get("origin", "")
-                host = request.headers.get("host", "")
-
-                is_valid_source = False
-                if host:
-                    if referer and host in referer: is_valid_source = True
-                    if origin and host in origin: is_valid_source = True
-                
-                if not is_valid_source:
+                if not self._is_browser_origin(request):
                     return self._unauthorized_response()
 
             return await call_next(request)
@@ -158,18 +186,18 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS" or path == "/api/auth/check":
             return await call_next(request)
 
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Basic "):
+        if not auth_header or not auth_header.lower().startswith("basic "):
             return self._unauthorized_response()
 
         try:
-            creds = base64.b64decode(auth_header[6:]).decode("utf-8")
+            b64_part = auth_header.split(" ", 1)[1].strip()
+            creds = base64.b64decode(b64_part).decode("utf-8")
             u, p = creds.split(":", 1)
             # Verify username and password
-            if secrets.compare_digest(u, self.username) and self._verify_password(p, self.password_hash):
+            if secrets.compare_digest(u.strip(), self.username) and self._verify_password(p, self.password_hash):
                 return await call_next(request)
-        except Exception:
-            pass
+        except Exception as auth_ex:
+            logger.debug(f"AUTH: Verification exception: {auth_ex}")
 
         return self._unauthorized_response()
 

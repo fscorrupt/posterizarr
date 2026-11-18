@@ -21,17 +21,23 @@ The frontend follows a component-based architecture located entirely within `web
 
 ### Layout & Navigation
 
+- **Responsive views:** route layouts support narrow phones, tablets, and desktop screens. Action Center bulk/item controls wrap, Scheduler controls stack when needed, Logs filters stay stacked beside a tablet sidebar, and configuration token rows, setting keys, and library labels can shrink or wrap without hiding actions. Mobile form text uses a readable 16px size to avoid focus zoom in mobile browsers.
+- **Mobile navigation:** the drawer has a viewport-bounded width, its own scroll region, background scroll locking, Escape dismissal, and automatic closing after navigation or switching to desktop width. Theme choices scroll on short screens. Notifications fit the phone width below the navigation bar.
+- **Dialog sizing:** centered dialogs use `app-dialog-backdrop` on the fixed overlay and `app-dialog-panel` on its panel. Shared phone rules bound panels to the dynamic viewport and safe-area insets, allow vertical scrolling, keep header/footer sections from shrinking, and size footer actions for touch. Preserve `min-w-0` on shrinking flex/grid children and use local horizontal scrolling for wide tables or code. The shared contract currently covers 54 panels; desktop dimensions remain component-owned.
+- **Artwork and setup dialogs:** image preview stacks artwork and details below desktop width; Action Center keeps compact, keyboard-accessible preview thumbnails visible on phones. Provider search wraps its title, filters, and search controls. Onboarding keeps the language selector separate from its mobile stepper and its footer outside the scrollable form.
+- **Responsive verification:** all 37 registered routes (including redirects) were audited at 320px, 768px, and 1440px; all nine configuration tabs were also checked with populated example settings and expanded groups. Interactive checks covered mobile navigation and representative add-library, YAML, variable-editor, sync, ratings-cache, image-preview fallback, and first-run dialogs, including 740x360 landscape. Tests used a local build with read-only API fixtures and blocked live writes. Conditional dialog content, real artwork delivery, device keyboards, and physical iOS/Android behavior still need release QA; shared bounds alone are not a claim that every possible dialog state was exercised.
 
 - **`App.jsx`**: The root component. Handles routing (React Router) and wraps the application in Context providers.
+- **View loading:** Dashboard and navigation stay eager. Other route views and onboarding use `React.lazy` with a `Suspense` loading state; routed content reuses `ErrorBoundary` for recovery without removing navigation. Blueprints remains shared/eager because replacement-modal controls import it. Build chunks are split by actual route imports instead of manually grouping page modules with Dashboard.
 - **`Sidebar.jsx`**: The main side navigation menu.
-- **`TopNavbar.jsx`**: The top bar, housing breadcrumbs, user profile, and version badges.
+- **`TopNavbar.jsx`**: The top bar, housing breadcrumbs, user profile, and version badges. Main Posterizarr runs (including scheduled and recently-added triggers) and independent background jobs appear together, each with its own stop action where supported. Multiple jobs use compact, localized labels and icon stop buttons; the task strip scrolls horizontally when needed without covering the language, theme, or user controls. Ratings Refresh links directly to its live log. The existing top bar remains desktop/tablet-only.
 - **`Dashboard.jsx`**: The primary landing page. Aggregates statistics, recent assets, and quick-action buttons.
 
 ### Configuration & Settings
 
 
 - **`ConfigEditor.jsx`**: A dynamic form component for editing the `config.json`. It fetches tooltips from the backend and handles schema validation.
-- **`OnboardingModal.jsx`**: The comprehensive first-run setup wizard that guides users through configuring media servers, schedules, libraries, and notifications.
+- **`OnboardingModal.jsx`**: The comprehensive first-run setup wizard that guides users through configuring media servers, artwork providers (with optional TVDb/Fanart credentials and live provider activation), schedules, libraries, and notifications.
 - **`RunModes.jsx`**: Interface for selecting and triggering the various Posterizarr PowerShell modes (Normal, Backup, Sync, etc.).
 - **`SchedulerSettings.jsx`**: UI for managing cron jobs and automated schedules, supporting standard PowerShell execution modes as well as lightweight Python-based **Plex Sync** jobs with granular library selection and asset type toggles (collections, posters, seasons, title cards, backgrounds).
 - **`Blueprints.jsx`**: Interface for managing layout blueprints and recipes.
@@ -42,6 +48,7 @@ The frontend follows a component-based architecture located entirely within `web
 ### Media & Assets Management
 
 - **`AssetsManager.jsx` & `AssetOverview.jsx`**: High-level views for managing generated posters, local assets, and storage usage.
+- **Action Center paging:** `AssetOverview` requests `/api/assets/overview/page` with page size, tab, status, category, search, type, and library. Search is debounced; obsolete requests are aborted and ignored. Only visible rows are transferred during browsing, while counts and filter options describe the full result set. Filter controls remain mounted during refresh, selections retain their records across pages, and confirmed all-filtered bulk actions explicitly fetch all matching records before submitting changes.
 - **`RecentAssets.jsx`**: Dashboard carousel displaying recently processed assets with direct integration into `AssetReplacer` for instant correction.
 - **`GalleryHub.jsx`, `Gallery.jsx`, `SeasonGallery.jsx`, `TitleCardGallery.jsx`, `TestGallery.jsx`**: Interactive grids displaying generated artwork with lazy loading, filtering, pagination, and detailed inspection.
 - **`BackgroundsGallery.jsx`**: Specialized gallery for viewing and selecting background source images.
@@ -49,6 +56,7 @@ The frontend follows a component-based architecture located entirely within `web
 - **`BackupAssets.jsx`**: Gallery view for inspecting and managing original images preserved under `/assetsbackup`.
 - **`ImagePreviewModal.jsx`**: A modal component to view full-resolution posters, EXIF metadata, and provider links.
 - **`AssetReplacer.jsx`**: Deep inspection and replacement modal for swapping out posters or logos on the fly.
+- **Replacement metadata:** when metadata is not supplied, export and image-choice requests include `rootfolder` instead of downloading complete libraries. Existing library and exact episode matching are preserved, and closing or switching the asset aborts obsolete metadata requests.
 - **`AssetSearchModal.jsx`**: Provider search modal (TMDB, TVDB, Fanart) to find and apply replacement artwork or clearlogos by title or ID.
 - **`LogoBrowser.jsx`**: Media server library browser for inspecting, filtering, and uploading missing ClearLogos directly to Plex, Jellyfin, or Emby.
 - **`CollectionExplorer.jsx`**: Visual collection manager listing collections across connected media servers. Displays enriched collection metadata (item count and release year ranges, e.g. `12 items • 1979 - 2024`), Asset Details modal inspection (`ImagePreviewModal.jsx`), real-time diff status badges (`In Sync`, `Update Ready`, `Missing on Plex`, `No Local Asset`), quick diff view toggling (`LOCAL` vs `SERVER`), 1-click single-poster push to Plex, batch out-of-sync push, and status filtering.
@@ -56,6 +64,8 @@ The frontend follows a component-based architecture located entirely within `web
 
 ### Monitoring & Status
 
+- **`DynamicOverlays.jsx`**: Sync & Maintenance has separate URL-addressable views for synchronization, media changes, episode title review, overlay cache, and ratings cache. Only the active view is rendered; shared settings, sync state, dialogs, and background jobs remain intact. Navigation supports keyboard arrows/Home/End, saved view selection, and legacy `tab=cache` links.
+- **`EpisodeTitleReview.jsx`**: Historical ImageChoices title comparison with existing-artwork previews, eligibility reasons, filtered paging, and confirmed single/selected/all recreation. Recreation uses the existing asset queue rather than a separate renderer.
 - **`LogViewer.jsx`**: A real-time terminal-like component that connects to the backend WebSocket to stream Posterizarr execution logs.
 - **`QueueView.jsx`**: Displays backend task queue states (running, pending, completed, failed) with abort controls.
 - **`RuntimeStats.jsx` & `RuntimeHistory.jsx`**: Charts and tables displaying historical execution metrics, processing durations, and asset counts.
@@ -70,6 +80,8 @@ The frontend follows a component-based architecture located entirely within `web
 
 ### Utility, Feedback & Modal Components
 
+- **Auto-Queue Changes:** a standard checkbox appears directly below **Add to Queue**, only while queueing is on, in both Manual Mode and asset replacement dialogs. The shared preference persists as `auto_queue_changes` in WebUI settings (default `false`). In Manual Mode, it keeps queueing selected after successful URL or upload submissions; the user still submits the completed form explicitly. In replacement dialogs, choosing provider artwork or selecting a ratio-validated upload submits it to the existing asset queue without a second replacement confirmation. The per-item queue switch stays on while this preference is active. Browsing, invalid uploads, and text-field edits alone do not submit anything. Existing parameter validation still applies, failed attempts remain available for manual retry, and duplicate in-flight replacement submissions are blocked. Queued success is reported as queued, not as an already completed replacement; parent completion callbacks are not invoked before processing, so Action Center entries are not removed just because work was queued. Logo selection retains its separate workflow.
+- **Replacement while a run is active:** while Posterizarr is running, asset replacement dialogs are not blocked. A chosen provider image or upload is queued and starts automatically when the current run finishes. If **Add to Queue** is switched on manually, the item waits for a manual queue start as before.
 - **`ConfirmDialog.jsx` & `ToastNotification.jsx`**: Reusable components for user feedback and destructive action confirmation.
 - **`DangerZone.jsx`**: A section component for high-risk actions (factory reset, wipe database).
 - **`RestoreModeModal.jsx`**: Targeted restore modal allowing users to restore artwork filtered by library, item title/folder, and asset type.

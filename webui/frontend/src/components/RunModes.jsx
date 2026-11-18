@@ -34,6 +34,9 @@ import NormalModeModal from "./modals/NormalModeModal";
 import TestingModeModal from "./modals/TestingModeModal";
 import { useToast } from "../context/ToastContext";
 import { BLUEPRINTS } from "./Blueprints";
+import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice, { useSiloEnabled } from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 
 const API_URL = "/api";
 
@@ -128,7 +131,7 @@ const TMDBPosterSearchModal = React.memo(
       if (tmdbSearch.isLogoSearch) {
         // If logo search, update titletext with URL
         setManualForm({ ...manualForm, titletext: posterUrl });
-        showSuccess("Logo URL applied to Title Text");
+        showSuccess(t("runModes.tmdb.logoUrlApplied"));
       } else {
         // Normal behavior: update picturePath and text status
         setManualForm({ ...manualForm, picturePath: posterUrl, posterWithText: hasText });
@@ -188,8 +191,8 @@ const TMDBPosterSearchModal = React.memo(
       (tmdbSearch.results.fanart?.length || 0);
 
     return (
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-theme-card border border-theme-primary rounded-xl max-w-6xl w-full max-h-[90vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
+      <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-6xl w-full max-h-[90vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
           {/* Header */}
           <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
             <div className="flex items-center">
@@ -390,7 +393,7 @@ const TMDBPosterSearchModal = React.memo(
                             : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
                         }`}
                       >
-                        {lang === "all" ? t("common.all", "All") : lang.toUpperCase()}
+                        {lang === "all" ? t("common.all") : lang.toUpperCase()}
                       </button>
                     ))}
                   </div>
@@ -425,7 +428,7 @@ const TMDBPosterSearchModal = React.memo(
                           <button
                             onClick={(e) => handleDownloadPoster(e, poster)}
                             className="absolute top-2 right-2 px-3 py-2 bg-theme-primary hover:bg-theme-primary/80 rounded-lg transition-all shadow-lg z-10 flex items-center gap-2"
-                            title={t("runModes.tmdb.download") || "Download"}
+                            title={t("runModes.tmdb.download")}
                           >
                             <Download className="w-4 h-4 text-white" />
                             <span className="text-white text-sm font-medium">
@@ -501,6 +504,7 @@ const TMDBPosterSearchModal = React.memo(
 );
 
 function RunModes() {
+  const siloEnabled = useSiloEnabled();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { showSuccess, showError, showInfo } = useToast();
@@ -529,6 +533,55 @@ function RunModes() {
 
   // State for Add to Queue
   const [addToQueue, setAddToQueue] = useState(false);
+  const [autoQueueChanges, setAutoQueueChanges] = useState(false);
+  const [queueSettingsLoaded, setQueueSettingsLoaded] = useState(false);
+  const [savingQueueSettings, setSavingQueueSettings] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let preferenceChanged = false;
+    const applyPreference = (enabled) => {
+      if (!active) return;
+      setAutoQueueChanges(enabled);
+      setAddToQueue(enabled);
+    };
+    const onPreferenceChanged = (event) => {
+      preferenceChanged = true;
+      applyPreference(event.detail?.enabled === true);
+    };
+    window.addEventListener("assetAutoQueueChanged", onPreferenceChanged);
+    fetch("/api/webui-settings").then(async response => {
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error("Could not load queue settings");
+      if (!preferenceChanged) applyPreference(data.settings?.auto_queue_changes === true);
+    }).catch(() => {
+      if (active) showError(t("assetReplacer.autoQueueLoadError"));
+    }).finally(() => { if (active) setQueueSettingsLoaded(true); });
+    return () => {
+      active = false;
+      window.removeEventListener("assetAutoQueueChanged", onPreferenceChanged);
+    };
+  }, []);
+
+  const handleToggleAutoQueue = async (enabled) => {
+    if (savingQueueSettings || !queueSettingsLoaded || loading) return;
+    setSavingQueueSettings(true);
+    try {
+      const response = await fetch("/api/webui-settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { auto_queue_changes: enabled } }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.detail || "Could not save Auto-Queue setting");
+      setAutoQueueChanges(enabled);
+      setAddToQueue(enabled);
+      window.dispatchEvent(new CustomEvent("assetAutoQueueChanged", { detail: { enabled } }));
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setSavingQueueSettings(false);
+    }
+  };
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -556,6 +609,7 @@ function RunModes() {
   const [autoRedirectTesting, setAutoRedirectTesting] = useState(true);
   const [showJellyfinSyncModal, setShowJellyfinSyncModal] = useState(false);
   const [showEmbySyncModal, setShowEmbySyncModal] = useState(false);
+  const [showSiloSyncModal, setShowSiloSyncModal] = useState(false);
   const [showBackupModeModal, setShowBackupModeModal] = useState(false);
   const [showRestoreModeModal, setShowRestoreModeModal] = useState(false);
   const [showLogoUpdaterModal, setShowLogoUpdaterModal] = useState(false);
@@ -587,7 +641,7 @@ function RunModes() {
       "posterizarr_skip_modal_syncemby",
     ].forEach((k) => localStorage.removeItem(k));
     setHasSkippedModals(false);
-    showSuccess(t("runModes.quickRun.promptsReset", "Run mode confirmation dialogs restored."));
+    showSuccess(t("runModes.quickRun.promptsReset"));
   };
 
   const handleNormalModeClick = () => {
@@ -659,7 +713,7 @@ function RunModes() {
 
   useEffect(() => {
     fetchStatus();
-    
+
     // Load custom blueprints
     fetch("/api/custom-blueprints")
       .then(res => res.json())
@@ -709,7 +763,7 @@ function RunModes() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith("image/")) {
-        showError("Please upload an image file!");
+        showError(t("runModes.validation.imageFileRequired"));
         return;
       }
 
@@ -724,7 +778,7 @@ function RunModes() {
 
       // Clear picturePath when file is uploaded
       setManualForm({ ...manualForm, picturePath: "" });
-      showSuccess(`File "${file.name}" uploaded successfully! `);
+      showSuccess(t("runModes.manual.fileUploaded", { name: file.name }));
     }
   };
 
@@ -737,7 +791,7 @@ function RunModes() {
   // Load folder items from assets directory
   const loadFolderItems = async () => {
     if (!manualForm.libraryName.trim()) {
-      showError("Please enter Library Name first");
+      showError(t("runModes.validation.libraryNameRequired"));
       return;
     }
 
@@ -762,17 +816,15 @@ function RunModes() {
         );
 
         if (data.folders?.length === 0) {
-          showError(
-            `No folders found in library "${manualForm.libraryName}". Please check the library name.`
-          );
+          showError(t("runModes.validation.noFoldersForLibrary", { library: manualForm.libraryName }));
         }
       } else {
-        showError(`Failed to load folders: ${data.error}`);
+        showError(t("runModes.validation.loadFoldersFailed", { error: data.error }));
         setShowFolderSelector(false);
       }
     } catch (error) {
       console.error("Error loading folder items:", error);
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setShowFolderSelector(false);
     } finally {
       setLoadingFolders(false);
@@ -799,7 +851,7 @@ function RunModes() {
 
     setShowFolderSelector(false);
     setFolderSearchQuery("");
-    showSuccess(`Folder "${folderName}" selected`);
+    showSuccess(t("runModes.manual.folderSelected", { folder: folderName }));
   };
 
   const loadLibraryItems = async () => {
@@ -824,15 +876,15 @@ function RunModes() {
         );
 
         if (filteredLibraries.length === 0) {
-          showError("No library folders found in assets directory (after filtering)");
+          showError(t("runModes.validation.noLibraryFolders"));
         }
       } else {
-        showError(`Failed to load libraries: ${data.error}`);
+        showError(t("runModes.validation.loadLibrariesFailed", { error: data.error }));
         setShowLibrarySelector(false);
       }
     } catch (error) {
       console.error("Error loading library items:", error);
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setShowLibrarySelector(false);
     } finally {
       setLoadingLibraries(false);
@@ -848,7 +900,7 @@ function RunModes() {
     }
     setShowLibrarySelector(false);
     setLibrarySearchQuery("");
-    showSuccess(`Library "${libraryName}" selected`);
+    showSuccess(t("runModes.manual.librarySelected", { library: libraryName }));
   };
 
   const handleRunRestore = async (options) => {
@@ -877,10 +929,10 @@ function RunModes() {
         const logExists = await waitForLogFile(logFile);
         navigate("/logs", { state: { logFile: logFile } });
       } else {
-        showError(`Error: ${data.detail || data.message || "Failed to start restore mode"}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.detail || data.message || t("runModes.validation.startRestoreFailed") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -937,16 +989,17 @@ function RunModes() {
           navigate("/logs", { state: navState });
         }
       } else {
-        showError(`Error: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
   };
 
   const runManualMode = async () => {
+    if (!queueSettingsLoaded || savingQueueSettings || loading) return;
     if (status.running) {
       showError(
         `${t("runModes.scriptRunning")} - ${t("runModes.status.mode")}: ${status.current_mode.charAt(0).toUpperCase() +
@@ -1048,14 +1101,14 @@ function RunModes() {
             error: data,
           });
           showError(
-            `Upload failed: ${data.detail || data.message || "Unknown error"}`
+            t("runModes.validation.uploadFailed", { error: data.detail || data.message || t("runModes.validation.unknownError") })
           );
           setLoading(false);
           return;
         }
 
         if (data.success) {
-          showSuccess(addToQueue ? "Manual run added to queue!" : "Manual mode started successfully!");
+          showSuccess(addToQueue ? t("runModes.manual.runQueued") : t("runModes.manualModeSuccess"));
           // Reset form
           setManualForm({
             picturePath: "",
@@ -1071,10 +1124,10 @@ function RunModes() {
           });
           setUploadedFile(null);
           setUploadPreview(null);
-          setAddToQueue(false); // Reset queue toggle
+          setAddToQueue(autoQueueChanges);
           fetchStatus();
         } else {
-          showError(`Error: ${data.message}`);
+          showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
         }
       } else {
         // Use URL/path - existing behavior
@@ -1097,13 +1150,13 @@ function RunModes() {
             statusText: response.statusText,
             error: data,
           });
-          showError(`Error: ${data.detail || data.message || "Unknown error"}`);
+          showError(t("runModes.validation.errorOccurred", { error: data.detail || data.message || t("runModes.validation.unknownError") }));
           setLoading(false);
           return;
         }
 
         if (data.success) {
-          showSuccess(addToQueue ? "Manual run added to queue!" : t("runModes.manualModeSuccess"));
+          showSuccess(addToQueue ? t("runModes.manual.runQueued") : t("runModes.manualModeSuccess"));
           // Reset form
           setManualForm({
             picturePath: "",
@@ -1119,16 +1172,16 @@ function RunModes() {
             blueprintId: "none",
           });
           setUploadedFile(null);
-          setAddToQueue(false); // Reset queue toggle
+          setAddToQueue(autoQueueChanges);
           setUploadPreview(null);
           fetchStatus();
         } else {
-          showError(`Error: ${data.message}`);
+          showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
         }
       }
     } catch (error) {
       console.error("Manual mode execution error:", error);
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -1167,10 +1220,10 @@ function RunModes() {
         showSuccess(data.message);
         setResetLibrary("");
       } else {
-        showError(`Error: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -1186,10 +1239,10 @@ function RunModes() {
         showSuccess(t("dashboard.stopped"));
         fetchStatus();
       } else {
-        showError(`Error: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
     } finally {
       setLoading(false);
     }
@@ -1376,16 +1429,16 @@ function RunModes() {
             // Translate: "No logos found matching languages: en, de"
             showError(t("runModes.tmdb.noLogosMatchingLanguages", { languages: languageOrder.join(", ") }));
           } else {
-            showError(`No logos found for "${query}"`);
+            showError(t("runModes.tmdb.noLogosFoundForQuery", { query }));
           }
         }
 
       } else {
-        showError(`Error fetching logos: ${data.message}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
         setTmdbSearch({ ...tmdbSearch, searching: false, isLogoSearch: false });
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setTmdbSearch({ ...tmdbSearch, searching: false, isLogoSearch: false });
     }
   };
@@ -1483,19 +1536,20 @@ function RunModes() {
       if (manualForm.posterType === "season" && tmdbSearch.seasonNumber) {
         // 1. Create the text once based on config or fallback to translation
         let seasonPrefix = t("runModes.manual.types.season");
-        
+        let specialSeasonText = null;
+
         if (globalConfig) {
           const seasonOverlay = globalConfig.SeasonPosterOverlayPart || globalConfig;
           const overrideVal = seasonOverlay.OverrideSeasonName ?? globalConfig.SeasonPosterOverrideSeasonName;
           const overrideSeasonName = String(overrideVal).toLowerCase() === "true";
-          
+
           if (overrideSeasonName) {
             const specialText = seasonOverlay.SpecialSeasonOverrideText ?? globalConfig.SeasonPosterSpecialSeasonOverrideText;
             const seasonTextOverride = seasonOverlay.SeasonOverrideText ?? globalConfig.SeasonPosterSeasonOverrideText;
 
             if (tmdbSearch.seasonNumber === "0" || tmdbSearch.seasonNumber === "00") {
               if (specialText && specialText.trim() !== "") {
-                seasonPrefix = specialText;
+                specialSeasonText = specialText;
               }
             } else {
               if (seasonTextOverride && seasonTextOverride.trim() !== "") {
@@ -1504,8 +1558,8 @@ function RunModes() {
             }
           }
         }
-        
-        const seasonText = `${seasonPrefix} ${tmdbSearch.seasonNumber}`;
+
+        const seasonText = specialSeasonText || `${seasonPrefix} ${tmdbSearch.seasonNumber}`;
 
         // 2. Apply it to both fields
         setManualForm(prev => ({
@@ -1587,11 +1641,11 @@ function RunModes() {
         );
 
         if (visibleResultsCount === 0) {
-          let message = "No images found for this search";
+          let message = t("runModes.tmdb.noImagesFound");
           if (manualForm.posterType === "season") {
-            message = `No season ${tmdbSearch.seasonNumber} posters found`;
+            message = t("runModes.tmdb.noSeasonPostersFound", { season: tmdbSearch.seasonNumber });
           } else if (manualForm.posterType === "titlecard") {
-            message = `No images found for S${tmdbSearch.seasonNumber}E${tmdbSearch.episodeNumber}`;
+            message = t("runModes.tmdb.noEpisodeImagesFound", { season: tmdbSearch.seasonNumber, episode: tmdbSearch.episodeNumber });
           }
 
           // Add provider-specific message if prefix was used
@@ -1600,17 +1654,17 @@ function RunModes() {
               data.detected_provider === "imdb"
                 ? "Fanart.tv (via IMDB)"
                 : data.detected_provider.toUpperCase();
-            message += ` from ${providerName}`;
+            message = t("runModes.tmdb.noImagesFromProvider", { message, provider: providerName });
           }
 
           showError(message);
         }
       } else {
-        showError(`Error: ${data.message || "Failed to search providers"}`);
+        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.tmdb.providerSearchFailed") }));
         setTmdbSearch({ ...tmdbSearch, searching: false });
       }
     } catch (error) {
-      showError(`Error: ${error.message}`);
+      showError(t("runModes.validation.errorOccurred", { error: error.message }));
       setTmdbSearch({ ...tmdbSearch, searching: false });
     }
   };
@@ -1627,8 +1681,8 @@ const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status,
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <Cloud className="w-6 h-6 mr-3 text-white" />
@@ -1690,7 +1744,7 @@ const JellyfinSyncModal = React.memo(({ show, onClose, onStart, loading, status,
               onChange={(e) => setDontShowAgain(e.target.checked)}
               className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
             />
-            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+            <span>{t("common.dontShowAgain")}</span>
           </label>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.jellyfin.cancel")}</button>
@@ -1719,8 +1773,8 @@ const EmbySyncModal = React.memo(({ show, onClose, onStart, loading, status, t }
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <Cloud className="w-6 h-6 mr-3 text-white" />
@@ -1782,7 +1836,7 @@ const EmbySyncModal = React.memo(({ show, onClose, onStart, loading, status, t }
               onChange={(e) => setDontShowAgain(e.target.checked)}
               className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
             />
-            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+            <span>{t("common.dontShowAgain")}</span>
           </label>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.emby.cancel")}</button>
@@ -1811,8 +1865,8 @@ const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <Save className="w-6 h-6 mr-3 text-white" />
@@ -1827,6 +1881,7 @@ const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t
             <p className="text-orange-200 font-medium mb-2">{t("runModes.backup.info")}</p>
             <p className="text-orange-100 text-sm">{t("runModes.backup.description")}</p>
           </div>
+          <SiloSupportNotice scope="backup" />
           <div className="space-y-3">
             <h4 className="font-semibold text-theme-primary text-lg">{t("runModes.backup.benefitsTitle")}</h4>
             <ul className="space-y-3 text-theme-text">
@@ -1861,7 +1916,7 @@ const BackupModeModal = React.memo(({ show, onClose, onStart, loading, status, t
               onChange={(e) => setDontShowAgain(e.target.checked)}
               className="w-4 h-4 rounded border-theme text-theme-primary focus:ring-theme-primary focus:ring-offset-theme-bg cursor-pointer"
             />
-            <span>{t("common.dontShowAgain", "Don't show this again")}</span>
+            <span>{t("common.dontShowAgain")}</span>
           </label>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-5 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg font-medium transition-all text-theme-text text-sm">{t("runModes.backup.cancel")}</button>
@@ -2004,12 +2059,12 @@ const LogoUpdaterModal = React.memo(({
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-lg w-full shadow-2xl animate-in fade-in duration-200">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-lg w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl animate-in fade-in duration-200">
         <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center">
             <ImageIcon className="w-6 h-6 mr-3 text-white" />
-            <h3 className="text-xl font-bold text-white">Logo Updater Mode</h3>
+            <h3 className="text-xl font-bold text-white">{t("runModes.logoUpdater.title")}</h3>
           </div>
           <button onClick={onClose} className="text-white/80 hover:text-white transition-all p-1 hover:bg-white/10 rounded">
             <X className="w-6 h-6" />
@@ -2021,6 +2076,7 @@ const LogoUpdaterModal = React.memo(({
             <p className="text-blue-200 font-medium mb-2">{t("runModes.logoUpdater.info")}</p>
             <p className="text-blue-100 text-sm">{t("runModes.logoUpdater.subtitle")}</p>
           </div>
+          <SiloSupportNotice scope="logos" />
 
           {/* Process All Libraries Toggle */}
           <div className="flex items-center justify-between p-3 bg-theme-bg/50 border border-theme rounded-lg transition-all cursor-pointer" onClick={() => setProcessAll(!processAll)}>
@@ -2029,8 +2085,8 @@ const LogoUpdaterModal = React.memo(({
                 <RefreshCw className={`w-5 h-5 ${processAll ? 'animate-spin-slow' : ''}`} />
               </div>
               <div>
-                <p className="font-medium text-theme-text">Process All Libraries</p>
-                <p className="text-xs text-theme-muted">Loop through all compatible Plex libraries</p>
+                <p className="font-medium text-theme-text">{t("runModes.logoUpdater.processAllLibraries")}</p>
+                <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.processAllLibrariesDesc")}</p>
               </div>
             </div>
             <button type="button" className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${processAll ? 'bg-theme-primary' : 'bg-gray-700'}`}>
@@ -2048,7 +2104,7 @@ const LogoUpdaterModal = React.memo(({
                   type="text"
                   value={library}
                   onChange={(e) => setLibrary(e.target.value)}
-                  placeholder="e.g. Movies, TV Shows"
+                  placeholder={t("runModes.logoUpdater.libraryPlaceholder")}
                   disabled={loading || status.running}
                   className="flex-1 px-3 py-2 bg-theme-bg border border-theme rounded-lg text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary focus:border-theme-primary disabled:opacity-50"
                 />
@@ -2071,8 +2127,8 @@ const LogoUpdaterModal = React.memo(({
                 <RotateCcw className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-medium text-theme-text">Revert Mode</p>
-                <p className="text-xs text-theme-muted">Remove logos uploaded by Posterizarr</p>
+                <p className="font-medium text-theme-text">{t("runModes.logoUpdater.revertMode")}</p>
+                <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.revertModeDesc")}</p>
               </div>
             </div>
             <button type="button" className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${revert ? 'bg-red-600' : 'bg-gray-700'}`}>
@@ -2088,8 +2144,8 @@ const LogoUpdaterModal = React.memo(({
                   <FileCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="font-medium text-theme-text">{t("runModes.logoUpdater.exifCheck", "Only Replace Non-Posterizarr Logos")}</p>
-                  <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.exifCheckDesc", "Replace Plex default logos, but skip logos previously created by Posterizarr (EXIF check)")}</p>
+                    <p className="font-medium text-theme-text">{t("runModes.logoUpdater.exifCheck")}</p>
+                      <p className="text-xs text-theme-muted">{t("runModes.logoUpdater.exifCheckDesc")}</p>
                 </div>
               </div>
               <button type="button" className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${exifCheck ? 'bg-purple-600' : 'bg-gray-700'}`}>
@@ -2124,7 +2180,7 @@ const LogoUpdaterModal = React.memo(({
               className={`flex items-center gap-2 px-4 py-2 ${revert ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all shadow-lg`}
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              {revert ? "Start Revert" : t("runModes.logoUpdater.start")}
+              {revert ? t("runModes.logoUpdater.startRevert") : t("runModes.logoUpdater.start")}
             </button>
           </div>
         </div>
@@ -2136,15 +2192,25 @@ const LogoUpdaterModal = React.memo(({
   const hints = getHints(manualForm.posterType);
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={resetConfirm}
         onClose={() => setResetConfirm(false)}
         onConfirm={handleResetConfirm}
         title={t("runModes.reset.confirmTitle")}
-        message={t("runModes.reset.confirmMessage", { library: resetLibrary })}
+        message={siloEnabled ? `${resetLibrary}\n\n${t("silo.support.reset")}` : t("runModes.reset.confirmMessage", { library: resetLibrary })}
         type="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={showSiloSyncModal}
+        onClose={() => setShowSiloSyncModal(false)}
+        onConfirm={() => runScript("syncsilo")}
+        title={t("silo.syncTitle")}
+        message={t("silo.support.mirror")}
+        confirmText={t("silo.syncTitle")}
+        type="warning"
       />
 
       <NormalModeModal
@@ -2252,12 +2318,12 @@ const LogoUpdaterModal = React.memo(({
         onClose={() => setShowLogoUpdaterModal(false)}
         onStart={async () => {
           if (!processAllLibraries && !logoUpdaterLibrary.trim()) {
-            showError("Please select a library first");
+            showError(t("runModes.validation.libraryRequired"));
             return;
           }
 
           if (status.running) {
-            showError("Script is already running");
+            showError(t("runModes.scriptRunning"));
             return;
           }
 
@@ -2285,10 +2351,10 @@ const LogoUpdaterModal = React.memo(({
               const logExists = await waitForLogFile(logFile);
               navigate("/logs", { state: { logFile: logFile } });
             } else {
-              showError(`Error: ${data.detail || data.message || "Failed to start Logo Updater"}`);
+              showError(t("runModes.validation.errorOccurred", { error: data.detail || data.message || t("runModes.logoUpdater.failedToStart") }));
             }
           } catch (error) {
-            showError(`Error: ${error.message}`);
+            showError(t("runModes.validation.errorOccurred", { error: error.message }));
           } finally {
             setLoading(false);
           }
@@ -2320,7 +2386,7 @@ const LogoUpdaterModal = React.memo(({
       />
 
       {/* Header */}
-      <div className="flex items-center justify-end">
+      <WorkspaceHeader icon={Play} title={t("nav.runModes")}>
         {/* Status Badge */}
         {status.running && (
           <div className="flex items-center gap-3 bg-theme-card px-4 py-2 rounded-lg border border-theme-primary/50">
@@ -2339,7 +2405,8 @@ const LogoUpdaterModal = React.memo(({
             </div>
           </div>
         )}
-      </div>
+      </WorkspaceHeader>
+      <SiloSupportNotice enabled={siloEnabled} />
 
       {/* Stop Button (shown when running) */}
       {status.running && (
@@ -2369,7 +2436,7 @@ const LogoUpdaterModal = React.memo(({
       )}
 
       {/* Quick Run Modes */}
-      <div className="bg-theme-card rounded-xl p-6 border border-theme">
+      <div className="workspace-section">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="text-xl font-semibold text-theme-text flex items-center gap-2">
             <Play className="w-5 h-5 text-theme-primary" />
@@ -2380,15 +2447,15 @@ const LogoUpdaterModal = React.memo(({
               type="button"
               onClick={resetModalPreferences}
               className="text-xs text-theme-muted hover:text-theme-primary transition-colors flex items-center gap-1.5 px-2.5 py-1 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg cursor-pointer shadow-sm"
-              title={t("runModes.quickRun.resetPromptsTooltip", "Restore all confirmation dialogs")}
+              title={t("runModes.quickRun.resetPromptsTooltip")}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>{t("runModes.quickRun.resetPrompts", "Reset modal prompts")}</span>
+              <span>{t("runModes.quickRun.resetPrompts")}</span>
             </button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+        <div className="run-mode-actions grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {/* Normal Mode */}
           <button
             onClick={handleNormalModeClick}
@@ -2442,10 +2509,10 @@ const LogoUpdaterModal = React.memo(({
           >
             <Upload className="w-8 h-8 text-blue-400 mb-3 group-hover:scale-110 transition-transform" />
             <h3 className="font-semibold text-theme-text mb-1">
-              Restore Mode
+              {t("runModes.quickRun.restore.title")}
             </h3>
             <p className="text-sm text-theme-muted text-center">
-              Push local backup assets back to your media server
+              {t("runModes.quickRun.restore.description")}
             </p>
           </button>
 
@@ -2477,6 +2544,19 @@ const LogoUpdaterModal = React.memo(({
             <p className="text-sm text-theme-muted text-center">
               {t("runModes.quickRun.syncEmby.description")}
             </p>
+          </button>
+
+          <button
+            onClick={() => setShowSiloSyncModal(true)}
+            disabled={loading || status.running}
+            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
+          >
+            <RefreshCw className="w-8 h-8 text-emerald-400 mb-3" />
+            <h3 className="font-semibold text-theme-text mb-1 flex items-center justify-center gap-2">
+              <MediaServerLogo server="silo" className="h-4 w-4 rounded-sm" />
+              {t("silo.syncTitle")}
+            </h3>
+            <p className="text-sm text-theme-muted text-center">{t("silo.syncDescription")}</p>
           </button>
 
           {/* Logo Updater Mode */}
@@ -2894,14 +2974,12 @@ const LogoUpdaterModal = React.memo(({
             {/* Recommended Size Info */}
             <div className="mb-3 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <p className="text-xs text-blue-400 flex items-center gap-2">
-                <span className="font-semibold">ℹ️ Recommended sizes:</span>
+                <span className="font-semibold">ℹ️ {t("runModes.manual.recommendedSizes")}</span>
                 {manualForm.posterType === "background" ||
                   manualForm.posterType === "titlecard" ? (
-                  <span>
-                    Backgrounds/Title Cards: 1920×1080px or higher (16:9 ratio)
-                  </span>
+                  <span>{t("runModes.manual.landscapeSizeHint")}</span>
                 ) : (
-                  <span>Posters: 1000×1500px or higher (2:3 ratio)</span>
+                  <span>{t("runModes.manual.portraitSizeHint")}</span>
                 )}
               </p>
             </div>
@@ -2951,7 +3029,7 @@ const LogoUpdaterModal = React.memo(({
                   <div className="flex items-center gap-3">
                     <img
                       src={uploadPreview}
-                      alt="Preview"
+                      alt={t("common.preview")}
                       className="w-16 h-24 object-cover rounded border border-theme-primary"
                     />
                     <div className="flex-1">
@@ -2969,8 +3047,8 @@ const LogoUpdaterModal = React.memo(({
               {/* Text / Textless Dropdown */}
               {(uploadedFile || manualForm.picturePath) && (
                 <div className="mt-3">
-                  <label className="block text-sm font-medium text-theme-text mb-2">
-                    Asset Type
+                    <label className="block text-sm font-medium text-theme-text mb-2">
+                    {t("runModes.manual.assetType")}
                   </label>
                   <select
                     value={manualForm.posterWithText ? "text" : "textless"}
@@ -2978,8 +3056,8 @@ const LogoUpdaterModal = React.memo(({
                     className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
                     disabled={loading || status.running}
                   >
-                    <option value="textless">Textless Asset (Clean)</option>
-                    <option value="text">Has Language / Text</option>
+                    <option value="textless">{t("runModes.manual.textlessAsset")}</option>
+                    <option value="text">{t("runModes.manual.assetHasText")}</option>
                   </select>
                 </div>
               )}
@@ -2987,7 +3065,7 @@ const LogoUpdaterModal = React.memo(({
               {/* Blueprint Selection */}
               <div className="space-y-1">
                 <label className="block text-xs font-medium text-theme-text/70 uppercase tracking-wider">
-                  Blueprint Selection
+                  {t("runModes.manual.blueprintSelection")}
                 </label>
                 <select
                   value={manualForm.blueprintId}
@@ -2995,13 +3073,13 @@ const LogoUpdaterModal = React.memo(({
                   className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
                   disabled={loading || status.running}
                 >
-                  <option value="none">Default (Global Config)</option>
+                  <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
                   {[...BLUEPRINTS, ...customBlueprints].map(bp => (
                     <option key={bp.id} value={bp.id}>{bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}</option>
                   ))}
                 </select>
                 <p className="text-xs text-theme-text/50 mt-1">
-                  Optionally override global settings with a specific blueprint for this run.
+                  {t("runModes.manual.blueprintOverrideHint")}
                 </p>
               </div>
 
@@ -3080,7 +3158,7 @@ const LogoUpdaterModal = React.memo(({
                     onClick={handleFetchLogos}
                     disabled={loading || status.running || tmdbSearch.searching}
                     className="px-3 py-2 bg-theme-card hover:bg-theme-hover border border-theme rounded-lg text-theme-text transition-colors flex items-center gap-2 whitespace-nowrap"
-                    title="Browse for Logos/ClearArt"
+                    title={t("runModes.manual.browseLogosTooltip")}
                   >
                     {tmdbSearch.searching && tmdbSearch.isLogoSearch ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -3103,8 +3181,8 @@ const LogoUpdaterModal = React.memo(({
               {t("runModes.manual.libraryName")}{" "}
               <span className="text-red-400">*</span>
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative min-w-0 flex-1">
                 <input
                   type="text"
                   value={manualForm.libraryName}
@@ -3146,8 +3224,8 @@ const LogoUpdaterModal = React.memo(({
             <label className="block text-sm font-medium text-theme-text mb-2">
               {hints.folderName.label} <span className="text-red-400">*</span>
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative min-w-0 flex-1">
                 <input
                   type="text"
                   value={manualForm.folderName}
@@ -3337,7 +3415,7 @@ const LogoUpdaterModal = React.memo(({
           )}
 
           {/* --- Add to Queue Toggle --- */}
-          <div className="flex items-start sm:items-center justify-between gap-3 mb-6 pt-3 border-t border-theme">
+          <div className="flex items-start sm:items-center justify-between gap-3 mb-3 pt-3 border-t border-theme">
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-medium text-theme-text break-words">
                 {t("assetReplacer.addToQueue")}
@@ -3349,7 +3427,13 @@ const LogoUpdaterModal = React.memo(({
               </p>
             </div>
             <button
+              type="button"
+              role="switch"
+              aria-label={t("assetReplacer.addToQueue")}
+              aria-checked={addToQueue}
               onClick={() => setAddToQueue(!addToQueue)}
+              disabled={autoQueueChanges || !queueSettingsLoaded || savingQueueSettings || loading}
+              title={autoQueueChanges ? t("runModes.manual.autoQueueControlled") : t("runModes.manual.queueManualSubmission")}
               className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-theme-primary focus:ring-offset-2 focus:ring-offset-theme-bg ${addToQueue ? "bg-theme-primary" : "bg-gray-600"
                 }`}
             >
@@ -3359,11 +3443,21 @@ const LogoUpdaterModal = React.memo(({
               />
             </button>
           </div>
+          {addToQueue && (
+            <label className="flex items-center gap-2 mb-6 text-sm text-theme-text">
+              <input type="checkbox" checked={autoQueueChanges}
+                disabled={!queueSettingsLoaded || savingQueueSettings || loading}
+                onChange={(event) => handleToggleAutoQueue(event.target.checked)}
+                title={t("runModes.manual.rememberQueue")}
+                className="w-4 h-4 shrink-0 rounded border-theme text-theme-primary" />
+              <span>{t("runModes.manual.autoQueueChanges")}</span>
+            </label>
+          )}
 
           {/* --- Run Button & Info Box --- */}
           <button
             onClick={runManualMode}
-            disabled={loading || status.running}
+            disabled={loading || status.running || !queueSettingsLoaded || savingQueueSettings}
             className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-theme-primary hover:bg-theme-primary/90 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg font-medium transition-all shadow-lg"
           >
             {loading ? (
@@ -3374,7 +3468,7 @@ const LogoUpdaterModal = React.memo(({
             ) : (
               <>
                 <Play className="w-5 h-5" />
-                {t("runModes.manual.runButton")}
+                {addToQueue ? t("runModes.manual.queueButton") : t("runModes.manual.runButton")}
               </>
             )}
           </button>
@@ -3414,6 +3508,7 @@ const LogoUpdaterModal = React.memo(({
 
       {/* Reset Posters */}
       <div className="bg-red-950/40 rounded-xl p-6 border-2 border-red-600/50">
+        <SiloSupportNotice enabled={siloEnabled} scope="reset" />
         <div className="flex items-center mb-4">
           <div className="p-2 rounded-lg bg-red-600/20 mr-3">
             <RotateCcw className="w-6 h-6 text-red-300" />
@@ -3480,8 +3575,8 @@ const LogoUpdaterModal = React.memo(({
 
       {/* Folder Selector Modal */}
       {showFolderSelector && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-theme-card border border-theme-primary rounded-xl max-w-4xl w-full max-h-[80vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-4xl w-full max-h-[80vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
             {/* Header */}
             <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
               <div className="flex items-center">
@@ -3604,8 +3699,8 @@ const LogoUpdaterModal = React.memo(({
 
       {/* Library Selector Modal */}
       {showLibrarySelector && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-theme-card border border-theme-primary rounded-xl max-w-3xl w-full max-h-[70vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="app-dialog-panel bg-theme-card border border-theme-primary rounded-xl max-w-3xl w-full max-h-[70vh] shadow-2xl animate-in fade-in duration-200 flex flex-col">
             {/* Header */}
             <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
               <div className="flex items-center">

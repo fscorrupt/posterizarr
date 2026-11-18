@@ -1,4 +1,29 @@
 #region Sync Mode
+function Select-SameLocationMatch {
+    param($Candidates, $Entry)
+
+    $all = @($Candidates)
+    if ($all.Count -le 1 -or [string]::IsNullOrWhiteSpace([string]$Entry.Path) -or
+        [string]::IsNullOrWhiteSpace([string]$Entry.RootFoldername)) {
+        return $Candidates
+    }
+
+    $entryPath = ([string]$Entry.Path).Trim().Replace('\', '/').TrimEnd('/')
+    $same = @($all | Where-Object {
+        $candidatePath = ([string]$_.Path).Trim().Replace('\', '/').TrimEnd('/')
+        $candidatePath -eq $entryPath -and $_.RootFoldername -eq $Entry.RootFoldername
+    })
+
+    if ($same.Count -eq 1) { return $same[0] }
+    if ($same.Count -gt 1 -and -not [string]::IsNullOrWhiteSpace([string]$Entry.extraFolder)) {
+        $sameExtraFolder = @($same | Where-Object { $_.extraFolder -eq $Entry.extraFolder })
+        if ($sameExtraFolder.Count -eq 1) { return $sameExtraFolder[0] }
+        if ($sameExtraFolder.Count -gt 1) { return $sameExtraFolder }
+    }
+    if ($same.Count -gt 1) { return $same }
+    return $Candidates
+}
+
     # Initialize counter variable
     $global:posterCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['posterCount'] = 0 }
@@ -117,8 +142,8 @@
                 $PlexHeaders['X-Plex-Container-Start'] = $searchsize
                 $PlexHeaders['X-Plex-Container-Size'] = '1000'
 
-                # Fetch content from Plex server (includeGuids=1 populates external GUIDs directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -182,6 +207,11 @@
                     }
                     if (-not $itemGuid -or -not $itemLocation) {
                         $needFullMetadata = $true
+                    }
+                    elseif ($contentquery -eq 'video' -and ($UsePosterResolutionOverlays -eq 'true' -or $UseBackgroundResolutionOverlays -eq 'true')) {
+                        if (-not $itemNode.media.part.stream) {
+                            $needFullMetadata = $true
+                        }
                     }
                 }
 
@@ -363,23 +393,13 @@
                     $Labels = ""
                 }
                 $FileMetadata = $Metadata.MediaContainer.$contentquery.media.part.stream
-                $Resolution = $null
-                # Get Resolution
-                if ($FileMetadata) {
-                    $FileMetadata | ForEach-Object {
-                        if ($_.streamType -eq '1') {
-                            $Resolution = $_.displayTitle
-                        }
-                    }
-                }
+                $Resolution = Get-MediaItemResolution -FileMetadata $FileMetadata -Media $Metadata.MediaContainer.$contentquery.media -Location $location -LibraryName $Library.Name -MatchedPath $Matchedpath -Type $Metadata.MediaContainer.$contentquery.type
                 $temp = New-Object psobject
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Name" -Value $Library.Name
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $Metadata.MediaContainer.$contentquery.type
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $($Library.language.split("-")[0])
                 $temp | Add-Member -MemberType NoteProperty -Name "title" -Value $($item.title)
-                if ($FileMetadata) {
-                    $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
-                }
+                $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
                 $temp | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $($item.originalTitle)
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $SeasonNames
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $SeasonNumbers
@@ -491,9 +511,7 @@
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "Title" -Value $($Seasondata.MediaContainer.video.title -join ';')
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "RatingKeys" -Value $($Seasondata.MediaContainer.video.ratingKey -join ',')
                 $tempseasondata | Add-Member -MemberType NoteProperty -Name "PlexTitleCardUrls" -Value $($Seasondata.MediaContainer.video.thumb -join ',')
-                if ($FileMetadata) {
-                    $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
-                }
+                $tempseasondata | Add-Member -MemberType NoteProperty -Name "Resolutions" -Value $Resolution
                 $Episodedata.Add($tempseasondata)
                 Write-Entry -Subtext "Found [$($tempseasondata.'Show Name')] of type $($tempseasondata.Type) for season $($tempseasondata.'Season Number')" -Path $global:configLogging -Color Cyan -log Debug
             }
@@ -567,18 +585,52 @@
         if ($otherlib.Name -notin $LibstoExclude) {
             if ($otherlib.CollectionType -eq 'movies') {
                 Write-Entry -Subtext "Getting all Itmes from [$($otherlib.Name)] with item id [$($otherlib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
-                $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
-                $OtherAllMovies.Add($Querytemp)
+                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
+                try {
+                    $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $OtherAllMovies.Add($Querytemp)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve movies from [$($otherlib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
             }
             if ($otherlib.CollectionType -eq 'tvshows') {
                 Write-Entry -Subtext "Getting all Itmes from [$($otherlib.Name)] with item id [$($otherlib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags&IncludeItemTypes=Series&CollapseBoxSetItems=false"
-                $allEpisodesquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,Settings,Tags&IncludeItemTypes=Episode&CollapseBoxSetItems=false"
-                $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders
-                $QuerytempEpisodes = Invoke-RestMethod -Method Get -Uri $allEpisodesquery -Headers $global:OtherMediaServerHeaders
-                $OtherAllShows.Add($Querytempshow)
-                $OtherAllEpisodes.Add($QuerytempEpisodes)
+                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags&IncludeItemTypes=Series&CollapseBoxSetItems=false"
+                try {
+                    $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $OtherAllShows.Add($Querytempshow)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve shows from [$($otherlib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
+
+                $episodeLimit = 1000
+                $episodeStartIndex = 0
+                $syncEpisodesList = [System.Collections.Generic.List[object]]::new()
+                $totalEpisodeRecords = $null
+
+                do {
+                    $pagedEpisodesQuery = "$OtherMediaServerUrl/Items?ParentId=$($otherlib.ItemId)&Recursive=true&IncludeItemTypes=Episode&CollapseBoxSetItems=false&StartIndex=$episodeStartIndex&Limit=$episodeLimit"
+                    try {
+                        $pagedResult = Invoke-RestMethod -Method Get -Uri $pagedEpisodesQuery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    }
+                    catch {
+                        Write-Entry -Message "Failed to retrieve episodes from [$($otherlib.Name)] (StartIndex: $episodeStartIndex): $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        break
+                    }
+
+                    if ($pagedResult -and $pagedResult.Items -and $pagedResult.Items.Count -gt 0) {
+                        $syncEpisodesList.AddRange($pagedResult.Items)
+                        $episodeStartIndex += $pagedResult.Items.Count
+                        $totalEpisodeRecords = $pagedResult.TotalRecordCount
+                    }
+                    else {
+                        break
+                    }
+                } while ($totalEpisodeRecords -and $episodeStartIndex -lt $totalEpisodeRecords)
+
+                $OtherAllEpisodes.Add([PSCustomObject]@{ Items = $syncEpisodesList })
             }
         }
     }
@@ -840,6 +892,9 @@
             # Create an object for the current season
             $seasonObject = [PSCustomObject]@{
                 "Library Name"                 = $show."Library Name"
+                "Path"                         = $show.Path
+                "RootFoldername"               = $show.RootFoldername
+                "extraFolder"                  = $show.extraFolder
                 "Show Name"                    = $show.title
                 "Show Original Name"           = $show.OriginalTitle
                 "Library Language"             = $PreferredMetadataLanguage
@@ -877,6 +932,9 @@
         # Create a custom object for each episode using the variables
         $FormattedData.Add([PSCustomObject]@{
                 'Library Name'                 = $data.'Library Name'
+                'Path'                         = $data.Path
+                'RootFoldername'               = $data.RootFoldername
+                'extraFolder'                  = $data.extraFolder
                 'Show Name'                    = $data.'Show Name'
                 'Show Original Name'           = $data.'Show Original Name'
                 'Library Language'             = $data.'Library Language'
@@ -947,6 +1005,7 @@
                             }
                         }
 
+                        $matchingMovie = Select-SameLocationMatch -Candidates $matchingMovie -Entry $entry
                         if ($matchingMovie) {
                             $MovieTitle = $entry.Title
                             $imageType = "Primary"
@@ -1020,6 +1079,7 @@
                             }
                         }
 
+                        $matchingMovie = Select-SameLocationMatch -Candidates $matchingMovie -Entry $entry
                         if ($matchingMovie) {
                             $MovieTitle = $entry.Title + " | Background"
                             $imageType = "Backdrop"
@@ -1107,6 +1167,7 @@
                             }
                         }
 
+                        $matchingShow = Select-SameLocationMatch -Candidates $matchingShow -Entry $entry
                         if ($matchingShow) {
                             $ShowTitle = $entry.Title
                             $imageType = "Primary"
@@ -1176,6 +1237,7 @@
                             }
                         }
 
+                        $matchingShow = Select-SameLocationMatch -Candidates $matchingShow -Entry $entry
                         if ($matchingShow) {
                             $ShowTitle = $entry.Title + " | Background"
                             $imageType = "Backdrop"
@@ -1252,6 +1314,7 @@
                                 }
                             }
 
+                            $matchingSeason = Select-SameLocationMatch -Candidates $matchingSeason -Entry $entry
                             if ($matchingSeason) {
                                 $ShowTitle = $entry.Title + " | Season $global:SeasonNumber"
                                 $imageType = "Primary"
@@ -1346,6 +1409,7 @@
                                         }
                                     }
 
+                                    $matchingEpisode = Select-SameLocationMatch -Candidates $matchingEpisode -Entry $entry
                                     if ($matchingEpisode) {
                                         # Select the matching episode ID by EPISODE NUMBER, not by the source
                                         # loop index. Source and destination hold their own episode arrays and

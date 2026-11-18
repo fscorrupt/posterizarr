@@ -340,6 +340,49 @@ function TitleCardGallery() {
     return path;
   };
 
+  const getTitleCardNumberDisplay = (image) => {
+    const filename = image?.name || (image?.path ? image.path.split(/[\\/]/).pop() : "") || "";
+    
+    // Standard S01E01 or s01e01 pattern
+    const seMatch = filename.match(/[_\s.-]?s(\d+)e(\d+)/i);
+    if (seMatch) {
+      const sNum = parseInt(seMatch[1], 10);
+      const eNum = parseInt(seMatch[2], 10);
+      const sCode = `S${String(sNum).padStart(2, "0")}E${String(eNum).padStart(2, "0")}`;
+      const sLabel = sNum === 0 ? "Specials" : `Season ${sNum}`;
+      return `${sCode} • ${sLabel}, Episode ${eNum}`;
+    }
+
+    // 1x01 pattern
+    const xMatch = filename.match(/[_\s.-]?(\d+)x(\d+)/i);
+    if (xMatch) {
+      const sNum = parseInt(xMatch[1], 10);
+      const eNum = parseInt(xMatch[2], 10);
+      const sCode = `S${String(sNum).padStart(2, "0")}E${String(eNum).padStart(2, "0")}`;
+      const sLabel = sNum === 0 ? "Specials" : `Season ${sNum}`;
+      return `${sCode} • ${sLabel}, Episode ${eNum}`;
+    }
+
+    // Season 1 Episode 2 pattern
+    const textMatch = filename.match(/season\s*(\d+).*?episode\s*(\d+)/i);
+    if (textMatch) {
+      const sNum = parseInt(textMatch[1], 10);
+      const eNum = parseInt(textMatch[2], 10);
+      const sCode = `S${String(sNum).padStart(2, "0")}E${String(eNum).padStart(2, "0")}`;
+      const sLabel = sNum === 0 ? "Specials" : `Season ${sNum}`;
+      return `${sCode} • ${sLabel}, Episode ${eNum}`;
+    }
+
+    // Episode only
+    const epOnlyMatch = filename.match(/ep(?:isode)?[_\s.-]*(\d+)/i) || filename.match(/^e(\d+)/i);
+    if (epOnlyMatch) {
+      const eNum = parseInt(epOnlyMatch[1], 10);
+      return `Episode ${eNum}`;
+    }
+
+    return filename.replace(/\.[^/.]+$/, "");
+  };
+
   // Helper function to get media type from filename/path
   const getMediaType = (assetPath, assetName) => {
     const path = assetPath.toLowerCase();
@@ -1090,10 +1133,16 @@ function TitleCardGallery() {
 
                 <div className="p-3 border-t border-theme-border bg-theme-card">
                   <p
-                    className="text-sm text-theme-text truncate"
+                    className="text-sm font-semibold text-theme-text truncate"
                     title={formatDisplayPath(image.path)}
                   >
                     {image.path.split(/[\\/]/).slice(-2, -1)[0] || image.name}
+                  </p>
+                  <p
+                    className="text-xs font-medium text-theme-primary truncate mt-0.5"
+                    title={getTitleCardNumberDisplay(image)}
+                  >
+                    {getTitleCardNumberDisplay(image)}
                   </p>
                   <p className="text-xs text-theme-muted mt-1">
                     {(image.size / 1024).toFixed(2)} KB

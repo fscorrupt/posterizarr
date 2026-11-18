@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Clock,
@@ -23,12 +23,19 @@ import {
   Edit2,
   Check,
   X,
-  Pencil
+  Pencil,
+  Download,
+  Layers,
+  Sparkles,
+  FileText
 } from "lucide-react";
 import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
-import { formatDateTimeInTimezone } from "../utils/timeUtils";
+import { formatDateTimeInTimezone, sortSchedulesByTime } from "../utils/timeUtils";
+import WorkspaceHeader from "./WorkspaceHeader";
+import SiloSupportNotice from "./SiloSupportNotice";
+import MediaServerLogo from "./MediaServerLogo";
 
 const API_URL = "/api";
 
@@ -64,6 +71,7 @@ const waitForLogFile = async (logFileName, maxAttempts = 30, delayMs = 200) => {
 const SchedulerSettings = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { showSuccess, showError } = useToast();
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
@@ -103,6 +111,12 @@ const SchedulerSettings = () => {
 
   // --- PLEX SYNC OPTIONS ---
   const [plexSyncLibrary, setPlexSyncLibrary] = useState("all");
+  const [cleanupPath, setCleanupPath] = useState("");
+  const [cleanupAction, setCleanupAction] = useState("report");
+  const [cleanupReadOnly, setCleanupReadOnly] = useState(true);
+  const [cleanupSource, setCleanupSource] = useState("plex");
+  const [cleanupAge, setCleanupAge] = useState(7);
+  const [cleanupRemovalConfirmed, setCleanupRemovalConfirmed] = useState(false);
   const [plexSyncAssetTypes, setPlexSyncAssetTypes] = useState([
     "collection", "poster", "season", "titlecard", "background"
   ]);
@@ -138,11 +152,22 @@ const SchedulerSettings = () => {
     return (String(useEmby).toLowerCase() === "true" || useEmby === true) && Boolean(embyUrl);
   };
 
+  const isSiloConfigured = () => {
+    if (!appConfig) return false;
+    return String(appConfig.UseSilo ?? appConfig.SiloPart?.UseSilo).toLowerCase() === "true" &&
+      Boolean(appConfig.SiloUrl || appConfig.SiloPart?.SiloUrl);
+  };
+
+  const canMirrorSilo = () => isSiloConfigured() && Boolean(
+    (appConfig?.PlexUrl || appConfig?.PlexPart?.PlexUrl) && (appConfig?.PlexToken || appConfig?.ApiPart?.PlexToken)
+  );
+
   const isAnyServerConfigured = () => {
-    return isPlexConfigured() || isJellyfinConfigured() || isEmbyConfigured();
+    return isPlexConfigured() || isJellyfinConfigured() || isEmbyConfigured() || isSiloConfigured();
   };
 
   const getActiveLogoServerType = () => {
+    if (isSiloConfigured()) return "silo";
     if (isPlexConfigured()) return "plex";
     if (isJellyfinConfigured()) return "jellyfin";
     if (isEmbyConfigured()) return "emby";
@@ -151,6 +176,7 @@ const SchedulerSettings = () => {
 
   const getActiveLogoServerName = () => {
     const type = getActiveLogoServerType();
+    if (type === "silo") return t("silo.name");
     if (type === "plex") return "Plex";
     if (type === "jellyfin") return "Jellyfin";
     if (type === "emby") return "Emby";
@@ -199,42 +225,42 @@ const SchedulerSettings = () => {
   };
 
   const frequencies = [
-    { id: "daily", label: t("schedulerSettings.frequencies.daily") || "Daily" },
-    { id: "weekly", label: t("schedulerSettings.frequencies.weekly") || "Weekly" },
-    { id: "monthly", label: t("schedulerSettings.frequencies.monthly") || "Monthly" },
-    { id: "interval", label: t("schedulerSettings.frequencies.interval") || "Interval" },
+    { id: "daily", label: t("schedulerSettings.frequencies.daily") },
+    { id: "weekly", label: t("schedulerSettings.frequencies.weekly") },
+    { id: "monthly", label: t("schedulerSettings.frequencies.monthly") },
+    { id: "interval", label: t("schedulerSettings.frequencies.interval") },
   ];
 
   const months = [
-    { id: "*", label: "Every Month" },
-    { id: "1", label: "January" },
-    { id: "2", label: "February" },
-    { id: "3", label: "March" },
-    { id: "4", label: "April" },
-    { id: "5", label: "May" },
-    { id: "6", label: "June" },
-    { id: "7", label: "July" },
-    { id: "8", label: "August" },
-    { id: "9", label: "September" },
-    { id: "10", label: "October" },
-    { id: "11", label: "November" },
-    { id: "12", label: "December" },
+    { id: "*", label: t("schedulerSettings.months.every") },
+    { id: "1", label: t("schedulerSettings.months.january") },
+    { id: "2", label: t("schedulerSettings.months.february") },
+    { id: "3", label: t("schedulerSettings.months.march") },
+    { id: "4", label: t("schedulerSettings.months.april") },
+    { id: "5", label: t("schedulerSettings.months.may") },
+    { id: "6", label: t("schedulerSettings.months.june") },
+    { id: "7", label: t("schedulerSettings.months.july") },
+    { id: "8", label: t("schedulerSettings.months.august") },
+    { id: "9", label: t("schedulerSettings.months.september") },
+    { id: "10", label: t("schedulerSettings.months.october") },
+    { id: "11", label: t("schedulerSettings.months.november") },
+    { id: "12", label: t("schedulerSettings.months.december") },
   ];
 
   const daysOfWeek = [
-    { id: "mon", label: t("schedulerSettings.days.mon") || "Monday" },
-    { id: "tue", label: t("schedulerSettings.days.tue") || "Tuesday" },
-    { id: "wed", label: t("schedulerSettings.days.wed") || "Wednesday" },
-    { id: "thu", label: t("schedulerSettings.days.thu") || "Thursday" },
-    { id: "fri", label: t("schedulerSettings.days.fri") || "Friday" },
-    { id: "sat", label: t("schedulerSettings.days.sat") || "Saturday" },
-    { id: "sun", label: t("schedulerSettings.days.sun") || "Sunday" },
+    { id: "mon", label: t("schedulerSettings.days.mon") },
+    { id: "tue", label: t("schedulerSettings.days.tue") },
+    { id: "wed", label: t("schedulerSettings.days.wed") },
+    { id: "thu", label: t("schedulerSettings.days.thu") },
+    { id: "fri", label: t("schedulerSettings.days.fri") },
+    { id: "sat", label: t("schedulerSettings.days.sat") },
+    { id: "sun", label: t("schedulerSettings.days.sun") },
   ];
 
   const intervalUnits = [
-    { id: "hours", label: "Hours" },
-    { id: "days", label: "Days" },
-    { id: "weeks", label: "Weeks" },
+    { id: "hours", label: t("schedulerSettings.interval.hours") },
+    { id: "days", label: t("schedulerSettings.interval.days") },
+    { id: "weeks", label: t("schedulerSettings.interval.weeks") },
   ];
 
   // Helper for calendar selection
@@ -286,29 +312,53 @@ const SchedulerSettings = () => {
 
   const runModes = [
     { id: "normal", label: t("schedulerSettings.modes.normal") },
-    ...(isJellyfinConfigured() ? [{ id: "syncjelly", label: t("schedulerSettings.modes.syncjelly") || "Sync Jellyfin" }] : []),
-    ...(isEmbyConfigured() ? [{ id: "syncemby", label: t("schedulerSettings.modes.syncemby") || "Sync Emby" }] : []),
-    { id: "backup", label: t("schedulerSettings.modes.backup") || "System Backup" },
-    ...(isAnyServerConfigured() ? [{ id: "logoupdater", label: "Logo Updater" }] : []),
-    ...(isPlexConfigured() ? [{ id: "plexsync", label: "Plex Sync" }] : []),
+    ...(isJellyfinConfigured() ? [{ id: "syncjelly", label: t("schedulerSettings.modes.syncjelly") }] : []),
+    ...(isEmbyConfigured() ? [{ id: "syncemby", label: t("schedulerSettings.modes.syncemby") }] : []),
+    ...(canMirrorSilo() ? [{ id: "syncsilo", label: t("silo.syncTitle") }] : []),
+    { id: "backup", label: t("schedulerSettings.modes.backup") },
+    ...(isAnyServerConfigured() ? [{ id: "logoupdater", label: t("schedulerSettings.modes.logoupdater") }] : []),
+    ...(isPlexConfigured() ? [{ id: "plexsync", label: t("schedulerSettings.modes.plexsync") }] : []),
+    ...(isPlexConfigured() ? [{ id: "pleximagecleanup", label: t("schedulerSettings.modes.pleximagecleanup") }] : []),
+    { id: "kometadefaults", label: t("schedulerSettings.modes.kometadefaults") },
+    ...(isAnyServerConfigured() ? [{ id: "dynamicoverlays", label: t("schedulerSettings.modes.dynamicoverlays") }] : []),
+    ...(isAnyServerConfigured() ? [{ id: "animetafill", label: t("schedulerSettings.modes.animetafill") }] : []),
   ];
 
   useEffect(() => {
     if (appConfig) {
       if (newMode === "plexsync" && !isPlexConfigured()) setNewMode("normal");
+      if (newMode === "pleximagecleanup" && !isPlexConfigured()) setNewMode("normal");
       if (newMode === "logoupdater" && !isAnyServerConfigured()) setNewMode("normal");
       if (newMode === "syncjelly" && !isJellyfinConfigured()) setNewMode("normal");
       if (newMode === "syncemby" && !isEmbyConfigured()) setNewMode("normal");
+      if (newMode === "syncsilo" && !canMirrorSilo()) setNewMode("normal");
     }
   }, [appConfig, newMode]);
 
+  useEffect(() => {
+    if (location.state?.prefillMode) {
+      setNewMode(location.state.prefillMode);
+      if (location.state.prefillFrequency) setFrequency(location.state.prefillFrequency);
+      if (location.state.prefillTime) setNewTime(location.state.prefillTime);
+      if (location.state.prefillDescription) setNewDescription(location.state.prefillDescription);
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 150);
+    }
+  }, [location.state]);
+
   const modeConfigs = {
     normal: { icon: Clock, color: "text-theme-primary", bgColor: "bg-theme-primary/10", label: t("schedulerSettings.modes.normal") },
-    syncjelly: { icon: RefreshCw, color: "text-blue-400", bgColor: "bg-blue-400/10", label: "Jellyfin Sync" },
-    syncemby: { icon: RefreshCw, color: "text-green-500", bgColor: "bg-green-500/10", label: "Emby Sync" },
-    backup: { icon: Database, color: "text-amber-500", bgColor: "bg-amber-500/10", label: "Backup" },
-    logoupdater: { icon: Grid, color: "text-purple-400", bgColor: "bg-purple-400/10", label: "Logo Updater" },
-    plexsync: { icon: Zap, color: "text-amber-500", bgColor: "bg-amber-500/10", label: "Plex Sync" }
+    syncjelly: { icon: RefreshCw, color: "text-blue-400", bgColor: "bg-blue-400/10", label: t("schedulerSettings.modes.syncjelly") },
+    syncemby: { icon: RefreshCw, color: "text-green-500", bgColor: "bg-green-500/10", label: t("schedulerSettings.modes.syncemby") },
+    syncsilo: { icon: RefreshCw, logoServer: "silo", color: "text-emerald-500", bgColor: "bg-emerald-500/10", label: t("silo.syncTitle") },
+    backup: { icon: Database, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.backup") },
+    logoupdater: { icon: Grid, color: "text-purple-400", bgColor: "bg-purple-400/10", label: t("schedulerSettings.modes.logoupdater") },
+    plexsync: { icon: Zap, color: "text-amber-500", bgColor: "bg-amber-500/10", label: t("schedulerSettings.modes.plexsync") },
+    pleximagecleanup: { icon: Trash2, color: "text-rose-400", bgColor: "bg-rose-500/10", label: t("schedulerSettings.modes.pleximagecleanup") },
+    kometadefaults: { icon: Download, color: "text-cyan-400", bgColor: "bg-cyan-400/10", label: t("schedulerSettings.modes.kometadefaults") },
+    dynamicoverlays: { icon: Layers, color: "text-emerald-400", bgColor: "bg-emerald-400/10", label: t("schedulerSettings.modes.dynamicoverlays") },
+    animetafill: { icon: Sparkles, color: "text-pink-400", bgColor: "bg-pink-400/10", label: t("schedulerSettings.modes.animetafill") }
   };
 
   useEffect(() => {
@@ -428,11 +478,15 @@ const SchedulerSettings = () => {
     if (frequency !== "interval") {
       const timePattern = /^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/;
       if (!timePattern.test(newTime)) {
-        showError("Invalid time format. Please use HH:MM (00:00-23:59)");
+        showError(t("schedulerSettings.errors.invalidTimeFormat"));
         return;
       }
     }
     if (isUpdating) return;
+    if (newMode === "pleximagecleanup" && (!cleanupPath.trim() || !Number.isInteger(Number(cleanupAge)) || Number(cleanupAge) < 1 || Number(cleanupAge) > 3650 || (!cleanupReadOnly && cleanupAction === "remove" && !cleanupRemovalConfirmed))) {
+      showError(t("schedulerSettings.cleanup.validationError"));
+      return;
+    }
     setIsUpdating(true);
     try {
       const payload = {
@@ -451,6 +505,13 @@ const SchedulerSettings = () => {
       } else if (newMode === "plexsync") {
         payload.library = plexSyncLibrary;
         payload.asset_types = plexSyncAssetTypes;
+      } else if (newMode === "pleximagecleanup") {
+        payload.plex_data_path = cleanupPath.trim();
+        payload.cleanup_read_only = cleanupReadOnly;
+        payload.cleanup_action = cleanupReadOnly ? "report" : cleanupAction;
+        payload.database_source = cleanupSource;
+        payload.minimum_age_days = Number(cleanupAge);
+        payload.confirm_image_removal = !cleanupReadOnly && cleanupRemovalConfirmed;
       }
 
       if (frequency === "weekly") {
@@ -480,16 +541,17 @@ const SchedulerSettings = () => {
       });
       const data = await response.json();
       if (data.success) {
-        showSuccess(isEditing ? (t("schedulerSettings.success.scheduleUpdated") || "Schedule updated successfully") : t("schedulerSettings.success.scheduleAdded"));
+        showSuccess(isEditing ? t("schedulerSettings.success.scheduleUpdated") : t("schedulerSettings.success.scheduleAdded"));
+        window.dispatchEvent(new Event("plexQuarantineChanged"));
         handleCancelEdit();
         await new Promise((resolve) => setTimeout(resolve, 500));
         await fetchSchedulerData();
       } else {
-        showError(data.detail || (isEditing ? "Failed to update schedule" : t("schedulerSettings.errors.addSchedule")));
+        showError(data.detail || (isEditing ? t("schedulerSettings.errors.updateSchedule") : t("schedulerSettings.errors.addSchedule")));
       }
     } catch (error) {
       console.error("Error saving schedule:", error);
-      showError(editingIndex !== null ? "Failed to update schedule" : t("schedulerSettings.errors.addSchedule"));
+      showError(editingIndex !== null ? t("schedulerSettings.errors.updateSchedule") : t("schedulerSettings.errors.addSchedule"));
     } finally {
       setIsUpdating(false);
     }
@@ -524,6 +586,13 @@ const SchedulerSettings = () => {
           ? schedule.asset_types
           : ["collection", "poster", "season", "titlecard", "background"]
       );
+    } else if (schedule.mode === "pleximagecleanup") {
+      setCleanupPath(schedule.plex_data_path || "");
+      setCleanupReadOnly(schedule.cleanup_read_only !== false);
+      setCleanupAction(schedule.cleanup_read_only !== false ? "report" : (schedule.cleanup_action || "report"));
+      setCleanupSource(schedule.database_source || "plex");
+      setCleanupAge(schedule.minimum_age_days ?? 7);
+      setCleanupRemovalConfirmed(schedule.cleanup_read_only === false && schedule.confirm_image_removal === true);
     }
 
     setTimeout(() => {
@@ -546,6 +615,12 @@ const SchedulerSettings = () => {
     setLogoForceReplace(false);
     setLogoExifCheck(false);
     setLogoRevert(false);
+    setCleanupPath("");
+    setCleanupAction("report");
+    setCleanupReadOnly(true);
+    setCleanupSource("plex");
+    setCleanupAge(7);
+    setCleanupRemovalConfirmed(false);
   };
 
   const removeSchedule = async (time, index) => {
@@ -564,6 +639,7 @@ const SchedulerSettings = () => {
           setEditingIndex(editingIndex - 1);
         }
         showSuccess(t("schedulerSettings.success.scheduleRemoved"));
+        window.dispatchEvent(new Event("plexQuarantineChanged"));
         await new Promise((resolve) => setTimeout(resolve, 200));
         await fetchSchedulerData();
       } else {
@@ -592,6 +668,7 @@ const SchedulerSettings = () => {
         const configData = await configRes.json();
         if (configData.success) setConfig(configData.config);
         showSuccess(t("schedulerSettings.success.allCleared"));
+        window.dispatchEvent(new Event("plexQuarantineChanged"));
       } else {
         showError(data.detail || t("schedulerSettings.errors.clearSchedules"));
       }
@@ -679,6 +756,38 @@ const SchedulerSettings = () => {
     }
   };
 
+  const triggerScheduleNow = async (schedule) => {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    try {
+      const mode = schedule?.mode || "normal";
+      const response = await fetch(`${API_URL}/scheduler/run-now`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, schedule_config: schedule })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showSuccess(t("schedulerSettings.success.runTriggered", { mode: modeConfigs[mode]?.label || mode }));
+        fetchSchedulerData();
+        let logFile = "Scriptlog.log";
+        if (mode === "plexsync") logFile = "PlexSync.log";
+        else if (mode === "pleximagecleanup") logFile = "PlexImageCleanup.log";
+        else if (mode === "kometadefaults") logFile = "OverlayDefaults.log";
+        else if (mode === "dynamicoverlays") logFile = "DynamicOverlaysSync.log";
+        await waitForLogFile(logFile);
+        navigate("/logs", { state: { logFile } });
+      } else {
+        showError(data.detail || t("schedulerSettings.errors.triggerRun"));
+      }
+    } catch (error) {
+      console.error("🏃 Error in triggerScheduleNow:", error);
+      showError(t("schedulerSettings.errors.triggerRun"));
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const restartScheduler = async () => {
     if (isUpdating) return;
     setIsUpdating(true);
@@ -713,7 +822,7 @@ const SchedulerSettings = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       <ConfirmDialog
         isOpen={clearAllConfirm}
         onClose={() => setClearAllConfirm(false)}
@@ -723,7 +832,12 @@ const SchedulerSettings = () => {
         type="danger"
       />
 
-      <div className="bg-blue-900/20 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+      <WorkspaceHeader icon={Calendar} title={t("sidebar.scheduler", "Scheduler")} subtitle={timezone} />
+      <SiloSupportNotice enabled={isSiloConfigured()} />
+      {newMode === "syncsilo" && <SiloSupportNotice enabled scope="mirror" />}
+      {newMode === "logoupdater" && <SiloSupportNotice enabled={isSiloConfigured()} scope="logos" />}
+
+      <div className="workspace-notice">
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -743,7 +857,7 @@ const SchedulerSettings = () => {
           <div className="text-xl font-semibold text-theme-text">{formatDateTime(status?.next_run)}</div>
         </div>
         <div className="bg-theme-card rounded-xl shadow-sm border border-theme p-5 hover:border-theme-primary/50 transition-all">
-          <div className="flex items-center gap-2 text-sm text-theme-muted mb-2"><Zap className="w-4 h-4" />Status</div>
+          <div className="flex items-center gap-2 text-sm text-theme-muted mb-2"><Zap className="w-4 h-4" />{t("schedulerSettings.status.label")}</div>
           <div className="flex items-center gap-2">
             <div className={`w-3 h-3 rounded-full ${status?.is_executing ? "bg-yellow-500 animate-pulse" : status?.running ? "bg-green-500" : "bg-theme-muted"}`} />
             <span className="text-xl font-semibold text-theme-text">
@@ -753,8 +867,8 @@ const SchedulerSettings = () => {
         </div>
       </div>
 
-      <div className="bg-theme-card rounded-xl shadow-sm border border-theme p-6 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="workspace-section space-y-6">
+        <div className="flex flex-col min-[440px]:flex-row min-[440px]:items-center min-[440px]:justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-theme-primary/10"><Settings className="w-6 h-6 text-theme-primary" /></div>
             <h2 className="text-xl font-semibold text-theme-primary">{t("schedulerSettings.configuration")}</h2>
@@ -762,7 +876,7 @@ const SchedulerSettings = () => {
           <button
             onClick={toggleScheduler}
             disabled={isUpdating}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all shadow-sm hover:scale-105 ${config?.enabled ? "bg-green-600 hover:bg-green-700 text-white" : "bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text"} ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
+            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-lg font-medium transition-all shadow-sm ${config?.enabled ? "bg-green-600 hover:bg-green-700 text-white" : "bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text"} ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             {isUpdating ? <Loader2 className="w-5 h-5 text-theme-primary animate-spin" /> : <Power className="w-5 h-5" />}
             {isUpdating ? t("schedulerSettings.updating") : config?.enabled ? t("schedulerSettings.enabled") : t("schedulerSettings.disabled")}
@@ -807,7 +921,7 @@ const SchedulerSettings = () => {
             {isUpdating ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
             {t("schedulerSettings.restartScheduler")}
           </button>
-          <button onClick={triggerNow} disabled={isUpdating || status?.is_executing || !config?.enabled} className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100">
+          <button onClick={triggerNow} disabled={isUpdating || status?.is_executing} className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100">
             {isUpdating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
             {t("schedulerSettings.runNow")}
           </button>
@@ -830,9 +944,9 @@ const SchedulerSettings = () => {
                 <Pencil className="w-4 h-4 text-amber-400" />
               </div>
               <div>
-                <span className="font-semibold text-amber-300">Editing Schedule #{editingIndex + 1}</span>
+                <span className="font-semibold text-amber-300">{t("schedulerSettings.editingSchedule", { number: editingIndex + 1 })}</span>
                 <span className="text-amber-400/80 text-xs ml-2">
-                  ({config?.schedules?.[editingIndex]?.time || (config?.schedules?.[editingIndex]?.frequency === "interval" ? `Every ${config?.schedules?.[editingIndex]?.interval_value} ${config?.schedules?.[editingIndex]?.interval_unit}` : "")} • {config?.schedules?.[editingIndex]?.mode})
+                  ({config?.schedules?.[editingIndex]?.time || (config?.schedules?.[editingIndex]?.frequency === "interval" ? t("schedulerSettings.interval.summary", { count: config?.schedules?.[editingIndex]?.interval_value, unit: t(`schedulerSettings.interval.${config?.schedules?.[editingIndex]?.interval_unit}`) }) : "")} • {runModes.find((mode) => mode.id === config?.schedules?.[editingIndex]?.mode)?.label || config?.schedules?.[editingIndex]?.mode})
                 </span>
               </div>
             </div>
@@ -842,7 +956,7 @@ const SchedulerSettings = () => {
               className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-theme-bg border border-amber-500/30 text-amber-300 hover:text-white hover:bg-amber-500/20 transition-colors"
             >
               <X className="w-3.5 h-3.5" />
-              <span>Cancel Edit</span>
+              <span>{t("schedulerSettings.cancelEdit")}</span>
             </button>
           </div>
         )}
@@ -859,13 +973,13 @@ const SchedulerSettings = () => {
                   <div className={`absolute z-50 left-0 right-0 ${timePickerUp ? "bottom-full mb-2" : "top-full mt-2"} bg-theme-card border border-theme-primary rounded-lg shadow-xl`}>
                     <div className="flex divide-x divide-theme">
                       <div className="flex-1 max-h-64 overflow-y-auto">
-                        <div className="sticky top-0 bg-theme-card border-b border-theme px-3 py-2 text-xs font-semibold text-theme-primary">{t("schedulerSettings.hour") || "Hour"}</div>
+                        <div className="sticky top-0 bg-theme-card border-b border-theme px-3 py-2 text-xs font-semibold text-theme-primary">{t("schedulerSettings.hour")}</div>
                         {hours.map((hour) => (
                           <button key={hour} type="button" onClick={() => handleTimeSelect(hour, selectedMinute)} className={`w-full px-4 py-2 text-sm transition-all text-center ${selectedHour === hour ? "bg-theme-primary text-white" : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"}`}>{hour}</button>
                         ))}
                       </div>
                       <div className="flex-1 max-h-64 overflow-y-auto">
-                        <div className="sticky top-0 bg-theme-card border-b border-theme px-3 py-2 text-xs font-semibold text-theme-primary">{t("schedulerSettings.minute") || "Minute"}</div>
+                        <div className="sticky top-0 bg-theme-card border-b border-theme px-3 py-2 text-xs font-semibold text-theme-primary">{t("schedulerSettings.minute")}</div>
                         {minutes.map((minute) => (
                           <button key={minute} type="button" onClick={() => handleTimeSelect(selectedHour, minute)} className={`w-full px-4 py-2 text-sm transition-all text-center ${selectedMinute === minute ? "bg-theme-primary text-white" : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"}`}>{minute}</button>
                         ))}
@@ -879,7 +993,9 @@ const SchedulerSettings = () => {
             <div className="flex-1 relative" ref={modeDropdownRef}>
               <button type="button" onClick={() => { if (!isUpdating) { setModeDropdownUp(calculateDropdownPosition(modeDropdownRef)); setModeDropdownOpen(!modeDropdownOpen); } }} disabled={isUpdating} className="w-full px-4 py-3 bg-theme-bg border border-theme rounded-lg text-theme-text hover:bg-theme-hover hover:border-theme-primary/50 focus:outline-none focus:ring-2 focus:ring-theme-primary focus:border-theme-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {React.createElement(modeConfigs[newMode]?.icon || Clock, { className: `w-4 h-4 ${modeConfigs[newMode]?.color || 'text-theme-primary'}` })}
+                  {modeConfigs[newMode]?.logoServer
+                    ? <MediaServerLogo server={modeConfigs[newMode].logoServer} className="w-4 h-4" />
+                    : React.createElement(modeConfigs[newMode]?.icon || Clock, { className: `w-4 h-4 ${modeConfigs[newMode]?.color || 'text-theme-primary'}` })}
                   <span>{runModes.find((m) => m.id === newMode)?.label}</span>
                 </div>
                 <ChevronDown className={`w-5 h-5 text-theme-muted transition-transform ${modeDropdownOpen ? "rotate-180" : ""}`} />
@@ -888,7 +1004,10 @@ const SchedulerSettings = () => {
                 <div className={`absolute z-50 left-0 right-0 ${modeDropdownUp ? "bottom-full mb-2" : "top-full mt-2"} bg-theme-card border border-theme-primary rounded-lg shadow-xl max-h-60 overflow-y-auto`}>
                   {runModes.map((mode) => (
                     <button key={mode.id} type="button" onClick={() => { setNewMode(mode.id); setModeDropdownOpen(false); }} className={`w-full px-4 py-3 text-sm transition-all text-left flex items-center gap-3 ${newMode === mode.id ? "bg-theme-primary text-white" : "text-theme-text hover:bg-theme-hover hover:text-theme-primary"}`}>
-                      {React.createElement(modeConfigs[mode.id].icon, { className: "w-4 h-4" })}{mode.label}
+                      {modeConfigs[mode.id]?.logoServer
+                        ? <MediaServerLogo server={modeConfigs[mode.id].logoServer} className="w-4 h-4" />
+                        : React.createElement(modeConfigs[mode.id].icon, { className: "w-4 h-4" })}
+                      {mode.label}
                     </button>
                   ))}
                 </div>
@@ -914,7 +1033,7 @@ const SchedulerSettings = () => {
             {frequency === "interval" && (
               <div className="flex-1 flex gap-2">
                  <div className="flex items-center gap-2 bg-theme-bg border border-theme rounded-lg px-3 flex-1">
-                    <span className="text-theme-muted text-sm whitespace-nowrap">Every</span>
+                    <span className="text-theme-muted text-sm whitespace-nowrap">{t("schedulerSettings.interval.every")}</span>
                     <input
                       type="number"
                       min="1"
@@ -967,7 +1086,7 @@ const SchedulerSettings = () => {
                   className="flex items-center justify-center gap-2 px-5 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition-all shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   {isUpdating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                  <span>Save</span>
+                  <span>{t("common.save")}</span>
                 </button>
                 <button
                   type="button"
@@ -976,7 +1095,7 @@ const SchedulerSettings = () => {
                   className="flex items-center justify-center gap-1.5 px-4 py-3 bg-theme-bg border border-theme hover:bg-theme-hover text-theme-muted hover:text-theme-text font-medium rounded-lg transition-all"
                 >
                   <X className="w-4 h-4" />
-                  <span>Cancel</span>
+                  <span>{t("common.cancel")}</span>
                 </button>
               </div>
             ) : (
@@ -991,16 +1110,16 @@ const SchedulerSettings = () => {
             <div className="flex flex-col md:flex-row gap-4 p-4 bg-purple-500/5 border border-purple-500/20 rounded-lg">
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-medium text-purple-300">{getActiveLogoServerName()} Library</label>
+                  <label className="block text-xs font-medium text-purple-300">{t("schedulerSettings.logoUpdater.libraryLabel", { server: getActiveLogoServerName() })}</label>
                   <button
                     type="button"
                     onClick={() => fetchLogoLibraries(true)}
                     disabled={loadingLogoLibraries}
                     className="flex items-center gap-1 text-[11px] text-purple-400/80 hover:text-purple-300 disabled:opacity-50 transition-colors"
-                    title={`Refresh ${getActiveLogoServerName()} Libraries`}
+                    title={t("schedulerSettings.logoUpdater.refreshLibraries", { server: getActiveLogoServerName() })}
                   >
                     <RefreshCw className={`w-3 h-3 ${loadingLogoLibraries ? "animate-spin" : ""}`} />
-                    <span className="text-[10px]">Refresh</span>
+                    <span className="text-[10px]">{t("schedulerSettings.refresh")}</span>
                   </button>
                 </div>
                 <div className="relative">
@@ -1010,14 +1129,14 @@ const SchedulerSettings = () => {
                     disabled={loadingLogoLibraries}
                     className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-md text-sm text-theme-text focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer appearance-none pr-8"
                   >
-                    <option value="all" className="bg-theme-card text-theme-text font-medium">All Included Libraries (all)</option>
+                    <option value="all" className="bg-theme-card text-theme-text font-medium">{t("schedulerSettings.allIncludedLibraries")}</option>
                     {logoLibraries.filter(lib => !(typeof lib === "object" && lib.is_excluded)).length > 0 && (
-                      <optgroup label="Included Libraries" className="bg-theme-card text-theme-muted font-semibold">
+                      <optgroup label={t("schedulerSettings.includedLibraries")} className="bg-theme-card text-theme-muted font-semibold">
                         {logoLibraries
                           .filter(lib => !(typeof lib === "object" && lib.is_excluded))
                           .map((lib) => {
                             const name = typeof lib === "string" ? lib : lib.name;
-                            const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' || lib.type === 'movies' ? 'Movies' : lib.type === 'show' || lib.type === 'tvshows' ? 'TV Shows' : lib.type})` : "";
+                            const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' || lib.type === 'movies' ? t("schedulerSettings.libraryTypes.movies") : lib.type === 'show' || lib.type === 'tvshows' ? t("schedulerSettings.libraryTypes.tvShows") : lib.type})` : "";
                             return (
                               <option key={name} value={name} className="bg-theme-card text-theme-text font-normal">
                                 {name}{type}
@@ -1027,15 +1146,15 @@ const SchedulerSettings = () => {
                       </optgroup>
                     )}
                     {logoLibraries.filter(lib => typeof lib === "object" && lib.is_excluded).length > 0 && (
-                      <optgroup label="Excluded in Config" className="bg-theme-card text-theme-muted font-semibold">
+                      <optgroup label={t("schedulerSettings.excludedInConfig")} className="bg-theme-card text-theme-muted font-semibold">
                         {logoLibraries
                           .filter(lib => typeof lib === "object" && lib.is_excluded)
                           .map((lib) => {
                             const name = typeof lib === "string" ? lib : lib.name;
-                            const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' || lib.type === 'movies' ? 'Movies' : lib.type === 'show' || lib.type === 'tvshows' ? 'TV Shows' : lib.type})` : "";
+                            const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' || lib.type === 'movies' ? t("schedulerSettings.libraryTypes.movies") : lib.type === 'show' || lib.type === 'tvshows' ? t("schedulerSettings.libraryTypes.tvShows") : lib.type})` : "";
                             return (
                               <option key={name} value={name} className="bg-theme-card text-theme-muted italic font-normal">
-                                {name}{type} (Excluded)
+                                {name}{type} ({t("schedulerSettings.excluded")})
                               </option>
                             );
                           })}
@@ -1043,7 +1162,7 @@ const SchedulerSettings = () => {
                     )}
                     {logoLibrary && logoLibrary !== "all" && !logoLibraries.some(lib => (typeof lib === "string" ? lib : lib.name) === logoLibrary) && (
                       <option value={logoLibrary} className="bg-theme-card text-theme-text font-normal">
-                        {logoLibrary} (Configured)
+                        {logoLibrary} ({t("schedulerSettings.configured")})
                       </option>
                     )}
                   </select>
@@ -1051,7 +1170,7 @@ const SchedulerSettings = () => {
                     <ChevronDown className="w-4 h-4" />
                   </div>
                 </div>
-                <p className="text-[10px] text-theme-muted mt-1">'all' targets all included libraries (skips libraries in LibstoExclude).</p>
+                <p className="text-[10px] text-theme-muted mt-1">{t("schedulerSettings.logoUpdater.allLibrariesHint")}</p>
               </div>
               <div className="flex items-center gap-6 pt-5">
                 <label className="flex items-center gap-2 cursor-pointer group">
@@ -1062,7 +1181,7 @@ const SchedulerSettings = () => {
                     disabled={logoRevert}
                     className="w-4 h-4 rounded border-theme bg-theme-bg text-purple-500 focus:ring-purple-500"
                   />
-                  <span className={`text-sm ${logoRevert ? 'text-theme-muted' : 'text-theme-text group-hover:text-purple-300'} transition-colors`}>Force Replace</span>
+                  <span className={`text-sm ${logoRevert ? 'text-theme-muted' : 'text-theme-text group-hover:text-purple-300'} transition-colors`}>{t("schedulerSettings.logoUpdater.forceReplace")}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <input
@@ -1072,7 +1191,7 @@ const SchedulerSettings = () => {
                     disabled={logoRevert}
                     className="w-4 h-4 rounded border-theme bg-theme-bg text-purple-500 focus:ring-purple-500"
                   />
-                  <span className={`text-sm ${logoRevert ? 'text-theme-muted' : 'text-theme-text group-hover:text-purple-300'} transition-colors`}>EXIF Check</span>
+                  <span className={`text-sm ${logoRevert ? 'text-theme-muted' : 'text-theme-text group-hover:text-purple-300'} transition-colors`}>{t("schedulerSettings.logoUpdater.exifCheck")}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <input
@@ -1081,7 +1200,7 @@ const SchedulerSettings = () => {
                     onChange={(e) => setLogoRevert(e.target.checked)}
                     className="w-4 h-4 rounded border-theme bg-theme-bg text-purple-500 focus:ring-purple-500"
                   />
-                  <span className="text-sm text-theme-text group-hover:text-purple-300 transition-colors">Revert Mode</span>
+                  <span className="text-sm text-theme-text group-hover:text-purple-300 transition-colors">{t("schedulerSettings.logoUpdater.revertMode")}</span>
                 </label>
               </div>
             </div>
@@ -1093,7 +1212,7 @@ const SchedulerSettings = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-2">
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4 text-amber-500" />
-                  <span className="text-sm font-semibold text-amber-400">Plex Push & Sync Options</span>
+                  <span className="text-sm font-semibold text-amber-400">{t("schedulerSettings.plexSync.title")}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -1101,21 +1220,21 @@ const SchedulerSettings = () => {
                     onClick={() => setPlexSyncAssetTypes(["collection", "poster", "season", "titlecard", "background"])}
                     className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors"
                   >
-                    Select All
+                    {t("schedulerSettings.plexSync.selectAll")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setPlexSyncAssetTypes(["collection"])}
                     className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors"
                   >
-                    Collections Only
+                    {t("schedulerSettings.plexSync.collectionsOnly")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setPlexSyncAssetTypes([])}
                     className="text-xs px-2 py-1 rounded bg-theme-bg border border-theme text-theme-muted hover:text-theme-text transition-colors"
                   >
-                    Clear
+                    {t("common.clear")}
                   </button>
                 </div>
               </div>
@@ -1124,24 +1243,24 @@ const SchedulerSettings = () => {
               <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 text-xs leading-relaxed">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold text-amber-300">Warning (Kometa / PMM Conflict):</span>{" "}
-                  Do not use a scheduled Plex Sync job in combination with <strong>Kometa (Plex Meta Manager)</strong> for media that Kometa manages. Because Kometa applies its own overlays and artwork directly to Plex, Posterizarr's Plex Sync will detect that the server artwork differs from your local assets and continuously attempt to re-upload them, resulting in an endless overwrite loop.
+                  <span className="font-semibold text-amber-300">{t("schedulerSettings.plexSync.warningTitle")}</span>{" "}
+                  {t("schedulerSettings.plexSync.warningMessage")}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-medium text-amber-300">Target Plex Library</label>
+                    <label className="block text-xs font-medium text-amber-300">{t("schedulerSettings.plexSync.targetLibrary")}</label>
                     <button
                       type="button"
                       onClick={() => fetchPlexLibraries(true)}
                       disabled={loadingPlexLibraries}
                       className="flex items-center gap-1 text-[11px] text-amber-400/80 hover:text-amber-300 disabled:opacity-50 transition-colors"
-                      title="Refresh Plex Libraries"
+                      title={t("schedulerSettings.plexSync.refreshLibraries")}
                     >
                       <RefreshCw className={`w-3 h-3 ${loadingPlexLibraries ? "animate-spin" : ""}`} />
-                      <span className="text-[10px]">Refresh</span>
+                      <span className="text-[10px]">{t("schedulerSettings.refresh")}</span>
                     </button>
                   </div>
                   <div className="relative">
@@ -1151,14 +1270,14 @@ const SchedulerSettings = () => {
                       disabled={loadingPlexLibraries}
                       className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-md text-sm text-theme-text focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer appearance-none pr-8"
                     >
-                      <option value="all" className="bg-theme-card text-theme-text font-medium">All Included Libraries (all)</option>
+                      <option value="all" className="bg-theme-card text-theme-text font-medium">{t("schedulerSettings.allIncludedLibraries")}</option>
                       {plexLibraries.filter(lib => !(typeof lib === "object" && lib.is_excluded)).length > 0 && (
-                        <optgroup label="Included Libraries" className="bg-theme-card text-theme-muted font-semibold">
+                        <optgroup label={t("schedulerSettings.includedLibraries")} className="bg-theme-card text-theme-muted font-semibold">
                           {plexLibraries
                             .filter(lib => !(typeof lib === "object" && lib.is_excluded))
                             .map((lib) => {
                               const name = typeof lib === "string" ? lib : lib.name;
-                              const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' ? 'Movies' : lib.type === 'show' ? 'TV Shows' : lib.type})` : "";
+                              const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' ? t("schedulerSettings.libraryTypes.movies") : lib.type === 'show' ? t("schedulerSettings.libraryTypes.tvShows") : lib.type})` : "";
                               return (
                                 <option key={name} value={name} className="bg-theme-card text-theme-text font-normal">
                                   {name}{type}
@@ -1168,15 +1287,15 @@ const SchedulerSettings = () => {
                         </optgroup>
                       )}
                       {plexLibraries.filter(lib => typeof lib === "object" && lib.is_excluded).length > 0 && (
-                        <optgroup label="Excluded in Config" className="bg-theme-card text-theme-muted font-semibold">
+                        <optgroup label={t("schedulerSettings.excludedInConfig")} className="bg-theme-card text-theme-muted font-semibold">
                           {plexLibraries
                             .filter(lib => typeof lib === "object" && lib.is_excluded)
                             .map((lib) => {
                               const name = typeof lib === "string" ? lib : lib.name;
-                              const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' ? 'Movies' : lib.type === 'show' ? 'TV Shows' : lib.type})` : "";
+                              const type = typeof lib === "object" && lib.type ? ` (${lib.type === 'movie' ? t("schedulerSettings.libraryTypes.movies") : lib.type === 'show' ? t("schedulerSettings.libraryTypes.tvShows") : lib.type})` : "";
                               return (
                                 <option key={name} value={name} className="bg-theme-card text-theme-muted italic font-normal">
-                                  {name}{type} (Excluded)
+                                  {name}{type} ({t("schedulerSettings.excluded")})
                                 </option>
                               );
                             })}
@@ -1184,7 +1303,7 @@ const SchedulerSettings = () => {
                       )}
                       {plexSyncLibrary && plexSyncLibrary !== "all" && !plexLibraries.some(lib => (typeof lib === "string" ? lib : lib.name) === plexSyncLibrary) && (
                         <option value={plexSyncLibrary} className="bg-theme-card text-theme-text font-normal">
-                          {plexSyncLibrary} (Configured)
+                          {plexSyncLibrary} ({t("schedulerSettings.configured")})
                         </option>
                       )}
                     </select>
@@ -1192,18 +1311,18 @@ const SchedulerSettings = () => {
                       <ChevronDown className="w-4 h-4" />
                     </div>
                   </div>
-                  <p className="text-[10px] text-theme-muted mt-1">'all' syncs all included libraries (skips libraries in LibstoExclude).</p>
+                  <p className="text-[10px] text-theme-muted mt-1">{t("schedulerSettings.plexSync.allLibrariesHint")}</p>
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-amber-300 mb-2">Asset Types to Sync</label>
+                  <label className="block text-xs font-medium text-amber-300 mb-2">{t("schedulerSettings.plexSync.assetTypes")}</label>
                   <div className="flex flex-wrap gap-4">
                     {[
-                      { id: "collection", label: "Collections / BoxSets" },
-                      { id: "poster", label: "Movie / Show Posters" },
-                      { id: "season", label: "Seasons" },
-                      { id: "titlecard", label: "Episode Titlecards" },
-                      { id: "background", label: "Backgrounds / Art" },
+                      { id: "collection", label: t("schedulerSettings.plexSync.assetCollections") },
+                      { id: "poster", label: t("schedulerSettings.plexSync.assetPosters") },
+                      { id: "season", label: t("schedulerSettings.plexSync.assetSeasons") },
+                      { id: "titlecard", label: t("schedulerSettings.plexSync.assetTitlecards") },
+                      { id: "background", label: t("schedulerSettings.plexSync.assetBackgrounds") },
                     ].map((type) => {
                       const isChecked = plexSyncAssetTypes.includes(type.id);
                       return (
@@ -1232,12 +1351,76 @@ const SchedulerSettings = () => {
             </div>
           )}
 
+          {newMode === "pleximagecleanup" && (
+            <section aria-label={t("schedulerSettings.cleanup.title")} className="border-t border-theme pt-4 space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-theme-text"><Trash2 className="w-4 h-4" />{t("schedulerSettings.cleanup.title")}</h3>
+              <p className="text-xs text-theme-muted">{t("schedulerSettings.cleanup.description")}</p>
+              <aside role="note" aria-label={t("schedulerSettings.cleanup.requirementsLabel")} className="flex items-start gap-2 border-l-2 border-amber-500 pl-3 py-2 text-xs text-theme-muted">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                <div className="space-y-1">
+                  <p>{t("schedulerSettings.cleanup.requirements")}</p>
+                  <a href="https://fscorrupt.github.io/posterizarr/plex_image_cleanup/#configuration" target="_blank" rel="noopener noreferrer" className="inline-block text-theme-primary underline">{t("schedulerSettings.cleanup.readWiki")}</a>
+                </div>
+              </aside>
+              <label className="flex items-center justify-between gap-3 text-sm text-theme-text">
+                {t("schedulerSettings.cleanup.readOnly")}
+                <input type="checkbox" role="switch" aria-label={t("schedulerSettings.cleanup.readOnly")} checked={cleanupReadOnly} onChange={event => { setCleanupReadOnly(event.target.checked); setCleanupRemovalConfirmed(false); if (event.target.checked) setCleanupAction("report"); }} />
+              </label>
+              <label className="block text-xs text-theme-muted">{t("schedulerSettings.cleanup.dataDirectory")}<input aria-label={t("schedulerSettings.cleanup.dataDirectory")} value={cleanupPath} onChange={event => setCleanupPath(event.target.value)} placeholder="/plex" className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text" /></label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-xs text-theme-muted">{t("schedulerSettings.cleanup.action")}<select aria-label={t("schedulerSettings.cleanup.action")} disabled={cleanupReadOnly} value={cleanupReadOnly ? "report" : cleanupAction} onChange={event => { setCleanupAction(event.target.value); setCleanupRemovalConfirmed(false); }} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text disabled:opacity-60"><option value="report">{t("schedulerSettings.cleanup.reportOnly")}</option><option value="quarantine">{t("schedulerSettings.cleanup.quarantine")}</option><option value="remove">{t("schedulerSettings.cleanup.permanentlyRemove")}</option></select></label>
+                <label className="text-xs text-theme-muted">{t("schedulerSettings.cleanup.databaseSnapshot")}<select aria-label={t("schedulerSettings.cleanup.databaseSnapshot")} value={cleanupSource} onChange={event => setCleanupSource(event.target.value)} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text"><option value="plex">{t("schedulerSettings.cleanup.plexApiExport")}</option><option value="local">{t("schedulerSettings.cleanup.localDatabase")}</option></select></label>
+                <label className="text-xs text-theme-muted">{t("schedulerSettings.cleanup.minimumAge")}<input aria-label={t("schedulerSettings.cleanup.minimumAge")} type="number" min="1" max="3650" step="1" value={cleanupAge} onChange={event => setCleanupAge(event.target.value)} className="mt-1 w-full bg-theme-card border border-theme rounded-lg p-2 text-sm text-theme-text" /></label>
+              </div>
+              {!cleanupReadOnly && cleanupAction === "remove" && <label className="flex items-start gap-2 text-xs text-rose-400"><input type="checkbox" checked={cleanupRemovalConfirmed} onChange={event => setCleanupRemovalConfirmed(event.target.checked)} className="mt-0.5" />{t("schedulerSettings.cleanup.confirmPermanentRemoval")}</label>}
+              <div className="text-xs text-theme-muted"><a href="https://github.com/Kometa-Team/ImageMaid" target="_blank" rel="noreferrer" className="underline">{t("schedulerSettings.cleanup.inspiredByImageMaid")}</a></div>
+            </section>
+          )}
+
+          {newMode === "kometadefaults" && (
+            <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
+                <Download className="w-4 h-4" />
+                {t("schedulerSettings.modeDescriptions.overlayDefaultsTitle")}
+              </div>
+              <p className="text-xs text-theme-muted leading-relaxed">
+                {t("schedulerSettings.modeDescriptions.overlayDefaultsDescription")}
+                {" "}<span className="text-cyan-300 font-mono">Overlayfiles/dynamic_overlays/defaults/</span>{t("schedulerSettings.modeDescriptions.overlayDefaultsSuffix")}
+              </p>
+            </div>
+          )}
+
+          {newMode === "dynamicoverlays" && (
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                <Layers className="w-4 h-4" />
+                {t("schedulerSettings.modeDescriptions.dynamicOverlaysTitle")}
+              </div>
+              <p className="text-xs text-theme-muted leading-relaxed">
+                {t("schedulerSettings.modeDescriptions.dynamicOverlaysDescription")}
+              </p>
+            </div>
+          )}
+
+          {newMode === "animetafill" && (
+            <div className="p-4 bg-pink-500/10 border border-pink-500/30 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-pink-400 font-semibold text-sm">
+                <Sparkles className="w-4 h-4" />
+                {t("schedulerSettings.modeDescriptions.aniMetaFillTitle")}
+              </div>
+              <p className="text-xs text-theme-muted leading-relaxed">
+                {t("schedulerSettings.modeDescriptions.aniMetaFillDescription")}
+                {" "}<span className="text-pink-300 font-mono">Overlayfiles/dynamic_overlays/configs/anime_overlays.yml</span>.
+              </p>
+            </div>
+          )}
+
           {/* Calendar Day Picker for Monthly selection */}
           {frequency === "monthly" && (
             <div className="p-4 bg-theme-bg border border-theme rounded-lg">
               <div className="flex items-center gap-2 mb-3 text-sm font-medium text-theme-text">
                 <Grid className="w-4 h-4 text-theme-primary" />
-                Select Days
+                {t("schedulerSettings.calendar.selectDays")}
               </div>
               <div className="grid grid-cols-7 sm:grid-cols-10 gap-1.5">
                 {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
@@ -1255,14 +1438,14 @@ const SchedulerSettings = () => {
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-[10px] text-theme-muted">You can select multiple specific days of the month.</p>
+              <p className="mt-2 text-[10px] text-theme-muted">{t("schedulerSettings.calendar.hint")}</p>
             </div>
           )}
         </form>
 
         {config?.schedules?.length > 0 ? (
           <div className="space-y-3">
-            {config.schedules.map((schedule, index) => {
+            {sortSchedulesByTime(config.schedules).map(({ schedule, index }) => {
               const mode = schedule.mode || "normal";
               const mConfig = modeConfigs[mode] || modeConfigs.normal || { icon: Clock, color: "text-theme-primary", bgColor: "bg-theme-primary/10", label: mode };
               const Icon = mConfig.icon || Clock;
@@ -1273,56 +1456,82 @@ const SchedulerSettings = () => {
               const monthLabel = months.find(m => m.id === monthVal)?.label || monthVal;
 
               if (freqVal === "interval") {
-                detailText = `Every ${schedule.interval_value} ${schedule.interval_unit}`;
+                detailText = t("schedulerSettings.interval.summary", {
+                  count: schedule.interval_value,
+                  unit: t(`schedulerSettings.interval.${schedule.interval_unit}`),
+                });
               } else {
                 if (monthVal !== "*") detailText = `${monthLabel} `;
                 if (freqVal === "weekly") {
                   detailText += daysOfWeek.find(d => d.id === schedule.day_of_week)?.label || schedule.day_of_week;
                 } else if (freqVal === "monthly") {
-                  detailText += `Day ${schedule.day}`;
+                  detailText += t("schedulerSettings.daySummary", { day: schedule.day });
                 }
               }
 
               const isCurrentEditing = editingIndex === index;
 
               return (
-                <div key={index} className={`flex items-center justify-between p-4 bg-theme-bg rounded-lg transition-all border ${isCurrentEditing ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500/50 shadow-sm" : "hover:bg-theme-hover border-theme hover:border-theme-primary/50"} group`}>
-                  <div className="flex items-center gap-4">
-                    <div className={`p-2.5 rounded-lg ${mConfig.bgColor} transition-all`}><Icon className={`w-5 h-5 ${mConfig.color}`} /></div>
-                    <div>
-                      <div className="flex items-center gap-3">
+                <div key={index} className={`flex flex-wrap items-center justify-between gap-3 p-4 bg-theme-bg rounded-lg transition-all border ${isCurrentEditing ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500/50 shadow-sm" : "hover:bg-theme-hover border-theme hover:border-theme-primary/50"} group`}>
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div className={`p-2.5 rounded-lg ${mConfig.bgColor} transition-all`}>
+                      {mConfig.logoServer
+                        ? <MediaServerLogo server={mConfig.logoServer} className="w-5 h-5" />
+                        : <Icon className={`w-5 h-5 ${mConfig.color}`} />}
+                    </div>
+                    <div className="min-w-0 break-words">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span className="font-semibold text-theme-text text-lg">{freqVal === "interval" ? <Activity className="w-5 h-5 text-theme-muted" /> : schedule.time}</span>
                         <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border ${mConfig.color} ${mConfig.bgColor} border-current opacity-80`}>{mConfig.label}</span>
                         <span className="text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border border-theme-muted/30 text-theme-muted">{freqLabel}{detailText ? `, ${detailText}` : ""}</span>
                         {isCurrentEditing && (
-                          <span className="text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded bg-amber-500 text-black animate-pulse">Editing</span>
+                          <span className="text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded bg-amber-500 text-black animate-pulse">{t("schedulerSettings.editingBadge")}</span>
                         )}
                       </div>
                       {schedule.description && <div className="text-sm text-theme-muted mt-0.5">{schedule.description}</div>}
                       {mode === "logoupdater" && (
                         <div className="flex gap-3 mt-1 text-[10px] text-purple-300/70 font-medium">
-                          <span>Library: {schedule.library || "all"}</span>
-                          {schedule.force_replace && <span>• Force Replace</span>}
-                          {schedule.exif_check && <span>• EXIF Check</span>}
-                          {schedule.revert && <span className="text-red-400">•• REVERT MODE</span>}
+                          <span>{t("schedulerSettings.scheduleDetails.library", { library: schedule.library || "all" })}</span>
+                          {schedule.force_replace && <span>• {t("schedulerSettings.logoUpdater.forceReplace")}</span>}
+                          {schedule.exif_check && <span>• {t("schedulerSettings.logoUpdater.exifCheck")}</span>}
+                          {schedule.revert && <span className="text-red-400">•• {t("schedulerSettings.logoUpdater.revertMode").toUpperCase()}</span>}
                         </div>
                       )}
                       {mode === "plexsync" && (
                         <div className="flex flex-wrap gap-2 mt-1 text-[10px] text-amber-400/80 font-medium items-center">
-                          <span>Library: {schedule.library || "all"}</span>
+                          <span>{t("schedulerSettings.scheduleDetails.library", { library: schedule.library || "all" })}</span>
                           <span>•</span>
-                          <span>Types: {Array.isArray(schedule.asset_types) ? schedule.asset_types.join(", ") : (schedule.asset_types || "all")}</span>
+                          <span>{t("schedulerSettings.scheduleDetails.types", { types: Array.isArray(schedule.asset_types) ? schedule.asset_types.join(", ") : (schedule.asset_types || "all") })}</span>
                         </div>
                       )}
+                      {mode === "kometadefaults" && (
+                        <div className="flex flex-wrap gap-2 mt-1 text-[10px] text-cyan-400/80 font-medium items-center">
+                          <span>{t("schedulerSettings.scheduleDetails.sourceOfficialTemplates")}</span>
+                          <span>•</span>
+                          <span>{t("schedulerSettings.scheduleDetails.target", { path: "Overlayfiles/dynamic_overlays/defaults/" })}</span>
+                        </div>
+                      )}
+                      {mode === "pleximagecleanup" && <div className="mt-1 text-xs text-theme-muted break-words">{t("schedulerSettings.cleanup.scheduleSummary", { mode: mConfig.label, action: schedule.cleanup_read_only !== false ? t("schedulerSettings.cleanup.readOnlyReport") : t(`schedulerSettings.cleanup.actions.${schedule.cleanup_action || "report"}`), age: schedule.minimum_age_days ?? 7, path: schedule.plex_data_path })}</div>}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {mode === "pleximagecleanup" && <button type="button" onClick={() => navigate("/logs", { state: { logFile: "PlexImageCleanup.log" } })} className="p-2 text-theme-muted hover:text-theme-text rounded-lg" title={t("schedulerSettings.cleanup.viewLog")}><FileText className="w-4 h-4" /></button>}
+                    <button
+                      type="button"
+                      onClick={() => triggerScheduleNow(schedule)}
+                      disabled={isUpdating || status?.is_executing}
+                      className="p-2 text-green-400 hover:bg-green-500/10 rounded-lg transition-all disabled:opacity-50"
+                      title={t("schedulerSettings.runModeNow", { mode: mConfig.label })}
+                      aria-label={t("schedulerSettings.runModeNow", { mode: mConfig.label })}
+                    >
+                      <Play className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleEditSchedule(schedule, index)}
                       disabled={isUpdating}
                       className={`p-2 rounded-lg transition-all ${isCurrentEditing ? "text-amber-400 bg-amber-500/20" : "text-theme-muted hover:text-amber-400 hover:bg-amber-500/10"}`}
-                      title="Edit schedule"
+                      title={t("schedulerSettings.editSchedule")}
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -1331,7 +1540,7 @@ const SchedulerSettings = () => {
                       onClick={() => removeSchedule(schedule.time, index)}
                       disabled={isUpdating}
                       className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                      title="Delete schedule"
+                      title={t("schedulerSettings.deleteSchedule")}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

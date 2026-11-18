@@ -1102,8 +1102,8 @@ const CollectionLiveEditor = ({ isOpen, onClose, collection, libraryName, active
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-theme-bg border border-theme rounded-xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="app-dialog-panel bg-theme-bg border border-theme rounded-xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden">
                 
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-theme bg-theme-card shrink-0">

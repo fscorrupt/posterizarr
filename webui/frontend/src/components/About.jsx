@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import {
   Info,
   ExternalLink,
@@ -98,7 +99,8 @@ function About() {
   };
 
   return (
-    <div className="px-4 py-6 space-y-6">
+    <div className="workspace-page space-y-6">
+      <WorkspaceHeader icon={Info} title={t("about.title")} />
       {/* Beta Warning Banner */}
       <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 flex items-start gap-3">
         <Info className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
@@ -118,9 +120,9 @@ function About() {
       </div>
 
       {/* About Posterizarr Section */}
-      <div className="bg-theme-card border border-theme rounded-lg p-6 space-y-6">
+      <div className="workspace-section space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
+          <h2 className="text-base font-semibold text-theme-text flex items-center gap-2">
             <Info className="w-6 h-6 text-theme-primary" />
             {t("about.title")}
           </h2>

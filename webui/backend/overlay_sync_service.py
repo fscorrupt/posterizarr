@@ -1,0 +1,6904 @@
+"""
+Dynamic Overlays Sync Service for Posterizarr
+==============================================
+Executes separately from Posterizarr image creation mode:
+1. Keeps clean original assets on disk (AssetPath, e.g. P:\\assetstest) 100% untouched.
+2. Queries media servers (Plex, Jellyfin, Emby) for media items across included libraries.
+3. Matches media items with clean local assets on disk.
+4. Detects changes using OverlayCache (compares clean asset hash/mtime + applied overlay recipe hash).
+5. If changed or new (or if full sync is requested):
+   - Reads clean base image into RAM.
+   - Resolves active overlay rules (resolution, rating, status, runtime, languages, network, anime).
+   - Composites dynamic overlays onto the clean image in RAM via DynamicOverlayCompositor.
+   - Pushes the resulting JPEG directly to the media server REST API (Plex / Jellyfin / Emby).
+   - Updates overlay_cache.db with status 'synced'.
+6. Prevents double-pushing: Posterizarr creates clean images with PlexUpload=false;
+   Dynamic Overlay Sync then pushes the final overlaid artwork.
+"""
+
+import os
+import io
+import re
+import json
+import time
+import base64
+from collections import Counter
+import functools
+import socket
+import ipaddress
+import sqlite3
+import hashlib
+import logging
+import asyncio
+import threading
+import traceback
+from pathlib import Path
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Tuple, Union, Callable
+import urllib.parse
+from xml.etree.ElementTree import ParseError, fromstring, tostring
+from PIL import Image, ImageFont
+import httpx
+
+from overlay_cache import OverlayCache, compute_metadata_hash, snapshot_overlay_layers
+from overlay_cache import compute_layers_recipe_hash as _compute_layers_recipe_hash
+from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
+from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
+from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
+from plex_push_service import get_asset_path_from_config
+from silo_client import SiloClient, get_silo_credentials
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+EDITION_PATTERNS = [
+    (r"(?i)\b(?:director'?s|directors)\s*cut\b", "Director's Cut"),
+    (r"(?i)\bextended\s*(?:cut|edition)?\b", "Extended Cut"),
+    (r"(?i)\btheatrical\s*(?:cut|edition)?\b", "Theatrical Cut"),
+    (r"(?i)\bunrated(?:\s*cut)?\b", "Unrated"),
+    (r"(?i)\bremastered\b", "Remastered"),
+    (r"(?i)\bspecial\s*edition\b", "Special Edition"),
+    (r"(?i)\bfinal\s*cut\b", "Final Cut"),
+    (r"(?i)\bultimate\s*(?:cut|edition)\b", "Ultimate Edition"),
+    (r"(?i)\bimax(?:\s*enhanced)?\b", "IMAX"),
+    (r"(?i)\buncensored\b", "Uncensored"),
+]
+
+def extract_edition(*candidates: Optional[str]) -> Optional[str]:
+    """Extract canonical edition or cut title from media filenames, paths, or item titles."""
+    for cand in candidates:
+        if not cand:
+            continue
+        cand_str = str(cand).strip()
+        for pat, canonical in EDITION_PATTERNS:
+            if re.search(pat, cand_str):
+                return canonical
+    return None
+
+async def resolve_episode_overlay_ratings(
+    server_type, episode, parent_metadata, season_number, credentials, client,
+    enabled_sources, mdblist_api_key=None, omdb_api_key=None, force_refresh=False, provider_run_state=None
+):
+    episode_id = str(episode["id"])
+    xml_bytes = episode.get("rating_xml")
+    imdb_id = (episode.get("provider_ids") or {}).get("Imdb")
+    cached = None if force_refresh else ratings_cache.get_cached_ratings(server_type, episode_id)
+    cached_identity = cached or ratings_cache.get_cached_ratings(server_type, episode_id, allow_stale=True) or {}
+    imdb_id = imdb_id or cached_identity.get("imdb_id")
+    if server_type == "plex" and not cached:
+        try:
+            response = await client.get(
+                f"{credentials['url'].rstrip('/')}/library/metadata/{episode_id}",
+                headers={"X-Plex-Token": credentials.get("token") or "", "Accept": "application/xml"},
+                params={"includeGuids": "1"}
+            )
+            if response.status_code == 200:
+                root = fromstring(response.content)
+                video = root if root.tag == "Video" else root.find(".//Video")
+                if video is not None and video.get("type") == "episode" and str(video.get("ratingKey")) == episode_id:
+                    xml_bytes = tostring(video)
+        except (httpx.HTTPError, ValueError, ParseError) as error:
+            logger.debug("[OverlaySync] Episode metadata unavailable for %s (%s)", episode_id, type(error).__name__)
+    if server_type == "plex" and xml_bytes:
+        root = fromstring(xml_bytes)
+        for guid in root.findall(".//Guid"):
+            identifier = str(guid.get("id") or "")
+            if identifier.startswith("imdb://"):
+                imdb_id = identifier.removeprefix("imdb://").split("?")[0]
+                break
+    return await resolve_media_ratings(
+        server_type=server_type, item_id=episode_id, title=episode["title"], year=None,
+        media_type="episode", imdb_id=imdb_id, tmdb_id=parent_metadata.get("tmdb_id"),
+        plex_xml_bytes=xml_bytes, tmdb_api_key=credentials.get("tmdb_token"),
+        mdblist_api_key=mdblist_api_key, omdb_api_key=omdb_api_key,
+        enabled_sources=enabled_sources, client=client, force_refresh=force_refresh,
+        season_number=season_number, episode_number=episode["episode_number"],
+        provider_run_state=provider_run_state,
+        rating_context={"series_title": parent_metadata.get("title"), "parent_imdb_id": parent_metadata.get("imdb_id"),
+                        "series_year": parent_metadata.get("year"),
+                        "episode_title": episode.get("title"), "original_title": episode.get("original_title"),
+                        "file_path": episode.get("file_path") or episode.get("media_file_path")},
+        reuse_partial_cache=True,
+    )
+
+
+def format_sync_error(err: Exception, phase: Optional[str] = None) -> str:
+    """
+    Format an exception into a clear, informative single-line error description for logs.
+    Never returns an empty or unhelpful string after the colon.
+    """
+    err_type = type(err).__name__
+    err_str = str(err).strip()
+
+    # If str(err) is empty, or merely quotes/empty repr (like KeyError() or empty custom exceptions)
+    if not err_str or err_str in ("''", '""', "None"):
+        if getattr(err, "args", None):
+            err_str = ", ".join(repr(a) for a in err.args if repr(a))
+        if not err_str or err_str in ("''", '""', "None"):
+            err_str = repr(err)
+
+    # Clean whitespace or linebreaks in single-line log output
+    err_str = " ".join(err_str.split())
+
+    # Include innermost traceback file and line number
+    tb_loc = ""
+    tb = getattr(err, "__traceback__", None)
+    if tb:
+        tb_frames = traceback.extract_tb(tb)
+        if tb_frames:
+            last_frame = tb_frames[-1]
+            fname = Path(last_frame.filename).name
+            tb_loc = f" (at {fname}:{last_frame.lineno} in {last_frame.name})"
+
+    phase_prefix = f"During {phase}: " if phase else ""
+    return f"{phase_prefix}[{err_type}] {err_str}{tb_loc}"
+
+def format_http_failure(resp: Any) -> str:
+    """Format an HTTP response failure into status code + body snippet."""
+    status = getattr(resp, "status_code", "error")
+    body_snippet = ""
+    try:
+        text = getattr(resp, "text", None)
+        if text:
+            cleaned = " ".join(str(text).split())[:150]
+            if cleaned:
+                body_snippet = f" - {cleaned}"
+    except Exception:
+        pass
+    return f"HTTP {status}{body_snippet}"
+
+async def _post_artwork_with_retry(
+    http_client: httpx.AsyncClient,
+    url: str,
+    *,
+    headers: Dict[str, str],
+    content: bytes,
+    item_label: str,
+    write_log: Callable[[str], None],
+    dry_run: bool = False
+) -> Optional[httpx.Response]:
+    if _cancel_requested:
+        write_log(f"  [!] {item_label}: Sync cancelled before media-server upload.")
+        return None
+    if dry_run:
+        write_log(f"  [DRY RUN] {item_label}: artwork rendered; upload to media server skipped.")
+        return None
+    for attempt in range(1, 4):
+        try:
+            return await http_client.post(url, headers=headers, content=content)
+        except (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError) as err:
+            if attempt == 3:
+                raise
+            delay = attempt * 2
+            write_log(
+                f"  [!] {item_label}: Upload connection failed [{type(err).__name__}]. "
+                f"Retrying in {delay}s (attempt {attempt + 1}/3)."
+            )
+            await asyncio.sleep(delay)
+
+async def _upload_silo_artwork(http_client, credentials, item_id, content, image_type, media_type, write_log, dry_run=False):
+    if _cancel_requested:
+        return False
+    if dry_run:
+        write_log(f"  [DRY RUN] SILO {media_type} {image_type}: artwork rendered; upload skipped.")
+        return False
+    silo = SiloClient(http_client, credentials["url"], credentials["api_key"], credentials.get("profile_id"))
+    await silo.upload(item_id, content, image_type, media_type)
+    return True
+
+async def _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash):
+    headers = {"X-Plex-Token": token, "Accept": "application/xml"}
+    response = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
+    response.raise_for_status()
+    metadata = fromstring(response.content)
+    item = next((node for node in metadata if node.tag in ("Video", "Directory")), None)
+    thumb = item.get("thumb") if item is not None else None
+    if not thumb or not thumb.startswith(f"/library/metadata/{item_id}/thumb"):
+        return False, None
+    response = await http_client.get(f"{server_url}{thumb}", headers={"X-Plex-Token": token})
+    response.raise_for_status()
+    return hashlib.sha1(response.content).hexdigest() == expected_hash, thumb
+
+
+async def _set_plex_field_lock(http_client, server_url, item_id, token, field_name="thumb.locked", lock_val="1"):
+    """
+    Lock or unlock an artwork or metadata field in Plex Media Server.
+    Plex requires PUT /library/sections/{section_id}/all?type={type_id}&id={item_id}&{field_name}={lock_val}
+    in order to persist locks in metadata_items.user_fields (preventing background tasks,
+    loudness analysis, and metadata agents from overwriting user-assigned artwork).
+    Also issues PUT /library/metadata/{item_id} as a fallback.
+    """
+    headers = {"X-Plex-Token": token, "Accept": "application/xml"}
+    # 1. Direct metadata endpoint (legacy fallback)
+    try:
+        await http_client.put(
+            f"{server_url}/library/metadata/{item_id}",
+            headers=headers,
+            params={field_name: str(lock_val)}
+        )
+    except Exception:
+        pass
+
+    # 2. Section endpoint (authoritative Plex endpoint for user_fields)
+    try:
+        meta_resp = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
+        if meta_resp.status_code == 200:
+            root = fromstring(meta_resp.content)
+            item_node = next((node for node in root if node.tag in ("Video", "Directory")), None)
+            section_id = (item_node.get("librarySectionID") if item_node is not None else None) or root.get("librarySectionID")
+            item_type = (item_node.get("type") if item_node is not None else None) or root.get("viewGroup") or "movie"
+            type_map = {"movie": 1, "show": 2, "season": 3, "episode": 4, "collection": 18}
+            type_id = type_map.get(str(item_type).lower(), 1)
+            if section_id:
+                sec_put_url = f"{server_url}/library/sections/{section_id}/all"
+                await http_client.put(
+                    sec_put_url,
+                    headers=headers,
+                    params={
+                        "type": type_id,
+                        "id": str(item_id),
+                        field_name: str(lock_val)
+                    }
+                )
+    except Exception as e:
+        logger.debug(f"Could not set {field_name}={lock_val} on Plex section for item {item_id}: {e}")
+
+
+async def _confirm_plex_titlecard(http_client, server_url, item_id, token, content, artwork_type="titlecard"):
+    headers = {"X-Plex-Token": token, "Accept": "application/xml"}
+    posters_url = f"{server_url}/library/metadata/{item_id}/posters"
+    response = await http_client.get(posters_url, headers=headers)
+    response.raise_for_status()
+    expected_hash = hashlib.sha1(content).hexdigest()
+    uploaded = next((node for node in fromstring(response.content)
+                     if str(node.get("ratingKey", "")).startswith("upload://")
+                     and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+    if uploaded is None:
+        raise RuntimeError(f"Plex accepted the {artwork_type} upload but did not expose the uploaded image")
+
+    # Temporarily unlock thumb so Plex allows switching artwork
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="thumb.locked", lock_val="0")
+
+    response = await http_client.put(f"{server_url}/library/metadata/{item_id}/poster", headers=headers, params={"url": uploaded.get("ratingKey")})
+    response.raise_for_status()
+    response = await http_client.get(posters_url, headers=headers)
+    response.raise_for_status()
+    if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
+               for node in fromstring(response.content)):
+        raise RuntimeError(f"Plex did not select the uploaded {artwork_type}; cache was not marked synced")
+
+    # Authoritatively lock thumb in Plex database (user_fields) to protect against loudness analysis / agent overwrites
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="thumb.locked", lock_val="1")
+
+    if artwork_type == "poster":
+        matches = False
+        thumb = None
+        for attempt in range(3):
+            matches, thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+            if matches:
+                break
+            if attempt < 2:
+                await asyncio.sleep(1.0)
+        if not matches:
+            logger.warning(f"Plex thumbnail does not yet match uploaded poster for {item_id}; poster is selected and thumb locked")
+        return json.dumps({"plex_thumb": thumb or f"/library/metadata/{item_id}/thumb", "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
+    response = await http_client.get(f"{server_url}/library/metadata/{item_id}", headers=headers)
+    response.raise_for_status()
+    episode = fromstring(response.content).find(".//Video")
+    if episode is None and artwork_type in ("poster", "season"):
+        episode = fromstring(response.content).find(".//Directory")
+    if episode is None or not episode.get("thumb"):
+        raise RuntimeError(f"Plex did not return a thumbnail for the confirmed {artwork_type}")
+    return json.dumps({"plex_thumb": episode.get("thumb"), "plex_poster_key": uploaded.get("ratingKey")}, sort_keys=True)
+
+
+async def _confirm_plex_backdrop(http_client, server_url, item_id, token, content):
+    headers = {"X-Plex-Token": token, "Accept": "application/xml"}
+    arts_url = f"{server_url}/library/metadata/{item_id}/arts"
+    response = await http_client.get(arts_url, headers=headers)
+    response.raise_for_status()
+    expected_hash = hashlib.sha1(content).hexdigest()
+    uploaded = next((node for node in fromstring(response.content)
+                     if str(node.get("ratingKey", "")).startswith("upload://")
+                     and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+    if uploaded is None:
+        raise RuntimeError("Plex accepted the backdrop upload but did not expose the uploaded image")
+
+    # Temporarily unlock art so Plex allows switching backdrop
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="art.locked", lock_val="0")
+
+    response = await http_client.put(f"{server_url}/library/metadata/{item_id}/art", headers=headers, params={"url": uploaded.get("ratingKey")})
+    response.raise_for_status()
+    response = await http_client.get(arts_url, headers=headers)
+    response.raise_for_status()
+    if not any(node.get("selected") == "1" and node.get("ratingKey") == uploaded.get("ratingKey")
+               for node in fromstring(response.content)):
+        raise RuntimeError("Plex did not select the uploaded backdrop; cache was not marked synced")
+
+    # Authoritatively lock art in Plex database (user_fields)
+    await _set_plex_field_lock(http_client, server_url, item_id, token, field_name="art.locked", lock_val="1")
+
+    return json.dumps({"plex_art_key": uploaded.get("ratingKey")}, sort_keys=True)
+
+
+async def _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb, verify_thumbnail=False):
+    if not isinstance(snapshot, dict) or not snapshot.get("plex_poster_key"):
+        return False, "Previous titlecard upload has no verified artwork identity", None
+    if verify_thumbnail:
+        expected_hash = snapshot["plex_poster_key"].rsplit("/", 1)[-1]
+        matches, thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+        if not matches:
+            return False, "Selected Plex poster thumbnail differs from the verified upload", None
+        return True, "Plex poster thumbnail matches the verified upload", json.dumps({**snapshot, "plex_thumb": thumb}, sort_keys=True)
+    if current_thumb and snapshot.get("plex_thumb") == current_thumb:
+        return True, "Up-to-date", None
+    response = await http_client.get(
+        f"{server_url}/library/metadata/{item_id}/posters",
+        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+    )
+    response.raise_for_status()
+    if any(node.get("selected") == "1" and node.get("ratingKey") == snapshot["plex_poster_key"]
+           for node in fromstring(response.content)):
+        refreshed = {**snapshot, "plex_thumb": current_thumb}
+        return True, "Plex thumbnail URL changed; selected titlecard is unchanged", json.dumps(refreshed, sort_keys=True)
+    return False, "Selected Plex titlecard differs from the verified upload", None
+
+
+async def _plex_rendered_titlecard_status(http_client, server_url, item_id, token, snapshot, current_thumb, content, verify_thumbnail=False):
+    expected_hash = hashlib.sha1(content).hexdigest()
+    cached_key = snapshot.get("plex_poster_key") if isinstance(snapshot, dict) else None
+    if cached_key and cached_key.endswith("/" + expected_hash):
+        return await _plex_titlecard_cache_status(http_client, server_url, item_id, token, snapshot, current_thumb, verify_thumbnail=verify_thumbnail)
+    response = await http_client.get(
+        f"{server_url}/library/metadata/{item_id}/posters",
+        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+    )
+    response.raise_for_status()
+    selected = next((node for node in fromstring(response.content)
+                     if node.get("selected") == "1" and str(node.get("ratingKey", "")).startswith("upload://")
+                     and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+    if selected is None:
+        return False, "Rendered titlecard differs from selected Plex artwork", None
+    if verify_thumbnail:
+        matches, current_thumb = await _plex_poster_thumbnail_status(http_client, server_url, item_id, token, expected_hash)
+        if not matches:
+            return False, "Rendered poster differs from the actual Plex thumbnail", None
+    refreshed = json.dumps({"plex_poster_key": selected.get("ratingKey"), "plex_thumb": current_thumb}, sort_keys=True)
+    return True, "Rendered titlecard already selected; fingerprints refreshed without upload", refreshed
+
+
+AUDIO_CODEC_PATTERNS = [
+    ("truehd_atmos", re.compile(r'(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))')),
+    ("dtsx", re.compile(r'(?i)\b(dts[-_. ]?x7?)\b(?![-_. ]?(26[456]))')),
+    ("plus_atmos", re.compile(r'(?i)^(?=.*\b((dd[p+])|(dolby[ ._-]digital[ ._-]plus)|(e[ ._-]?ac3)\b))(?=.*\batmos(\b|\d))')),
+    ("dolby_atmos", re.compile(r'(?i)\batmos(\b|\d)')),
+    ("truehd", re.compile(r'(?i)\btrue[ ._-]?hd(\b|\d)')),
+    ("ma", re.compile(r'(?i)\b(?:dts|dca)[ ._-]?(hd[ ._-])?(ma|xll|hd)(\b|\d)(?![ ._-]hra)')),
+    ("flac", re.compile(r'(?i)\bflac(\b|\d)')),
+    ("pcm", re.compile(r'(?i)\bl?pcm(\b|\d)')),
+    ("hra", re.compile(r'(?i)\bdts[ ._-]?(hd[ ._-])?(hr|hra|hi|ra)(\b|\d)')),
+    ("plus", re.compile(r'(?i)\b(dd[p+])|(dolby[ ._-]digital[ ._-]plus)|(e[ ._-]?ac3)\b')),
+    ("dtses", re.compile(r'(?i)\bdts[ ._-]?es(\b|\d)')),
+    ("dts", re.compile(r'(?i)\bdts(\b|\d)')),
+    ("digital", re.compile(r'(?i)\b(dd)|(ac3)|(dolby)(\b|\d)')),
+    ("aac", re.compile(r'(?i)\b(aac|stereo|2\.0)\b')),
+    ("mp3", re.compile(r'(?i)\bmp3(\b|\d)')),
+    ("opus", re.compile(r'(?i)\b(?<!-)OPUS(\b|\d)')),
+]
+
+VIDEO_FORMAT_PATTERNS = [
+    ("REMUX", re.compile(r'(?i)\bremux\b')),
+    ("BLU-RAY", re.compile(r'(?i)\b(blu[ ._-]?ray|bd|br|hd[ ._-]?dvd)\b')),
+    ("WEB", re.compile(r'(?i)web[ ._-]?(dl|rip)')),
+    ("HDTV", re.compile(r'(?i)\bhd[ ._-]?tv\b')),
+    ("DVD", re.compile(r'(?i)\bdvd\b')),
+    ("SDTV", re.compile(r'(?i)\bsd[ ._-]?tv\b')),
+    ("TELESYNC", re.compile(r'(?i)\b(TS|HDTS|TELESYNC)\b')),
+    ("CAM", re.compile(r'(?i)\b(HQ|HD)?CAM\b')),
+]
+
+def detect_video_source(filepath):
+    if not filepath:
+        return None
+    filename = re.split(r"[\\/]", str(filepath))[-1]
+    return next((name for name, pattern in VIDEO_FORMAT_PATTERNS if pattern.search(filename)), None)
+
+def cached_episode_streams(entry, server_updated_at, filepath):
+    if not entry or not server_updated_at or str(entry.get("server_updated_at") or "") != str(server_updated_at):
+        return None
+    try:
+        streams = json.loads(entry.get("attr_snapshot") or "{}").get("_episode_streams")
+    except (AttributeError, TypeError, ValueError):
+        return None
+    required = {"audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio", "has_hdr", "has_dolby_vision", "filepath"}
+    if not isinstance(streams, dict) or streams.get("version") != 1 or not required.issubset(streams) or not streams.get("filepath"):
+        return None
+    if str(streams.get("audio_codec") or "").lower() in ("dts", "dca") and not {"audio_profile", "audio_track_title"}.issubset(streams):
+        return None
+    if filepath and str(filepath) != str(streams["filepath"]):
+        return None
+    return streams
+
+def aggregate_episode_streams(episodes, language_order=None):
+    language_counts = Counter()
+    video_counts = Counter()
+    subtitle_counts = Counter()
+    codec_counts = Counter()
+    language_first_seen = {}
+    subtitle_first_seen = {}
+    codec_first_seen = {}
+    codec_details = {}
+    language_priority = {str(code).strip().lower(): index for index, code in enumerate(language_order or [])}
+
+    for episode in episodes:
+        if not isinstance(episode, dict):
+            continue
+        if episode.get("resolution"):
+            video_counts[(episode["resolution"], bool(episode.get("has_hdr")), bool(episode.get("has_dolby_vision")))] += 1
+        for field, counts, first_seen in (
+            ("audio_languages", language_counts, language_first_seen),
+            ("subtitle_languages", subtitle_counts, subtitle_first_seen),
+        ):
+            episode_languages = dict.fromkeys(
+                str(code).strip().lower()
+                for code in episode.get(field) or []
+                if str(code).strip()
+            )
+            for code in episode_languages:
+                if code not in first_seen:
+                    first_seen[code] = len(first_seen)
+                counts[code] += 1
+
+        codec = str(episode.get("audio_codec") or "").strip().lower()
+        if codec:
+            profile = str(episode.get("audio_profile") or "")
+            track_title = str(episode.get("audio_track_title") or episode.get("audio_title") or "")
+            signature = " ".join((codec, profile, track_title))
+            provider_codec = next((name for name, pattern in AUDIO_CODEC_PATTERNS if pattern.search(signature)), codec)
+            codec_key = (codec, provider_codec)
+            if codec_key not in codec_first_seen:
+                codec_first_seen[codec_key] = len(codec_first_seen)
+                codec_details[codec_key] = {"audio_profile": profile or None, "audio_track_title": track_title or None, "audio_title": track_title or None}
+            codec_counts[codec_key] += 1
+
+    def ranked(counts, first_seen, use_language_priority=False):
+        return sorted(
+            counts,
+            key=lambda value: (
+                -counts[value],
+                language_priority.get(value, len(language_priority)) if use_language_priority else 0,
+                first_seen[value],
+                value,
+            ),
+        )
+
+    ranked_languages = ranked(language_counts, language_first_seen, use_language_priority=True)
+    selected_codec = ranked(codec_counts, codec_first_seen)[0] if codec_counts else None
+    selected_video = max(video_counts, key=lambda value: (video_counts[value], _resolution_rank(value[0]), value[2], value[1])) if video_counts else None
+    return {
+        **({"resolution": selected_video[0], "has_hdr": selected_video[1], "has_dolby_vision": selected_video[2]} if selected_video else {}),
+        "audio_languages": ranked_languages,
+        "subtitle_languages": ranked(subtitle_counts, subtitle_first_seen, use_language_priority=True),
+        "audio_codec": selected_codec[0] if selected_codec else None,
+        **(codec_details[selected_codec] if selected_codec else {"audio_profile": None, "audio_track_title": None, "audio_title": None}),
+    }
+
+def _configured_language_order(rules):
+    for rule in rules:
+        if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "languages":
+            continue
+        variables = rule.get("template_variables") or {}
+        languages = variables.get("languages")
+        if isinstance(languages, list):
+            return [str(code).strip().lower() for code in languages if str(code).strip()]
+    return ["de", "en", "ja", "zh", "ko"]
+
+def _parent_stream_aggregation_requested(rules):
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        default = str(rule.get("default", "")).lower()
+        if default not in ("languages", "audio_codec"):
+            continue
+        variables = rule.get("template_variables") or {}
+        builder_level = variables.get("builder_level")
+        if builder_level is None:
+            continue
+        levels = builder_level if isinstance(builder_level, list) else str(builder_level).split(",")
+        if any(str(level).strip().lower() in ("all", "show", "season") for level in levels):
+            return True
+    return False
+
+def _normalized_stream_language(value):
+    code = str(value or "").strip().lower().replace("_", "-").split("-")[0]
+    if not code:
+        return None
+    normalized = LANGUAGE_MAP.get(code, code)
+    return normalized if normalized not in ("und", "unknown") else None
+
+def _plex_episode_stream_summary(item):
+    languages = []
+    audio_codec = None
+    has_hdr = False
+    has_dolby_vision = False
+    for media in item.findall(".//Media"):
+        if media.get("audioCodec"):
+            audio_codec = str(media.get("audioCodec")).strip().lower()
+    audio_streams = [stream for stream in item.findall(".//Stream") if stream.get("streamType") == "2"]
+    primary_audio = next((stream for stream in audio_streams if stream.get("selected") == "1" or stream.get("default") == "1"), audio_streams[0] if audio_streams else None)
+    audio_profile = primary_audio.get("profile") if primary_audio is not None else None
+    audio_track_title = (primary_audio.get("title") or primary_audio.get("displayTitle")) if primary_audio is not None else None
+    if primary_audio is not None and primary_audio.get("codec"):
+        audio_codec = str(primary_audio.get("codec")).strip().lower()
+    for stream in item.findall(".//Stream"):
+        stream_type = stream.get("streamType")
+        if stream_type == "2":
+            language = _normalized_stream_language(stream.get("languageCode") or stream.get("languageTag") or stream.get("language"))
+            if language and language not in languages:
+                languages.append(language)
+        elif stream_type == "1":
+            has_dolby_vision = has_dolby_vision or stream.get("DOVIPresent") == "1"
+            has_hdr = has_hdr or stream.get("colorPrimaries") == "bt2020"
+    part = item.find(".//Part")
+    streams = _extract_stream_overlay_metadata(item)
+    media = item.find(".//Media")
+    return {
+        "resolution": _plex_media_resolution(media) if media is not None else None,
+        "audio_languages": languages,
+        "audio_codec": audio_codec,
+        "audio_profile": audio_profile,
+        "audio_track_title": audio_track_title,
+        "subtitle_languages": streams.get("subtitle_languages", []),
+        "aspect_ratio": streams.get("aspect_ratio"),
+        "has_hdr": has_hdr,
+        "has_dolby_vision": has_dolby_vision,
+        "filepath": part.get("file") if part is not None else None,
+    }
+
+def _emby_episode_stream_summary(item):
+    languages = []
+    audio_codec = None
+    has_hdr = False
+    has_dolby_vision = False
+    audio_streams = [stream for stream in item.get("MediaStreams") or [] if stream.get("Type") == "Audio"]
+    primary_audio = next((stream for stream in audio_streams if stream.get("IsDefault") is True), audio_streams[0] if audio_streams else {})
+    for stream in item.get("MediaStreams") or []:
+        stream_type = stream.get("Type")
+        if stream_type == "Audio":
+            language = _normalized_stream_language(stream.get("Language") or stream.get("DisplayLanguage"))
+            if language and language not in languages:
+                languages.append(language)
+            if not audio_codec and stream.get("Codec"):
+                audio_codec = str(stream["Codec"]).strip().lower()
+        elif stream_type == "Video":
+            has_dolby_vision = has_dolby_vision or bool(stream.get("VideoDoViTitle") or "dovi" in str(stream.get("DisplayTitle", "")).lower())
+            has_hdr = has_hdr or stream.get("VideoRange") == "HDR" or "hdr" in str(stream.get("DisplayTitle", "")).lower()
+    sources = item.get("MediaSources") or []
+    filepath = item.get("Path") or next((source.get("Path") for source in sources if source.get("Path")), None)
+    streams = _extract_stream_overlay_metadata(item)
+    video_stream = next((stream for stream in item.get("MediaStreams") or [] if stream.get("Type") == "Video"), {})
+    return {
+        "resolution": _plex_media_resolution({"width": video_stream.get("Width"), "height": video_stream.get("Height")}),
+        "audio_languages": languages,
+        "audio_codec": str(primary_audio.get("Codec") or audio_codec or "").strip().lower() or None,
+        "audio_profile": primary_audio.get("Profile"),
+        "audio_track_title": primary_audio.get("Title") or primary_audio.get("DisplayTitle"),
+        "subtitle_languages": streams.get("subtitle_languages", []),
+        "aspect_ratio": streams.get("aspect_ratio"),
+        "has_hdr": has_hdr,
+        "has_dolby_vision": has_dolby_vision,
+        "filepath": filepath,
+    }
+
+async def fetch_show_episode_stream_data(http_client, server_type, server_url, item_id, credentials, cache_map, language_order=None):
+    """Fetch episode stream data once for parent artwork and reuse it during child sync."""
+    server_type = str(server_type or "").lower()
+    seasons = []
+    episodes_by_season = {}
+    episode_streams = {}
+    all_streams = []
+    season_streams = {}
+
+    if server_type == "plex":
+        headers = {"X-Plex-Token": credentials.get("token"), "Accept": "application/xml"}
+        response = await http_client.get(
+            f"{server_url}/library/metadata/{urllib.parse.quote(str(item_id), safe='')}/children",
+            headers=headers,
+        )
+        if response.status_code != 200:
+            return None
+        root = fromstring(response.content)
+        season_nodes = [node for node in root.findall(".//Directory") if node.get("ratingKey") and (node.get("index") or "").isdigit()]
+        for season_node in season_nodes:
+            season_id = str(season_node.get("ratingKey"))
+            season_number = int(season_node.get("index"))
+            seasons.append({"id": season_id, "season_number": season_number})
+            response = await http_client.get(
+                f"{server_url}/library/metadata/{urllib.parse.quote(season_id, safe='')}/children",
+                headers=headers,
+            )
+            if response.status_code != 200:
+                return None
+            episode_nodes = fromstring(response.content).findall(".//Video")
+            episodes_by_season[season_id] = episode_nodes
+            season_items = []
+            for episode_node in episode_nodes:
+                episode_id = str(episode_node.get("ratingKey") or "")
+                if not episode_id:
+                    continue
+                part = episode_node.find(".//Part")
+                filepath = part.get("file") if part is not None else None
+                server_updated_at = episode_node.get("updatedAt")
+                cached = cached_episode_streams(
+                    cache_map.get((server_type, episode_id, "titlecard")), server_updated_at, filepath
+                )
+                if cached and "resolution" in cached:
+                    summary = {key: cached.get(key) for key in (
+                        "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
+                        "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title", "resolution",
+                    )}
+                    summary["streams_verified"] = True
+                else:
+                    detail_response = await http_client.get(
+                        f"{server_url}/library/metadata/{urllib.parse.quote(episode_id, safe='')}",
+                        headers=headers,
+                    )
+                    if detail_response.status_code != 200:
+                        return None
+                    summary = _plex_episode_stream_summary(fromstring(detail_response.content))
+                    summary["streams_verified"] = True
+                    summary["version"] = 1
+                episode_streams[episode_id] = summary
+                season_items.append(summary)
+                all_streams.append(summary)
+            season_streams[season_number] = aggregate_episode_streams(season_items, language_order)
+    elif server_type in ("jellyfin", "emby"):
+        headers = {"X-Emby-Token": credentials.get("api_key"), "Accept": "application/json"}
+        response = await http_client.get(f"{server_url}/Shows/{item_id}/Seasons", headers=headers)
+        if response.status_code != 200:
+            return None
+        for season in response.json().get("Items", []):
+            season_id = season.get("Id")
+            season_index = season.get("IndexNumber")
+            if not season_id or season_index is None:
+                continue
+            try:
+                season_number = int(season_index)
+            except (TypeError, ValueError):
+                continue
+            season_id = str(season_id)
+            seasons.append({"id": season_id, "season_number": season_number})
+            response = await http_client.get(
+                f"{server_url}/Shows/{item_id}/Episodes?SeasonId={urllib.parse.quote(season_id, safe='')}&Fields=MediaStreams,MediaSources,OfficialRating,RunTimeTicks,Status,ProviderIds,Path",
+                headers=headers,
+            )
+            if response.status_code != 200:
+                return None
+            episode_items = response.json().get("Items", [])
+            episodes_by_season[season_id] = episode_items
+            season_items = []
+            for episode in episode_items:
+                episode_id = str(episode.get("Id") or "")
+                if not episode_id:
+                    continue
+                summary = _emby_episode_stream_summary(episode)
+                summary["streams_verified"] = True
+                summary["version"] = 1
+                episode_streams[episode_id] = summary
+                season_items.append(summary)
+                all_streams.append(summary)
+            season_streams[season_number] = aggregate_episode_streams(season_items, language_order)
+    elif server_type == "silo":
+        silo = SiloClient(http_client, server_url, credentials["api_key"], credentials.get("profile_id"))
+        rows = [row for row in await silo.catalog(media_type="episode") if row.get("series_id") == str(item_id)]
+        for season in await silo.seasons(item_id):
+            season_id = str(season["content_id"])
+            season_number = int(season["season_number"])
+            seasons.append({"id": season_id, "season_number": season_number})
+            episode_rows = [row for row in rows if row.get("season_number") == season_number]
+            episodes_by_season[season_id] = episode_rows
+            summaries = []
+            for row in episode_rows:
+                summary = await silo.stream_metadata(row)
+                episode_streams[str(row["content_id"])] = summary
+                summaries.append(summary)
+                all_streams.append(summary)
+            season_streams[season_number] = aggregate_episode_streams(summaries, language_order)
+    else:
+        return None
+
+    return {
+        "seasons": seasons,
+        "episodes_by_season": episodes_by_season,
+        "episode_streams": episode_streams,
+        "aggregate": aggregate_episode_streams(all_streams, language_order),
+        "season_aggregates": season_streams,
+    }
+
+def titlecard_attr_snapshot(episode, snapshot):
+    try:
+        values = json.loads(snapshot or "{}")
+    except (TypeError, ValueError):
+        values = {}
+    if not isinstance(values, dict):
+        values = {}
+    if episode.get("streams_verified"):
+        values["_episode_streams"] = {
+            key: episode.get(key) for key in (
+                "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
+                "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title", "resolution"
+            )
+        }
+        values["_episode_streams"]["version"] = 1
+    else:
+        values.pop("_episode_streams", None)
+    return json.dumps(values, sort_keys=True)
+
+def compute_layers_recipe_hash(layers: List[Dict[str, Any]]) -> str:
+    """Compute the content-based font recipe shared with legacy cache migration."""
+    return _compute_layers_recipe_hash(layers)
+
+
+def _rating_scores(ratings: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    return {key: value for key, value in (ratings or {}).items() if not key.startswith("_") and value is not None}
+
+
+def _merge_season_rating_scores(show_ratings, season_ratings):
+    merged = dict(show_ratings or {})
+    for source in ("simkl", "mal"):
+        value = (season_ratings or {}).get(source)
+        if isinstance(value, (int, float)) and 0 < value <= 10:
+            merged[source] = value
+    return merged
+
+
+def _audience_rating_from_scores(ratings: Optional[Dict[str, Any]]) -> Optional[float]:
+    """Plex-style 0-10 audience score from resolved ratings when the server attribute is absent."""
+    scores = _rating_scores(ratings)
+    for key, divisor in (("imdb", 1.0), ("tmdb", 1.0), ("rt_audience", 10.0)):
+        try:
+            value = float(scores[key]) / divisor
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 0 < value <= 10:
+            return round(value, 1)
+    return None
+
+
+def _animetafill_targets_library(library_name: str, config: Dict[str, Any]) -> bool:
+    if not config.get("enabled"):
+        return False
+    target_libraries = config.get("target_libraries")
+    if target_libraries is None:
+        target_libraries = config.get("plex_libraries", [])
+    library_key = str(library_name or "").strip().casefold()
+    return bool(library_key and isinstance(target_libraries, list) and any(
+        str(target or "").strip().casefold() == library_key for target in target_libraries
+    ))
+
+
+def build_attr_snapshot(item: Dict[str, Any]) -> str:
+    """
+    Serialize hash-relevant attributes that are not stored in dedicated cache columns
+    (HDR, Dolby Vision, content rating, network). Persisting them lets the fast incremental
+    path rebuild the exact same metadata hash as the full Plex detail path.
+    """
+    return json.dumps({
+        "has_hdr": True if item.get("has_hdr") else None,
+        "has_dolby_vision": True if item.get("has_dolby_vision") else None,
+        "content_rating": item.get("content_rating") or None,
+        "network": item.get("network") or None,
+        "networks": item.get("networks") or [],
+        "studio": item.get("studio") or None,
+        "audio_track_title": item.get("audio_track_title") or None,
+        "subtitle_languages": item.get("subtitle_languages") or [],
+        "aspect_ratio": item.get("aspect_ratio"),
+        "season_resolutions": item.get("season_resolutions"),
+        "leaf_count": item.get("leaf_count"),
+    }, sort_keys=True)
+
+
+def _extract_stream_overlay_metadata(item):
+    subtitles = []
+    aspect = None
+    width = height = 0
+    audio_profile = None
+    audio_track_title = None
+    if isinstance(item, dict):
+        streams = list(item.get("MediaStreams") or [])
+        if not streams:
+            for source in item.get("MediaSources") or []:
+                streams.extend(source.get("MediaStreams") or [])
+            audio_streams = [stream for stream in streams if stream.get("Type") == "Audio"]
+            primary_audio = next((stream for stream in audio_streams if stream.get("IsDefault") is True), audio_streams[0] if audio_streams else {})
+            audio_profile = primary_audio.get("Profile")
+            audio_track_title = primary_audio.get("Title") or primary_audio.get("DisplayTitle")
+        for stream in streams:
+            if stream.get("Type") == "Subtitle":
+                language = stream.get("Language") or stream.get("DisplayLanguage")
+                if language:
+                    code = str(language).strip().lower().replace("_", "-").split("-")[0]
+                    normalized = LANGUAGE_MAP.get(code, code)
+                    if normalized not in subtitles and normalized not in ("und", "unknown"):
+                        subtitles.append(normalized)
+            elif stream.get("Type") == "Video" and aspect is None:
+                aspect = stream.get("AspectRatio")
+                width, height = stream.get("Width") or 0, stream.get("Height") or 0
+    else:
+        audio_streams = [stream for stream in item.findall(".//Stream") if stream.get("streamType") == "2"]
+        primary_audio = next((stream for stream in audio_streams if stream.get("selected") == "1" or stream.get("default") == "1"), audio_streams[0] if audio_streams else None)
+        if primary_audio is not None:
+            audio_profile = primary_audio.get("profile")
+            audio_track_title = primary_audio.get("title") or primary_audio.get("displayTitle")
+        media = item.find(".//Media")
+        if media is not None:
+            aspect = media.get("aspectRatio")
+            width, height = media.get("width") or 0, media.get("height") or 0
+        for stream in item.findall(".//Stream"):
+            if stream.get("streamType") == "3":
+                language = stream.get("languageCode") or stream.get("languageTag") or stream.get("language")
+                if language:
+                    code = str(language).strip().lower().replace("_", "-").split("-")[0]
+                    normalized = LANGUAGE_MAP.get(code, code)
+                    if normalized not in subtitles and normalized not in ("und", "unknown"):
+                        subtitles.append(normalized)
+    try:
+        if aspect:
+            components = str(aspect).replace("/", ":").split(":")
+            ratio = float(components[0]) / float(components[1]) if len(components) == 2 else float(aspect)
+        else:
+            ratio = float(width) / float(height)
+        if not 0 < ratio < 10:
+            ratio = None
+    except (ValueError, TypeError, ZeroDivisionError):
+        ratio = None
+    return {"subtitle_languages": subtitles, "aspect_ratio": ratio, "audio_profile": audio_profile, "audio_track_title": audio_track_title}
+
+# ==============================================================================
+# DYNAMIC OVERLAY SYNC ENGINE:
+# Renders in-memory dynamic badges and overlays onto media assets for Plex/Jellyfin/Emby.
+# Original artwork remains untouched; overlaid artwork is synced non-destructively.
+# ==============================================================================
+
+logger = logging.getLogger("overlay_sync_service")
+
+
+# ==============================================================================
+# LANGUAGE, FLAG & RATING MAPPINGS
+# ==============================================================================
+
+LANGUAGE_MAP = {
+    # 3-letter ISO-639-2 codes to 2-letter
+    "deu": "de", "ger": "de",
+    "eng": "en",
+    "jpn": "ja",
+    "zho": "zh", "chi": "zh",
+    "kor": "ko",
+    "fra": "fr", "fre": "fr",
+    "spa": "es",
+    "ita": "it",
+    "rus": "ru",
+    "por": "pt",
+    "pol": "pl",
+    "nld": "nl", "dut": "nl",
+    "dan": "da",
+    "swe": "sv",
+    "nor": "no",
+    "fin": "fi",
+    "ukr": "uk",
+    "tur": "tr",
+    "ara": "ar",
+    "hin": "hi",
+    "ell": "el", "gre": "el",
+    "ces": "cs", "cze": "cs",
+    "hun": "hu",
+    "ron": "ro", "rum": "ro",
+    "vie": "vi",
+    "tha": "th",
+    "ind": "id",
+    "heb": "he",
+    # Common full language names
+    "german": "de", "deutsch": "de",
+    "english": "en",
+    "japanese": "ja",
+    "chinese": "zh",
+    "korean": "ko",
+    "french": "fr", "français": "fr",
+    "spanish": "es", "español": "es",
+    "italian": "it", "italiano": "it",
+    "russian": "ru",
+    "portuguese": "pt",
+    "polish": "pl",
+    "dutch": "nl",
+    "danish": "da",
+    "swedish": "sv",
+    "norwegian": "no",
+    "finnish": "fi",
+    "ukrainian": "uk",
+    "turkish": "tr",
+    "arabic": "ar",
+    "hindi": "hi",
+    "greek": "el",
+    "czech": "cs",
+    "hungarian": "hu",
+    "romanian": "ro",
+    "vietnamese": "vi",
+    "thai": "th",
+    "indonesian": "id",
+    "hebrew": "he",
+}
+
+LANGUAGE_TO_FLAG_MAP = {
+    "de": "de.png",
+    "en": "us.png",
+    "ja": "jp.png",
+    "zh": "cn.png",
+    "ko": "kr.png",
+    "fr": "fr.png",
+    "es": "es.png",
+    "it": "it.png",
+    "ru": "ru.png",
+    "pt": "pt.png",
+    "pl": "pl.png",
+    "nl": "nl.png",
+    "da": "dk.png",
+    "sv": "se.png",
+    "no": "no.png",
+    "fi": "fi.png",
+    "uk": "ua.png",
+    "tr": "tr.png",
+    "ar": "sa.png",
+    "hi": "in.png",
+    "el": "gr.png",
+    "cs": "cz.png",
+    "hu": "hu.png",
+    "ro": "ro.png",
+    "vi": "vn.png",
+    "th": "th.png",
+    "id": "id.png",
+    "he": "il.png",
+}
+
+COMMONSENSE_RATING_MAP = {
+    "0": "0+",
+    "0+": "0+",
+    "FSK-0": "0+",
+    "FSK 0": "0+",
+    "FSK0": "0+",
+    "DE/0": "0+",
+    "G": "1+",
+    "TV-G": "1+",
+    "TV-Y": "1+",
+    "TV-Y7": "7+",
+    "PG": "6+",
+    "TV-PG": "7+",
+    "6": "6+",
+    "FSK-6": "6+",
+    "FSK 6": "6+",
+    "12": "12+",
+    "12A": "12+",
+    "FSK-12": "12+",
+    "FSK 12": "12+",
+    "PG-13": "13+",
+    "TV-14": "14+",
+    "14": "14+",
+    "15": "15+",
+    "16": "16+",
+    "FSK-16": "16+",
+    "FSK 16": "16+",
+    "R": "17+",
+    "NC-17": "17+",
+    "TV-MA": "17+",
+    "18": "18+",
+    "FSK-18": "18+",
+    "FSK 18": "18+",
+    "M": "15+",
+    "MA15+": "15+",
+}
+
+
+def normalize_commonsense_rating(raw_rating: Optional[str]) -> Optional[str]:
+    """Map Plex / TMDb / IMDb contentRating into Common Sense age badge string."""
+    if not raw_rating:
+        return None
+    cleaned = str(raw_rating).strip()
+    if not cleaned or cleaned.lower() in ("none", "off", "false", "unknown", "null"):
+        return None
+    # Strip prefix like "gb/", "us/", "de/", etc.
+    if "/" in cleaned:
+        cleaned = cleaned.split("/")[-1].strip()
+    cleaned_upper = cleaned.upper()
+    if cleaned_upper in COMMONSENSE_RATING_MAP:
+        return COMMONSENSE_RATING_MAP[cleaned_upper]
+    # Check digits directly (e.g. "0", "15", "16", "18", "6", "12")
+    digits = "".join(ch for ch in cleaned if ch.isdigit())
+    if digits:
+        return f"{digits}+"
+    return None
+
+
+def resolve_library_rules(
+    library_name: str,
+    media_type: str,
+    library_rules_map: Dict[str, Any]
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Resolve active overlay rules from config.yml for a given media server library.
+    Handles matching Plex/Jellyfin/Emby library names (e.g. PosterizarrTestMovies)
+    against rules configured for 'Movies', 'TV Shows', '4K Movies', etc.
+    """
+    if not library_rules_map:
+        return "none", []
+
+    clean_lib = library_name.strip().lower()
+
+    # 1. Exact match
+    if clean_lib in library_rules_map:
+        return clean_lib, library_rules_map[clean_lib]
+
+    # 2. Check canonical category match based on media type & library name hints
+    is_4k = "4k" in clean_lib or "uhd" in clean_lib or "2160" in clean_lib
+    is_kids = "kid" in clean_lib or "children" in clean_lib or "family" in clean_lib
+    is_anime = "anime" in clean_lib or "manga" in clean_lib
+
+    if media_type == "movie" or "movie" in clean_lib or "film" in clean_lib:
+        if is_4k and "4k movies" in library_rules_map:
+            return "4k movies", library_rules_map["4k movies"]
+        if is_kids and "kids movies" in library_rules_map:
+            return "kids movies", library_rules_map["kids movies"]
+        if is_anime and "anime" in library_rules_map:
+            return "anime", library_rules_map["anime"]
+        if not is_kids and not is_anime and not is_4k and "movies" in library_rules_map:
+            return "movies", library_rules_map["movies"]
+
+    if media_type == "show" or "show" in clean_lib or "series" in clean_lib or "tv" in clean_lib:
+        if is_4k and "4k tv shows" in library_rules_map:
+            return "4k tv shows", library_rules_map["4k tv shows"]
+        if is_anime and "anime" in library_rules_map:
+            return "anime", library_rules_map["anime"]
+        if not is_anime and not is_4k and "tv shows" in library_rules_map:
+            return "tv shows", library_rules_map["tv shows"]
+
+    # 3. Substring matching (only if match key is specific enough)
+    for k, v in library_rules_map.items():
+        if k and (k == clean_lib or (len(k) >= 3 and (k in clean_lib or clean_lib in k))):
+            return k, v
+
+    # Fallback to default only if explicitly configured
+    if "default" in library_rules_map:
+        return "default", library_rules_map["default"]
+
+    return "none", []
+
+
+# ==============================================================================
+# SECURITY UTILITIES
+# ==============================================================================
+
+def is_safe_url(url: str, allow_private: bool = True, allow_loopback: bool = True) -> bool:
+    """Validate that URL is using http/https and blocks metadata/multicast."""
+    if not url:
+        return False
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ["http", "https"]:
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        if hostname.lower() in ["localhost", "127.0.0.1", "::1"]:
+            return allow_loopback
+        try:
+            ip_addr = socket.gethostbyname(hostname)
+            ip = ipaddress.ip_address(ip_addr)
+            if ip.is_link_local or ip.is_multicast:
+                return False
+            if not allow_private and ip.is_private:
+                return False
+            return True
+        except Exception:
+            return False
+    except Exception:
+        return False
+
+
+# ==============================================================================
+# CONFIG & CREDENTIAL HELPERS
+# ==============================================================================
+
+def has_asset_files(dir_path: Path) -> bool:
+    """Check if a directory contains image assets (posters, backgrounds) either directly or in subfolders."""
+    if not dir_path or not dir_path.is_dir():
+        return False
+    try:
+        for p in dir_path.iterdir():
+            if p.is_file() and p.suffix.lower() in ('.jpg', '.png', '.webp', '.jpeg'):
+                return True
+            if p.is_dir():
+                try:
+                    for sub in p.iterdir():
+                        if sub.is_file() and sub.suffix.lower() in ('.jpg', '.png', '.webp', '.jpeg'):
+                            return True
+                        if sub.is_dir():
+                            for sub2 in sub.iterdir():
+                                if sub2.is_file() and sub2.suffix.lower() in ('.jpg', '.png', '.webp', '.jpeg'):
+                                    return True
+                except (PermissionError, OSError):
+                    pass
+    except (PermissionError, OSError):
+        pass
+    return False
+
+
+def resolve_configured_asset_path(raw_path: Optional[Union[str, Path]]) -> Path:
+    """
+    Intelligently resolve the configured AssetPath across platforms.
+    On Windows host environments, configs often contain Linux/Docker style paths like '/assets',
+    which Python resolves to 'C:\\assets'. If C:\\assets is empty or nonexistent while the actual
+    assets reside on another drive (e.g. 'P:\\assets'), this automatically detects and resolves to
+    the correct host directory with asset files.
+    """
+    if not raw_path:
+        default_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+        return default_dir
+
+    p = Path(raw_path)
+    if p.exists() and has_asset_files(p):
+        return p
+
+    if os.name == "nt":
+        raw_str = str(raw_path).replace("\\", "/").strip()
+        parts = [part for part in raw_str.split("/") if part and not part.endswith(":")]
+        rel_subpath = "/".join(parts) if parts else "assets"
+
+        candidate_drives = ["P", "D", "E", "F", "G", "C", "M", "V"]
+        for drive in candidate_drives:
+            cand = Path(f"{drive}:/{rel_subpath}")
+            if cand.exists() and has_asset_files(cand):
+                return cand
+
+        for drive in candidate_drives:
+            cand = Path(f"{drive}:/{rel_subpath}")
+            if cand.exists() and cand.is_dir():
+                return cand
+
+    return p
+
+
+def get_server_credentials(config_path: Path) -> Dict[str, Any]:
+    """Extract credentials and enabled statuses for Plex, Jellyfin, and Emby."""
+    info = {
+        "plex": {"enabled": False, "url": None, "token": None, "excluded_libs": []},
+        "jellyfin": {"enabled": False, "url": None, "api_key": None, "excluded_libs": []},
+        "emby": {"enabled": False, "url": None, "api_key": None, "excluded_libs": []},
+        "silo": {"enabled": False, "url": None, "api_key": None, "excluded_libs": []},
+        "asset_path": None,
+    }
+    if not config_path.exists():
+        return info
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+
+        # Asset path
+        ap = cfg.get("AssetPath") or cfg.get("PrerequisitePart", {}).get("AssetPath")
+        if ap:
+            info["asset_path"] = resolve_configured_asset_path(ap)
+
+        # Plex
+        p_url = cfg.get("PlexUrl") or cfg.get("PlexPart", {}).get("PlexUrl")
+        p_tok = cfg.get("PlexToken") or cfg.get("ApiPart", {}).get("PlexToken")
+        p_use = cfg.get("UsePlex") or cfg.get("PlexPart", {}).get("UsePlex")
+        p_ex = cfg.get("PlexLibstoExclude") or cfg.get("PlexPart", {}).get("LibstoExclude", [])
+        if p_url and is_safe_url(p_url):
+            info["plex"] = {
+                "enabled": str(p_use).lower() in ["true", "1", "yes"],
+                "url": p_url.rstrip('/'),
+                "token": p_tok,
+                "excluded_libs": p_ex or []
+            }
+
+        # Jellyfin
+        jf_url = cfg.get("JellyfinUrl") or cfg.get("JellyfinPart", {}).get("JellyfinUrl")
+        jf_key = (
+            cfg.get("JellyfinAPIKey")
+            or cfg.get("JellyfinApiKey")
+            or cfg.get("ApiPart", {}).get("JellyfinAPIKey")
+            or cfg.get("ApiPart", {}).get("JellyfinApiKey")
+        )
+        jf_use = cfg.get("UseJellyfin") or cfg.get("JellyfinPart", {}).get("UseJellyfin")
+        jf_ex = cfg.get("JellyfinLibstoExclude") or cfg.get("JellyfinPart", {}).get("LibstoExclude", [])
+        if jf_url and is_safe_url(jf_url):
+            info["jellyfin"] = {
+                "enabled": str(jf_use).lower() in ["true", "1", "yes"],
+                "url": jf_url.rstrip('/'),
+                "api_key": jf_key,
+                "excluded_libs": jf_ex or []
+            }
+
+        # Emby
+        em_url = cfg.get("EmbyUrl") or cfg.get("EmbyPart", {}).get("EmbyUrl")
+        em_key = (
+            cfg.get("EmbyAPIKey")
+            or cfg.get("EmbyApiKey")
+            or cfg.get("ApiPart", {}).get("EmbyAPIKey")
+            or cfg.get("ApiPart", {}).get("EmbyApiKey")
+        )
+        em_use = cfg.get("UseEmby") or cfg.get("EmbyPart", {}).get("UseEmby")
+        em_ex = cfg.get("EmbyLibstoExclude") or cfg.get("EmbyPart", {}).get("LibstoExclude", [])
+        if em_url and is_safe_url(em_url):
+            info["emby"] = {
+                "enabled": str(em_use).lower() in ["true", "1", "yes"],
+                "url": em_url.rstrip('/'),
+                "api_key": em_key,
+                "excluded_libs": em_ex or []
+            }
+        silo = get_silo_credentials(cfg)
+        if silo["url"] and is_safe_url(silo["url"]):
+            info["silo"] = {**silo, "url": silo["url"].rstrip("/"), "excluded_libs": silo["excluded"] or []}
+        # TMDb Token
+        tmdb_tok = cfg.get("tmdbtoken") or cfg.get("ApiPart", {}).get("tmdbtoken")
+        info["tmdb_token"] = tmdb_tok
+        if "plex" in info and isinstance(info["plex"], dict):
+            info["plex"]["tmdb_token"] = tmdb_tok
+        if "jellyfin" in info and isinstance(info["jellyfin"], dict):
+            info["jellyfin"]["tmdb_token"] = tmdb_tok
+        if "emby" in info and isinstance(info["emby"], dict):
+            info["emby"]["tmdb_token"] = tmdb_tok
+        info["silo"]["tmdb_token"] = tmdb_tok
+    except Exception as e:
+        logger.error(f"[OverlaySync] Failed parsing credentials: {e}")
+
+    return info
+
+
+_TMDB_SHOW_CACHE: Dict[str, Dict[str, Any]] = {}
+_TMDB_MOVIE_CR_CACHE: Dict[str, Optional[str]] = {}
+
+
+def invalidate_tmdb_show_cache(tmdb_id: Optional[str]) -> None:
+    clean_id = str(tmdb_id).strip() if tmdb_id else ""
+    if clean_id:
+        _TMDB_SHOW_CACHE.pop(clean_id, None)
+
+
+async def resolve_tmdb_show_info(
+    tmdb_id: Optional[str],
+    tmdb_token: Optional[str],
+    http_client: httpx.AsyncClient,
+    server_type: Optional[str] = None,
+    item_id: Optional[str] = None,
+    title: str = "",
+    year: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Fetches show status, networks, and age/content rating from persistent cache or TMDb API.
+    Maps status to lowercase canonical values: 'ended', 'returning', 'canceled', 'airing'.
+    Results are cached in SQLite media_ratings_cache with tiered TTL so changes are picked up on schedule.
+    """
+    clean_id = str(tmdb_id).strip() if tmdb_id else ""
+
+    # 1. Check persistent SQLite ratings/status cache first
+    try:
+        from ratings_service import ratings_cache
+        if server_type and item_id:
+            cached_status = ratings_cache.get_show_status(server_type, str(item_id), clean_id or None)
+            if cached_status and cached_status.get("status"):
+                return cached_status
+    except Exception as cache_read_err:
+        logger.debug(f"[OverlaySync] Persistent show cache read error: {cache_read_err}")
+
+    # 2. Check in-memory session cache
+    if clean_id and clean_id in _TMDB_SHOW_CACHE:
+        return _TMDB_SHOW_CACHE[clean_id]
+
+    if not clean_id:
+        return {}
+
+    # Try user token, fallback to Kometa public key
+    token_to_use = tmdb_token or "9999d4f11f041b789816ccd53798b525"
+    headers = {}
+    params = {"append_to_response": "content_ratings"}
+    if len(str(token_to_use)) > 40:
+        headers["Authorization"] = f"Bearer {token_to_use}"
+    else:
+        params["api_key"] = token_to_use
+
+    try:
+        url = f"https://api.themoviedb.org/3/tv/{clean_id}"
+        resp = await http_client.get(url, headers=headers, params=params, timeout=10.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            raw_st = str(data.get("status") or "").strip().lower()
+            status_map = {
+                "ended": "ended",
+                "concluded": "ended",
+                "returning series": "returning",
+                "returning": "returning",
+                "continuing": "returning",
+                "canceled": "canceled",
+                "cancelled": "canceled",
+                "in production": "airing",
+                "planned": "airing",
+                "pilot": "airing",
+            }
+            norm_st = status_map.get(raw_st, raw_st)
+            nets = [n.get("name") for n in data.get("networks", []) if n.get("name")]
+
+            # Extract content rating
+            content_rating = None
+            cr_list = data.get("content_ratings", {}).get("results", [])
+            for pref in ["DE", "US", "GB"]:
+                for r_item in cr_list:
+                    if r_item.get("iso_3166_1") == pref and r_item.get("rating"):
+                        content_rating = r_item.get("rating")
+                        break
+                if content_rating:
+                    break
+            if not content_rating and cr_list:
+                for r_item in cr_list:
+                    if r_item.get("rating"):
+                        content_rating = r_item.get("rating")
+                        break
+
+            info = {
+                "status": norm_st,
+                "networks": nets,
+                "network": nets[0] if nets else None,
+                "content_rating": content_rating
+            }
+            _TMDB_SHOW_CACHE[clean_id] = info
+
+            # Save to persistent SQLite ratings & status cache
+            try:
+                from ratings_service import ratings_cache
+                if server_type and item_id:
+                    ratings_cache.save_show_status(
+                        server_type=server_type,
+                        item_id=str(item_id),
+                        title=title,
+                        year=year,
+                        tmdb_id=clean_id,
+                        status=norm_st,
+                        network=info["network"],
+                        content_rating=content_rating,
+                        source="tmdb"
+                    )
+            except Exception as cache_save_err:
+                logger.debug(f"[OverlaySync] Persistent show cache save error: {cache_save_err}")
+
+            return info
+    except Exception as e:
+        logger.debug(f"[OverlaySync] TMDb lookup error for TV show {clean_id}: {e}")
+    return {}
+
+
+
+async def resolve_streaming_providers(tmdb_id, media_type, tmdb_token, http_client):
+    if not tmdb_id or not str(tmdb_id).isdigit():
+        raise RuntimeError("Streaming availability requires a TMDb ID; artwork left untouched")
+    endpoint_type = "tv" if media_type in ("show", "series", "season", "episode") else "movie"
+    cached = ratings_cache.get_watch_providers(endpoint_type, str(tmdb_id))
+    if cached is not None:
+        return cached
+    if not tmdb_token:
+        raise RuntimeError("Streaming availability requires a configured TMDb API key or token; artwork left untouched")
+    token = tmdb_token
+    headers = {"Authorization": f"Bearer {token}"} if len(str(token)) > 40 else {}
+    params = {} if headers else {"api_key": token}
+    try:
+        response = await http_client.get(
+            f"https://api.themoviedb.org/3/{endpoint_type}/{tmdb_id}/watch/providers",
+            headers=headers, params=params, timeout=10.0
+        )
+        response.raise_for_status()
+        results = response.json().get("results")
+        if not isinstance(results, dict):
+            raise ValueError("Missing provider results")
+        ratings_cache.save_watch_providers(endpoint_type, str(tmdb_id), results)
+        return results
+    except (httpx.HTTPError, ValueError):
+        stale = ratings_cache.get_watch_providers(endpoint_type, str(tmdb_id), allow_stale=True)
+        if stale is not None:
+            logger.warning("[OverlaySync] Using expired streaming availability for %s %s after lookup failure", endpoint_type, tmdb_id)
+            return stale
+        raise RuntimeError("Streaming availability lookup failed; artwork left untouched") from None
+
+
+STREAMING_PROVIDER_BADGES = [
+    ("netflix", "Netflix", {8, 175, 1796}),
+    ("amazon", "Prime Video", {9, 119, 2100}),
+    ("disney", "Disney", {337, 508}),
+    ("hbomax", "HBO-Max", {1899, 384}),
+    ("crunchyroll", "Crunchyroll", {283}),
+    ("movistar", "Movistar Plus+", {149, 339, 2241}),
+    ("atresplayer", "Atres Player", {62, 2162}),
+    ("youtube", "YouTube", {188, 235}),
+    ("hulu", "Hulu", {15}),
+    ("paramount", "Paramount+", {531, 1770}),
+    ("amc", "AMC+", {528, 1854}),
+    ("appletv", "AppleTV", {350}),
+    ("peacock", "Peacock", {386, 387}),
+    ("discovery", "discovery+", {524, 584}),
+    ("crave", "Crave", {230}),
+    ("now", "NOW", {39}),
+    ("channel4", "Channel 4", {103}),
+    ("itvx", "ITVX", {41, 2300}),
+    ("bet", "BET+", {1759}),
+    ("hayu", "hayu", {223}),
+    ("tubi", "tubi", {73}),
+    ("filmin", "Filmin", {63}),
+]
+
+
+def build_streaming_layers(item_metadata, variables, overlays_dir):
+    region = str(variables.get("region") or "US").strip().upper()
+    if not re.fullmatch(r"[A-Z]{2}", region):
+        raise ValueError("Streaming region must be a two-letter country code")
+    availability_types = variables.get("availability_types", ["flatrate"])
+    if availability_types is None:
+        availability_types = ["flatrate"]
+    if isinstance(availability_types, str):
+        availability_types = [value.strip() for value in availability_types.split(",")]
+    regional = (item_metadata.get("streaming_providers") or {}).get(region) or {}
+    provider_ids = {
+        provider.get("provider_id") for availability in availability_types
+        if availability in ("flatrate", "free", "ads", "rent", "buy")
+        for provider in regional.get(availability, []) if isinstance(provider, dict)
+    }
+    style = "white" if variables.get("style") == "white" else "color"
+    horizontal = variables.get("horizontal_align") or variables.get("horizontal_position") or "left"
+    vertical = variables.get("vertical_align") or variables.get("vertical_position") or "bottom"
+    limit = max(0, int(variables.get("overlay_limit", 3)))
+    spacing = max(0, int(variables.get("spacing", 115)))
+    layers = []
+    for key, image_name, identifiers in STREAMING_PROVIDER_BADGES:
+        if not provider_ids.intersection(identifiers) or variables.get(f"use_{key}") is False:
+            continue
+        if len(layers) >= limit:
+            break
+        index = len(layers)
+        selected_asset = variables.get(f"file_{key}")
+        image_path = overlays_dir / "assets" / "streaming" / style / f"{image_name}.png"
+        if selected_asset:
+            asset_path = Path(str(selected_asset))
+            image_path = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
+        layers.append({
+            "name": f"streaming_{key}", "type": "image",
+            "image_path": str(image_path),
+            "horizontal_align": horizontal, "vertical_align": vertical,
+            "horizontal_offset": int(variables.get("horizontal_offset", 30)) + (index * spacing if variables.get("orientation") == "horizontal" else 0),
+            "vertical_offset": int(variables.get("vertical_offset", 250)) + (index * spacing if variables.get("orientation") != "horizontal" else 0),
+            "scale_height": int(variables.get("scale_height", 75)),
+            "back_color": variables.get("back_color", "#00000099"),
+            "back_radius": int(variables.get("back_radius", 8)),
+        })
+    return layers
+
+
+async def resolve_tmdb_movie_content_rating(
+    tmdb_id: str,
+    tmdb_token: Optional[str],
+    http_client: httpx.AsyncClient
+) -> Optional[str]:
+    """Fetches movie certification / age rating from TMDb API release_dates."""
+    if not tmdb_id:
+        return None
+    clean_id = str(tmdb_id).strip()
+    if clean_id in _TMDB_MOVIE_CR_CACHE:
+        return _TMDB_MOVIE_CR_CACHE[clean_id]
+
+    token_to_use = tmdb_token or "9999d4f11f041b789816ccd53798b525"
+    headers = {}
+    params = {}
+    if len(str(token_to_use)) > 40:
+        headers["Authorization"] = f"Bearer {token_to_use}"
+    else:
+        params["api_key"] = token_to_use
+
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{clean_id}/release_dates"
+        resp = await http_client.get(url, headers=headers, params=params, timeout=10.0)
+        if resp.status_code == 200:
+            results = resp.json().get("results", [])
+            found_cert = None
+            for pref in ["DE", "US", "GB"]:
+                for r in results:
+                    if r.get("iso_3166_1") == pref:
+                        for rd in r.get("release_dates", []):
+                            cert = str(rd.get("certification") or "").strip()
+                            if cert:
+                                found_cert = cert
+                                break
+                    if found_cert:
+                        break
+                if found_cert:
+                    break
+            if not found_cert and results:
+                for r in results:
+                    for rd in r.get("release_dates", []):
+                        cert = str(rd.get("certification") or "").strip()
+                        if cert:
+                            found_cert = cert
+                            break
+                    if found_cert:
+                        break
+            _TMDB_MOVIE_CR_CACHE[clean_id] = found_cert
+            return found_cert
+    except Exception as e:
+        logger.debug(f"[OverlaySync] TMDb release_dates lookup error for movie {clean_id}: {e}")
+    return None
+
+
+# ==============================================================================
+# ASSET DISCOVERY & MATCHING HELPERS
+# ==============================================================================
+
+def compute_file_fingerprint(file_path: Path) -> Tuple[float, int, str]:
+    """Compute (mtime, size, md5_hash) for change detection."""
+    stat = file_path.stat()
+    mtime = stat.st_mtime
+    size = stat.st_size
+    fast_str = f"{mtime}_{size}_{file_path.name}"
+    md5_hash = hashlib.md5(fast_str.encode()).hexdigest()
+    return mtime, size, md5_hash
+
+
+_DIR_SUBDIRS_CACHE: Dict[str, Tuple[float, List[Path]]] = {}
+_DIR_CACHE_TTL_SECS = 60.0
+
+def get_cached_subdirs(parent_dir: Path, dir_cache: Optional[Dict[str, Any]] = None) -> List[Path]:
+    """Retrieve subdirectories with in-memory caching to eliminate massive filesystem disk overhead."""
+    if not parent_dir or not parent_dir.exists():
+        return []
+    p_key = str(parent_dir.resolve())
+    if dir_cache is not None and "subdirs" in dir_cache and p_key in dir_cache["subdirs"]:
+        return dir_cache["subdirs"][p_key]
+
+    now = time.time()
+    if p_key in _DIR_SUBDIRS_CACHE:
+        cached_time, subdirs = _DIR_SUBDIRS_CACHE[p_key]
+        if (now - cached_time) < _DIR_CACHE_TTL_SECS:
+            if dir_cache is not None:
+                dir_cache.setdefault("subdirs", {})[p_key] = subdirs
+            return subdirs
+
+    try:
+        subdirs = [d for d in parent_dir.iterdir() if d.is_dir()]
+        _DIR_SUBDIRS_CACHE[p_key] = (now, subdirs)
+        if dir_cache is not None:
+            dir_cache.setdefault("subdirs", {})[p_key] = subdirs
+        return subdirs
+    except Exception:
+        return []
+
+
+class DirectoryIndex:
+    """High-speed in-memory directory index for O(1) asset directory matching."""
+    __slots__ = (
+        "parent_dir", "subdirs", "by_name", "by_clean", "by_imdb", "by_tmdb",
+        "by_tvdb", "by_stripped", "by_stripped_noyear"
+    )
+
+    def __init__(self, parent_dir: Path):
+        self.parent_dir = parent_dir
+        try:
+            self.subdirs = [d for d in parent_dir.iterdir() if d.is_dir()]
+        except Exception:
+            self.subdirs = []
+
+        self.by_name: Dict[str, Path] = {}
+        self.by_clean: Dict[str, Path] = {}
+        self.by_imdb: Dict[str, Path] = {}
+        self.by_tmdb: Dict[str, Path] = {}
+        self.by_tvdb: Dict[str, Path] = {}
+        self.by_stripped: Dict[str, Path] = {}
+        self.by_stripped_noyear: Dict[Tuple[str, str], Path] = {}
+
+        id_regex = re.compile(r'\s*[\[\{](?:imdb|tmdb|tvdb)-[^\]\}]+[\]\}]', flags=re.I)
+        imdb_regex = re.compile(r'(?i)imdb-([a-z0-9]+)')
+        tmdb_regex = re.compile(r'(?i)tmdb-([0-9]+)')
+        tvdb_regex = re.compile(r'(?i)tvdb-([0-9]+)')
+        year_regex = re.compile(r'\(?(\d{4})\)?')
+        non_alnum = re.compile(r'[\W_]+')
+
+        for d in self.subdirs:
+            d_name = d.name
+            d_lower = d_name.lower()
+            self.by_name[d_lower] = d
+            clean_d = non_alnum.sub('', d_lower)
+            if clean_d:
+                self.by_clean[clean_d] = d
+
+            m_imdb = imdb_regex.search(d_name)
+            if m_imdb:
+                self.by_imdb[m_imdb.group(1).lower()] = d
+            m_tmdb = tmdb_regex.search(d_name)
+            if m_tmdb:
+                self.by_tmdb[m_tmdb.group(1).lower()] = d
+            m_tvdb = tvdb_regex.search(d_name)
+            if m_tvdb:
+                self.by_tvdb[m_tvdb.group(1).lower()] = d
+
+            stripped = id_regex.sub('', d_name).strip()
+            stripped_clean = non_alnum.sub('', stripped.lower())
+            if stripped_clean:
+                self.by_stripped[stripped_clean] = d
+
+            y_match = year_regex.search(stripped)
+            if y_match:
+                y_val = y_match.group(1)
+                s_noyear = non_alnum.sub('', stripped.replace(y_val, '').lower())
+                if s_noyear:
+                    self.by_stripped_noyear[(s_noyear, y_val)] = d
+
+
+def find_clean_asset(
+    assets_dir: Path,
+    library_name: str,
+    root_folder: str,
+    title: str,
+    asset_type: str = "poster",
+    imdb_id: Optional[str] = None,
+    tmdb_id: Optional[str] = None,
+    tvdb_id: Optional[str] = None,
+    year: Optional[Union[int, str]] = None,
+    dir_cache: Optional[Dict[str, Any]] = None
+) -> Optional[Path]:
+    """Locate clean asset file on disk inside AssetPath/LibraryName/RootFolder/ or AssetPath/RootFolder/ with O(1) indexed directory matching."""
+    target_dirs = []
+
+    # 1. Look inside library folder if it exists
+    lib_dir = assets_dir / library_name
+    if not lib_dir.exists():
+        for cand in get_cached_subdirs(assets_dir, dir_cache):
+            if cand.name.lower() == library_name.lower():
+                lib_dir = cand
+                break
+
+    # Build candidates
+    folder_candidates = [root_folder, title]
+    clean_no_year = re.sub(r'\s*\(\d{4}\)', '', root_folder).strip()
+    if clean_no_year and clean_no_year not in folder_candidates:
+        folder_candidates.append(clean_no_year)
+    title_no_year = re.sub(r'\s*\(\d{4}\)', '', title).strip()
+    if title_no_year and title_no_year not in folder_candidates:
+        folder_candidates.append(title_no_year)
+
+    def _search_in_directory(parent_dir: Path) -> List[Path]:
+        if not parent_dir or not parent_dir.exists():
+            return []
+
+        idx_key = str(parent_dir.resolve())
+        idx = None
+        if dir_cache is not None:
+            idx = dir_cache.setdefault("dir_indices", {}).get(idx_key)
+        if idx is None:
+            idx = DirectoryIndex(parent_dir)
+            if dir_cache is not None:
+                dir_cache.setdefault("dir_indices", {})[idx_key] = idx
+
+        # Priority 1: Match by external ID tag in folder name (O(1))
+        if imdb_id:
+            m_d = idx.by_imdb.get(str(imdb_id).lower().strip())
+            if m_d:
+                return [m_d]
+        if tmdb_id:
+            m_d = idx.by_tmdb.get(str(tmdb_id).lower().strip())
+            if m_d:
+                return [m_d]
+        if tvdb_id:
+            m_d = idx.by_tvdb.get(str(tvdb_id).lower().strip())
+            if m_d:
+                return [m_d]
+
+        # Priority 2: Direct folder candidate match (O(1))
+        for cand in folder_candidates:
+            if not cand:
+                continue
+            cand_l = cand.lower()
+            if cand_l in idx.by_name:
+                return [idx.by_name[cand_l]]
+
+        # Priority 3: Match stripped folder name (removing [imdb-xxx], etc.) (O(1))
+        non_alnum = re.compile(r'[\W_]+')
+        for cand in folder_candidates:
+            if not cand:
+                continue
+            cand_clean = non_alnum.sub('', cand.lower())
+            if cand_clean in idx.by_stripped:
+                return [idx.by_stripped[cand_clean]]
+            if cand_clean in idx.by_clean:
+                return [idx.by_clean[cand_clean]]
+
+        # Priority 4: Match with year stripped if year is known (O(1))
+        if year:
+            y_str = str(year)
+            for cand in folder_candidates:
+                if not cand:
+                    continue
+                c_noyear = non_alnum.sub('', cand.replace(y_str, '').lower())
+                if (c_noyear, y_str) in idx.by_stripped_noyear:
+                    return [idx.by_stripped_noyear[(c_noyear, y_str)]]
+
+        # Fallback linear scan if index had an unforeseen edge case
+        subdirs = idx.subdirs
+        for d in subdirs:
+            dl = d.name.lower()
+            if imdb_id and f"imdb-{str(imdb_id).lower()}" in dl:
+                return [d]
+            if tmdb_id and f"tmdb-{str(tmdb_id).lower()}" in dl:
+                return [d]
+            if tvdb_id and f"tvdb-{str(tvdb_id).lower()}" in dl:
+                return [d]
+
+        for cand in folder_candidates:
+            if not cand:
+                continue
+            p = parent_dir / cand
+            if p.exists() and p.is_dir():
+                return [p]
+
+        for d in subdirs:
+            stripped = re.sub(r'\s*[\[\{](?:imdb|tmdb|tvdb)-[^\]\}]+[\]\}]', '', d.name, flags=re.I).strip()
+            stripped_clean = non_alnum.sub('', stripped.lower())
+            for cand in folder_candidates:
+                if not cand:
+                    continue
+                cand_clean = non_alnum.sub('', cand.lower())
+                if stripped == cand or stripped_clean == cand_clean:
+                    return [d]
+
+        if year:
+            y_str = str(year)
+            for d in subdirs:
+                stripped = re.sub(r'\s*[\[\{](?:imdb|tmdb|tvdb)-[^\]\}]+[\]\}]', '', d.name, flags=re.I).strip()
+                if y_str in stripped:
+                    s_noyear = non_alnum.sub('', stripped.replace(y_str, '').lower())
+                    for cand in folder_candidates:
+                        if not cand:
+                            continue
+                        c_noyear = non_alnum.sub('', cand.replace(y_str, '').lower())
+                        if s_noyear and s_noyear == c_noyear:
+                            return [d]
+
+        return []
+
+    # Search inside library directory
+    if lib_dir and lib_dir.exists():
+        target_dirs = _search_in_directory(lib_dir)
+
+    # Search directly in assets_dir (flat structure fallback)
+    if not target_dirs:
+        target_dirs = _search_in_directory(assets_dir)
+
+    if not target_dirs:
+        return None
+
+    target_dir = target_dirs[0]
+    if asset_type == "directory":
+        return target_dir
+
+    # Fast cached file scan within target_dir
+    td_key = f"files_{target_dir.resolve()}"
+    files_map = None
+    if dir_cache is not None:
+        files_map = dir_cache.get(td_key)
+    if files_map is None:
+        try:
+            files_map = {f.name.lower(): f for f in target_dir.iterdir() if f.is_file()}
+        except Exception:
+            files_map = {}
+        if dir_cache is not None:
+            dir_cache[td_key] = files_map
+
+    exts = [".jpg", ".png", ".webp", ".jpeg"]
+    if asset_type == "poster":
+        stems = ["poster", "cover", "folder", f"{target_dir.name}_poster", f"{target_dir.name}", "show", "default"]
+    elif asset_type == "background":
+        stems = ["background", "fanart", "backdrop", "art", f"{target_dir.name}_background"]
+    else:
+        stems = ["poster", "cover"]
+
+    for ext in exts:
+        for stem in stems:
+            cand_fname = f"{stem}{ext}".lower()
+            if cand_fname in files_map:
+                cand_file = files_map[cand_fname]
+                try:
+                    if cand_file.resolve().is_relative_to(assets_dir.resolve()):
+                        return cand_file
+                except Exception:
+                    return cand_file
+
+    return None
+
+
+def find_season_poster(
+    show_dir: Path,
+    s_num: int,
+    r_folder: str = "",
+    dir_cache: Optional[Dict[str, Any]] = None
+) -> Optional[Path]:
+    """Find matching season poster on disk for season number s_num with fast in-memory caching."""
+    if not show_dir or not show_dir.exists():
+        return None
+
+    show_key = f"files_{show_dir.resolve()}"
+    files_map = None
+    if dir_cache is not None:
+        files_map = dir_cache.get(show_key)
+
+    if files_map is None:
+        try:
+            files_map = {f.name.lower(): f for f in show_dir.iterdir() if f.is_file()}
+        except Exception:
+            files_map = {}
+        if dir_cache is not None:
+            dir_cache[show_key] = files_map
+
+    allowed_exts = [".jpg", ".png", ".webp", ".jpeg"]
+    stems = [
+        f"Season{s_num:02d}",
+        f"Season{s_num}",
+        f"Season {s_num:02d}",
+        f"Season {s_num}",
+        f"season{s_num:02d}",
+        f"season{s_num}",
+        f"season {s_num:02d}",
+        f"season {s_num}",
+    ]
+    clean_r = re.sub(r'[\W_]+', '', str(r_folder))
+    if clean_r:
+        stems.extend([f"{clean_r}_Season{s_num:02d}", f"{clean_r}_Season{s_num}"])
+    if s_num == 0:
+        stems.extend(["Specials", "specials"])
+        if clean_r:
+            stems.extend([f"{clean_r}_Specials", f"{clean_r}_specials"])
+
+    for stem in stems:
+        for ext in allowed_exts:
+            fname = f"{stem}{ext}".lower()
+            if fname in files_map:
+                return files_map[fname]
+    return None
+
+
+def find_titlecard(
+    show_dir: Path,
+    s_num: int,
+    ep_num: int,
+    dir_cache: Optional[Dict[str, Any]] = None
+) -> Optional[Path]:
+    """
+    Locates clean episode titlecard image file on disk in show asset folder.
+    Supports standard S01E01, padded, unpadded, and season subdirectory layouts.
+    Uses cached titlecard index to prevent catastrophic recursive disk scans.
+    """
+    if not show_dir or not show_dir.exists():
+        return None
+
+    show_key = f"tc_{show_dir.resolve()}"
+    tc_map = None
+    if dir_cache is not None:
+        tc_map = dir_cache.get(show_key)
+
+    if tc_map is None:
+        tc_map = {}
+        tag_re = re.compile(r'(?i)\bs?(\d{1,3})[ex](\d{1,3})\b')
+        img_exts = {".jpg", ".jpeg", ".png", ".webp"}
+
+        try:
+            # 1. Direct files in show_dir
+            for f in show_dir.iterdir():
+                if f.is_file() and f.suffix.lower() in img_exts:
+                    m = tag_re.search(f.name)
+                    if m:
+                        s_idx = int(m.group(1))
+                        e_idx = int(m.group(2))
+                        k = f"s{s_idx:02d}e{e_idx:02d}"
+                        if k not in tc_map:
+                            tc_map[k] = f
+
+            # 2. Season subfolders in show_dir (e.g. "Season 01", "Season 1")
+            for d in show_dir.iterdir():
+                if d.is_dir() and "season" in d.name.lower():
+                    for f in d.iterdir():
+                        if f.is_file() and f.suffix.lower() in img_exts:
+                            m = tag_re.search(f.name)
+                            if m:
+                                s_idx = int(m.group(1))
+                                e_idx = int(m.group(2))
+                                k = f"s{s_idx:02d}e{e_idx:02d}"
+                                if k not in tc_map:
+                                    tc_map[k] = f
+        except Exception:
+            pass
+
+        if dir_cache is not None:
+            dir_cache[show_key] = tc_map
+
+    target_tag = f"s{s_num:02d}e{ep_num:02d}"
+    if target_tag in tc_map:
+        return tc_map[target_tag]
+
+    # Standard fallback patterns
+    patterns = [
+        f"S{s_num:02d}E{ep_num:02d}.jpg",
+        f"S{s_num:02d}E{ep_num:02d}.png",
+        f"s{s_num:02d}e{ep_num:02d}.jpg",
+        f"s{s_num:02d}e{ep_num:02d}.png",
+        f"S{s_num}E{ep_num}.jpg",
+        f"S{s_num}E{ep_num}.png",
+    ]
+    for p in patterns:
+        cand = show_dir / p
+        if cand.exists() and cand.is_file():
+            return cand
+
+    season_subdirs = [
+        f"Season {s_num:02d}",
+        f"Season {s_num}",
+        f"Season{s_num:02d}",
+        f"Season{s_num}",
+    ]
+    for sub in season_subdirs:
+        s_folder = show_dir / sub
+        if s_folder.exists() and s_folder.is_dir():
+            for p in patterns:
+                cand = s_folder / p
+                if cand.exists() and cand.is_file():
+                    return cand
+
+    return None
+
+
+# ==============================================================================
+# MULTI-RATING BADGE CLUSTER BUILDER
+# ==============================================================================
+
+def build_multi_rating_layers(
+    ratings: Dict[str, Any],
+    dyn_settings: Optional[Dict[str, Any]] = None,
+    canvas_type: str = "landscape",
+    assets_dir: Optional[Path] = None,
+    fonts_dir: Optional[Path] = None,
+    is_landscape: Optional[bool] = None,
+    is_backdrop: Optional[bool] = None,
+    sources: Optional[List[str]] = None,
+    alignment: Optional[str] = None,
+    position: Optional[str] = None,
+    contrast_box: Optional[bool] = None
+) -> List[Dict[str, Any]]:
+    """
+    Constructs overlay layers for multi-rating badges (IMDb, RT Critics, RT Audience, TMDb, Trakt, Letterboxd, Metacritic).
+    Renders official provider logos, clean formatted scores, and optional translucent dark contrast pill boxes.
+    """
+    if is_backdrop:
+        canvas_type = "landscape"
+    elif is_landscape is not None:
+        canvas_type = "landscape" if is_landscape else "portrait"
+
+    if dyn_settings is None:
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        dyn_settings = get_dynamic_overlays_settings()
+    else:
+        dyn_settings = dict(dyn_settings)
+
+    if sources is not None:
+        dyn_settings["rating_sources"] = sources
+    if alignment is not None:
+        dyn_settings["rating_alignment"] = alignment
+    if position is not None:
+        dyn_settings["rating_position"] = position
+    if contrast_box is not None:
+        dyn_settings["rating_contrast_box"] = contrast_box
+
+    if not ratings:
+        return []
+
+    if assets_dir is None:
+        assets_dir = Path(__file__).resolve().parent.parent.parent / "Overlayfiles" / "dynamic_overlays" / "assets" / "rating"
+    if fonts_dir is None:
+        fonts_dir = Path(__file__).resolve().parent.parent.parent / "Overlayfiles" / "dynamic_overlays" / "fonts"
+
+    inter_font = fonts_dir / "Inter-Bold.ttf"
+    font_to_use = str(inter_font) if inter_font.exists() else None
+
+    # Retrieve settings
+    active_sources = dyn_settings.get("sources")
+    if active_sources is None:
+        active_sources = dyn_settings.get("rating_sources") or ["imdb", "tomatoes", "tmdb"]
+    alignment = dyn_settings.get("orientation") or dyn_settings.get("rating_alignment", "horizontal")  # "horizontal" or "vertical"
+    position = dyn_settings.get("position") or dyn_settings.get("rating_position", "top-right")
+    horizontal = dyn_settings.get("horizontal_align") or dyn_settings.get("horizontal_position")
+    vertical = dyn_settings.get("vertical_align") or dyn_settings.get("vertical_position")
+    if horizontal or vertical:
+        position = f"{vertical or position.split('-')[0]}-{horizontal or position.split('-')[-1]}"
+    contrast_box = dyn_settings.get("contrast_box", dyn_settings.get("rating_contrast_box", True))
+    theme = str(dyn_settings.get("theme") or dyn_settings.get("rating_theme") or "dark").lower()
+    back_radius = int(dyn_settings.get("back_radius", 8))
+    back_padding = int(dyn_settings.get("back_padding", 6))
+    spacing = max(0, int(dyn_settings.get("spacing", 15)))
+    badge_step_h = dyn_settings.get("badge_step_h")
+    badge_step_v = dyn_settings.get("badge_step_v")
+    score_options = {"score_size_mode", "score_width", "score_position", "score_alignment"}
+    custom_score_layout = any(key in dyn_settings for key in score_options)
+    score_size_mode = str(dyn_settings.get("score_size_mode") or "auto").lower()
+    if score_size_mode not in ("auto", "fixed", "content"):
+        score_size_mode = "auto"
+    score_position = "left" if dyn_settings.get("score_position") == "left" else "right"
+    score_alignment = str(dyn_settings.get("score_alignment") or "left").lower()
+    if score_alignment not in ("left", "center", "right"):
+        score_alignment = "left"
+    try:
+        requested_score_width = max(0, min(600, int(dyn_settings.get("score_width") or 0)))
+    except (TypeError, ValueError):
+        requested_score_width = 0
+
+    is_land = canvas_type == "landscape"
+    font_size = int(dyn_settings.get("font_size", 28 if is_land else 44))
+    configured_logo_height = dyn_settings.get("scale_height")
+    scale_h = int(configured_logo_height) if configured_logo_height is not None else max(
+        1, round(font_size * (36 / 28 if is_land else 52 / 44))
+    )
+    has_badge_background = theme in ("brand", "score") or contrast_box
+    effective_back_padding = back_padding if has_badge_background else 0
+    measure_font = None
+    if font_to_use:
+        try:
+            measure_font = ImageFont.truetype(font_to_use, font_size)
+        except (OSError, ValueError):
+            pass
+
+    if measure_font:
+        digit_width = max(measure_font.getbbox(str(digit))[2] - measure_font.getbbox(str(digit))[0] for digit in range(10))
+        dot_width = measure_font.getbbox(".")[2] - measure_font.getbbox(".")[0]
+        percent_width = measure_font.getbbox("%")[2] - measure_font.getbbox("%")[0]
+        score_bounds = measure_font.getbbox("0123456789.%")
+        score_height = score_bounds[3] - score_bounds[1]
+    else:
+        digit_width = (font_size * 3 + 3) // 4
+        dot_width = percent_width = digit_width
+        score_height = font_size
+
+    # Determine corners
+    if "left" in position:
+        h_align = "left"
+        default_h_offset = 40
+    elif "center" in position:
+        h_align = "center"
+        default_h_offset = 0
+    else:
+        h_align = "right"
+        default_h_offset = 40
+
+    if "bottom" in position:
+        v_align = "bottom"
+        default_v_offset = 50
+    elif "center" in position:
+        v_align = "center"
+        default_v_offset = 0
+    else:
+        v_align = "top"
+        default_v_offset = 40
+
+    base_h_offset = int(dyn_settings.get("offset_x", dyn_settings.get("horizontal_offset", default_h_offset)))
+    base_v_offset = int(dyn_settings.get("offset_y", dyn_settings.get("vertical_offset", default_v_offset)))
+
+    # Ordered list of ratings to display for all requested sources (no 3-slot limitation!)
+    ordered_items = []
+    seen_sources = set()
+
+    for raw_src in active_sources:
+        src = str(raw_src).strip().lower()
+        val = None
+        canon_src = src
+        if src in ratings:
+            val = ratings.get(src)
+        elif src in ["tomatoes", "rt", "rotten_tomatoes", "rt_critic"]:
+            val = ratings.get("rt_critic") or ratings.get("tomatoes")
+            canon_src = "tomatoes"
+        elif src in ["tomatoesaudience", "rt_audience", "audience", "popcorn"]:
+            val = ratings.get("rt_audience") or ratings.get("tomatoesaudience")
+            canon_src = "tomatoesaudience"
+
+        if canon_src not in seen_sources and val is not None and str(val).strip() not in ("", "0", "None"):
+            ordered_items.append((canon_src, str(val).strip()))
+            seen_sources.add(canon_src)
+
+    if not ordered_items:
+        return []
+
+    layers = []
+    horizontal_distance = 0
+    vertical_distance = 0
+    for idx, (src, raw_val) in enumerate(ordered_items):
+        # Format score and pick logo
+        logo_file = None
+        score_text = raw_val
+
+        try:
+            num = float(raw_val.replace("%", "").strip())
+        except ValueError:
+            num = None
+
+        if src == "imdb":
+            logo_file = assets_dir / "IMDb.png"
+            if num is not None:
+                if num > 10:
+                    num /= 10.0
+                score_text = f"{num:.1f}"
+        elif src == "tomatoes":
+            if num is not None:
+                if num <= 1.0:
+                    num *= 100.0
+                score_text = f"{int(round(num))}%"
+                logo_file = assets_dir / ("RT-Crit-Fresh.png" if num >= 60 else "RT-Crit-Rotten.png")
+            else:
+                logo_file = assets_dir / "Critic.png"
+        elif src == "tomatoesaudience":
+            if num is not None:
+                if num <= 1.0:
+                    num *= 100.0
+                score_text = f"{int(round(num))}%"
+                logo_file = assets_dir / ("RT-Aud-Fresh.png" if num >= 60 else "RT-Aud-Rotten.png")
+            else:
+                logo_file = assets_dir / "Audience.png"
+        elif src == "tmdb":
+            logo_file = assets_dir / "TMDb.png"
+            if num is not None:
+                if num > 10:
+                    num /= 10.0
+                score_text = f"{num:.1f}"
+        elif src == "mdblist_episode":
+            if num is not None:
+                score_text = f"MDB {num:.1f}"
+        elif src == "trakt":
+            logo_file = assets_dir / "Trakt.png"
+            if num is not None:
+                if num <= 10.0:
+                    score_text = f"{int(round(num * 10))}%"
+                else:
+                    score_text = f"{int(round(num))}%"
+        elif src == "letterboxd":
+            logo_file = assets_dir / "Letterboxd.png"
+            if num is not None:
+                score_text = f"{num:.1f}"
+        elif src == "metacritic":
+            logo_file = assets_dir / "Metacritic.png"
+            if num is not None:
+                score_text = f"{int(round(num))}"
+        elif src in ("simkl", "mal"):
+            logo_file = assets_dir / ("SIMKL.png" if src == "simkl" else "MAL.png")
+            if src == "mal" and not logo_file.exists() and (assets_dir / "MyAnimeList.png").exists():
+                logo_file = assets_dir / "MyAnimeList.png"
+            if num is not None:
+                score_text = f"{num:.1f}"
+        else:
+            cand = assets_dir / f"{src.capitalize()}.png"
+            logo_file = cand if cand.exists() else None
+
+        selected_asset = dyn_settings.get(f"file_{src}")
+        if selected_asset:
+            asset_path = Path(str(selected_asset))
+            logo_file = asset_path if asset_path.is_absolute() else assets_dir.parent / asset_path
+
+        if src in ("simkl", "mal") and not selected_asset and not logo_file.exists():
+            score_text = f"{src.upper()} {score_text}"
+
+        logo_width = 0
+        logo_height = 0
+        if logo_file and logo_file.exists():
+            try:
+                with Image.open(logo_file) as logo:
+                    source_width, source_height = logo.size
+                logo_height = scale_h
+                logo_width = int(round(source_width * scale_h / source_height))
+            except (OSError, ValueError, ZeroDivisionError):
+                pass
+        if measure_font:
+            text_bbox = measure_font.getbbox(score_text)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+        else:
+            text_width = (len(score_text) * font_size * 3 + 3) // 4
+            text_height = font_size
+        if src in ("tomatoes", "tomatoesaudience", "trakt"):
+            score_width = 3 * digit_width + percent_width + 4
+        elif src == "metacritic":
+            score_width = 3 * digit_width + 4
+        else:
+            score_width = 3 * digit_width + dot_width + 4
+        if src in ("simkl", "mal") and not logo_file.exists():
+            score_width = max(score_width, text_width)
+        if score_size_mode == "fixed" and requested_score_width:
+            score_width = max(16, requested_score_width)
+        content_width = (score_width if custom_score_layout else max(text_width, score_width)) + logo_width + (8 if logo_width else 0)
+        content_height = max(text_height, score_height, logo_height)
+
+        # Calculate position for this badge
+        if alignment == "vertical":
+            cur_h_offset = base_h_offset
+            cur_v_offset = base_v_offset + (
+                idx * int(badge_step_v) if badge_step_v is not None else vertical_distance
+            )
+            if badge_step_v is None:
+                vertical_distance += content_height + (2 * effective_back_padding) + spacing + 1
+        else:
+            cur_h_offset = base_h_offset + (
+                idx * int(badge_step_h) if badge_step_h is not None else horizontal_distance
+            )
+            cur_v_offset = base_v_offset
+            if badge_step_h is None:
+                horizontal_distance += content_width + (2 * effective_back_padding) + spacing + 1
+
+        layer_def = {
+            "name": f"multi_rating_{src}",
+            "type": "badge",
+            "text": score_text,
+            "image_path": str(logo_file) if logo_file and (logo_file.exists() or selected_asset) else None,
+            "font_path": font_to_use,
+            "font_size": font_size,
+            "font_color": "#FFFFFF",
+            "horizontal_align": h_align,
+            "horizontal_offset": cur_h_offset,
+            "vertical_align": v_align,
+            "vertical_offset": cur_v_offset,
+            "addon_position": "left",
+            "addon_offset": 8,
+            "scale_height": scale_h,
+            "back_width": content_width,
+            "back_height": content_height,
+            "back_align": "left",
+        }
+        if custom_score_layout:
+            layer_def.update({
+                "score_size_mode": score_size_mode,
+                "score_width": score_width,
+                "score_position": score_position,
+                "score_alignment": score_alignment,
+            })
+
+        if theme in ("brand", "score"):
+            back_color, font_color = _rating_theme_colors(theme, src, num)
+            layer_def["back_color"] = back_color
+            layer_def["font_color"] = font_color
+            layer_def["back_radius"] = back_radius
+            layer_def["back_padding"] = back_padding
+        elif contrast_box:
+            layer_def["back_color"] = "#000000B3"
+            layer_def["back_radius"] = back_radius
+            layer_def["back_padding"] = back_padding
+
+        layers.append(layer_def)
+
+    if alignment == "vertical":
+        row_width = max(layer["back_width"] for layer in layers)
+        for layer in layers:
+            layer["back_width"] = row_width
+
+    return layers
+
+
+RATING_BRAND_COLORS = {
+    "mdblist_episode": ("#28445AE6", "#FFFFFF"),
+    "simkl": ("#161616E6", "#00C79F"),
+    "mal": ("#2E51A2E6", "#FFFFFF"),
+    "imdb": ("#F5C518E6", "#000000"),
+    "tmdb": ("#0D253FE6", "#90CEA1"),
+    "trakt": ("#ED1C24E6", "#FFFFFF"),
+    "letterboxd": ("#14181CE6", "#00E054"),
+}
+LEGACY_AUDIENCE_RATING_LAYERS = {
+    "rating_high", "rating_mid", "rating_low", "user_rating", "user_rating_black",
+}
+
+
+def _rating_theme_colors(theme: str, source: str, score: Optional[float]) -> Tuple[str, str]:
+    """Return (back_color, font_color) for themed rating pills; score is the normalized display value."""
+    percent = None
+    if score is not None:
+        percent = score * 10 if source in ("imdb", "tmdb", "simkl", "mal", "mdblist_episode") else (score * 20 if source == "letterboxd" else score)
+    if theme == "brand" and source in RATING_BRAND_COLORS:
+        return RATING_BRAND_COLORS[source]
+    if theme == "brand" and source in ("tomatoes", "tomatoesaudience"):
+        return ("#FA320AE6", "#FFFFFF") if percent is None or percent >= 60 else ("#0AC855E6", "#FFFFFF")
+    if percent is None:
+        return "#000000B3", "#FFFFFF"
+    if percent >= 75:
+        return "#27C24CE6", "#FFFFFF"
+    if percent >= 60:
+        return "#FFCC33E6", "#000000"
+    return "#E53935E6", "#FFFFFF"
+
+
+# ==============================================================================
+# OVERLAY RECIPE BUILDER
+# ==============================================================================
+
+def _get_overlay_config_engine(overlays_dir):
+    from overlay_resolver import OverlayConfigEngine
+    global _CACHED_CONFIG_ENGINE, _CACHED_CONFIG_ENGINE_ROOT
+    project_root = overlays_dir.parent.parent
+    if not (project_root / "Overlayfiles" / "dynamic_overlays").exists() and not (project_root / "defaults").exists():
+        project_root = PROJECT_ROOT
+    if "_CACHED_CONFIG_ENGINE" not in globals() or _CACHED_CONFIG_ENGINE is None or _CACHED_CONFIG_ENGINE_ROOT != project_root:
+        _CACHED_CONFIG_ENGINE = OverlayConfigEngine(project_root)
+        _CACHED_CONFIG_ENGINE_ROOT = project_root
+    return _CACHED_CONFIG_ENGINE
+
+
+def build_overlay_layers_for_item(
+    item_metadata: Dict[str, Any],
+    library_rules: List[Dict[str, Any]],
+    overlays_dir: Path,
+    is_landscape: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Constructs in-memory overlay layers for an individual media item based on active
+    overlay configuration rules and item attributes (languages, commonsense, runtime, status, etc.).
+    Uses the OverlayConfigEngine to resolve templates, queues, groups,
+    and conditionals with high precision.
+    """
+    codec_titles = {
+        "truehd_atmos": "TrueHD Atmos", "plus_atmos": "EAC3 Atmos", "dolby_atmos": "Dolby Atmos",
+        "dtsx": "DTS:X", "ma": "DTS-HD MA", "hra": "DTS-HD HRA", "plus": "EAC3", "digital": "AC3"
+    }
+    from overlay_resolver import matches_artwork_type
+
+    library_rules = [rule for rule in library_rules if isinstance(rule, dict) and matches_artwork_type(rule, item_metadata)]
+    codec_key = str(item_metadata.get("audio_codec") or "").strip().lower()
+    if codec_key in codec_titles and not item_metadata.get("audio_track_title"):
+        item_metadata = {**item_metadata, "audio_track_title": codec_titles[codec_key]}
+    item_level = "backdrop" if item_metadata.get("is_backdrop") else (
+        "season" if item_metadata.get("is_season") else (
+            "episode" if item_metadata.get("is_episode") or item_metadata.get("media_type") == "episode" else (
+                "show" if item_metadata.get("media_type") == "show" else "movie"
+            )
+        )
+    )
+    rating_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating")]
+    single_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "single_rating"]
+    resolution_rules = [rule for rule in library_rules if isinstance(rule, dict) and rule.get("default") == "resolution"]
+    streaming_rules = [rule for rule in library_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming"]
+    native_rating_layers = []
+    for rule in single_rules:
+        variables = rule.get("template_variables") or {}
+        target = str(variables.get("builder_level", "all")).lower()
+        if target not in ("all", item_level):
+            continue
+        score = item_metadata.get("audience_rating") or item_metadata.get("rating")
+        single_layers = build_multi_rating_layers(
+            {"imdb": score} if score is not None else {},
+            {**variables, "sources": ["imdb"], "theme": variables.get("theme", "score")},
+            canvas_type="landscape" if is_landscape else "portrait",
+            assets_dir=overlays_dir / "assets" / "rating", fonts_dir=overlays_dir / "fonts"
+        )
+        for layer in single_layers:
+            layer.update({"name": "single_rating", "type": "text", "image_path": None})
+            for key in ("back_width", "back_height", "back_align", "score_size_mode", "score_width", "score_position", "score_alignment"):
+                layer.pop(key, None)
+        native_rating_layers.extend(single_layers)
+    for rule in resolution_rules:
+        variables = rule.get("template_variables") or {}
+        target = str(variables.get("builder_level", "all")).lower()
+        if target not in ("all", item_level) and not (item_level == "backdrop" and target in ("movie", "show")):
+            continue
+        resolution = str(item_metadata.get("resolution") or "").strip().lower()
+        if resolution in ("", "none", "off", "unknown"):
+            continue
+        tier = next((name for name, terms in (
+            ("4k", ("4k", "2160", "3840", "uhd")), ("1080p", ("1080", "fhd")),
+            ("720p", ("720",)), ("576p", ("576", "pal")), ("480p", ("480", "sd", "ntsc"))
+        ) if any(term in resolution for term in terms)), None)
+        if tier is None:
+            continue
+        if variables.get("mode") == "banner" and not is_landscape:
+            banner_assets = {
+                "4k": ("4K_banner.png", "4K ULTRA HD"),
+                "1080p": ("1080p_banner.png", "1080P FULL HD"),
+                "720p": ("720p_banner.png", "720P HD"),
+                "576p": ("576p_banner.png", "576P SD"),
+                "480p": ("480p_banner.png", "480P SD"),
+            }
+            banner_filename, banner_text = banner_assets[tier]
+            selected_asset = variables.get(f"file_{tier}")
+            if selected_asset:
+                asset_path = Path(str(selected_asset))
+                artwork = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
+            else:
+                artwork = next((path for path in (overlays_dir / "assets" / banner_filename, overlays_dir.parent / banner_filename) if path.exists()), None)
+            banner = {"name": "resolution_banner", "horizontal_align": "center", "horizontal_offset": 0, "vertical_align": "top", "vertical_offset": 0}
+            if artwork:
+                banner.update({"type": "image", "image_path": str(artwork), "scale_width": PORTRAIT_DIM[0]})
+            else:
+                banner.update({"type": "text", "text": banner_text, "font_size": 54, "font_color": "#FFFFFF",
+                               "back_color": "#111111EE", "back_width": PORTRAIT_DIM[0], "back_height": 100})
+                font_path = overlays_dir / "fonts" / "Inter-Bold.ttf"
+                if font_path.exists():
+                    banner["font_path"] = str(font_path)
+            native_rating_layers.append(banner)
+        else:
+            variant = "dvhdr" if item_metadata.get("has_dolby_vision") and item_metadata.get("has_hdr") else ("dv" if item_metadata.get("has_dolby_vision") else ("hdr" if item_metadata.get("has_hdr") else ""))
+            badge_dir = overlays_dir / "assets" / "resolution"
+            selected_asset = variables.get(f"file_{tier}")
+            if selected_asset:
+                asset_path = Path(str(selected_asset))
+                artwork = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
+            else:
+                engine = _get_overlay_config_engine(overlays_dir)
+                artwork = engine.resolve_image_path(f"resolution/{tier}{variant}.png")
+                if artwork is None or not artwork.exists():
+                    artwork = engine.resolve_image_path(f"resolution/{tier}.png") or badge_dir / f"{tier}.png"
+            native_rating_layers.append({
+                "name": "resolution", "type": "image", "image_path": str(artwork), "scale_height": int(variables.get("scale_height", 55)),
+                "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position") or "left",
+                "vertical_align": variables.get("vertical_align") or variables.get("vertical_position") or "top",
+                "horizontal_offset": int(variables.get("horizontal_offset", 15)), "vertical_offset": int(variables.get("vertical_offset", 15)),
+                "back_color": variables.get("back_color", "#00000099"), "back_radius": int(variables.get("back_radius", 15)),
+                "back_width": int(variables.get("back_width") or (260 if is_landscape else 245)),
+                "back_height": int(variables.get("back_height") or (85 if is_landscape else 95)),
+                "back_align": variables.get("back_align") or "center",
+                "back_padding": int(variables.get("back_padding", 0)),
+                "fit_to_box": True,
+            })
+    for rule in rating_rules:
+        variables = rule.get("template_variables") or {}
+        target = str(variables.get("builder_level", "all")).lower()
+        if target not in ("all", item_level) and not (item_level == "backdrop" and target in ("movie", "show")):
+            continue
+        native_rating_layers.extend(build_multi_rating_layers(
+            ratings=item_metadata.get("multi_ratings") or {},
+            dyn_settings={**get_dynamic_overlays_settings(), **variables},
+            canvas_type="landscape" if is_landscape else "portrait",
+            assets_dir=overlays_dir / "assets" / "rating",
+            fonts_dir=overlays_dir / "fonts"
+        ))
+    for rule in streaming_rules:
+        variables = rule.get("template_variables") or {}
+        target = str(variables.get("builder_level", "show" if item_level == "show" else "movie")).lower()
+        if target in ("all", item_level) or (item_level == "backdrop" and target in ("movie", "show")):
+            native_rating_layers.extend(build_streaming_layers(item_metadata, variables, overlays_dir))
+    aggregated_parent = bool(item_metadata.get("_aggregated_episode_streams")) and item_level in ("show", "season", "backdrop")
+    native_language_layers = []
+    native_parent_stream_layers = []
+    flag_assets_dir = overlays_dir / "assets"
+
+    def resolve_parent_flag(code, variables):
+        filename = LANGUAGE_TO_FLAG_MAP.get(code, f"{code}.png")
+        style = "round" if str(variables.get("style", "round")).lower() == "round" else "square"
+        selected_asset = variables.get(f"file_{code}") or f"flag/{style}/{filename}"
+        return _get_overlay_config_engine(overlays_dir).resolve_image_path(selected_asset) or flag_assets_dir / "flag" / style / filename
+
+    if aggregated_parent:
+        for rule in library_rules:
+            if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "languages":
+                continue
+            variables = rule.get("template_variables") or {}
+            target = str(variables.get("builder_level", "episode")).lower()
+            target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
+            if target not in ("all", target_level):
+                continue
+            subtitle_rule = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
+            detected = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
+            allowed = [str(code).strip().lower() for code in variables.get("languages", ["de", "en", "ja", "zh", "ko"])]
+            selected = []
+            for value in detected:
+                code = str(value).strip().lower()
+                code = LANGUAGE_MAP.get(code, code)
+                if code in allowed and code not in selected:
+                    selected.append(code)
+            if not item_metadata.get("_language_order_precomputed"):
+                priority = {code: index for index, code in enumerate(allowed)}
+                selected.sort(key=priority.__getitem__)
+            if item_level in ("show", "season") and variables.get("parent_language_mode", "preferred_then_frequency") == "preferred_then_frequency" and allowed and allowed[0] in selected:
+                selected.remove(allowed[0])
+                selected.insert(0, allowed[0])
+            selected = selected[:max(0, min(5, int(variables.get("overlay_limit", 5))))]
+            display_priority = {code: index for index, code in enumerate(allowed)}
+            selected.sort(key=display_priority.__getitem__)
+            horizontal_align = variables.get("horizontal_align") or variables.get("horizontal_position", "left")
+            vertical_align = variables.get("vertical_align") or variables.get("vertical_position", "bottom")
+            horizontal_offset = int(variables.get("horizontal_offset", 48))
+            vertical_offset = int(variables.get("vertical_offset", 37))
+            hide_text = str(variables.get("hide_text", True)).lower() in ("true", "1")
+            font_file = None
+            if not hide_text:
+                if variables.get("font"):
+                    f_cand = Path(variables["font"])
+                    if f_cand.exists():
+                        font_file = str(f_cand)
+                    else:
+                        for fd in (overlays_dir / "fonts", PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts"):
+                            if (fd / f_cand.name).exists():
+                                font_file = str(fd / f_cand.name)
+                                break
+                if not font_file:
+                    try:
+                        from overlay_engine import get_candidate_font_dirs
+                        for cand_dir in get_candidate_font_dirs():
+                            cand_f = cand_dir / "Inter-Bold.ttf"
+                            if cand_f.exists():
+                                font_file = str(cand_f)
+                                break
+                    except Exception:
+                        pass
+                if not font_file:
+                    for cand_f in [overlays_dir / "fonts" / "Inter-Bold.ttf", PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "fonts" / "Inter-Bold.ttf"]:
+                        if cand_f.exists():
+                            font_file = str(cand_f)
+                            break
+                    if not font_file:
+                        font_file = "Inter-Bold.ttf"
+
+            for index, code in enumerate(selected):
+                position_index = len(selected) - index - 1 if vertical_align == "bottom" else index
+                if hide_text:
+                    native_language_layers.append({
+                        "name": f"language_flag_{code}",
+                        "type": "image",
+                        "image_path": str(resolve_parent_flag(code, variables)),
+                        "horizontal_align": horizontal_align,
+                        "horizontal_offset": horizontal_offset,
+                        "vertical_align": vertical_align,
+                        "vertical_offset": vertical_offset + position_index * 61,
+                    })
+                else:
+                    lang_text = code.lower() if str(variables.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                    style = str(variables.get("style", "round")).lower()
+                    flag_align = variables.get("flag_alignment") or ("right" if subtitle_rule else "left")
+                    back_radius = 26 if style in ("round", "half") else 0
+                    if variables.get("back_radius") is not None:
+                        try:
+                            back_radius = int(variables["back_radius"])
+                        except (ValueError, TypeError):
+                            pass
+
+                    native_language_layers.append({
+                        "name": f"language_flag_{code}",
+                        "type": "text",
+                        "text": lang_text,
+                        "image_path": str(resolve_parent_flag(code, variables)),
+                        "addon_position": flag_align,
+                        "addon_offset": int(variables.get("offset", 10)),
+                        "font_path": font_file,
+                        "font_size": int(variables.get("font_size") or (70 if variables.get("size") == "big" else 50)),
+                        "font_color": variables.get("font_color", "#FFFFFF"),
+                        "back_color": variables.get("back_color", "#00000000"),
+                        "back_width": int(variables["back_width"]) if variables.get("back_width") else (290 if variables.get("three_characters") and variables.get("size") == "big" else (230 if variables.get("three_characters") else (216 if variables.get("size") == "big" else 190))),
+                        "back_height": int(variables["back_height"]) if variables.get("back_height") else (60 if variables.get("size") == "big" else None),
+                        "back_radius": back_radius,
+                        "back_padding": int(variables.get("back_padding", 0)),
+                        "back_align": flag_align,
+                        "horizontal_align": horizontal_align,
+                        "horizontal_offset": horizontal_offset,
+                        "vertical_align": vertical_align,
+                        "vertical_offset": vertical_offset + position_index * 61,
+                    })
+
+        for rule in library_rules:
+            if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "audio_codec":
+                continue
+            variables = rule.get("template_variables") or {}
+            raw_target = variables.get("builder_level", "all")
+            targets = [str(value).strip().lower() for value in (raw_target if isinstance(raw_target, list) else str(raw_target).split(","))]
+            target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
+            if not any(target in ("all", target_level) for target in targets):
+                continue
+            candidates = [
+                str(item_metadata.get(key) or "")
+                for key in ("audio_track_title", "audio_title", "audio_codec", "audio_profile", "filepath", "clean_tc", "title")
+            ]
+            matched_codec = next((name for name, pattern in AUDIO_CODEC_PATTERNS if pattern.search(" ".join(candidates))), None)
+            if not matched_codec:
+                continue
+            style = str(variables.get("style", "compact")).lower()
+            engine = _get_overlay_config_engine(overlays_dir)
+            selected_asset = variables.get(f"file_{matched_codec}")
+            if selected_asset:
+                codec_image = engine.resolve_image_path(str(selected_asset))
+            else:
+                codec_image = engine.resolve_image_path(f"audio_codec/{style}/{matched_codec}.png")
+                if codec_image is None:
+                    codec_image = engine.resolve_image_path(f"audio_codec/standard/{matched_codec}.png")
+            if codec_image is not None and codec_image.exists():
+                native_parent_stream_layers.append({
+                    "name": f"audio_codec_{matched_codec}",
+                    "type": "image",
+                    "image_path": str(codec_image),
+                    "back_color": variables.get("back_color", "#00000099"),
+                    "back_width": int(variables.get("back_width", 305)),
+                    "back_height": int(variables.get("back_height", 105)),
+                    "back_radius": int(variables.get("back_radius", 15)),
+                    "back_align": variables.get("back_align", "center"),
+                    "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position", "center"),
+                    "horizontal_offset": int(variables.get("horizontal_offset", 0)),
+                    "vertical_align": variables.get("vertical_align") or variables.get("vertical_position", "top"),
+                    "vertical_offset": int(variables.get("vertical_offset", 15)),
+                })
+
+    engine_rules = []
+    for rule in library_rules:
+        if rule in rating_rules or rule in single_rules or rule in resolution_rules or rule in streaming_rules:
+            continue
+        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("languages", "audio_codec"):
+            continue
+        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() == "languages":
+            continue
+        engine_rules.append(rule)
+    try:
+        engine = _get_overlay_config_engine(overlays_dir)
+        layers = engine.evaluate_item(item_metadata, engine_rules)
+        if rating_rules and item_metadata.get("multi_ratings"):
+            layers = [
+                layer for layer in layers
+                if str(layer.get("name") or "").lower() not in LEGACY_AUDIENCE_RATING_LAYERS
+            ]
+        elif any(str(layer.get("name") or "").lower() in ("user_rating", "user_rating_black") for layer in layers):
+            native_rating_layers = [layer for layer in native_rating_layers if layer.get("name") != "single_rating"]
+        if any(layer.get("name") in ("resolution_banner", "resolution") for layer in native_rating_layers):
+            layers = [layer for layer in layers if str(layer.get("name") or "").lower() not in ("4k_banner", "resolution_banner", "resolution", "4k", "1080p", "720p", "576p", "480p")]
+
+        if layers or native_rating_layers or native_language_layers or native_parent_stream_layers or not engine_rules:
+            if is_landscape:
+                layers = [l for l in layers if l.get("name") not in ("4K_banner", "resolution_banner")]
+            else:
+                has_banner = any(l.get("name") in ("4K_banner", "resolution_banner") for l in layers)
+                if has_banner:
+                    layers = [
+                        l for l in layers
+                        if str(l.get("name") or "").lower() not in (
+                            "4k", "1080p", "720p", "576p", "480p", "dv", "hdr", "plus", "hlg", "force-filter", "resolution"
+                        )
+                    ]
+            layers = [l for l in layers if str(l.get("name") or "").lower() != "force-filter"]
+            return layers + native_rating_layers + native_language_layers + native_parent_stream_layers
+    except Exception as e:
+        logger.warning(f"[OverlaySync] OverlayConfigEngine evaluation error: {e}. Falling back to standard rules.")
+
+    # 2. Safety Fallback: Direct rule construction
+    layers = []
+    assets_dir = overlays_dir / "assets"
+
+    def resolve_flag_path(c_code: str) -> Path:
+        return resolve_parent_flag(c_code, lang_vars)
+
+    fonts_dir = overlays_dir / "fonts"
+
+    # Select font
+    inter_font = fonts_dir / "Inter-Bold.ttf"
+    colus_font = fonts_dir / "Colus-Regular.ttf"
+    if not colus_font.exists():
+        colus_font = overlays_dir.parent / "Colus-Regular.ttf"
+    circ_font = fonts_dir / "CircularStd-Bold.otf"
+    font_to_use = str(inter_font) if inter_font.exists() else (str(circ_font) if circ_font.exists() else str(colus_font))
+
+    # Flatten rule names and variables
+    rule_names: Dict[str, Dict[str, Any]] = {}
+    for r in library_rules:
+        if not isinstance(r, dict):
+            continue
+        r_name = str(r.get("default") or r.get("file") or r.get("name") or "").lower()
+        base_name = Path(r_name).stem.lower()
+        vars_dict = r.get("template_variables") or r.get("variables") or {}
+        if base_name in ("languages", "audio_codec"):
+            raw_target = vars_dict.get("builder_level", "episode" if base_name == "languages" else "all")
+            targets = [str(value).strip().lower() for value in (raw_target if isinstance(raw_target, list) else str(raw_target).split(","))]
+            target_level = item_metadata.get("media_type") if item_level == "backdrop" else item_level
+            if not any(target in ("all", target_level) for target in targets):
+                continue
+        if r_name:
+            rule_names[r_name] = vars_dict
+        if base_name:
+            rule_names[base_name] = vars_dict
+        for vk, vv in vars_dict.items():
+            if vv is True or str(vv).lower() == "true":
+                rule_names[vk.lower()] = vars_dict
+
+    media_type = item_metadata.get("media_type", "movie")
+    is_season = (item_metadata.get("season_number") is not None)
+
+    # 1. 4K / Resolution Ribbon / Banner / Corner Badges
+    resolution = str(item_metadata.get("resolution") or "").strip().lower()
+    has_4k_banner = "4k_banner" in rule_names
+    has_res_rule = "resolution" in rule_names or "4k" in rule_names or has_4k_banner
+
+    if resolution and resolution not in ("none", "off", "false", "", "unknown"):
+        if has_res_rule or "4k" in resolution:
+            is_4k = ("4k" in resolution or "3840" in resolution or "2160" in resolution or "uhd" in resolution)
+            if has_4k_banner and is_4k and (assets_dir / "4K_banner.png").exists() and not is_landscape:
+                layers.append({
+                    "name": "resolution_banner",
+                    "type": "image",
+                    "image_path": str(assets_dir / "4K_banner.png"),
+                    "horizontal_align": "center",
+                    "horizontal_offset": 0,
+                    "vertical_align": "top",
+                    "vertical_offset": 0
+                })
+            elif "resolution" in rule_names or has_res_rule:
+                res_vars = rule_names.get("resolution", {})
+                h_pos = res_vars.get("horizontal_align") or res_vars.get("horizontal_position", "left")
+                v_pos = res_vars.get("vertical_align") or res_vars.get("vertical_position", "top")
+                h_off = int(res_vars.get("horizontal_offset", 15))
+                v_off = int(res_vars.get("vertical_offset", 15))
+
+                tier = "1080p"
+                if is_4k:
+                    tier = "4k"
+                elif "1080" in resolution or "fhd" in resolution:
+                    tier = "1080p"
+                elif "720" in resolution or "hd" in resolution:
+                    tier = "720p"
+                elif "576" in resolution or "pal" in resolution:
+                    tier = "576p"
+                elif "480" in resolution or "sd" in resolution or "ntsc" in resolution:
+                    tier = "480p"
+
+                has_dv = bool(item_metadata.get("has_dolby_vision"))
+                has_hdr = bool(item_metadata.get("has_hdr"))
+
+                badge_cands = []
+                if has_dv and has_hdr:
+                    badge_cands.extend([f"{tier}dvhdr.png", f"{tier}dvhdrplus.png"])
+                elif has_dv:
+                    badge_cands.append(f"{tier}dv.png")
+                elif has_hdr:
+                    badge_cands.append(f"{tier}hdr.png")
+                badge_cands.extend([f"{tier}.png", f"{tier.upper()}.png"])
+
+                selected_asset = variables.get(f"file_{tier}")
+                if selected_asset:
+                    asset_path = Path(str(selected_asset))
+                    badge_file = asset_path if asset_path.is_absolute() else assets_dir / asset_path
+                else:
+                    badge_file = None
+                    for cand in badge_cands:
+                        p1 = assets_dir / "resolution" / cand
+                        p2 = assets_dir / cand
+                        if p1.exists():
+                            badge_file = p1
+                            break
+                        elif p2.exists():
+                            badge_file = p2
+                            break
+
+                if badge_file:
+                    layers.append({
+                        "name": "resolution",
+                        "type": "image",
+                        "image_path": str(badge_file),
+                        "horizontal_align": h_pos,
+                        "horizontal_offset": h_off,
+                        "vertical_align": v_pos,
+                        "vertical_offset": v_off
+                    })
+
+    # 2. Audio Languages (Country Flags)
+    if "languages" in rule_names:
+        lang_vars = rule_names["languages"]
+        builder_level = str(lang_vars.get("builder_level", "")).lower()
+        if not (
+            builder_level == "episode"
+            and media_type in ["show", "season"]
+        ):
+            allowed_langs = [str(l).lower() for l in lang_vars.get("languages", ["de", "en", "ja", "zh", "ko"])]
+            subtitle_rule = str(lang_vars.get("use_subtitles", False)).lower() in ("true", "1")
+            item_langs = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
+            # Normalize detected languages to 2-letter codes
+            clean_detected = []
+            for raw_l in item_langs:
+                code_l = str(raw_l).strip().lower()
+                norm_l = LANGUAGE_MAP.get(code_l, code_l)
+                if norm_l in allowed_langs and norm_l not in clean_detected:
+                    clean_detected.append(norm_l)
+
+            if not item_metadata.get("_language_order_precomputed"):
+                language_priority = {language: index for index, language in enumerate(allowed_langs)}
+                clean_detected.sort(key=language_priority.__getitem__)
+            limit = int(lang_vars.get("overlay_limit", 5))
+            clean_detected = clean_detected[:limit]
+            display_priority = {code: index for index, code in enumerate(allowed_langs)}
+            clean_detected.sort(key=display_priority.__getitem__)
+
+            if clean_detected:
+                flag_w = 46
+                flag_h = 28
+                v_offset = int(lang_vars.get("vertical_offset", 37))
+                h_offset = int(lang_vars.get("horizontal_offset", 48))
+
+                hide_text = str(lang_vars.get("hide_text", True)).lower() in ("true", "1")
+                if hide_text:
+                    if len(clean_detected) == 1:
+                        code = clean_detected[0]
+                        flag_path = resolve_flag_path(code)
+                        layers.append({
+                            "name": f"language_flag_{code}",
+                            "type": "image",
+                            "image_path": str(flag_path),
+                            "scale_width": flag_w,
+                            "scale_height": flag_h,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset
+                        })
+                    elif len(clean_detected) >= 2:
+                        # Stack flags vertically: first flag on top, second flag on bottom (Image 2 style)
+                        code_top = clean_detected[0]
+                        code_bottom = clean_detected[1]
+                        top_flag_file = resolve_flag_path(code_top)
+                        bot_flag_file = resolve_flag_path(code_bottom)
+
+                        layers.append({
+                            "name": f"language_flag_{code_bottom}",
+                            "type": "image",
+                            "image_path": str(bot_flag_file),
+                            "scale_width": flag_w,
+                            "scale_height": flag_h,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset
+                        })
+                        layers.append({
+                            "name": f"language_flag_{code_top}",
+                            "type": "image",
+                            "image_path": str(top_flag_file),
+                            "scale_width": flag_w,
+                            "scale_height": flag_h,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset + flag_h + 4
+                        })
+                else:
+                    for index, code in enumerate(clean_detected):
+                        flag_path = resolve_flag_path(code)
+                        lang_text = code.lower() if str(lang_vars.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                        style = str(lang_vars.get("style", "round")).lower()
+                        flag_align = lang_vars.get("flag_alignment") or "left"
+                        back_radius = 26 if style in ("round", "half") else 0
+                        layers.append({
+                            "name": f"language_flag_{code}",
+                            "type": "text",
+                            "text": lang_text,
+                            "image_path": str(flag_path),
+                            "addon_position": flag_align,
+                            "addon_offset": int(lang_vars.get("offset", 10)),
+                            "font_path": font_to_use,
+                            "font_size": int(lang_vars.get("font_size", 50)),
+                            "font_color": lang_vars.get("font_color", "#FFFFFF"),
+                            "back_color": lang_vars.get("back_color", "#00000000"),
+                            "back_width": int(lang_vars["back_width"]) if lang_vars.get("back_width") else 190,
+                            "back_radius": back_radius,
+                            "back_align": flag_align,
+                            "horizontal_align": "left",
+                            "horizontal_offset": h_offset,
+                            "vertical_align": "bottom",
+                            "vertical_offset": v_offset + (len(clean_detected) - index - 1) * 61,
+                        })
+
+    # 3. Common Sense Media Rating Badge
+    if "commonsense" in rule_names:
+        cs_vars = rule_names["commonsense"]
+        raw_cr = item_metadata.get("content_rating") or item_metadata.get("rating")
+        cs_rating = normalize_commonsense_rating(raw_cr)
+        cs_icon_path = assets_dir / "Commonsense.png"
+
+        if cs_rating and cs_icon_path.exists():
+            cs_v_offset = int(cs_vars.get("vertical_offset", 37))
+            cs_h_offset = int(cs_vars.get("horizontal_offset", 255))
+            cs_h_align = str(cs_vars.get("horizontal_align", "left")).lower()
+            cs_v_align = str(cs_vars.get("vertical_align", "bottom")).lower()
+            cs_h = 44 if not is_landscape else 36
+
+            # Unified compound badge layer: icon + text placed side-by-side with exact math (cannot overlap)
+            layers.append({
+                "name": "commonsense",
+                "type": "badge",
+                "text": cs_rating,
+                "image_path": str(cs_icon_path),
+                "scale_height": cs_h,
+                "addon_position": "left",
+                "addon_offset": 12,
+                "font_path": font_to_use,
+                "font_size": cs_h,
+                "font_color": "#FFFFFF",
+                "stroke_width": 2,
+                "stroke_color": "#000000D0",
+                "horizontal_align": cs_h_align,
+                "horizontal_offset": cs_h_offset,
+                "vertical_align": cs_v_align,
+                "vertical_offset": cs_v_offset,
+                "back_width": int(cs_vars["back_width"]) if cs_vars.get("back_width") else None,
+                "back_height": int(cs_vars["back_height"]) if cs_vars.get("back_height") else None,
+                "back_color": cs_vars.get("back_color", "#00000000"),
+                "drop_shadow": True
+            })
+
+    # 4. Runtime Badge
+    runtime_mins = item_metadata.get("runtime_mins")
+    if runtime_mins and "runtimes" in rule_names:
+        rt_vars = rule_names["runtimes"]
+        builder_level = str(rt_vars.get("builder_level", "")).lower()
+        level_match = True
+        if builder_level == "episode" and media_type in ["show", "season", "movie"]:
+            level_match = False
+        elif builder_level == "movie" and media_type in ["show", "season", "episode"]:
+            level_match = False
+        elif builder_level in ["show", "season"] and media_type in ["episode", "movie"]:
+            level_match = False
+        if level_match:
+            hours = runtime_mins // 60
+            mins = runtime_mins % 60
+            rt_str = f"{hours}h {mins}m" if hours > 0 else f"{mins}m"
+            rt_v_offset = int(rt_vars.get("vertical_offset", 37))
+            rt_h_offset = int(rt_vars.get("horizontal_offset", 140))
+            rt_h_align = str(rt_vars.get("horizontal_align", "center")).lower()
+
+            rt_back_col = rt_vars.get("back_color", "#00000000")
+            is_rt_trans = (rt_back_col in ("#00000000", "transparent", None)) or (isinstance(rt_back_col, str) and rt_back_col.endswith("00") and len(rt_back_col) == 9)
+
+            layers.append({
+                "name": "runtimes",
+                "type": "text",
+                "text": rt_str,
+                "font_path": font_to_use,
+                "font_size": 50 if not is_landscape else 36,
+                "font_color": "#FFFFFF",
+                "stroke_width": 2,
+                "stroke_color": "#000000D0",
+                "horizontal_align": rt_h_align,
+                "horizontal_offset": rt_h_offset,
+                "vertical_align": "bottom",
+                "vertical_offset": rt_v_offset,
+                "back_color": rt_back_col,
+                "back_width": None if is_rt_trans else (int(rt_vars["back_width"]) if rt_vars.get("back_width") else (180 if is_landscape else 205)),
+                "back_height": None if is_rt_trans else (int(rt_vars["back_height"]) if rt_vars.get("back_height") else (65 if is_landscape else 80)),
+                "back_align": str(rt_vars.get("back_align", "center")).lower()
+            })
+
+    # 5. Series Status Banner (TV Shows)
+    series_status = str(item_metadata.get("status") or "").strip()
+    if series_status and "status" in rule_names and media_type == "show" and not is_season:
+        if series_status.lower() in ["airing", "returning", "ended", "canceled"]:
+            status_vars = rule_names["status"]
+            status_colors = {
+                "airing": status_vars.get("font_color_airing", "#27C24C"),
+                "returning": status_vars.get("font_color_returning", "#FFA500"),
+                "ended": status_vars.get("font_color_ended", "#FF0000"),
+                "canceled": status_vars.get("font_color_canceled", "#ED1F1F"),
+            }
+            color = status_colors.get(series_status.lower(), "#FF0000")
+            layers.append({
+                "name": "status",
+                "type": "text",
+                "text": series_status.upper(),
+                "font_path": str(colus_font) if colus_font.exists() else font_to_use,
+                "font_size": int(status_vars.get("font_size", 80 if not is_landscape else 50)),
+                "font_color": color,
+                "back_color": status_vars.get("back_color", "#00000000"),
+                "back_width": int(status_vars.get("back_width", 965)),
+                "back_height": int(status_vars.get("back_height", 149)),
+                "horizontal_align": status_vars.get("horizontal_align", "center"),
+                "horizontal_offset": int(status_vars.get("horizontal_offset", 0)),
+                "vertical_align": "bottom",
+                "vertical_offset": int(status_vars.get("vertical_offset", 23))
+            })
+
+    # 6. Ratings Badge (Audience/Critic Score - ONLY if explicitly configured in rules!)
+    if "ratings" in rule_names or "rating" in rule_names:
+        raw_rating = item_metadata.get("rating")
+        if raw_rating and str(raw_rating).strip().lower() not in ("none", "off", "false", "", "0"):
+            try:
+                score = float(raw_rating)
+            except ValueError:
+                score = None
+
+            if score is not None:
+                if score >= 6.5:
+                    badge_file = assets_dir / "Rating_High.png"
+                elif score >= 4.5:
+                    badge_file = assets_dir / "Rating_Mid.png"
+                else:
+                    badge_file = assets_dir / "Rating_Low.png"
+
+                score_str = f"{score:.1f}" if score < 10 else "10"
+                rating_vars = rule_names.get("ratings") or rule_names.get("rating") or {}
+                layers.append({
+                    "name": "rating",
+                    "type": "badge",
+                    "text": score_str,
+                    "image_path": str(badge_file) if badge_file.exists() else None,
+                    "font_path": font_to_use,
+                    "font_size": 42 if is_landscape else 70,
+                    "font_color": "#282a2d" if (4.5 <= score < 6.5) else "#FFFFFF",
+                    "horizontal_align": rating_vars.get("horizontal_align", "right"),
+                    "horizontal_offset": int(rating_vars.get("horizontal_offset", 30)),
+                    "vertical_align": rating_vars.get("vertical_align", "top"),
+                    "vertical_offset": int(rating_vars.get("vertical_offset", 30))
+                })
+
+    # 7. Multi-Rating Badges Cluster (IMDb, RT, TMDb, Trakt, Metacritic, Letterboxd)
+    ratings_rule = rule_names.get("ratings") or rule_names.get("rating")
+    if ratings_rule is not None and item_metadata.get("multi_ratings"):
+        item_level = "backdrop" if item_metadata.get("is_backdrop") else (
+            "season" if item_metadata.get("is_season") else (
+                "episode" if (item_metadata.get("is_episode") or (is_landscape and not item_metadata.get("is_backdrop"))) else (
+                    "show" if item_metadata.get("media_type") == "show" else "movie"
+                )
+            )
+        )
+        target_lvl = str(ratings_rule.get("builder_level", "all")).lower()
+        lvl_match = (
+            target_lvl in ("all", item_level)
+            or (target_lvl == "movie" and item_level in ("movie", "backdrop"))
+            or (target_lvl == "show" and item_level in ("show", "backdrop"))
+        )
+        if lvl_match and not any(l.get("name", "").startswith("multi_rating_") for l in layers):
+            dyn_settings = {**get_dynamic_overlays_settings(), **ratings_rule}
+            r_layers = build_multi_rating_layers(
+                ratings=item_metadata["multi_ratings"],
+                dyn_settings=dyn_settings,
+                canvas_type="landscape" if is_landscape else "portrait",
+                assets_dir=assets_dir / "rating",
+                fonts_dir=fonts_dir
+            )
+            layers.extend(r_layers)
+
+    # 8. Audio Codec Badges (Dolby Atmos, TrueHD, DTS:X, DTS-HD MA, EAC3, AAC, FLAC, etc.)
+    if "audio_codec" in rule_names:
+        ac_vars = rule_names["audio_codec"]
+        ac_style = str(ac_vars.get("style", "compact")).lower()
+        ac_dir = assets_dir / "audio_codec" / ac_style
+        if not ac_dir.exists():
+            ac_dir = assets_dir / "audio_codec" / "compact"
+
+        matched_codec = None
+        cands = [
+            str(item_metadata.get("audio_track_title") or ""),
+            str(item_metadata.get("audio_title") or ""),
+            str(item_metadata.get("audio_codec") or ""),
+            str(item_metadata.get("audio_profile") or ""),
+            str(item_metadata.get("filepath") or ""),
+            str(item_metadata.get("clean_tc") or ""),
+            str(item_metadata.get("title") or "")
+        ]
+        test_str = " ".join(c for c in cands if c)
+        for key, pat in AUDIO_CODEC_PATTERNS:
+            if pat.search(test_str):
+                matched_codec = key
+                break
+
+        if matched_codec:
+            codec_img = ac_dir / f"{matched_codec}.png"
+            if not codec_img.exists() and (assets_dir / "audio_codec" / "standard" / f"{matched_codec}.png").exists():
+                codec_img = assets_dir / "audio_codec" / "standard" / f"{matched_codec}.png"
+
+            if codec_img.exists():
+                h_pos = ac_vars.get("horizontal_align") or ac_vars.get("horizontal_position", "center")
+                v_pos = ac_vars.get("vertical_align") or ac_vars.get("vertical_position", "top")
+                layers.append({
+                    "name": f"audio_codec_{matched_codec}",
+                    "type": "image",
+                    "image_path": str(codec_img),
+                    "back_color": ac_vars.get("back_color", "#00000099"),
+                    "back_width": int(ac_vars.get("back_width", 305)),
+                    "back_height": int(ac_vars.get("back_height", 105)),
+                    "back_radius": int(ac_vars.get("back_radius", 15)),
+                    "back_align": ac_vars.get("back_align", "center"),
+                    "horizontal_align": h_pos,
+                    "horizontal_offset": int(ac_vars.get("horizontal_offset", 0)),
+                    "vertical_align": v_pos,
+                    "vertical_offset": int(ac_vars.get("vertical_offset", 15))
+                })
+
+    # 9. Video Format Badges (Telesync, CAM, Remux, Blu-ray, Web-DL, HDTV, DVD)
+    if "video_format" in rule_names:
+        vf_vars = rule_names["video_format"]
+        vf_cands = [
+            str(item_metadata.get("filepath") or ""),
+            str(item_metadata.get("file") or ""),
+            str(item_metadata.get("edition") or ""),
+            str(item_metadata.get("clean_tc") or ""),
+            str(item_metadata.get("title") or "")
+        ]
+        vf_test_str = " ".join(c for c in vf_cands if c)
+        matched_vf = None
+        for name, pat in VIDEO_FORMAT_PATTERNS:
+            if pat.search(vf_test_str):
+                matched_vf = name
+                break
+
+        if matched_vf:
+            h_pos = vf_vars.get("horizontal_align") or vf_vars.get("horizontal_position", "left")
+            v_pos = vf_vars.get("vertical_align") or vf_vars.get("vertical_position", "bottom")
+            layers.append({
+                "name": f"video_format_{matched_vf}",
+                "type": "text",
+                "text": matched_vf,
+                "font_path": font_to_use,
+                "font_size": 38 if not is_landscape else 32,
+                "font_color": "#FFFFFF",
+                "back_color": "#00000099",
+                "back_width": 305,
+                "back_height": 105,
+                "back_radius": 12,
+                "horizontal_align": h_pos,
+                "horizontal_offset": int(vf_vars.get("horizontal_offset", 15)),
+                "vertical_align": v_pos,
+                "vertical_offset": int(vf_vars.get("vertical_offset", 15))
+            })
+
+    return layers
+
+
+# ==============================================================================
+# MAIN SYNC WORKER
+# ==============================================================================# Global execution state
+_is_sync_running = False
+_cancel_requested = False
+_last_sync_result = None
+_sync_condition = threading.Condition()
+_pending_sync_requests = []
+_sync_queue_worker_active = False
+
+
+def is_overlay_sync_running() -> bool:
+    with _sync_condition:
+        from plex_image_cleanup import is_cleanup_running
+        return _is_sync_running or (_sync_queue_worker_active and not is_cleanup_running())
+
+
+def stop_overlay_sync() -> bool:
+    global _cancel_requested
+    with _sync_condition:
+        _cancel_requested = True
+        _pending_sync_requests.clear()
+        _sync_condition.notify_all()
+    return True
+
+
+def reset_overlay_sync_state() -> bool:
+    global _is_sync_running, _cancel_requested
+    with _sync_condition:
+        _is_sync_running = False
+        _cancel_requested = False
+        _sync_condition.notify_all()
+    return True
+
+
+def get_last_sync_result() -> Optional[Dict[str, Any]]:
+    return _last_sync_result
+
+
+def submit_overlay_sync_task(**options):
+    global _sync_queue_worker_active
+    targets = options.get("target_items")
+    if targets == []:
+        return {"success": True, "queued": False, "message": "No target items supplied. Overlay sync skipped."}
+    request = dict(options)
+    if targets is not None:
+        request["target_items"] = [dict(target) for target in targets]
+    execution_keys = ("target_server", "scope", "library", "base_dir", "assets_dir", "config_path", "log_file_path", "asset_type", "force_reapply")
+    request_key = tuple(str(request.get(key) or "") for key in execution_keys)
+    with _sync_condition:
+        from plex_image_cleanup import is_cleanup_running
+        busy = _is_sync_running or _sync_queue_worker_active or is_cleanup_running()
+        if busy and not targets:
+            return {"success": False, "is_running": True, "error": "A dynamic overlay sync task is already running."}
+        pending = next((item for item in _pending_sync_requests
+                        if item.get("target_items") and
+                        tuple(str(item.get(key) or "") for key in execution_keys) == request_key), None)
+        if pending is not None:
+            seen = {json.dumps(target, sort_keys=True, default=str) for target in pending["target_items"]}
+            for target in request["target_items"]:
+                identity = json.dumps(target, sort_keys=True, default=str)
+                if identity not in seen:
+                    pending["target_items"].append(target)
+                    seen.add(identity)
+        else:
+            _pending_sync_requests.append(request)
+        if not _sync_queue_worker_active:
+            _sync_queue_worker_active = True
+            try:
+                threading.Thread(target=_run_overlay_sync_queue, daemon=True).start()
+            except Exception:
+                _sync_queue_worker_active = False
+                _pending_sync_requests.remove(request)
+                raise
+        _sync_condition.notify_all()
+    logger.info("[OverlaySync] %s sync request for %s target item(s).", "Queued" if busy else "Accepted", len(targets) if targets else "all")
+    return {"success": True, "queued": busy, "message": "Dynamic overlay sync queued." if busy else "Dynamic overlay sync started."}
+
+
+def _run_overlay_sync_queue():
+    global _sync_queue_worker_active
+    while True:
+        with _sync_condition:
+            from plex_image_cleanup import is_cleanup_running
+            _sync_condition.wait_for(lambda: not _is_sync_running and not is_cleanup_running())
+            if not _pending_sync_requests:
+                _sync_queue_worker_active = False
+                _sync_condition.notify_all()
+                return
+            request = _pending_sync_requests.pop(0)
+        try:
+            result = asyncio.run(run_overlay_sync_task(**request))
+            if result.get("is_running"):
+                with _sync_condition:
+                    _pending_sync_requests.insert(0, request)
+        except Exception:
+            logger.exception("[OverlaySync] Queued overlay sync failed.")
+
+
+def _resolution_rank(res: Optional[str]) -> int:
+    if not res:
+        return -1
+    if res == "4K":
+        return 2160
+    digits = re.sub(r"\D", "", str(res))
+    # Non-numeric Plex values like "sd" ("sdp") still beat "no resolution found"
+    return int(digits) if digits else 1
+
+
+def _plex_media_resolution(media) -> Optional[str]:
+    width = int(media.get("width") or 0)
+    height = int(media.get("height") or 0)
+    vr = str(media.get("videoResolution") or "").strip().lower()
+    if width >= 3840 or height >= 2160 or vr in ("4k", "2160", "2160p", "uhd"):
+        return "4K"
+    if vr in ("1080", "1080p", "720", "720p", "576", "576p", "480", "480p", "sd"):
+        return vr if vr.endswith("p") else f"{vr}p"
+    for tier, min_width, min_height in (("1080p", 1920, 1080), ("720p", 1280, 720), ("576p", 720, 576), ("480p", 640, 480)):
+        if width >= min_width or height >= min_height:
+            return tier
+    return None
+
+
+def _plex_season_resolutions(videos) -> Dict[str, str]:
+    """Highest resolution per season (keyed by season index string) across all episode media versions."""
+    best: Dict[str, str] = {}
+    for video in videos:
+        season = video.get("parentIndex")
+        if season is None:
+            continue
+        for media in video.findall("Media"):
+            res = _plex_media_resolution(media)
+            if res and _resolution_rank(res) > _resolution_rank(best.get(season)):
+                best[season] = res
+    return best
+
+
+@functools.lru_cache(maxsize=64)
+def _overlay_file_text(path_str: str, mtime: float) -> str:
+    try:
+        return Path(path_str).read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return ""
+
+
+def _rule_files_mention(overlays_dir: Path, rules, keyword: str) -> bool:
+    """True if any external overlay file referenced by the rules (e.g. Kometa media_info.yml) contains keyword."""
+    for rule in rules:
+        if not isinstance(rule, dict) or not rule.get("file"):
+            continue
+        name = str(rule["file"]).strip()
+        name = name[7:] if name.startswith("config/") else name
+        for candidate in (overlays_dir / "configs" / name, Path(name)):
+            try:
+                if candidate.is_file():
+                    if keyword in _overlay_file_text(str(candidate), candidate.stat().st_mtime):
+                        return True
+                    break
+            except OSError:
+                continue
+    return False
+
+
+def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, Any]]:
+    rk = it.get("ratingKey")
+    if not rk:
+        return None
+    t = it.get("title", "")
+    rf = None
+    part = it.find(".//Part")
+    part_file = part.get("file") if part is not None else None
+    if part_file:
+        rf = Path(part_file).parent.name
+    loc = it.find(".//Location")
+    if not rf and loc is not None and loc.get("path"):
+        rf = re.split(r"[\\/]+", loc.get("path").rstrip("\\/"))[-1]
+    if not rf:
+        rf = t
+
+    res_val = "1080p"
+    audio_c = None
+    video_f = None
+    med_elem = it.find(".//Media")
+    if med_elem is not None:
+        w = int(med_elem.get("width") or 0)
+        vr = med_elem.get("videoResolution")
+        if w >= 3840 or vr in ["4k", "2160"]:
+            res_val = "4K"
+        elif vr:
+            res_val = f"{vr}p"
+        audio_c = med_elem.get("audioCodec")
+        video_f = med_elem.get("videoProfile")
+    elif any(k in (sec_title or "").lower() or k in (rf or "").lower() or (part_file and k in part_file.lower()) for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+
+    if any(k in (sec_title or "").lower() for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+
+    dur = int(it.get("duration") or 0)
+    aud_rating = it.get("audienceRating") or it.get("rating")
+
+    year_val = None
+    if it.get("year"):
+        try:
+            year_val = int(it.get("year"))
+        except Exception:
+            pass
+
+    ed_val = it.get("editionTitle") or it.get("edition") or extract_edition(part_file, rf, t)
+    s_up_at = it.get("updatedAt") or it.get("addedAt")
+
+    p_imdb = None
+    p_tmdb = None
+    p_tvdb = None
+    for g_node in it.findall(".//Guid"):
+        gid = g_node.get("id", "")
+        if gid.startswith("imdb://"):
+            p_imdb = gid[7:]
+        elif gid.startswith("tmdb://"):
+            p_tmdb = gid[7:]
+        elif gid.startswith("tvdb://"):
+            p_tvdb = gid[7:]
+
+    return {
+        "id": rk,
+        "title": t,
+        "year": year_val,
+        "library_name": sec_title,
+        "media_type": sec_type,
+        "root_folder": rf,
+        "filepath": part_file,
+        "media_file_path": part_file,
+        "video_source": detect_video_source(part_file),
+        "edition": ed_val,
+        "server_updated_at": s_up_at,
+        "server_thumb": it.get("thumb"),
+        "leaf_count": it.get("leafCount"),
+        "resolution": res_val,
+        "rating": aud_rating,
+        "audience_rating": aud_rating,
+        "content_rating": it.get("contentRating"),
+        "runtime_mins": dur // 60000 if dur > 0 else None,
+        "studio": it.get("studio"),
+        "audio_codec": audio_c,
+        "video_format": video_f,
+        **_extract_stream_overlay_metadata(it),
+        "imdb_id": p_imdb,
+        "tmdb_id": p_tmdb,
+        "tvdb_id": p_tvdb
+    }
+
+
+def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, Any]]:
+    it_id = item_obj.get("Id")
+    if not it_id:
+        return None
+    it_name = item_obj.get("Name", "")
+    it_type = "movie" if item_obj.get("Type") == "Movie" else "show"
+    it_path = item_obj.get("Path") or next((source.get("Path") for source in item_obj.get("MediaSources") or [] if source.get("Path")), "")
+    it_p = Path(it_path.replace("\\", "/")) if it_path else None
+    if it_p:
+        rf = it_p.name if (it_type == "show" or not it_p.suffix) else it_p.parent.name
+    else:
+        rf = it_name
+    streams = item_obj.get("MediaStreams", [])
+    if not streams and item_obj.get("MediaSources"):
+        for ms in item_obj.get("MediaSources", []):
+            streams.extend(ms.get("MediaStreams", []))
+
+    audio_langs = []
+    item_audio_c = None
+    item_audio_t = None
+    item_has_dv = False
+    item_has_hdr = False
+    vid_w = item_obj.get("Width") or 0
+    vid_h = item_obj.get("Height") or 0
+    for s in streams:
+        stype = s.get("Type")
+        if stype == "Audio":
+            lc = s.get("Language") or s.get("DisplayLanguage")
+            if lc:
+                norm_l = LANGUAGE_MAP.get(lc.lower(), lc.lower())
+                if norm_l not in audio_langs:
+                    audio_langs.append(norm_l)
+            if not item_audio_c and s.get("Codec"):
+                item_audio_c = s.get("Codec")
+            if not item_audio_t:
+                item_audio_t = s.get("Title") or s.get("DisplayTitle")
+        elif stype == "Video":
+            sw = s.get("Width") or 0
+            sh = s.get("Height") or 0
+            if sw > vid_w:
+                vid_w = sw
+            if sh > vid_h:
+                vid_h = sh
+            v_range = str(s.get("VideoRange") or "").lower()
+            v_title = str(s.get("VideoDoViTitle") or s.get("DisplayTitle") or "").lower()
+            if "dovi" in v_title or "dolby vision" in v_title or s.get("VideoDoViTitle"):
+                item_has_dv = True
+            if "hdr" in v_range or "hdr" in v_title or s.get("VideoRange") == "HDR":
+                item_has_hdr = True
+
+    res_val = "1080p"
+    if any(k in (lib_name or "").lower() for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+    elif vid_w >= 3800 or vid_h >= 2000:
+        res_val = "4K"
+    elif any(k in (it_path or "").lower() or k in (rf or "").lower() for k in ["4k", "uhd", "2160"]):
+        res_val = "4K"
+    elif vid_w >= 1900 or vid_h >= 1000:
+        res_val = "1080p"
+    elif vid_w >= 1200 or vid_h >= 700:
+        res_val = "720p"
+    elif vid_w > 0:
+        res_val = f"{vid_h}p" if vid_h else f"{vid_w}p"
+    else:
+        res_val = "1080p"
+
+    p_ids = item_obj.get("ProviderIds") or {}
+    studios_list = [st.get("Name") for st in item_obj.get("Studios", []) if st.get("Name")]
+    primary_network = studios_list[0] if studios_list else None
+    ed_val = item_obj.get("Edition") or item_obj.get("Version") or extract_edition(it_path, it_name)
+    s_up_at = item_obj.get("DateModified") or item_obj.get("DateCreated")
+
+    return {
+        "id": it_id,
+        "title": it_name,
+        "year": item_obj.get("ProductionYear"),
+        "imdb_id": p_ids.get("Imdb"),
+        "tmdb_id": p_ids.get("Tmdb"),
+        "tvdb_id": p_ids.get("Tvdb"),
+        "library_name": lib_name,
+        "media_type": it_type,
+        "root_folder": rf,
+        "filepath": it_path,
+        "media_file_path": it_path if it_type == "movie" else None,
+        "video_source": detect_video_source(it_path) if it_type == "movie" else None,
+        "edition": ed_val,
+        "server_updated_at": s_up_at,
+        "resolution": res_val,
+        "rating": item_obj.get("CommunityRating"),
+        "critic_rating": item_obj.get("CriticRating"),
+        "content_rating": item_obj.get("OfficialRating") or item_obj.get("CustomRating"),
+        "runtime_mins": (item_obj.get("RunTimeTicks", 0) // 600000000) or None,
+        "status": item_obj.get("Status"),
+        "audio_languages": audio_langs,
+        **_extract_stream_overlay_metadata(item_obj),
+        "audio_codec": item_audio_c,
+        "audio_track_title": item_audio_t,
+        "has_dolby_vision": item_has_dv,
+        "has_hdr": item_has_hdr,
+        "network": primary_network,
+        "networks": studios_list,
+        "studio": primary_network
+    }
+
+
+async def search_overlay_sync_items(
+    http_client, credentials, library_rules_map, query, target_server="all", library="all", limit=30,
+):
+    query = str(query or "").strip()
+    if len(query) < 2:
+        return {"items": [], "errors": []}
+    limit = max(1, min(int(limit), 50))
+    items = []
+    errors = []
+    seen = set()
+    for server_type in ("plex", "jellyfin", "emby", "silo"):
+        config = credentials.get(server_type) or {}
+        if target_server not in ("all", server_type) or not config.get("enabled") or not config.get("url"):
+            continue
+        server_url = config["url"]
+        excluded = {str(name).casefold() for name in config.get("excluded_libs", [])}
+        headers = {"X-Plex-Token": config.get("token") or "", "Accept": "application/xml"} if server_type == "plex" else {
+            "X-Emby-Token": config.get("api_key") or "", "Accept": "application/json",
+        }
+        try:
+            if server_type == "silo":
+                silo = SiloClient(http_client, server_url, config["api_key"], config.get("profile_id"))
+                for folder in await silo.libraries():
+                    name = folder["name"]
+                    if name.casefold() in excluded or (library != "all" and name.casefold() != library.casefold()):
+                        continue
+                    if not resolve_library_rules(name, folder["type"], library_rules_map)[1]:
+                        continue
+                    for row in await silo.catalog(folder["id"], folder["type"]):
+                        identity = (server_type, row["content_id"])
+                        if query.casefold() not in row.get("title", "").casefold() or identity in seen or len(items) >= limit:
+                            continue
+                        seen.add(identity)
+                        items.append({"id": row["content_id"], "server_type": "silo", "library_name": name,
+                                      "media_type": folder["type"], "title": row.get("title"), "year": row.get("year")})
+                continue
+            response = await http_client.get(server_url + ("/library/sections" if server_type == "plex" else "/Library/VirtualFolders"), headers=headers)
+            if response.status_code != 200:
+                errors.append(f"{server_type.upper()}: library search HTTP {response.status_code}")
+                continue
+            folders = list(fromstring(response.content)) if server_type == "plex" else response.json()
+            for folder in folders:
+                if len(items) >= limit:
+                    break
+                name = folder.get("title", "") if server_type == "plex" else folder.get("Name", "")
+                media_type = folder.get("type", "") if server_type == "plex" else ("movie" if folder.get("CollectionType") == "movies" else "show")
+                if server_type == "plex" and media_type not in ("movie", "show"):
+                    continue
+                if name.casefold() in excluded or (library != "all" and name.casefold() != library.casefold()):
+                    continue
+                if not resolve_library_rules(name, media_type, library_rules_map)[1]:
+                    continue
+                folder_id = folder.get("key", "") if server_type == "plex" else folder.get("ItemId") or folder.get("Id", "")
+                if not folder_id:
+                    continue
+                if server_type == "plex":
+                    response = await http_client.get(
+                        f"{server_url}/library/sections/{urllib.parse.quote(str(folder_id), safe='')}/all",
+                        params={"title": query, "type": "1" if media_type == "movie" else "2", "X-Plex-Container-Start": 0, "X-Plex-Container-Size": limit - len(items)},
+                        headers=headers,
+                    )
+                else:
+                    response = await http_client.get(
+                        f"{server_url}/Items", headers=headers,
+                        params={"ParentId": folder_id, "Recursive": "true", "IncludeItemTypes": "Movie,Series", "SearchTerm": query,
+                            "CollapseBoxSetItems": "false", "Limit": limit - len(items), "Fields": "ProductionYear"},
+                    )
+                if response.status_code != 200:
+                    errors.append(f"{server_type.upper()} / {name}: search HTTP {response.status_code}")
+                    continue
+                nodes = list(fromstring(response.content)) if server_type == "plex" else response.json().get("Items", [])
+                for node in nodes:
+                    item_id = str(node.get("ratingKey") or "") if server_type == "plex" else str(node.get("Id") or "")
+                    kind = node.get("type") if server_type == "plex" else {"Movie": "movie", "Series": "show"}.get(node.get("Type"))
+                    identity = (server_type, item_id)
+                    if not item_id or kind not in ("movie", "show") or identity in seen:
+                        continue
+                    if not resolve_library_rules(name, kind, library_rules_map)[1]:
+                        continue
+                    seen.add(identity)
+                    items.append({"id": item_id, "server_type": server_type, "library_name": name, "media_type": kind,
+                                  "title": node.get("title") if server_type == "plex" else node.get("Name"),
+                                  "year": node.get("year") if server_type == "plex" else node.get("ProductionYear")})
+                    if len(items) >= limit:
+                        break
+        except Exception as error:
+            errors.append(f"{server_type.upper()}: search failed ({type(error).__name__})")
+    return {"items": items, "errors": errors}
+
+
+def _overlay_target_provider_ids(item):
+    identifiers = {}
+    for provider in ("tmdb", "tvdb", "imdb"):
+        value = item.get(f"{provider}_id") or item.get(f"{provider}id")
+        normalized = str(value or "").strip().lower()
+        if normalized not in ("", "false", "none", "null", "0"):
+            identifiers[provider] = normalized.removeprefix(f"{provider}://")
+    root = str(item.get("Rootfolder") or item.get("root_folder") or "")
+    for provider, value in re.findall(r"\[(tmdb|tvdb|imdb)[-=:]([^\]]+)\]", root, re.IGNORECASE):
+        identifiers.setdefault(provider.lower(), value.strip().lower())
+    return identifiers
+
+
+def _overlay_target_parent_title(item):
+    title = str(item.get("Title") or item.get("title") or "").strip()
+    asset_type = str(item.get("Type") or "").lower()
+    if asset_type == "season":
+        return re.sub(r"\s*\|\s*season\s+\d+\s*$", "", title, flags=re.IGNORECASE).strip()
+    if asset_type == "episode" or not title:
+        root = str(item.get("Rootfolder") or item.get("root_folder") or "").replace("\\", "/").rstrip("/").split("/")[-1]
+        root = re.sub(r"\s*\[[^\]]+\]", "", root).strip()
+        previous = None
+        while root != previous:
+            previous = root
+            root = re.sub(r"\s*\((?:\d{4}|[a-z]{2,3})\)\s*$", "", root, flags=re.IGNORECASE).strip()
+        return root
+    return title
+
+
+def _matches_overlay_target(item, target):
+    library_name = str(target.get("LibraryName") or target.get("library_name") or "").strip().casefold()
+    if library_name and library_name != "all" and library_name != str(item.get("library_name") or "").strip().casefold():
+        return False
+    target_id = str(target.get("id") or target.get("ratingKey") or "").strip()
+    if target_id:
+        return target_id == str(item.get("id") or "")
+    expected_ids = _overlay_target_provider_ids(target)
+    actual_ids = _overlay_target_provider_ids(item)
+    common_providers = expected_ids.keys() & actual_ids.keys()
+    if common_providers:
+        return any(expected_ids[provider] == actual_ids[provider] for provider in common_providers)
+    expected_root = str(target.get("Rootfolder") or target.get("root_folder") or "").strip().casefold()
+    actual_root = str(item.get("root_folder") or "").strip().casefold()
+    if expected_root and expected_root == actual_root:
+        return True
+    expected_title = _overlay_target_parent_title(target).casefold()
+    return bool(expected_title and expected_title == str(item.get("title") or "").strip().casefold())
+
+
+def _overlay_target_includes(item, targets, asset_type, season_number=None, episode_number=None):
+    if not targets:
+        return True
+    for target in targets:
+        if not _matches_overlay_target(item, target):
+            continue
+        target_type = str(target.get("asset_type") or target.get("Type") or "").strip().lower()
+        target_season = target.get("season_number")
+        target_episode = target.get("episode_number")
+        title = str(target.get("Title") or target.get("title") or "")
+        if target_type in ("episode", "titlecard"):
+            coordinates = re.search(r"\bS(\d+)E(\d+)\b", title, re.IGNORECASE)
+            if coordinates:
+                target_season = int(coordinates.group(1))
+                target_episode = int(coordinates.group(2))
+            try:
+                if asset_type == "titlecard" and int(target_season) == season_number and (
+                    episode_number is None or int(target_episode) == episode_number
+                ):
+                    return True
+            except (TypeError, ValueError):
+                pass
+        elif target_type == "season":
+            coordinates = re.search(r"\bSeason\s*(\d+)\b", title, re.IGNORECASE)
+            if coordinates:
+                target_season = int(coordinates.group(1))
+            try:
+                if asset_type == "season" and int(target_season) == season_number:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        elif target_type in ("background", "backdrop"):
+            if asset_type == "background":
+                return True
+        elif target_type in ("movie", "show", "poster"):
+            if asset_type == "poster":
+                return True
+        elif not target_type:
+            return True
+    return False
+
+
+def _asset_type_includes(selected_asset_type, asset_type):
+    return not selected_asset_type or selected_asset_type == asset_type
+
+
+async def _fetch_overlay_target_items(
+    http_client, server_type, server_url, credentials, targets, library,
+    excluded_libraries, library_rules_map, write_log,
+):
+    items = []
+    seen = set()
+    excluded = {str(name).lower() for name in excluded_libraries}
+    for target in targets:
+        target_server = str(target.get("server_type") or server_type).lower()
+        if target_server != server_type:
+            continue
+        item_id = str(target.get("id") or target.get("ratingKey") or "").strip()
+        library_name = str(target.get("library_name") or target.get("LibraryName") or "").strip()
+        if not item_id or not library_name or library_name.lower() == "all" or item_id in seen:
+            continue
+        if library_name.lower() in excluded or (library != "all" and library.lower() != library_name.lower()):
+            continue
+        media_type = str(target.get("media_type") or "show").lower()
+        if not resolve_library_rules(library_name, media_type, library_rules_map)[1]:
+            continue
+        seen.add(item_id)
+        try:
+            if server_type == "silo":
+                silo = SiloClient(http_client, server_url, credentials["api_key"], credentials.get("profile_id"))
+                for folder in await silo.libraries():
+                    if folder["name"].casefold() == library_name.casefold():
+                        items.extend(await silo.library_items(folder, item_id))
+            elif server_type == "plex":
+                response = await http_client.get(
+                    f"{server_url}/library/metadata/{urllib.parse.quote(item_id, safe='')}",
+                    headers={"X-Plex-Token": credentials.get("token"), "Accept": "application/xml"},
+                )
+                if response.status_code != 200:
+                    write_log(f"  [-] Target '{item_id}' ({library_name}): HTTP {response.status_code}. Skipping.")
+                    continue
+                root = fromstring(response.content)
+                for node in list(root):
+                    if node.tag in ("Directory", "Video") and str(node.get("ratingKey")) == item_id and node.get("type") in ("movie", "show"):
+                        item = _parse_plex_item(node, root.get("librarySectionTitle") or library_name, node.get("type"))
+                        if item:
+                            items.append(item)
+            else:
+                response = await http_client.get(
+                    f"{server_url}/Items",
+                    params={"Ids": item_id, "CollapseBoxSetItems": "false", "Fields": "Path,ProviderIds,ProductionYear,MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,Studios,CommunityRating,CriticRating,DateModified,DateCreated"},
+                    headers={"X-Emby-Token": credentials.get("api_key"), "Accept": "application/json"},
+                )
+                if response.status_code != 200:
+                    write_log(f"  [-] Target '{item_id}' ({library_name}): HTTP {response.status_code}. Skipping.")
+                    continue
+                for node in response.json().get("Items", []):
+                    if str(node.get("Id")) == item_id and node.get("Type") in ("Movie", "Series"):
+                        item = _parse_jellyfin_item(node, library_name)
+                        if item:
+                            items.append(item)
+        except Exception as error:
+            write_log(f"  [-] Target '{item_id}' ({library_name}): {format_sync_error(error, phase='fetching targeted metadata')}")
+    return items
+
+
+def _open_overlay_sync_log(log_file_path: Path):
+    from log_rotation import rotate_run_log
+    log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    rotate_run_log(log_file_path)
+    return log_file_path.open("a", encoding="utf-8", buffering=1)
+
+
+async def run_overlay_sync_task(
+    target_server: str = "all",
+    scope: str = "incremental",
+    library: str = "all",
+    base_dir: Optional[Path] = None,
+    assets_dir: Optional[Path] = None,
+    config_path: Optional[Path] = None,
+    log_file_path: Optional[Path] = None,
+    target_items: Optional[List[Dict[str, Any]]] = None,
+    asset_type: Optional[str] = None,
+    force_reapply: bool = False
+) -> Dict[str, Any]:
+    global _is_sync_running
+    try:
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        if not get_dynamic_overlays_settings().get("enabled", False):
+            return {"success": False, "error": "Dynamic Overlays is disabled in settings.", "is_enabled": False}
+    except Exception as check_err:
+        logger.error("Could not verify Dynamic Overlays master switch; refusing to start sync: %s", check_err)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
+    with _sync_condition:
+        from plex_image_cleanup import is_cleanup_running
+        if _is_sync_running or is_cleanup_running():
+            return {"success": False, "is_running": True, "error": "A dynamic overlay sync task is already running."}
+        _is_sync_running = True
+    try:
+        return await _run_overlay_sync_task(
+            target_server=target_server, scope=scope, library=library, base_dir=base_dir,
+            assets_dir=assets_dir, config_path=config_path, log_file_path=log_file_path,
+            target_items=target_items, asset_type=asset_type, force_reapply=force_reapply,
+        )
+    finally:
+        with _sync_condition:
+            _is_sync_running = False
+            _sync_condition.notify_all()
+
+
+async def _run_overlay_sync_task(
+    target_server: str = "all",
+    scope: str = "incremental",
+    library: str = "all",
+    base_dir: Optional[Path] = None,
+    assets_dir: Optional[Path] = None,
+    config_path: Optional[Path] = None,
+    log_file_path: Optional[Path] = None,
+    target_items: Optional[List[Dict[str, Any]]] = None,
+    asset_type: Optional[str] = None,
+    force_reapply: bool = False
+) -> Dict[str, Any]:
+    """
+    Main execution worker for Dynamic Overlay Sync.
+    Executes in-memory compositing of clean assets and uploads overlaid artwork to media servers.
+    Supports instant target mode when newly generated assets are passed via target_items.
+    """
+    global _last_sync_result, _cancel_requested
+    try:
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        sync_settings = get_dynamic_overlays_settings()
+        if not sync_settings.get("enabled", False):
+            return {"success": False, "error": "Dynamic Overlays is disabled in settings.", "is_enabled": False}
+    except Exception as check_err:
+        logger.error("Could not verify Dynamic Overlays master switch; refusing to run sync: %s", check_err)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
+
+    dry_run = bool(sync_settings.get("change_detection_dry_run", True))
+    _cancel_requested = False
+    sync_started_at = time.monotonic()
+
+    if not base_dir:
+        base_dir = Path(".")
+    if not config_path:
+        config_path = base_dir / "config.json"
+    if not assets_dir:
+        assets_dir = base_dir / "assets"
+    if not log_file_path:
+        log_file_path = base_dir / "UILogs" / "DynamicOverlaysSync.log"
+
+    log_file_handle = None
+    try:
+        log_file_handle = _open_overlay_sync_log(log_file_path)
+    except OSError as error:
+        logger.error("[OverlaySync] Could not open active sync log (%s)", type(error).__name__)
+
+    def write_log(msg: str):
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{now_str}] {msg}\n"
+        if log_file_handle and not log_file_handle.closed:
+            try:
+                log_file_handle.write(line)
+            except Exception:
+                pass
+        else:
+            try:
+                with open(log_file_path, "a", encoding="utf-8") as lf:
+                    lf.write(line)
+            except Exception:
+                pass
+
+    if dry_run:
+        write_log("DRY RUN is active: overlays will be evaluated and rendered, but no artwork will be uploaded or marked synced.")
+
+    # Fast targeted item handling
+    is_target_mode = bool(target_items)
+    asset_type_filter = str(asset_type or "").strip().lower() or None
+    force_target_sync = bool(force_reapply) or (is_target_mode and any(item.get("force_reapply", True) for item in target_items))
+    direct_id_targets = [item for item in (target_items or []) if item.get("id") or item.get("ratingKey")]
+    target_libs = set()
+    target_roots = set()
+    target_titles = set()
+    if is_target_mode:
+        for t_item in target_items:
+            lib_v = str(t_item.get("LibraryName") or t_item.get("library_name") or "").strip().lower()
+            if lib_v and lib_v != "all":
+                target_libs.add(lib_v)
+            root_v = str(t_item.get("Rootfolder") or t_item.get("root_folder") or "").strip().lower()
+            if root_v:
+                target_roots.add(root_v)
+            title_v = _overlay_target_parent_title(t_item).lower()
+            if title_v:
+                target_titles.add(title_v)
+
+        target_roots = {r for r in target_roots if r}
+        target_titles = {t for t in target_titles if t}
+
+    # Pre-sync: if AniMetaFill is enabled, trigger quick anime classification first (skip on fast single-item targeted runs)
+    if not is_target_mode:
+        try:
+            from animetafill_service import is_animetafill_enabled, run_animetafill_sync
+            if is_animetafill_enabled():
+                with open(log_file_path, "a", encoding="utf-8") as f:
+                    f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Notice: Running AniMetaFill anime classification prior to overlay compositing...\n")
+                run_animetafill_sync(force=False)
+        except Exception as a_err:
+            logger.debug(f"[OverlaySync] AniMetaFill pre-run skipped: {a_err}")
+
+    overlays_dir = base_dir / "Overlayfiles" / "dynamic_overlays"
+    if not overlays_dir.exists():
+        legacy = base_dir / "Overlayfiles" / "kometa"
+        if legacy.exists():
+            overlays_dir = legacy
+        elif (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays").exists():
+            overlays_dir = PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays"
+        elif Path("/app/Overlayfiles/dynamic_overlays").exists():
+            overlays_dir = Path("/app/Overlayfiles/dynamic_overlays")
+    cache = await asyncio.to_thread(OverlayCache, base_dir / "database" / "overlay_cache.db")
+
+    try:
+        write_log("=" * 70)
+        write_log("STARTING DYNAMIC OVERLAYS SYNC TASK")
+        write_log(f"Target Server: {target_server.upper()} | Scope: {('TARGETED' if is_target_mode else scope).upper()} | Target Library: {library}")
+        if asset_type_filter:
+            write_log(f"Asset Type Filter: {asset_type_filter}")
+        if force_reapply:
+            write_log("Force Reapply: enabled for the selected asset type")
+        if is_target_mode:
+            write_log(f"Instant Target Mode Active: Processing {len(target_items)} target item(s).")
+            if target_libs:
+                write_log(f"Target Library Filter: {', '.join(target_libs)}")
+        write_log("Clean originals in AssetPath remain untouched. Overlays composited in RAM.")
+        write_log("=" * 70)
+
+        # 1. Parse credentials
+        server_creds = get_server_credentials(config_path)
+        real_asset_path = server_creds.get("asset_path") or resolve_configured_asset_path(assets_dir)
+        write_log(f"Asset Path: '{real_asset_path}' (clean originals)")
+        if not real_asset_path.exists():
+            err = f"Asset directory '{real_asset_path}' does not exist. Aborting sync."
+            write_log(f"ERROR: {err}")
+            write_log("=" * 70)
+            res = {"success": False, "error": err}
+            _last_sync_result = res
+            return res
+
+        # 2. Parse active rules from config.yml
+        library_rules_map = {}
+        config_yml = overlays_dir / "configs" / "config.yml"
+        if config_yml.exists():
+            try:
+                import yaml
+                with open(config_yml, "r", encoding="utf-8") as yf:
+                    raw_cfg = yaml.safe_load(yf) or {}
+                    raw_libs = raw_cfg.get("libraries", {})
+                    for l_name, l_data in raw_libs.items():
+                        if isinstance(l_data, dict):
+                            rules = l_data.get("overlay_files") or l_data.get("overlays") or []
+                            if rules:
+                                library_rules_map[l_name.lower()] = rules
+                write_log(f"Loaded dynamic overlay rules for {len(library_rules_map)} library(ies) from config.yml.")
+            except Exception as ye:
+                write_log(f"Warning loading config.yml: {ye}")
+
+        if not library_rules_map:
+            msg = "No libraries configured with dynamic overlay rules in config.yml. Sync skipped."
+            write_log(f"Notice: {msg}")
+            write_log("=" * 70)
+            res = {"success": True, "message": msg, "stats": {"synced": 0, "skipped": 0, "failed": 0}}
+            _last_sync_result = res
+            return res
+
+        if library != "all":
+            matched_k, matched_rules = resolve_library_rules(library, "movie", library_rules_map)
+            if matched_k == "none" or not matched_rules:
+                msg = f"Target library '{library}' has no dynamic overlay rules configured. Sync skipped."
+                write_log(f"Notice: {msg}")
+                write_log("=" * 70)
+                res = {"success": True, "message": msg, "stats": {"synced": 0, "skipped": 0, "failed": 0}}
+                _last_sync_result = res
+                return res
+
+        # 3. Determine active servers
+        servers_to_run = []
+        if target_server in ["all", "plex"] and server_creds["plex"]["enabled"] and server_creds["plex"]["url"]:
+            servers_to_run.append("plex")
+        if target_server in ["all", "jellyfin"] and server_creds["jellyfin"]["enabled"] and server_creds["jellyfin"]["url"]:
+            servers_to_run.append("jellyfin")
+        if target_server in ["all", "emby"] and server_creds["emby"]["enabled"] and server_creds["emby"]["url"]:
+            servers_to_run.append("emby")
+        if target_server in ["all", "silo"] and server_creds.get("silo", {}).get("enabled") and server_creds["silo"]["url"]:
+            servers_to_run.append("silo")
+
+        if not servers_to_run:
+            msg = f"No media servers are enabled or configured matching target '{target_server}'."
+            write_log(f"Notice: {msg}")
+            write_log("=" * 70)
+            res = {"success": True, "message": msg, "stats": {"synced": 0, "skipped": 0, "failed": 0}}
+            _last_sync_result = res
+            return res
+
+        total_synced = 0
+        total_skipped = 0
+        total_failed = 0
+
+        provider_run_state = RatingsProviderRunState()
+        async with httpx.AsyncClient(timeout=45.0) as http_client:
+            for s_type in servers_to_run:
+                write_log(f"\n>>> Processing Server: {s_type.upper()} <<<")
+                creds = server_creds[s_type]
+                s_url = creds["url"]
+                excluded = creds.get("excluded_libs", [])
+
+                # Discover items
+                media_items = []
+                if direct_id_targets:
+                    media_items = await _fetch_overlay_target_items(
+                        http_client, s_type, s_url, creds, direct_id_targets, library,
+                        excluded, library_rules_map, write_log,
+                    )
+                    write_log(f"Instant Target Mode: Fetched {len(media_items)} item(s) directly by ID on {s_type.upper()}.")
+                elif s_type == "silo":
+                    silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                    for folder in await silo.libraries():
+                        name = folder["name"]
+                        if name.casefold() in {str(entry).casefold() for entry in excluded}:
+                            continue
+                        if library != "all" and library.casefold() != name.casefold():
+                            continue
+                        if not resolve_library_rules(name, folder["type"], library_rules_map)[1]:
+                            continue
+                        media_items.extend(await silo.library_items(folder))
+                    write_log(f"  [+] SILO: Discovered {len(media_items)} movie/show items. Episode artwork uploads are unsupported.")
+                elif s_type == "plex":
+                    token = creds.get("token")
+                    try:
+                        # Query Plex library sections
+                        sec_resp = await http_client.get(
+                            f"{s_url}/library/sections",
+                            headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                        )
+                        if sec_resp.status_code == 200:
+                            sec_root = fromstring(sec_resp.content)
+                            for d_sec in sec_root.findall(".//Directory"):
+                                sec_title = d_sec.get("title", "")
+                                sec_type = d_sec.get("type", "")
+                                sec_key = d_sec.get("key", "")
+                                if sec_type not in ["movie", "show"]:
+                                    continue
+                                if library != "all" and sec_title.lower() != library.lower():
+                                    continue
+                                if library == "all" and sec_title in excluded:
+                                    continue
+                                if is_target_mode and target_libs and sec_title.lower() not in target_libs and not any(tl in sec_title.lower() for tl in target_libs):
+                                    continue
+                                matched_k, matched_rules = resolve_library_rules(sec_title, sec_type, library_rules_map)
+                                if matched_k == "none" or not matched_rules:
+                                    write_log(f"  [>] Library '{sec_title}' is not configured for dynamic overlays. Skipping.")
+                                    continue
+
+                                sec_media_items = []
+                                if is_target_mode and (target_titles or target_roots):
+                                    searched_terms = target_titles | target_roots
+                                    for s_term in searched_terms:
+                                        clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
+                                        terms_to_try = [s_term]
+                                        if clean_term and clean_term != s_term:
+                                            terms_to_try.append(clean_term)
+                                        for term in terms_to_try:
+                                            try:
+                                                search_url = f"{s_url}/library/sections/{sec_key}/all?title={urllib.parse.quote(term)}&includeGuids=1"
+                                                search_resp = await http_client.get(search_url, headers={"X-Plex-Token": token, "Accept": "application/xml"})
+                                                if search_resp.status_code == 200:
+                                                    sr_root = fromstring(search_resp.content)
+                                                    tag = ".//Directory" if sec_type == "show" else ".//Video"
+                                                    for it in sr_root.findall(tag):
+                                                        parsed_it = _parse_plex_item(it, sec_title, sec_type)
+                                                        if parsed_it:
+                                                            sec_media_items.append(parsed_it)
+                                            except Exception as se_err:
+                                                logger.debug(f"[OverlaySync] Targeted Plex search error for '{term}': {se_err}")
+
+                                if not sec_media_items and not is_target_mode:
+                                    # Query section items with bulk GUIDs (IMDb, TMDb, TVDb)
+                                    items_resp = await http_client.get(
+                                        f"{s_url}/library/sections/{sec_key}/all?includeGuids=1",
+                                        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                                    )
+                                    if items_resp.status_code == 200:
+                                        i_root = fromstring(items_resp.content)
+                                        tag = ".//Directory" if sec_type == "show" else ".//Video"
+                                        for it in i_root.findall(tag):
+                                            parsed_it = _parse_plex_item(it, sec_title, sec_type)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
+                                elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
+                                    # Fallback if targeted title search missed: fetch section XML and filter
+                                    items_resp = await http_client.get(
+                                        f"{s_url}/library/sections/{sec_key}/all?includeGuids=1",
+                                        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                                    )
+                                    if items_resp.status_code == 200:
+                                        i_root = fromstring(items_resp.content)
+                                        tag = ".//Directory" if sec_type == "show" else ".//Video"
+                                        for it in i_root.findall(tag):
+                                            parsed_it = _parse_plex_item(it, sec_title, sec_type)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
+
+                                media_items.extend(sec_media_items)
+                    except Exception as pe:
+                        write_log(f"Error querying Plex API: {pe}")
+
+                elif s_type in ["jellyfin", "emby"]:
+                    api_key = creds.get("api_key")
+                    headers = {
+                        "X-Emby-Token": api_key,
+                        "Authorization": f'MediaBrowser Token="{api_key}"',
+                        "Accept": "application/json"
+                    }
+                    try:
+                        vf_resp = await http_client.get(f"{s_url}/Library/VirtualFolders", headers=headers)
+                        if vf_resp.status_code == 200:
+                            vfolders = vf_resp.json()
+                            write_log(f"Connected to {s_type.upper()}. Found {len(vfolders)} library folder(s).")
+                            for lib_obj in vfolders:
+                                lib_name = lib_obj.get("Name", "")
+                                lib_id = lib_obj.get("ItemId") or lib_obj.get("Id", "")
+                                if library != "all" and lib_name.lower() != library.lower():
+                                    continue
+                                if library == "all" and any(lib_name.lower() == str(ex).lower() for ex in excluded):
+                                    write_log(f"  [>] Library '{lib_name}' is in exclude list. Skipping.")
+                                    continue
+                                if is_target_mode and target_libs and lib_name.lower() not in target_libs and not any(tl in lib_name.lower() for tl in target_libs):
+                                    continue
+                                matched_k, matched_rules = resolve_library_rules(lib_name, "movie", library_rules_map)
+                                if matched_k == "none" or not matched_rules:
+                                    write_log(f"  [>] Library '{lib_name}' is not configured for dynamic overlays. Skipping.")
+                                    continue
+
+                                items_params = {
+                                    "ParentId": lib_id,
+                                    "Recursive": "true",
+                                    "IncludeItemTypes": "Movie,Series",
+                                    "CollapseBoxSetItems": "false",
+                                    "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                                }
+                                sec_media_items = []
+                                if is_target_mode and (target_titles or target_roots):
+                                    searched_terms = target_titles | target_roots
+                                    for s_term in searched_terms:
+                                        clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
+                                        terms_to_try = [s_term]
+                                        if clean_term and clean_term != s_term:
+                                            terms_to_try.append(clean_term)
+                                        for term in terms_to_try:
+                                            try:
+                                                it_resp = await http_client.get(f"{s_url}/Items", params={**items_params, "SearchTerm": term}, headers=headers)
+                                                if it_resp.status_code == 200:
+                                                    lib_items = it_resp.json().get("Items", [])
+                                                    for item_obj in lib_items:
+                                                        parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                        if parsed_it:
+                                                            sec_media_items.append(parsed_it)
+                                            except Exception as je:
+                                                pass
+
+                                if not sec_media_items and not is_target_mode:
+                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
+                                    if it_resp.status_code == 200:
+                                        lib_items = it_resp.json().get("Items", [])
+                                        write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items.")
+                                        for item_obj in lib_items:
+                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
+                                    else:
+                                        write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({it_resp.status_code}): {it_resp.text[:120]}")
+                                elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
+                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
+                                    if it_resp.status_code == 200:
+                                        lib_items = it_resp.json().get("Items", [])
+                                        for item_obj in lib_items:
+                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                            if parsed_it:
+                                                sec_media_items.append(parsed_it)
+
+                                media_items.extend(sec_media_items)
+                        else:
+                            write_log(f"  [-] Failed to fetch virtual folders on {s_type.upper()} ({vf_resp.status_code}): {vf_resp.text[:120]}")
+                    except Exception as je:
+                        write_log(f"Error querying {s_type} API: {je}")
+
+                if is_target_mode and not direct_id_targets:
+                    matched_items = []
+                    seen_ids = set()
+                    for it in media_items:
+                        it_id = str(it.get("id"))
+                        if it_id in seen_ids:
+                            continue
+                        if any(_matches_overlay_target(it, target) for target in target_items):
+                            seen_ids.add(it_id)
+                            matched_items.append(it)
+                    media_items = matched_items
+                    write_log(f"Instant Target Mode: Filtered to {len(media_items)} item(s) on {s_type.upper()}.")
+                    if not media_items:
+                        write_log("Warning: No server metadata matched the generated asset targets. No artwork will be uploaded for this batch.")
+
+                write_log(f"Discovered {len(media_items)} items on {s_type.upper()}. Evaluating clean assets and cache...")
+
+                if scope == "changed":
+                    write_log(f"Fast change detection active. Checking for media attribute modifications on {s_type.upper()}...")
+                    change_report = await detect_media_changes(
+                        target_server=s_type,
+                        library=library,
+                        base_dir=base_dir,
+                        config_path=config_path
+                    )
+                    changed_ids = {str(c["id"]) for c in change_report.get("changes", [])}
+                    media_items = [it for it in media_items if str(it["id"]) in changed_ids]
+                    write_log(f"Fast Change Detection: {len(media_items)} items identified with changes (Languages, Cuts, Status, or Assets).")
+                    if not media_items:
+                        write_log(f"All dynamic overlays on {s_type.upper()} are 100% current. Nothing to update.")
+
+                # Master Dynamic Overlay Settings & Concurrency
+                dyn_settings = get_dynamic_overlays_settings()
+                backdrop_enabled = dyn_settings.get("backdrop_overlays_enabled", True)
+                rating_sources = dyn_settings.get("rating_sources", ["imdb", "tmdb", "tomatoes", "tomatoesaudience"])
+                mdblist_key = dyn_settings.get("mdblist_api_key") or ""
+                omdb_key = dyn_settings.get("omdb_api_key") or ""
+                debug_log_enabled = bool(dyn_settings.get("debug_logging", False))
+                concurrency = max(1, min(32, int(dyn_settings.get("concurrency", 4))))
+
+                # Pre-load in-memory cache map for high-performance instant O(1) lookups
+                cache_map = cache.load_cache_map(server_type=s_type)
+                write_log(f"Loaded {len(cache_map)} cached overlay fingerprints for {s_type.upper()} into memory.")
+
+                # Check if AniMetaFill integration is active once for the library
+                try:
+                    from animetafill_service import get_animetafill_config
+                    anim_config = get_animetafill_config()
+                except Exception:
+                    anim_config = {}
+
+                write_log(f"Processing {len(media_items)} items on {s_type.upper()} (Concurrency: {concurrency}, Debug Logging: {debug_log_enabled})...")
+
+                dir_cache: Dict[str, Any] = {}
+                server_stats = {"synced": 0, "skipped": 0, "failed": 0}
+                stats_lock = asyncio.Lock()
+                skip_timing_samples = {"count": 0}
+
+                async def _inc_stats(synced=0, skipped=0, failed=0):
+                    async with stats_lock:
+                        server_stats["synced"] += synced
+                        server_stats["skipped"] += skipped
+                        server_stats["failed"] += failed
+
+                async def _process_sync_item(item, worker_id: int = 1):
+                    if _cancel_requested:
+                        return
+                    item_started_at = time.perf_counter() if debug_log_enabled else 0.0
+                    item_id = item["id"]
+                    title = item["title"]
+                    lib_name = item["library_name"]
+                    m_type = item["media_type"]
+                    root_f = item.get("root_folder") or title
+
+                    w_tag = f"[Worker {worker_id}] " if concurrency > 1 else ""
+                    item_label = f"Worker {worker_id} | '{title}'" if concurrency > 1 else f"'{title}'"
+
+                    # 1. Resolve library rules immediately. If not configured, skip right away
+                    matched_rule_key, lib_rules = resolve_library_rules(lib_name, m_type, library_rules_map)
+                    if matched_rule_key == "none" or not lib_rules:
+                        await _inc_stats(skipped=1)
+                        write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> No library overlay rules configured")
+                        return
+
+                    item_targets = [
+                        target for target in target_items
+                        if str(target.get("server_type") or s_type).lower() == s_type
+                        and _matches_overlay_target(item, target)
+                    ] if is_target_mode else None
+                    if is_target_mode and not item_targets:
+                        return
+                    process_poster = _asset_type_includes(asset_type_filter, "poster") and _overlay_target_includes(item, item_targets, "poster")
+                    process_background = _asset_type_includes(asset_type_filter, "background") and _overlay_target_includes(item, item_targets, "background")
+                    episode_only_targets = bool(item_targets) and all(
+                        str(target.get("asset_type") or target.get("Type") or "").lower() in ("episode", "titlecard")
+                        for target in item_targets
+                    )
+
+                    # Inspect active rules to identify what metadata domains are actually required
+                    rules_str = json.dumps([r for r in lib_rules if isinstance(r, dict)]).lower()
+                    needs_languages = any(k in rules_str for k in ["language", "flag", "lang_"])
+                    needs_audio = any(k in rules_str for k in ["audio", "atmos", "truehd", "dts", "codec", "surround"])
+                    needs_hdr_dv = any(k in rules_str for k in ["hdr", "dovi", "dolby_vision", "dv"])
+                    needs_ratings = any(
+                        (isinstance(r, dict) and str(r.get("default", "")).lower() in ("ratings", "rating"))
+                        or "rating" in str(r).lower()
+                        for r in lib_rules
+                    ) or _rule_files_mention(overlays_dir, lib_rules, "rating")
+                    needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
+                    needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
+                    needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
+                    needs_parent_stream_aggregation = (_parent_stream_aggregation_requested(lib_rules) or needs_resolution) and not episode_only_targets
+                    provider_rules = [rule for rule in lib_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("rating", "ratings")]
+                    library_rating_sources = list(dict.fromkeys(
+                        source for rule in provider_rules for source in (
+                            (rule.get("template_variables") or {}).get("sources")
+                            if (rule.get("template_variables") or {}).get("sources") is not None else rating_sources
+                        )
+                    )) if provider_rules else rating_sources
+
+                    # Fast in-memory cache lookup for poster & backdrop paths
+                    cached_entry = cache_map.get((s_type.lower(), str(item_id), "poster")) if scope in ("incremental", "changed") else None
+                    cached_backdrop_entry = cache_map.get((s_type.lower(), str(item_id), "background")) if (backdrop_enabled and scope in ("incremental", "changed")) else None
+                    legacy_skipped_entry = bool(cached_entry and cached_entry.get("status") == "skipped" and not cached_entry.get("clean_asset_path"))
+
+                    # Locate clean assets on disk (reuse known cached path or search disk with indexed dir_cache)
+                    clean_asset = None
+                    asset_directory = None
+                    if _asset_type_includes(asset_type_filter, "poster"):
+                        if cached_entry and cached_entry.get("clean_asset_path"):
+                            c_p = Path(cached_entry["clean_asset_path"])
+                            if c_p.is_file():
+                                clean_asset = c_p
+
+                        if not clean_asset:
+                            clean_asset = find_clean_asset(
+                                assets_dir=real_asset_path,
+                                library_name=lib_name,
+                                root_folder=root_f,
+                                title=title,
+                                asset_type="poster",
+                                imdb_id=item.get("imdb_id"),
+                                tmdb_id=item.get("tmdb_id"),
+                                tvdb_id=item.get("tvdb_id"),
+                                year=item.get("year"),
+                                dir_cache=dir_cache
+                            )
+                    if m_type == "show" and asset_type_filter in ("season", "titlecard"):
+                        asset_directory = find_clean_asset(
+                            assets_dir=real_asset_path,
+                            library_name=lib_name,
+                            root_folder=root_f,
+                            title=title,
+                            asset_type="directory",
+                            imdb_id=item.get("imdb_id"),
+                            tmdb_id=item.get("tmdb_id"),
+                            tvdb_id=item.get("tvdb_id"),
+                            year=item.get("year"),
+                            dir_cache=dir_cache
+                        )
+
+                    clean_backdrop = None
+                    if backdrop_enabled and _asset_type_includes(asset_type_filter, "background"):
+                        if cached_backdrop_entry and cached_backdrop_entry.get("clean_asset_path"):
+                            cb_p = Path(cached_backdrop_entry["clean_asset_path"])
+                            if cb_p.is_file():
+                                clean_backdrop = cb_p
+                        if not clean_backdrop:
+                            clean_backdrop = find_clean_asset(
+                                assets_dir=real_asset_path,
+                                library_name=lib_name,
+                                root_folder=root_f,
+                                title=title,
+                                asset_type="background",
+                                imdb_id=item.get("imdb_id"),
+                                tmdb_id=item.get("tmdb_id"),
+                                tvdb_id=item.get("tvdb_id"),
+                                year=item.get("year"),
+                                dir_cache=dir_cache
+                            )
+
+                    if not clean_asset and not clean_backdrop and asset_type_filter not in ("season", "titlecard") and s_type in ("plex", "jellyfin", "emby") and m_type == "show":
+                        try:
+                            located_item = None
+                            if s_type == "plex":
+                                location_resp = await http_client.get(
+                                    f"{s_url}/library/metadata/{item_id}",
+                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                )
+                                if location_resp.status_code == 200:
+                                    location_root = fromstring(location_resp.content)
+                                    show_node = location_root.find(".//Directory")
+                                    if show_node is not None:
+                                        located_item = _parse_plex_item(show_node, lib_name, "show")
+                            else:
+                                location_resp = await http_client.get(
+                                    f"{s_url}/Items",
+                                    params={"Ids": str(item_id), "CollapseBoxSetItems": "false", "Fields": "Path,ProviderIds,ProductionYear"},
+                                    headers={"X-Emby-Token": creds.get("api_key"), "Accept": "application/json"}
+                                )
+                                if location_resp.status_code == 200:
+                                    for show_data in location_resp.json().get("Items", []):
+                                        if str(show_data.get("Id")) == str(item_id):
+                                            located_item = _parse_jellyfin_item(show_data, lib_name)
+                                            break
+                            if located_item:
+                                root_f = located_item["root_folder"]
+                                item["root_folder"] = root_f
+                                asset_search = {
+                                    "assets_dir": real_asset_path,
+                                    "library_name": lib_name,
+                                    "root_folder": root_f,
+                                    "title": title,
+                                    "imdb_id": item.get("imdb_id") or located_item.get("imdb_id"),
+                                    "tmdb_id": item.get("tmdb_id") or located_item.get("tmdb_id"),
+                                    "tvdb_id": item.get("tvdb_id") or located_item.get("tvdb_id"),
+                                    "year": item.get("year") or located_item.get("year"),
+                                    "dir_cache": dir_cache,
+                                }
+                                clean_asset = find_clean_asset(**asset_search, asset_type="poster")
+                                if backdrop_enabled:
+                                    clean_backdrop = find_clean_asset(**asset_search, asset_type="background")
+                        except Exception as location_err:
+                            logger.debug(f"[OverlaySync] Show location lookup failed for {title}: {location_err}")
+
+                    if not clean_asset and not clean_backdrop and not (m_type == "show" and asset_type_filter in ("season", "titlecard") and asset_directory):
+                        write_log(f"  [>] {w_tag}'{title}' ({lib_name}): No clean original asset found in '{real_asset_path}'. Skipping.")
+                        await _inc_stats(skipped=1)
+                        return  # No clean asset created yet by Posterizarr, skip
+
+                    assets_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
+                    # Query Plex detailed metadata for audio streams, guids, and native ratings only if required
+                    plex_xml_bytes = None
+                    needs_snapshot_refresh = False
+                    if s_type == "plex":
+                        needs_media_path = m_type == "movie" and not item.get("media_file_path")
+                        # Fast incremental check: if server_updated_at matches cache, reuse cached detected_languages & attributes
+                        need_plex_detail = (scope not in ("incremental", "changed"))
+                        if not need_plex_detail:
+                            if not cached_entry or cached_entry.get("status") not in ("synced", "skipped"):
+                                need_plex_detail = True
+                            elif legacy_skipped_entry:
+                                need_plex_detail = True
+                            elif str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or ""):
+                                need_plex_detail = True
+                            elif not cached_entry.get("attr_snapshot"):
+                                # Legacy cache row without HDR/DV snapshot: fetch details once so the hash is consistent
+                                need_plex_detail = True
+                            else:
+                                if needs_media_path and cached_entry.get("media_file_path"):
+                                    item["filepath"] = cached_entry["media_file_path"]
+                                    item["media_file_path"] = cached_entry["media_file_path"]
+                                    item["video_source"] = detect_video_source(item["media_file_path"])
+                                    needs_media_path = False
+                                c_langs = [l.strip().lower() for l in (cached_entry.get("detected_languages") or "").split(",") if l.strip()]
+                                if c_langs:
+                                    item["audio_languages"] = c_langs
+                                if cached_entry.get("edition") and not item.get("edition"):
+                                    item["edition"] = cached_entry["edition"]
+                                if cached_entry.get("show_status") and not item.get("status"):
+                                    item["status"] = cached_entry["show_status"]
+                                if cached_entry.get("runtime_mins") and not item.get("runtime_mins"):
+                                    item["runtime_mins"] = cached_entry["runtime_mins"]
+                                if cached_entry.get("detected_audio_codec") and not item.get("audio_codec"):
+                                    item["audio_codec"] = cached_entry["detected_audio_codec"]
+                                if cached_entry.get("detected_video_format") and not item.get("video_format"):
+                                    item["video_format"] = cached_entry["detected_video_format"]
+                                if cached_entry.get("detected_resolution") and not item.get("resolution"):
+                                    item["resolution"] = cached_entry["detected_resolution"]
+                                try:
+                                    snap = json.loads(cached_entry["attr_snapshot"])
+                                    needs_snapshot_refresh = not all(key in snap for key in ("networks", "studio", "audio_track_title", "subtitle_languages", "aspect_ratio"))
+                                    if needs_snapshot_refresh:
+                                        need_plex_detail = True
+                                    if snap.get("has_hdr"):
+                                        item["has_hdr"] = True
+                                    if snap.get("has_dolby_vision"):
+                                        item["has_dolby_vision"] = True
+                                    if snap.get("content_rating") and not item.get("content_rating"):
+                                        item["content_rating"] = snap["content_rating"]
+                                    if snap.get("network") and not item.get("network"):
+                                        item["network"] = snap["network"]
+                                    for key in ("networks", "studio", "audio_track_title"):
+                                        if snap.get(key) and not item.get(key):
+                                            item[key] = snap[key]
+                                    for key in ("subtitle_languages", "aspect_ratio"):
+                                        if key in snap:
+                                            item[key] = snap[key]
+                                    if item.get("audio_track_title"):
+                                        item["audio_title"] = item["audio_track_title"]
+                                except Exception:
+                                    need_plex_detail = True
+
+                        # Skip detailed XML fetch if rules do NOT require audio streams, languages, HDR, or ratings
+                        if needs_streaming and not item.get("tmdb_id"):
+                            need_plex_detail = True
+                        if needs_media_path:
+                            need_plex_detail = True
+                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh or needs_streaming or needs_media_path):
+                            need_plex_detail = False
+
+                        if need_plex_detail:
+                            try:
+                                meta_resp = await http_client.get(
+                                    f"{s_url}/library/metadata/{item_id}",
+                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                )
+                                if meta_resp.status_code == 200:
+                                    plex_xml_bytes = meta_resp.content
+                                    m_root = fromstring(meta_resp.content)
+                                    media_part = m_root.find(".//Part")
+                                    if m_type == "movie" and media_part is not None and media_part.get("file"):
+                                        item["filepath"] = media_part.get("file")
+                                        item["media_file_path"] = item["filepath"]
+                                        item["video_source"] = detect_video_source(item["media_file_path"])
+                                    item.update(_extract_stream_overlay_metadata(m_root))
+                                    audio_langs = []
+                                    for s in m_root.findall(".//Stream"):
+                                        if s.get("streamType") == "2":
+                                            lc = s.get("languageCode") or s.get("languageTag") or s.get("language")
+                                            if lc:
+                                                clean_code = str(lc).lower().split("-")[0].split("_")[0].strip()
+                                                norm_l = LANGUAGE_MAP.get(clean_code, LANGUAGE_MAP.get(str(lc).lower(), clean_code))
+                                                if norm_l not in audio_langs:
+                                                    audio_langs.append(norm_l)
+                                            if not item.get("audio_codec") and s.get("codec"):
+                                                item["audio_codec"] = s.get("codec")
+                                            a_title = s.get("title") or s.get("displayTitle") or ""
+                                            if a_title and not item.get("audio_track_title"):
+                                                item["audio_track_title"] = a_title
+                                                item["audio_title"] = a_title
+                                        elif s.get("streamType") == "1":
+                                            dovi = s.get("DOVIPresent") or s.get("doviPresent")
+                                            if dovi == "1" or "dovi" in str(s.get("displayTitle", "")).lower():
+                                                item["has_dolby_vision"] = True
+                                            cp = s.get("colorPrimaries")
+                                            if cp == "bt2020" or "hdr" in str(s.get("displayTitle", "")).lower():
+                                                item["has_hdr"] = True
+                                    if audio_langs:
+                                        item["audio_languages"] = audio_langs
+
+                                    for v_node in m_root.findall(".//Video"):
+                                        if v_node.get("editionTitle"):
+                                            item["edition"] = v_node.get("editionTitle")
+                                        dur_node = int(v_node.get("duration") or 0)
+                                        if dur_node > 0:
+                                            item["runtime_mins"] = dur_node // 60000
+
+                                    if not item.get("content_rating"):
+                                        for v_node in m_root.findall(".//Video"):
+                                            if v_node.get("contentRating"):
+                                                item["content_rating"] = v_node.get("contentRating")
+                                                break
+                                    if not item.get("studio"):
+                                        for d_node in m_root.findall(".//Directory"):
+                                            if d_node.get("studio"):
+                                                item["studio"] = d_node.get("studio")
+                                                break
+
+                                    # Extract TMDb and IMDb IDs from Guids if not already resolved
+                                    if not item.get("tmdb_id") or not item.get("imdb_id"):
+                                        for g_node in m_root.findall(".//Guid"):
+                                            gid = g_node.get("id", "")
+                                            if gid.startswith("tmdb://") and not item.get("tmdb_id"):
+                                                item["tmdb_id"] = gid[7:]
+                                            elif gid.startswith("imdb://") and not item.get("imdb_id"):
+                                                item["imdb_id"] = gid[7:]
+
+                                    if not item.get("status"):
+                                        for d_node in m_root.findall(".//Directory"):
+                                            if d_node.get("status"):
+                                                item["status"] = d_node.get("status")
+                                                break
+                            except Exception as m_err:
+                                logger.debug(f"Metadata stream query error for {title}: {m_err}")
+
+                    # Plex show/season nodes carry no <Media>; derive resolution from the episodes instead
+                    season_res_changed = False
+                    if s_type == "plex" and m_type == "show" and needs_resolution:
+                        try:
+                            res_snap = json.loads((cached_entry or {}).get("attr_snapshot") or "{}")
+                        except (TypeError, ValueError):
+                            res_snap = {}
+                        cached_seasons = res_snap.get("season_resolutions") if isinstance(res_snap, dict) else None
+                        season_res = None
+                        if (
+                            scope in ("incremental", "changed")
+                            and isinstance(cached_seasons, dict)
+                            and str(res_snap.get("leaf_count")) == str(item.get("leaf_count"))
+                            and str(cached_entry.get("server_updated_at") or "") == str(item.get("server_updated_at") or "")
+                        ):
+                            season_res = cached_seasons
+                        else:
+                            try:
+                                leaves_resp = await http_client.get(
+                                    f"{s_url}/library/metadata/{item_id}/allLeaves",
+                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                )
+                                if leaves_resp.status_code == 200:
+                                    season_res = _plex_season_resolutions(fromstring(leaves_resp.content).findall(".//Video"))
+                                else:
+                                    write_log(f"  [!] {w_tag}'{title}': episode resolution lookup returned HTTP {leaves_resp.status_code}; keeping '{item.get('resolution')}'.")
+                            except Exception as leaves_err:
+                                write_log(f"  [!] {w_tag}'{title}': episode resolution lookup failed ({type(leaves_err).__name__}); keeping '{item.get('resolution')}'.")
+                        if season_res:
+                            season_res_changed = season_res != cached_seasons
+                            item["season_resolutions"] = season_res
+                            item["resolution"] = max(season_res.values(), key=_resolution_rank)
+                            if debug_log_enabled:
+                                write_log(f"  [Debug] {w_tag}'{title}': resolution from episodes -> show={item['resolution']}, seasons={season_res}")
+
+                    # For TV Shows across all server types: resolve canonical status, networks, and content rating from TMDb API
+                    # Fast-path: if status is already cached and server_updated_at matches, skip remote TMDb HTTP call!
+                    needs_tmdb = (scope not in ("incremental", "changed")) or needs_snapshot_refresh or not cached_entry or not cached_entry.get("attr_snapshot") or str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or "")
+                    if m_type == "show" and needs_status and (needs_tmdb or not item.get("status")):
+                        if item.get("tmdb_id"):
+                            tmdb_token = creds.get("tmdb_token")
+                            show_info = await resolve_tmdb_show_info(
+                                tmdb_id=item["tmdb_id"],
+                                tmdb_token=tmdb_token,
+                                http_client=http_client,
+                                server_type=s_type,
+                                item_id=str(item_id),
+                                title=title,
+                                year=item.get("year")
+                            )
+                            if show_info.get("status"):
+                                item["status"] = show_info["status"]
+                            if show_info.get("networks"):
+                                item["networks"] = show_info["networks"]
+                                if not item.get("network"):
+                                    item["network"] = show_info.get("network")
+                            if show_info.get("content_rating") and not item.get("content_rating"):
+                                item["content_rating"] = show_info["content_rating"]
+                        # Normalize status string if raw (e.g. from Emby / Jellyfin)
+                        raw_st = str(item.get("status") or "").strip().lower()
+                        if "continu" in raw_st or "return" in raw_st:
+                            item["status"] = "returning"
+                        elif "end" in raw_st:
+                            item["status"] = "ended"
+                        elif "cancel" in raw_st:
+                            item["status"] = "canceled"
+                        elif "air" in raw_st or "product" in raw_st:
+                            item["status"] = "airing"
+
+                        # Ensure show status is persistently saved to SQLite cache for scheduled updates
+                        if item.get("status") and s_type and item_id:
+                            try:
+                                ratings_cache.save_show_status(
+                                    server_type=s_type,
+                                    item_id=str(item_id),
+                                    title=title,
+                                    year=item.get("year"),
+                                    tmdb_id=item.get("tmdb_id"),
+                                    status=item["status"],
+                                    network=item.get("network"),
+                                    content_rating=item.get("content_rating"),
+                                    source="server" if not item.get("tmdb_id") else "tmdb"
+                                )
+                            except Exception as st_save_err:
+                                logger.debug(f"[OverlaySync] Failed to persist show status for {title}: {st_save_err}")
+                    elif m_type == "movie" and needs_status:
+                        if not item.get("content_rating") and item.get("tmdb_id") and needs_tmdb:
+                            tmdb_token = creds.get("tmdb_token")
+                            m_cr = await resolve_tmdb_movie_content_rating(item["tmdb_id"], tmdb_token, http_client)
+                            if m_cr:
+                                item["content_rating"] = m_cr
+
+                    metadata_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
+                    if needs_streaming:
+                        try:
+                            item["streaming_providers"] = await resolve_streaming_providers(item.get("tmdb_id"), m_type, creds.get("tmdb_token"), http_client)
+                        except RuntimeError as provider_error:
+                            await _inc_stats(failed=1)
+                            write_log(f"  [!] {w_tag}'{title}' ({lib_name}): {provider_error}")
+                            return
+                    # Resolve multi-source ratings only if ratings overlays are configured for this library
+                    multi_ratings = {}
+                    server_rating_missing = not (item.get("audience_rating") or item.get("rating"))
+                    is_new_item = cache_map.get((s_type.lower(), str(item_id), "poster")) is None
+                    uses_rating_files = needs_ratings or any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules)
+                    if needs_ratings or (uses_rating_files and (server_rating_missing or is_new_item)):
+                        multi_ratings = await resolve_media_ratings(
+                            server_type=s_type,
+                            item_id=str(item_id),
+                            title=title,
+                            year=item.get("year"),
+                            media_type=m_type,
+                            imdb_id=item.get("imdb_id"),
+                            tmdb_id=item.get("tmdb_id"),
+                            plex_xml_bytes=plex_xml_bytes,
+                            tmdb_api_key=creds.get("tmdb_token"),
+                            mdblist_api_key=mdblist_key,
+                            omdb_api_key=omdb_key,
+                            provider_run_state=provider_run_state,
+                            simkl_client_id=dyn_settings.get("simkl_client_id"),
+                            tvdb_id=item.get("tvdb_id"),
+                            enabled_sources=library_rating_sources,
+                            client=http_client,
+                            force_refresh=(scope == "full" and needs_ratings),
+                            server_community_rating=item.get("rating"),
+                            server_critic_rating=item.get("critic_rating")
+                        )
+                        if not _rating_scores(multi_ratings) and ratings_cache.get_cached_ratings(s_type, str(item_id), allow_stale=True) is None:
+                            # Empty placeholder keeps the item visible in the Ratings Cache and lets auto-refresh retry it.
+                            ratings_cache.save_ratings(s_type, str(item_id), m_type, title, item.get("year"), item.get("imdb_id"),
+                                                       item.get("tmdb_id"), {}, source=s_type, ttl_days=1)
+                        if server_rating_missing:
+                            fallback_rating = _audience_rating_from_scores(multi_ratings)
+                            if fallback_rating is not None:
+                                item["audience_rating"] = item["rating"] = fallback_rating
+                        if not needs_ratings:
+                            multi_ratings = {}
+                    item["multi_ratings"] = multi_ratings
+                    ratings_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
+
+                    show_stream_data = None
+                    if m_type == "show" and needs_parent_stream_aggregation and (clean_asset or clean_backdrop):
+                        try:
+                            show_stream_data = await fetch_show_episode_stream_data(
+                                http_client, s_type, s_url, item_id, creds, cache_map,
+                                language_order=_configured_language_order(lib_rules),
+                            )
+                            if show_stream_data:
+                                aggregate = show_stream_data["aggregate"]
+                                if aggregate["audio_languages"]:
+                                    item["audio_languages"] = aggregate["audio_languages"]
+                                if aggregate["subtitle_languages"]:
+                                    item["subtitle_languages"] = aggregate["subtitle_languages"]
+                                if aggregate["audio_codec"]:
+                                    for key in ("audio_codec", "audio_profile", "audio_track_title", "audio_title"):
+                                        item[key] = aggregate.get(key)
+                                for key in ("resolution", "has_hdr", "has_dolby_vision"):
+                                    if key in aggregate:
+                                        item[key] = aggregate[key]
+                                item["_aggregated_episode_streams"] = True
+                                item["_language_order_precomputed"] = True
+                                stream_count = sum(len(items) for items in show_stream_data["episodes_by_season"].values())
+                                write_log(f"  [i] {w_tag}Aggregated audio metadata from {stream_count} episodes for show artwork")
+                            else:
+                                write_log(f"  [!] {w_tag}Could not aggregate episode audio metadata for '{title}'; using item-level metadata")
+                        except Exception as stream_error:
+                            write_log(f"  [!] {w_tag}Could not aggregate episode audio metadata for '{title}': {format_sync_error(stream_error, phase='aggregating episode streams')}")
+
+                    # -------------------------------------------------------------
+                    # 2A. PROCESS POSTER OVERLAYS
+                    # -------------------------------------------------------------
+                    is_current = False
+                    meta_hash = None
+                    if clean_asset and process_poster:
+                        mtime, size, clean_asset_hash = compute_file_fingerprint(clean_asset)
+                        overlay_layers = build_overlay_layers_for_item(item, lib_rules, overlays_dir, is_landscape=False)
+                        recipe_hash = compute_layers_recipe_hash(overlay_layers)
+                        meta_hash = compute_metadata_hash(
+                            languages=item.get("audio_languages"),
+                            runtime_mins=item.get("runtime_mins"),
+                            edition=item.get("edition"),
+                            status=item.get("status"),
+                            resolution=item.get("resolution"),
+                            content_rating=item.get("content_rating"),
+                            network=item.get("network"),
+                            multi_ratings=multi_ratings,
+                            audio_codec=item.get("audio_codec"),
+                            video_format=item.get("video_format"),
+                            has_hdr=item.get("has_hdr"),
+                            has_dolby_vision=item.get("has_dolby_vision")
+                        )
+
+                        is_current, cache_reason = cache.check_cache_status(
+                            server_type=s_type,
+                            item_id=str(item_id),
+                            asset_type="poster",
+                            clean_asset_hash=clean_asset_hash,
+                            overlay_recipe_hash=recipe_hash,
+                            metadata_hash=meta_hash,
+                            server_updated_at=item.get("server_updated_at"),
+                            cached_entry=cached_entry,
+                            item_meta=item,
+                            resolved_layers=overlay_layers
+                        )
+
+                        if is_current:
+                            cache.update_media_file_metadata(s_type, str(item_id), "poster", item.get("media_file_path"), item.get("video_source"), cache_map=cache_map)
+                            cache.seed_recipe_snapshot(s_type, str(item_id), "poster", recipe_hash, overlay_layers, cached_entry, cache_map=cache_map)
+
+                        if s_type == "plex" and is_current and cached_entry and cached_entry.get("status") == "synced":
+                            try:
+                                poster_identity = json.loads(cached_entry.get("attr_snapshot") or "{}")
+                                is_current, identity_reason, refreshed_identity = await _plex_titlecard_cache_status(
+                                    http_client, s_url, item_id, creds.get("token"), poster_identity,
+                                    None if is_target_mode else item.get("server_thumb"),
+                                    verify_thumbnail=True,
+                                )
+                                if not is_current:
+                                    cache_reason = identity_reason.replace("titlecard", "poster")
+                                elif refreshed_identity:
+                                    refreshed_poster = json.loads(refreshed_identity)
+                                    cache.update_attr_snapshot(s_type, str(item_id), "poster", json.dumps(refreshed_poster), cache_map=cache_map)
+                            except Exception as identity_error:
+                                await _inc_stats(failed=1)
+                                write_log(f"  [!] {w_tag}Could not verify selected Plex poster for '{title}': {format_sync_error(identity_error, phase='verifying poster selection')}. Artwork left untouched.")
+                                return
+
+                        if scope not in ("incremental", "changed") or not is_current or force_target_sync or legacy_skipped_entry:
+                            sync_reason = (
+                                f"Forced sync (scope={scope})" if scope not in ("incremental", "changed")
+                                else ("Targeted sync" if is_target_mode and is_current else cache_reason)
+                            )
+                            comp_phase = "reading clean asset"
+                            try:
+                                with open(clean_asset, "rb") as cf:
+                                    base_bytes = cf.read()
+
+                                if overlay_layers:
+                                    comp_phase = "compositing overlays in RAM"
+                                    composited_jpeg = await asyncio.to_thread(
+                                        DynamicOverlayCompositor.composite_overlays,
+                                        base_image_bytes=base_bytes,
+                                        layers=overlay_layers,
+                                        canvas_type="portrait",
+                                        abort_on_missing_asset=True,
+                                        debug_logging=debug_log_enabled,
+                                        debug_callback=write_log,
+                                        item_label=f"{item_label} (Poster)"
+                                    )
+                                else:
+                                    # Check if this item previously had an overlay applied by us
+                                    cached_entry = cached_entry or (cache_map.get((s_type.lower(), str(item_id), "poster")) if cache_map is not None else cache.get_entry(s_type, str(item_id), "poster"))
+                                    was_previously_overlaid = (
+                                        cached_entry
+                                        and cached_entry.get("status") == "synced"
+                                        and cached_entry.get("overlay_recipe_hash") not in (None, "", "none", "d751713988987e9331980363e24189ce")
+                                    )
+                                    if not was_previously_overlaid:
+                                        # Never overlaid and no overlays apply -> leave server completely untouched!
+                                        await _inc_stats(skipped=1)
+                                        write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> No overlay rules apply")
+                                        cache.record_push(
+                                            server_type=s_type,
+                                            item_id=str(item_id),
+                                            asset_type="poster",
+                                            clean_asset_path=str(clean_asset),
+                                            clean_asset_hash=clean_asset_hash,
+                                            clean_asset_mtime=mtime,
+                                            clean_asset_size=size,
+                                            overlay_recipe_hash="none",
+                                            metadata_hash=meta_hash,
+                                            status="skipped",
+                                            server_updated_at=item.get("server_updated_at"),
+                                            detected_languages=",".join(sorted(item.get("audio_languages", []))) if item.get("audio_languages") else None,
+                                            runtime_mins=item.get("runtime_mins"),
+                                            edition=item.get("edition"),
+                                            show_status=item.get("status"),
+                                            detected_audio_codec=item.get("audio_codec"),
+                                            detected_video_format=item.get("video_format"),
+                                            detected_resolution=item.get("resolution"),
+                                            attr_snapshot=build_attr_snapshot(item),
+                                            cache_map=cache_map,
+                                            resolved_layers=overlay_layers,
+                                            media_file_path=item.get("media_file_path"),
+                                            detected_video_source=item.get("video_source")
+                                        )
+                                        composited_jpeg = None
+                                    else:
+                                        composited_jpeg = base_bytes
+
+                                upload_success = False
+                                if s_type == "plex" and scope in ("incremental", "changed") and cached_entry and composited_jpeg is not None:
+                                    comp_phase = "comparing rendered poster with selected Plex artwork"
+                                    identical, identity_reason, verified_snapshot = await _plex_rendered_titlecard_status(
+                                        http_client, s_url, item_id, creds.get("token"), {}, None, composited_jpeg, verify_thumbnail=True
+                                    )
+                                    if identical:
+                                        poster_snapshot = {**json.loads(build_attr_snapshot(item)), **json.loads(verified_snapshot or "{}")}
+                                        saved = cache.update_verified_fingerprints(
+                                            s_type, str(item_id), "poster", clean_asset_hash, recipe_hash, meta_hash,
+                                            snapshot_overlay_layers(json.dumps(poster_snapshot), overlay_layers), mtime, size,
+                                            cache_map=cache_map, media_file_path=item.get("media_file_path"), detected_video_source=item.get("video_source"),
+                                            detected_languages=",".join(sorted(item["audio_languages"])) if item.get("audio_languages") else None,
+                                            detected_resolution=item.get("resolution"), detected_audio_codec=item.get("audio_codec"),
+                                            detected_video_format=item.get("video_format")
+                                        )
+                                        if saved:
+                                            await _inc_stats(skipped=1)
+                                            write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> Selected Plex poster already matches rendered output; cache fingerprints refreshed (no upload)")
+                                        else:
+                                            await _inc_stats(failed=1)
+                                            write_log(f"  [!] {w_tag}Poster '{title}' already matches Plex, but cache fingerprints could not be saved. No upload performed.")
+                                        composited_jpeg = None
+                                comp_phase = f"uploading to {s_type.upper()}"
+                                if composited_jpeg is not None:
+                                    if s_type == "plex":
+                                        upload_url = f"{s_url}/library/metadata/{item_id}/posters"
+                                        headers = {
+                                            "X-Plex-Token": creds.get("token"),
+                                            "Content-Type": "image/jpeg"
+                                        }
+                                        resp = await _post_artwork_with_retry(
+                                            http_client, upload_url, headers=headers, content=composited_jpeg,
+                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
+                                        )
+                                        upload_success = resp is not None and resp.status_code in [200, 201]
+                                    elif s_type == "silo":
+                                        upload_success = await _upload_silo_artwork(
+                                            http_client, creds, item_id, composited_jpeg, "poster", m_type, write_log, dry_run
+                                        )
+                                    elif s_type in ["jellyfin", "emby"]:
+                                        upload_url = f"{s_url}/Items/{item_id}/Images/Primary"
+                                        headers = {
+                                            "X-Emby-Token": creds.get("api_key"),
+                                            "Authorization": f'MediaBrowser Token="{creds.get("api_key")}"',
+                                            "Content-Type": "image/jpeg"
+                                        }
+                                        b64_img = base64.b64encode(composited_jpeg)
+                                        resp = await _post_artwork_with_retry(
+                                            http_client, upload_url, headers=headers, content=b64_img,
+                                            item_label=f"{w_tag}Poster '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
+                                        )
+                                        upload_success = resp is not None and resp.status_code in [200, 201, 204]
+
+                                if _cancel_requested:
+                                    return
+                                if upload_success:
+                                    poster_snapshot = build_attr_snapshot(item)
+                                    if s_type == "plex":
+                                        comp_phase = "confirming selected Plex poster"
+                                        verified_poster = await _confirm_plex_titlecard(
+                                            http_client, s_url, item_id, creds.get("token"), composited_jpeg, artwork_type="poster"
+                                        )
+                                        poster_snapshot = json.dumps({**json.loads(poster_snapshot), **json.loads(verified_poster)}, sort_keys=True)
+                                    cache.record_push(
+                                        server_type=s_type,
+                                        server_url=s_url,
+                                        item_id=str(item_id),
+                                        asset_type="poster",
+                                        clean_asset_path=str(clean_asset),
+                                        clean_asset_mtime=mtime,
+                                        clean_asset_size=size,
+                                        clean_asset_hash=clean_asset_hash,
+                                        overlay_recipe_hash=recipe_hash,
+                                        item_title=title,
+                                        library_name=lib_name,
+                                        media_type=m_type,
+                                        status="synced",
+                                        server_updated_at=item.get("server_updated_at"),
+                                        detected_languages=",".join(sorted(item.get("audio_languages", []))) if item.get("audio_languages") else None,
+                                        runtime_mins=item.get("runtime_mins"),
+                                        edition=item.get("edition"),
+                                        show_status=item.get("status"),
+                                        metadata_hash=meta_hash,
+                                        detected_audio_codec=item.get("audio_codec"),
+                                        detected_video_format=item.get("video_format"),
+                                        detected_resolution=item.get("resolution"),
+                                        attr_snapshot=poster_snapshot,
+                                        cache_map=cache_map,
+                                        resolved_layers=overlay_layers,
+                                        media_file_path=item.get("media_file_path"),
+                                        detected_video_source=item.get("video_source")
+                                    )
+                                    await _inc_stats(synced=1)
+                                    if overlay_layers:
+                                        write_log(f"  [+] {w_tag}Overlaid & Synced: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
+                                    else:
+                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
+                                elif dry_run and composited_jpeg is not None:
+                                    await _inc_stats(skipped=1)
+                                elif composited_jpeg is not None:
+                                    await _inc_stats(failed=1)
+                                    http_detail = format_http_failure(resp)
+                                    write_log(f"  [-] {w_tag}Failed uploading '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                    logger.error(f"[OverlaySync] {w_tag}Failed uploading '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+
+                            except OverlayAssetMissingError as ame:
+                                await _inc_stats(failed=1)
+                                write_log(f"  [!] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Poster]: {ame.message}. Server artwork left untouched.")
+                                logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Poster]: {ame.message}")
+                            except Exception as comp_err:
+                                await _inc_stats(failed=1)
+                                err_details = format_sync_error(comp_err, phase=comp_phase)
+                                write_log(f"  [-] {w_tag}Error compositing/uploading '{title}' ({lib_name}): {err_details}")
+                                logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading '{title}' ({lib_name}) during {comp_phase}: {err_details}", exc_info=True)
+                        else:
+                            poster_evaluated_at = time.perf_counter() if debug_log_enabled else 0.0
+                            await _inc_stats(skipped=1)
+                            write_log(f"  [-] {w_tag}Skipped: '{title}' ({lib_name}) -> Up-to-date")
+                            if item.get("server_updated_at"):
+                                cache.update_server_updated_at(s_type, str(item_id), "poster", item.get("server_updated_at"), cache_map=cache_map)
+                            cache.update_attr_snapshot(s_type, str(item_id), "poster", build_attr_snapshot(item), cache_map=cache_map)
+                            if debug_log_enabled:
+                                skip_finished_at = time.perf_counter()
+                                if skip_finished_at - item_started_at >= 0.25 and skip_timing_samples["count"] < 8:
+                                    skip_timing_samples["count"] += 1
+                                    write_log(
+                                        f"  [Timing] {w_tag}'{title}' -> "
+                                        f"assets={(assets_resolved_at - item_started_at) * 1000:.0f}ms, "
+                                        f"metadata={(metadata_resolved_at - assets_resolved_at) * 1000:.0f}ms, "
+                                        f"ratings={(ratings_resolved_at - metadata_resolved_at) * 1000:.0f}ms, "
+                                        f"poster evaluation={(poster_evaluated_at - ratings_resolved_at) * 1000:.0f}ms, "
+                                        f"cache/logging={(skip_finished_at - poster_evaluated_at) * 1000:.0f}ms, "
+                                        f"total={(skip_finished_at - item_started_at) * 1000:.0f}ms"
+                                    )
+
+                        if _cancel_requested:
+                            return
+
+                    # -------------------------------------------------------------
+                    # 2B. PROCESS BACKDROP OVERLAYS (16:9 Landscape)
+                    # -------------------------------------------------------------
+                    if clean_backdrop and process_background:
+                        bmtime, bsize, bclean_hash = compute_file_fingerprint(clean_backdrop)
+                        b_item_meta = {**item, "is_backdrop": True, "canvas_type": "landscape"}
+                        b_layers = build_overlay_layers_for_item(b_item_meta, lib_rules, overlays_dir, is_landscape=True)
+                        b_recipe_hash = compute_layers_recipe_hash(b_layers)
+
+                        b_cached_entry = cached_backdrop_entry or (cache_map.get((s_type.lower(), str(item_id), "background")) if cache_map is not None else cache.get_entry(s_type, str(item_id), "background"))
+                        b_is_current, b_cache_reason = cache.check_cache_status(
+                            server_type=s_type,
+                            item_id=str(item_id),
+                            asset_type="background",
+                            clean_asset_hash=bclean_hash,
+                            overlay_recipe_hash=b_recipe_hash,
+                            metadata_hash=meta_hash if meta_hash is not None else compute_metadata_hash(
+                                languages=item.get("audio_languages"),
+                                runtime_mins=item.get("runtime_mins"),
+                                edition=item.get("edition"),
+                                status=item.get("status"),
+                                resolution=item.get("resolution"),
+                                content_rating=item.get("content_rating"),
+                                network=item.get("network"),
+                                multi_ratings=multi_ratings,
+                                audio_codec=item.get("audio_codec"),
+                                video_format=item.get("video_format"),
+                                has_hdr=item.get("has_hdr"),
+                                has_dolby_vision=item.get("has_dolby_vision")
+                            ),
+                            server_updated_at=item.get("server_updated_at"),
+                            cached_entry=b_cached_entry,
+                            item_meta=b_item_meta,
+                            resolved_layers=b_layers
+                        )
+
+                        if scope not in ("incremental", "changed") or not b_is_current or force_target_sync:
+                            b_sync_reason = (
+                                f"Forced sync (scope={scope})" if scope not in ("incremental", "changed")
+                                else ("Targeted sync" if is_target_mode and b_is_current else b_cache_reason)
+                            )
+                            b_phase = "reading clean backdrop"
+                            try:
+                                with open(clean_backdrop, "rb") as bf:
+                                    b_base_bytes = bf.read()
+
+                                if b_layers:
+                                    b_phase = "compositing backdrop overlays in RAM"
+                                    b_comp = await asyncio.to_thread(
+                                        DynamicOverlayCompositor.composite_overlays,
+                                        base_image_bytes=b_base_bytes,
+                                        layers=b_layers,
+                                        canvas_type="landscape",
+                                        abort_on_missing_asset=True,
+                                        debug_logging=debug_log_enabled,
+                                        debug_callback=write_log,
+                                        item_label=f"{item_label} (Backdrop)"
+                                    )
+                                else:
+                                    b_was_previously_overlaid = (
+                                        b_cached_entry
+                                        and b_cached_entry.get("status") == "synced"
+                                        and b_cached_entry.get("overlay_recipe_hash") not in (None, "", "none", "d751713988987e9331980363e24189ce")
+                                    )
+                                    if not b_was_previously_overlaid:
+                                        await _inc_stats(skipped=1)
+                                        write_log(f"  [-] {w_tag}Skipped Backdrop: '{title}' ({lib_name}) -> No overlay rules apply")
+                                        cache.record_push(
+                                            server_type=s_type,
+                                            item_id=str(item_id),
+                                            asset_type="background",
+                                            clean_asset_hash=bclean_hash,
+                                            clean_asset_mtime=bmtime,
+                                            clean_asset_size=bsize,
+                                            overlay_recipe_hash="none",
+                                            metadata_hash=b_recipe_hash,
+                                            status="skipped",
+                                            server_updated_at=item.get("server_updated_at"),
+                                            attr_snapshot=build_attr_snapshot(item),
+                                            cache_map=cache_map
+                                        )
+                                        b_comp = None
+                                    else:
+                                        b_comp = b_base_bytes
+
+                                b_upload_success = False
+                                b_phase = f"uploading backdrop to {s_type.upper()}"
+                                if b_comp is not None:
+                                    if s_type == "plex":
+                                        b_url = f"{s_url}/library/metadata/{item_id}/arts"
+                                        b_headers = {
+                                            "X-Plex-Token": creds.get("token"),
+                                            "Content-Type": "image/jpeg"
+                                        }
+                                        b_resp = await _post_artwork_with_retry(
+                                            http_client, b_url, headers=b_headers, content=b_comp,
+                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
+                                        )
+                                        b_upload_success = b_resp is not None and b_resp.status_code in [200, 201]
+                                    elif s_type == "silo":
+                                        b_upload_success = await _upload_silo_artwork(
+                                            http_client, creds, item_id, b_comp, "backdrop", m_type, write_log, dry_run
+                                        )
+                                    elif s_type in ["jellyfin", "emby"]:
+                                        b_url = f"{s_url}/Items/{item_id}/Images/Backdrop"
+                                        b_headers = {
+                                            "X-Emby-Token": creds.get("api_key"),
+                                            "Authorization": f'MediaBrowser Token="{creds.get("api_key")}"',
+                                            "Content-Type": "image/jpeg"
+                                        }
+                                        b64_b_comp = base64.b64encode(b_comp)
+                                        b_resp = await _post_artwork_with_retry(
+                                            http_client, b_url, headers=b_headers, content=b64_b_comp,
+                                            item_label=f"{w_tag}Background '{title}' ({lib_name})", write_log=write_log,
+                                            dry_run=dry_run
+                                        )
+                                        b_upload_success = b_resp is not None and b_resp.status_code in [200, 201, 204]
+
+                                if _cancel_requested:
+                                    return
+                                if b_upload_success:
+                                    backdrop_snapshot = build_attr_snapshot(item)
+                                    if s_type == "plex":
+                                        b_phase = "confirming selected Plex backdrop"
+                                        verified_art = await _confirm_plex_backdrop(
+                                            http_client, s_url, item_id, creds.get("token"), b_comp
+                                        )
+                                        backdrop_snapshot = json.dumps({**json.loads(backdrop_snapshot), **json.loads(verified_art)}, sort_keys=True)
+                                    cache.record_push(
+                                        server_type=s_type,
+                                        server_url=s_url,
+                                        item_id=str(item_id),
+                                        asset_type="background",
+                                        clean_asset_path=str(clean_backdrop),
+                                        clean_asset_mtime=bmtime,
+                                        clean_asset_size=bsize,
+                                        clean_asset_hash=bclean_hash,
+                                        overlay_recipe_hash=b_recipe_hash,
+                                        item_title=f"{title} (Backdrop)",
+                                        library_name=lib_name,
+                                        media_type=m_type,
+                                        status="synced",
+                                        server_updated_at=item.get("server_updated_at"),
+                                        detected_languages=",".join(sorted(item.get("audio_languages", []))) if item.get("audio_languages") else None,
+                                        runtime_mins=item.get("runtime_mins"),
+                                        edition=item.get("edition"),
+                                        show_status=item.get("status"),
+                                        metadata_hash=meta_hash,
+                                        detected_audio_codec=item.get("audio_codec"),
+                                        detected_video_format=item.get("video_format"),
+                                        detected_resolution=item.get("resolution"),
+                                        attr_snapshot=backdrop_snapshot,
+                                        cache_map=cache_map,
+                                        media_file_path=item.get("media_file_path"),
+                                        detected_video_source=item.get("video_source")
+                                    )
+                                    await _inc_stats(synced=1)
+                                    if b_layers:
+                                        write_log(f"  [+] {w_tag}Overlaid & Synced Backdrop: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
+                                    else:
+                                        write_log(f"  [+] {w_tag}Overlays Removed & Clean Backdrop Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
+                                elif dry_run and b_comp is not None:
+                                    await _inc_stats(skipped=1)
+                                elif b_comp is not None:
+                                    await _inc_stats(failed=1)
+                                    http_detail = format_http_failure(b_resp)
+                                    write_log(f"  [-] {w_tag}Failed uploading backdrop for '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                    logger.error(f"[OverlaySync] {w_tag}Failed uploading backdrop for '{title}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                            except OverlayAssetMissingError as ame:
+                                await _inc_stats(failed=1)
+                                write_log(f"  [!] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Backdrop]: {ame.message}. Server artwork left untouched.")
+                                logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title}' ({lib_name}) [Backdrop]: {ame.message}")
+                            except Exception as b_err:
+                                await _inc_stats(failed=1)
+                                err_details = format_sync_error(b_err, phase=b_phase)
+                                write_log(f"  [-] {w_tag}Error compositing/uploading backdrop for '{title}' ({lib_name}): {err_details}")
+                                logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading backdrop for '{title}' ({lib_name}) during {b_phase}: {err_details}", exc_info=True)
+                        else:
+                            await _inc_stats(skipped=1)
+                            write_log(f"  [-] {w_tag}Skipped Backdrop: '{title}' ({lib_name}) -> Up-to-date")
+                            cache.update_media_file_metadata(s_type, str(item_id), "background", item.get("media_file_path"), item.get("video_source"), cache_map=cache_map)
+                            if item.get("server_updated_at"):
+                                cache.update_server_updated_at(s_type, str(item_id), "background", item.get("server_updated_at"), cache_map=cache_map)
+                            cache.update_attr_snapshot(s_type, str(item_id), "background", build_attr_snapshot(item), cache_map=cache_map)
+
+                    if _cancel_requested:
+                        return
+
+                    # 7. If Show, also evaluate and sync Seasons & Titlecards if clean assets present on disk
+                    show_parent = (clean_asset.parent if clean_asset else (clean_backdrop.parent if clean_backdrop else asset_directory))
+                    if m_type == "show" and show_parent and show_parent.exists() and (asset_type_filter is None or asset_type_filter in ("season", "titlecard")):
+                        try:
+                            # Fast disk scan: check if this show has any season posters or titlecards on disk
+                            show_key = f"files_{show_parent.resolve()}"
+                            files_map = dir_cache.get(show_key)
+                            if files_map is None:
+                                try:
+                                    files_map = {f.name.lower(): f for f in show_parent.iterdir() if f.is_file()}
+                                except Exception:
+                                    files_map = {}
+                                dir_cache[show_key] = files_map
+
+                            tc_key = f"tc_{show_parent.resolve()}"
+                            tc_map = dir_cache.get(tc_key)
+                            if tc_map is None:
+                                find_titlecard(show_parent, 1, 1, dir_cache=dir_cache)
+                                tc_map = dir_cache.get(tc_key, {})
+
+                            has_season_posters = any("season" in fn or "specials" in fn for fn in files_map)
+                            has_titlecards = bool(tc_map)
+
+                            # If no season posters and no titlecards exist on disk for this show, skip all season/episode calls!
+                            if not has_season_posters and not has_titlecards:
+                                return
+
+                            # FAST-PATH: If show itself is up-to-date, server timestamp unchanged, and no clean artwork in show directory was modified since last sync:
+                            if scope in ("incremental", "changed") and not is_target_mode and not force_target_sync and is_current and cached_entry and not season_res_changed and not (s_type == "plex" and has_titlecards) and not (needs_ratings and season_ratings_enabled_for_library(dyn_settings, lib_name)):
+                                c_up = cached_entry.get("server_updated_at")
+                                s_up = item.get("server_updated_at")
+                                if c_up and s_up and str(c_up) == str(s_up):
+                                    last_p = cached_entry.get("last_pushed_at")
+                                    last_p_ts = 0.0
+                                    if last_p:
+                                        try:
+                                            last_p_ts = datetime.fromisoformat(last_p).timestamp()
+                                        except Exception:
+                                            last_p_ts = 0.0
+                                    def _safe_m(f_obj):
+                                        try:
+                                            return f_obj.stat().st_mtime
+                                        except Exception:
+                                            return 0.0
+
+                                    max_art_mtime = max((_safe_m(f) for f in files_map.values()), default=0.0)
+                                    if tc_map:
+                                        max_art_mtime = max(max_art_mtime, max((_safe_m(f) for f in tc_map.values()), default=0.0))
+                                    if last_p_ts > 0 and (max_art_mtime - last_p_ts) <= 2.0:
+                                        write_log(f"  [-] {w_tag}Skipped Show Children: '{title}' -> Seasons & Episodes Up-to-date (No media or artwork changes)")
+                                        return
+
+                            seasons_to_process = list(show_stream_data["seasons"]) if show_stream_data is not None else []
+                            if show_stream_data is None and s_type == "plex":
+                                ch_resp = await http_client.get(
+                                    f"{s_url}/library/metadata/{item_id}/children",
+                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                )
+                                if ch_resp.status_code == 200:
+                                    ch_root = fromstring(ch_resp.content)
+                                    for s_dir in ch_root.findall(".//Directory"):
+                                        s_rk = s_dir.get("ratingKey")
+                                        s_idx = s_dir.get("index")
+                                        if s_rk and s_idx and s_idx.isdigit():
+                                            seasons_to_process.append({"id": str(s_rk), "season_number": int(s_idx)})
+                            elif show_stream_data is None and s_type == "silo":
+                                silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                                seasons_to_process = [{"id": str(season["content_id"]), "season_number": int(season["season_number"])}
+                                                      for season in await silo.seasons(item_id)]
+                            elif show_stream_data is None and s_type in ["jellyfin", "emby"]:
+                                em_s_resp = await http_client.get(
+                                    f"{s_url}/Shows/{item_id}/Seasons",
+                                    headers=headers
+                                )
+                                if em_s_resp.status_code == 200:
+                                    for s_obj in em_s_resp.json().get("Items", []):
+                                        s_rk = s_obj.get("Id")
+                                        s_idx = s_obj.get("IndexNumber")
+                                        if s_rk and s_idx is not None:
+                                            try:
+                                                seasons_to_process.append({"id": str(s_rk), "season_number": int(s_idx)})
+                                            except (ValueError, TypeError):
+                                                pass
+
+                            season_catalog_cache = {}
+                            for s_info in seasons_to_process:
+                                if _cancel_requested:
+                                    return
+                                s_rk = s_info["id"]
+                                s_num = s_info["season_number"]
+                                process_season = _asset_type_includes(asset_type_filter, "season") and _overlay_target_includes(item, item_targets, "season", s_num)
+                                process_titlecards = _asset_type_includes(asset_type_filter, "titlecard") and _overlay_target_includes(item, item_targets, "titlecard", s_num)
+                                if s_type == "silo":
+                                    process_titlecards = False
+                                if not process_season and not process_titlecards:
+                                    continue
+                                clean_season = find_season_poster(show_parent, s_num, root_f, dir_cache=dir_cache) if has_season_posters and process_season else None
+                                season_episode_nodes = None
+                                season_episode_items = None
+                                if clean_season:
+                                    smtime, ssize, sclean_hash = compute_file_fingerprint(clean_season)
+                                    s_resolution = (item.get("season_resolutions") or {}).get(str(s_num)) or item.get("resolution")
+                                    s_item_meta = {
+                                        **item,
+                                        "resolution": s_resolution,
+                                        "media_type": "season",
+                                        "is_season": True,
+                                        "season_number": s_num,
+                                        "studio": item.get("studio"),
+                                        "network": item.get("network"),
+                                        "networks": item.get("networks", []),
+                                        "status": item.get("status")
+                                    }
+                                    season_aggregate = (show_stream_data or {}).get("season_aggregates", {}).get(s_num)
+                                    if season_aggregate is not None:
+                                        s_item_meta.update(season_aggregate)
+                                        s_resolution = s_item_meta.get("resolution")
+                                        s_item_meta["_language_order_precomputed"] = True
+                                    season_rating_rules = [rule for rule in lib_rules if isinstance(rule, dict)
+                                        and str(rule.get("default", "")).lower() in ("rating", "ratings")
+                                        and str((rule.get("template_variables") or {}).get("builder_level", "all")).lower() in ("all", "season")]
+                                    if season_ratings_enabled_for_library(dyn_settings, lib_name) and (season_rating_rules or (needs_ratings and any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules))):
+                                        if s_type == "plex":
+                                            season_episode_nodes = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            if season_episode_nodes is None:
+                                                episode_response = await http_client.get(f"{s_url}/library/metadata/{s_rk}/children",
+                                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"})
+                                                season_episode_nodes = fromstring(episode_response.content).findall(".//Video") if episode_response.status_code == 200 else []
+                                            season_episode_numbers = [int(node.get("index")) for node in season_episode_nodes if str(node.get("index") or "").isdigit()]
+                                        elif s_type == "silo":
+                                            silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                                            episode_rows = await silo.catalog(item.get("library_id"), "episode")
+                                            season_episode_numbers = [int(row["episode_number"]) for row in episode_rows
+                                                if row.get("series_id") == item_id and row.get("season_number") == s_num]
+                                        else:
+                                            season_episode_items = (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            if season_episode_items is None:
+                                                episode_response = await http_client.get(f"{s_url}/Shows/{item_id}/Episodes",
+                                                    params={"SeasonId": str(s_rk), "Fields": "MediaStreams,MediaSources,OfficialRating,RunTimeTicks,Status,ProviderIds,Path"}, headers=headers)
+                                                season_episode_items = episode_response.json().get("Items", []) if episode_response.status_code == 200 else []
+                                            season_episode_numbers = [int(node["IndexNumber"]) for node in season_episode_items if node.get("IndexNumber") is not None]
+                                        season_ratings = await resolve_season_ratings(s_type, str(s_rk), f"{title} S{s_num:02d}",
+                                            item, s_num, season_episode_numbers, dyn_settings["simkl_client_id"], http_client,
+                                            force_refresh=scope == "full", catalog_cache=season_catalog_cache)
+                                        s_item_meta["multi_ratings"] = _merge_season_rating_scores(item.get("multi_ratings"), season_ratings)
+                                    s_layers = build_overlay_layers_for_item(s_item_meta, lib_rules, overlays_dir, is_landscape=False)
+                                    s_recipe_hash = compute_layers_recipe_hash(s_layers)
+                                    s_meta_hash = compute_metadata_hash(
+                                        languages=s_item_meta.get("audio_languages"),
+                                        runtime_mins=None,
+                                        edition=None,
+                                        status=item.get("status"),
+                                        resolution=s_resolution,
+                                        content_rating=item.get("content_rating"),
+                                        network=item.get("network"),
+                                        multi_ratings=None,
+                                        audio_codec=s_item_meta.get("audio_codec"),
+                                        video_format=item.get("video_format")
+                                    )
+                                    s_cached_entry = cache_map.get((s_type.lower(), str(s_rk), "season"))
+                                    s_current, s_cache_reason = cache.check_cache_status(
+                                        server_type=s_type,
+                                        item_id=str(s_rk),
+                                        asset_type="season",
+                                        clean_asset_hash=sclean_hash,
+                                        overlay_recipe_hash=s_recipe_hash,
+                                        metadata_hash=s_meta_hash,
+                                        server_updated_at=item.get("server_updated_at"),
+                                        cached_entry=s_cached_entry,
+                                        item_meta=s_item_meta,
+                                        resolved_layers=s_layers
+                                    )
+
+                                    if scope not in ("incremental", "changed") or not s_current or force_target_sync:
+                                        s_sync_reason = f"Forced sync (scope={scope})" if scope not in ("incremental", "changed") else s_cache_reason
+                                        s_phase = "reading clean season poster"
+                                        try:
+                                            with open(clean_season, "rb") as csf:
+                                                s_base_bytes = csf.read()
+
+                                            if s_layers:
+                                                s_phase = "compositing season overlays in RAM"
+                                                s_comp = await asyncio.to_thread(
+                                                    DynamicOverlayCompositor.composite_overlays,
+                                                    base_image_bytes=s_base_bytes,
+                                                    layers=s_layers,
+                                                    canvas_type="portrait",
+                                                    abort_on_missing_asset=True,
+                                                    debug_logging=debug_log_enabled,
+                                                    debug_callback=write_log,
+                                                    item_label=f"Worker {worker_id} | '{title}' S{s_num:02d} (Season)" if concurrency > 1 else f"'{title}' S{s_num:02d} (Season)"
+                                                )
+                                            else:
+                                                s_comp = s_base_bytes
+
+                                            s_success = False
+                                            season_snapshot = None
+                                            s_phase = f"uploading season poster to {s_type.upper()}"
+                                            if s_type == "plex":
+                                                s_resp = await _post_artwork_with_retry(
+                                                    http_client,
+                                                    f"{s_url}/library/metadata/{s_rk}/posters",
+                                                    headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
+                                                    content=s_comp,
+                                                    item_label=f"{w_tag}Season '{title} S{s_num:02d}' ({lib_name})",
+                                                    write_log=write_log,
+                                                    dry_run=dry_run
+                                                )
+                                                s_success = s_resp is not None and s_resp.status_code in [200, 201]
+                                            elif s_type == "silo":
+                                                s_success = await _upload_silo_artwork(
+                                                    http_client, creds, s_rk, s_comp, "poster", "season", write_log, dry_run
+                                                )
+                                            elif s_type in ["jellyfin", "emby"]:
+                                                b64_s = base64.b64encode(s_comp)
+                                                s_resp = await _post_artwork_with_retry(
+                                                    http_client,
+                                                    f"{s_url}/Items/{s_rk}/Images/Primary",
+                                                    headers=headers,
+                                                    content=b64_s,
+                                                    item_label=f"{w_tag}Season '{title} S{s_num:02d}' ({lib_name})",
+                                                    write_log=write_log,
+                                                    dry_run=dry_run
+                                                )
+                                                s_success = s_resp is not None and s_resp.status_code in [200, 201, 204]
+
+                                            if _cancel_requested:
+                                                return
+                                            if s_success:
+                                                if s_type == "plex":
+                                                    s_phase = "confirming Plex season poster selection"
+                                                    season_snapshot = await _confirm_plex_titlecard(
+                                                        http_client, s_url, s_rk, creds.get("token"), s_comp,
+                                                        artwork_type="season"
+                                                    )
+                                                cache.record_push(
+                                                    server_type=s_type,
+                                                    server_url=s_url,
+                                                    item_id=str(s_rk),
+                                                    asset_type="season",
+                                                    clean_asset_path=str(clean_season),
+                                                    clean_asset_mtime=smtime,
+                                                    clean_asset_size=ssize,
+                                                    clean_asset_hash=sclean_hash,
+                                                    overlay_recipe_hash=s_recipe_hash,
+                                                    item_title=f"{title} - Season {s_num}",
+                                                    library_name=lib_name,
+                                                    media_type="season",
+                                                    status="synced",
+                                                    server_updated_at=item.get("server_updated_at"),
+                                                    detected_languages=",".join(sorted(s_item_meta.get("audio_languages", []))) if s_item_meta.get("audio_languages") else None,
+                                                    runtime_mins=None,
+                                                    edition=None,
+                                                    show_status=item.get("status"),
+                                                    metadata_hash=s_meta_hash,
+                                                    attr_snapshot=season_snapshot,
+                                                    detected_audio_codec=s_item_meta.get("audio_codec"),
+                                                    detected_video_format=item.get("video_format"),
+                                                    detected_resolution=s_resolution,
+                                                    cache_map=cache_map
+                                                )
+                                                await _inc_stats(synced=1)
+                                                write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {s_sync_reason}]")
+                                            elif dry_run:
+                                                await _inc_stats(skipped=1)
+                                            else:
+                                                await _inc_stats(failed=1)
+                                                http_detail = format_http_failure(s_resp)
+                                                write_log(f"  [-] {w_tag}Failed uploading season '{title} S{s_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                                logger.error(f"[OverlaySync] {w_tag}Failed uploading season '{title} S{s_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                        except OverlayAssetMissingError as ame:
+                                            await _inc_stats(failed=1)
+                                            write_log(f"  [!] {w_tag}Aborted overlay for '{title} S{s_num:02d}' ({lib_name}) [Season]: {ame.message}. Server artwork left untouched.")
+                                            logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title} S{s_num:02d}' ({lib_name}) [Season]: {ame.message}")
+                                        except Exception as s_comp_err:
+                                            await _inc_stats(failed=1)
+                                            err_details = format_sync_error(s_comp_err, phase=s_phase)
+                                            write_log(f"  [-] {w_tag}Error compositing/uploading season '{title} S{s_num:02d}' ({lib_name}): {err_details}")
+                                            logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading season '{title} S{s_num:02d}' ({lib_name}) during {s_phase}: {err_details}", exc_info=True)
+                                    else:
+                                        await _inc_stats(skipped=1)
+                                        write_log(f"  [-] {w_tag}Skipped Season: '{title} S{s_num:02d}' -> Up-to-date")
+                                        if item.get("server_updated_at"):
+                                            cache.update_server_updated_at(s_type, f"{item_id}_s{s_num}", "season", item.get("server_updated_at"), cache_map=cache_map)
+
+                                # 8. Discover and sync Titlecards (Episodes) for this Season
+                                if has_titlecards and process_titlecards:
+                                    try:
+                                        episodes_to_process = []
+                                        if s_type == "plex":
+                                            ep_nodes = season_episode_nodes if season_episode_nodes is not None else (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            if ep_nodes is None:
+                                                ep_resp = await http_client.get(
+                                                    f"{s_url}/library/metadata/{s_rk}/children",
+                                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                                )
+                                                ep_nodes = fromstring(ep_resp.content).findall(".//Video") if ep_resp.status_code == 200 else []
+                                            if ep_nodes is not None:
+                                                for ep_elem in ep_nodes:
+                                                    ep_rk = ep_elem.get("ratingKey")
+                                                    ep_idx = ep_elem.get("index")
+                                                    if not ep_rk or not ep_idx or not ep_idx.isdigit():
+                                                        continue
+                                                    ep_num = int(ep_idx)
+                                                    if not _overlay_target_includes(item, item_targets, "titlecard", s_num, ep_num):
+                                                        continue
+                                                    clean_tc = find_titlecard(show_parent, s_num, ep_num, dir_cache=dir_cache)
+                                                    if not clean_tc:
+                                                        continue
+
+                                                    ep_title = ep_elem.get("title", f"Episode {ep_num}")
+                                                    ep_stream_metadata = _extract_stream_overlay_metadata(ep_elem)
+
+                                                    dur_ms = int(ep_elem.get("duration") or 0)
+                                                    ep_dur_mins = dur_ms // 60000 if dur_ms > 0 else None
+                                                    ep_res = None
+                                                    ep_audio_c = None
+                                                    ep_has_dv = False
+                                                    ep_has_hdr = False
+                                                    for med in ep_elem.findall(".//Media"):
+                                                        med_res = _plex_media_resolution(med)
+                                                        if med_res and _resolution_rank(med_res) > _resolution_rank(ep_res):
+                                                            ep_res = med_res
+                                                        if med.get("audioCodec"):
+                                                            ep_audio_c = med.get("audioCodec")
+                                                    ep_res = ep_res or "1080p"
+
+                                                    ep_langs = []
+                                                    for st_node in ep_elem.findall(".//Stream"):
+                                                        if st_node.get("streamType") == "2":
+                                                            lc_code = st_node.get("languageCode") or st_node.get("languageTag") or st_node.get("language")
+                                                            if lc_code:
+                                                                clean_code = str(lc_code).lower().split("-")[0].split("_")[0].strip()
+                                                                norm_lang = LANGUAGE_MAP.get(clean_code, LANGUAGE_MAP.get(str(lc_code).lower(), clean_code))
+                                                                if norm_lang not in ep_langs:
+                                                                    ep_langs.append(norm_lang)
+                                                        elif st_node.get("streamType") == "1":
+                                                            if st_node.get("DOVIPresent") == "1":
+                                                                ep_has_dv = True
+                                                            if st_node.get("colorPrimaries") == "bt2020":
+                                                                ep_has_hdr = True
+
+                                                    part_elem = ep_elem.find(".//Part")
+                                                    ep_filepath = part_elem.get("file") if part_elem is not None else None
+                                                    episode_cache_entry = cache_map.get((s_type.lower(), str(ep_rk), "titlecard"))
+                                                    previous_streams = cached_episode_streams(
+                                                        episode_cache_entry, ep_elem.get("updatedAt"), ep_filepath
+                                                    )
+                                                    if previous_streams is None:
+                                                        previous_streams = (show_stream_data or {}).get("episode_streams", {}).get(str(ep_rk))
+                                                    streams_verified = bool(previous_streams)
+                                                    if previous_streams:
+                                                        ep_res = previous_streams.get("resolution") or ep_res
+                                                        ep_langs = previous_streams["audio_languages"] or []
+                                                        ep_audio_c = previous_streams["audio_codec"]
+                                                        ep_has_hdr = previous_streams["has_hdr"]
+                                                        ep_has_dv = previous_streams["has_dolby_vision"]
+                                                        ep_filepath = previous_streams["filepath"]
+                                                        ep_stream_metadata = {key: previous_streams.get(key) for key in ("subtitle_languages", "aspect_ratio", "audio_profile", "audio_track_title")}
+                                                    elif needs_languages or needs_audio or needs_hdr_dv or not ep_filepath:
+                                                        try:
+                                                            ep_det_resp = await http_client.get(
+                                                                f"{s_url}/library/metadata/{ep_rk}",
+                                                                headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                                            )
+                                                            if ep_det_resp.status_code == 200:
+                                                                ep_det_root = fromstring(ep_det_resp.content)
+                                                                detail_media = ep_det_root.find(".//Media")
+                                                                if detail_media is not None:
+                                                                    ep_res = _plex_media_resolution(detail_media) or ep_res
+                                                                detail_part = ep_det_root.find(".//Part")
+                                                                if detail_part is not None and detail_part.get("file"):
+                                                                    ep_filepath = detail_part.get("file")
+                                                                ep_stream_metadata = _extract_stream_overlay_metadata(ep_det_root)
+                                                                streams_verified = True
+                                                                for st_node in ep_det_root.findall(".//Stream"):
+                                                                    if st_node.get("streamType") == "2":
+                                                                        lc_code = st_node.get("languageCode") or st_node.get("language")
+                                                                        if lc_code:
+                                                                            norm_lang = LANGUAGE_MAP.get(lc_code.lower(), lc_code.lower())
+                                                                            if norm_lang not in ep_langs:
+                                                                                ep_langs.append(norm_lang)
+                                                                    elif st_node.get("streamType") == "1":
+                                                                        if st_node.get("DOVIPresent") == "1":
+                                                                            ep_has_dv = True
+                                                                        if st_node.get("colorPrimaries") == "bt2020":
+                                                                            ep_has_hdr = True
+                                                        except Exception:
+                                                            pass
+
+                                                    ep_aud = ep_elem.get("audienceRating") or ep_elem.get("rating")
+                                                    ep_multi = {}
+
+                                                    # 1. Parse structured <Rating> tags under episode element
+                                                    for r_node in ep_elem.findall(".//Rating"):
+                                                        img = str(r_node.get("image") or "").lower()
+                                                        val = r_node.get("value")
+                                                        rtype = str(r_node.get("type") or "").lower()
+                                                        if not val:
+                                                            continue
+                                                        try:
+                                                            clean_v = str(val).replace("%", "").strip()
+                                                            val_f = float(clean_v)
+                                                            if "imdb" in img:
+                                                                ep_multi["imdb"] = round(val_f, 1)
+                                                            elif "themoviedb" in img or "tmdb" in img:
+                                                                ep_multi["tmdb"] = round(val_f, 1)
+                                                            elif "rottentomatoes" in img or "tomato" in img:
+                                                                pct = int(round(val_f * 10)) if val_f <= 10.0 else int(round(val_f))
+                                                                is_critic = (
+                                                                    rtype == "critic"
+                                                                    or "critic" in img
+                                                                    or "ripe" in img
+                                                                    or "certified" in img
+                                                                    or ".rotten" in img
+                                                                    or "/rotten" in img
+                                                                    or img.endswith("rotten")
+                                                                    or "fresh" in img
+                                                                )
+                                                                is_audience = (
+                                                                    rtype == "audience"
+                                                                    or "audience" in img
+                                                                    or "upright" in img
+                                                                    or "spilled" in img
+                                                                    or "popcorn" in img
+                                                                )
+                                                                if is_critic and not is_audience:
+                                                                    ep_multi["rt_critic"] = pct
+                                                                elif is_audience:
+                                                                    ep_multi["rt_audience"] = pct
+                                                                elif "rt_critic" not in ep_multi:
+                                                                    ep_multi["rt_critic"] = pct
+                                                                else:
+                                                                    ep_multi["rt_audience"] = pct
+                                                        except (ValueError, TypeError):
+                                                            pass
+
+                                                    # 2. Check attribute-level ratings (rating, audienceRating) with corresponding image attributes
+                                                    for attr_k, img_k in (("audienceRating", "audienceRatingImage"), ("rating", "ratingImage")):
+                                                        attr_val = ep_elem.get(attr_k)
+                                                        img_val = str(ep_elem.get(img_k) or "").lower()
+                                                        if attr_val:
+                                                            try:
+                                                                val_f = float(str(attr_val).replace("%", "").strip())
+                                                                if "imdb" in img_val:
+                                                                    ep_multi.setdefault("imdb", round(val_f, 1))
+                                                                elif "themoviedb" in img_val or "tmdb" in img_val:
+                                                                    ep_multi.setdefault("tmdb", round(val_f, 1))
+                                                                elif "rottentomatoes" in img_val:
+                                                                    pct = int(round(val_f * 10)) if val_f <= 10.0 else int(round(val_f))
+                                                                    key = "rt_audience" if attr_k == "audienceRating" else "rt_critic"
+                                                                    ep_multi.setdefault(key, pct)
+                                                            except (ValueError, TypeError):
+                                                                pass
+
+                                                    episodes_to_process.append({
+                                                        "id": ep_rk,
+                                                        "episode_number": ep_num,
+                                                        "title": ep_title,
+                                                        "runtime_mins": ep_dur_mins,
+                                                        "resolution": ep_res,
+                                                        "audience_rating": ep_aud,
+                                                        "multi_ratings": ep_multi,
+                                                        "rating_xml": tostring(ep_elem),
+                                                        "audio_codec": ep_audio_c,
+                                                        "audio_languages": ep_langs,
+                                                        **ep_stream_metadata,
+                                                        "has_hdr": ep_has_hdr,
+                                                        "has_dolby_vision": ep_has_dv,
+                                                        "filepath": ep_filepath,
+                                                        "streams_verified": streams_verified,
+                                                        "server_thumb": ep_elem.get("thumb"),
+                                                        "server_updated_at": ep_elem.get("updatedAt"),
+                                                        "clean_tc": clean_tc
+                                                    })
+                                        elif s_type in ["jellyfin", "emby"]:
+                                            em_episode_items = season_episode_items if season_episode_items is not None else (show_stream_data or {}).get("episodes_by_season", {}).get(str(s_rk))
+                                            if em_episode_items is None:
+                                                em_ep_resp = await http_client.get(
+                                                    f"{s_url}/Shows/{item_id}/Episodes?SeasonId={s_rk}&Fields=MediaStreams,MediaSources,OfficialRating,RunTimeTicks,Status,ProviderIds,Path",
+                                                    headers=headers
+                                                )
+                                                em_episode_items = em_ep_resp.json().get("Items", []) if em_ep_resp.status_code == 200 else []
+                                            if em_episode_items is not None:
+                                                for ep_obj in em_episode_items:
+                                                    ep_rk = ep_obj.get("Id")
+                                                    ep_idx = ep_obj.get("IndexNumber")
+                                                    if not ep_rk or ep_idx is None:
+                                                        continue
+                                                    try:
+                                                        ep_num = int(ep_idx)
+                                                    except (ValueError, TypeError):
+                                                        continue
+                                                    if not _overlay_target_includes(item, item_targets, "titlecard", s_num, ep_num):
+                                                        continue
+                                                    clean_tc = find_titlecard(show_parent, s_num, ep_num, dir_cache=dir_cache)
+                                                    if not clean_tc:
+                                                        continue
+
+                                                    ep_title = ep_obj.get("Name", f"Episode {ep_num}")
+                                                    dur_ticks = ep_obj.get("RunTimeTicks") or 0
+                                                    ep_dur_mins = (dur_ticks // 600000000) if dur_ticks > 0 else None
+
+                                                    ep_res = "1080p"
+                                                    ep_audio_c = None
+                                                    ep_has_dv = False
+                                                    ep_has_hdr = False
+                                                    ep_langs = []
+
+                                                    for s in ep_obj.get("MediaStreams", []):
+                                                        stype = s.get("Type")
+                                                        if stype == "Audio":
+                                                            lc = s.get("Language") or s.get("DisplayLanguage")
+                                                            if lc:
+                                                                norm_lang = LANGUAGE_MAP.get(lc.lower(), lc.lower())
+                                                                if norm_lang not in ep_langs:
+                                                                    ep_langs.append(norm_lang)
+                                                            if not ep_audio_c and s.get("Codec"):
+                                                                ep_audio_c = s.get("Codec")
+                                                        elif stype == "Video":
+                                                            w_val = s.get("Width") or 0
+                                                            if w_val >= 3840:
+                                                                ep_res = "4K"
+                                                            dovi = s.get("VideoDoViTitle") or ("dovi" in str(s.get("DisplayTitle", "")).lower())
+                                                            if dovi:
+                                                                ep_has_dv = True
+                                                            hdr = (s.get("VideoRange") == "HDR") or ("hdr" in str(s.get("DisplayTitle", "")).lower())
+                                                            if hdr:
+                                                                ep_has_hdr = True
+
+                                                    ep_aud = ep_obj.get("CommunityRating")
+                                                    ep_multi = {}
+
+                                                    episodes_to_process.append({
+                                                        "id": str(ep_rk),
+                                                        "episode_number": ep_num,
+                                                        "title": ep_title,
+                                                        "runtime_mins": ep_dur_mins,
+                                                        "resolution": ep_res,
+                                                        "audience_rating": ep_aud,
+                                                        "multi_ratings": ep_multi,
+                                                        "provider_ids": ep_obj.get("ProviderIds") or {},
+                                                        "audio_codec": ep_audio_c,
+                                                        "audio_languages": ep_langs,
+                                                        **_extract_stream_overlay_metadata(ep_obj),
+                                                        "has_hdr": ep_has_hdr,
+                                                        "has_dolby_vision": ep_has_dv,
+                                                        "filepath": ep_obj.get("Path") or next((source.get("Path") for source in ep_obj.get("MediaSources") or [] if source.get("Path")), None),
+                                                        "clean_tc": clean_tc
+                                                    })
+
+                                        for ep_data in episodes_to_process:
+                                            if _cancel_requested:
+                                                return
+                                            ep_data["media_file_path"] = ep_data.get("filepath")
+                                            ep_data["video_source"] = detect_video_source(ep_data["media_file_path"])
+                                            ep_rk = ep_data["id"]
+                                            ep_num = ep_data["episode_number"]
+                                            ep_title = ep_data["title"]
+                                            clean_tc = ep_data.get("clean_tc") or find_titlecard(show_parent, s_num, ep_num, dir_cache=dir_cache)
+                                            if not clean_tc:
+                                                continue
+
+                                            episode_rating_rules = [
+                                                rule for rule in lib_rules if isinstance(rule, dict)
+                                                and str(rule.get("default", "")).lower() in ("ratings", "rating", "single_rating")
+                                                and str((rule.get("template_variables") or {}).get("builder_level", "all")).lower() in ("all", "episode")
+                                                and str((rule.get("template_variables") or {}).get("artwork_type", "both")).lower() != "backdrop"
+                                            ]
+                                            if episode_rating_rules or (needs_ratings and any(isinstance(rule, dict) and rule.get("file") for rule in lib_rules)):
+                                                episode_sources = list(dict.fromkeys(
+                                                    source for rule in episode_rating_rules
+                                                    for source in (rule.get("template_variables") or {}).get("sources", rating_sources)
+                                                )) if episode_rating_rules else rating_sources
+                                                ep_data["multi_ratings"] = await resolve_episode_overlay_ratings(
+                                                    s_type, ep_data, item, s_num, {**creds, "url": s_url}, http_client,
+                                                    episode_sources, mdblist_key, omdb_key, force_refresh=scope == "full", provider_run_state=provider_run_state
+                                                )
+                                                ep_data["audience_rating"] = ep_data.get("audience_rating") or _audience_rating_from_scores(ep_data["multi_ratings"])
+
+                                            tc_mtime, tc_size, tc_clean_hash = compute_file_fingerprint(clean_tc)
+                                            ep_meta = {
+                                                "media_type": "episode",
+                                                "is_episode": True,
+                                                "season_number": s_num,
+                                                "episode_number": ep_num,
+                                                "title": ep_title,
+                                                "show_title": title,
+                                                "runtime_mins": ep_data["runtime_mins"],
+                                                "resolution": ep_data["resolution"],
+                                                "audience_rating": ep_data.get("audience_rating"),
+                                                "rating": ep_data.get("audience_rating"),
+                                                "multi_ratings": ep_data.get("multi_ratings") or {},
+                                                "audio_codec": ep_data["audio_codec"],
+                                                "audio_profile": ep_data.get("audio_profile"),
+                                                "audio_track_title": ep_data.get("audio_track_title"),
+                                                "audio_languages": ep_data["audio_languages"],
+                                                "subtitle_languages": ep_data.get("subtitle_languages", []),
+                                                "streaming_providers": item.get("streaming_providers", {}),
+                                                "aspect_ratio": ep_data.get("aspect_ratio"),
+                                                "has_hdr": ep_data["has_hdr"],
+                                                "has_dolby_vision": ep_data["has_dolby_vision"],
+                                                "studio": item.get("studio"),
+                                                "network": item.get("network"),
+                                                "networks": item.get("networks", []),
+                                                "status": item.get("status"),
+                                                "content_rating": item.get("content_rating"),
+                                                "filepath": ep_data["filepath"] or str(clean_tc),
+                                                "media_file_path": ep_data["media_file_path"],
+                                                "video_source": ep_data["video_source"],
+                                                "clean_tc": str(clean_tc),
+                                            }
+
+                                            effective_ep_rules = list(lib_rules)
+                                            anime_cfg = overlays_dir / "configs" / "anime_overlays.yml"
+                                            if anime_cfg.exists():
+                                                has_anime_rule = any(
+                                                    str(r.get("file", "")).endswith("anime_overlays.yml")
+                                                    for r in effective_ep_rules if isinstance(r, dict)
+                                                )
+                                                if _animetafill_targets_library(lib_name, anim_config) and not has_anime_rule:
+                                                    effective_ep_rules.append({"file": "config/anime_overlays.yml"})
+
+                                            ep_layers = build_overlay_layers_for_item(
+                                                ep_meta, effective_ep_rules, overlays_dir, is_landscape=True
+                                            )
+                                            ep_recipe_hash = compute_layers_recipe_hash(ep_layers)
+                                            ep_meta_hash = compute_metadata_hash(
+                                                languages=ep_data.get("audio_languages"),
+                                                runtime_mins=ep_data.get("runtime_mins"),
+                                                edition=None,
+                                                status=item.get("status"),
+                                                resolution=ep_data.get("resolution"),
+                                                content_rating=item.get("content_rating"),
+                                                network=item.get("network"),
+                                                multi_ratings=ep_meta.get("multi_ratings") or None,
+                                                audio_codec=ep_data.get("audio_codec"),
+                                                video_format=ep_data.get("video_format"),
+                                                has_hdr=ep_data.get("has_hdr"),
+                                                has_dolby_vision=ep_data.get("has_dolby_vision")
+                                            )
+                                            ep_cached_entry = cache_map.get((s_type.lower(), str(ep_rk), "titlecard"))
+                                            ep_current, ep_cache_reason = cache.check_cache_status(
+                                                server_type=s_type,
+                                                item_id=str(ep_rk),
+                                                asset_type="titlecard",
+                                                clean_asset_hash=tc_clean_hash,
+                                                overlay_recipe_hash=ep_recipe_hash,
+                                                metadata_hash=ep_meta_hash,
+                                                server_updated_at=ep_data.get("server_updated_at"),
+                                                cached_entry=ep_cached_entry,
+                                                item_meta=ep_data,
+                                                resolved_layers=ep_layers
+                                            )
+
+                                            if s_type == "plex" and ep_current:
+                                                try:
+                                                    ep_snapshot = json.loads((ep_cached_entry or {}).get("attr_snapshot") or "{}")
+                                                except (TypeError, ValueError):
+                                                    ep_snapshot = {}
+                                                try:
+                                                    ep_current, ep_cache_reason, refreshed_snapshot = await _plex_titlecard_cache_status(
+                                                        http_client, s_url, ep_rk, creds.get("token"), ep_snapshot, ep_data.get("server_thumb")
+                                                    )
+                                                except Exception as verification_error:
+                                                    await _inc_stats(failed=1)
+                                                    write_log(f"  [!] {w_tag}Could not verify Titlecard '{title} S{s_num:02d}E{ep_num:02d}': {type(verification_error).__name__}. Artwork and cache left untouched.")
+                                                    continue
+                                                if refreshed_snapshot:
+                                                    cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", refreshed_snapshot, cache_map=cache_map)
+
+                                            if scope in ("incremental", "changed") and ep_current and not force_target_sync:
+                                                cache.update_attr_snapshot(s_type, str(ep_rk), "titlecard", titlecard_attr_snapshot(ep_data, ep_cached_entry.get("attr_snapshot")), cache_map=cache_map)
+                                                cache.update_media_file_metadata(s_type, str(ep_rk), "titlecard", ep_data["media_file_path"], ep_data["video_source"], cache_map=cache_map)
+                                                cache.seed_recipe_snapshot(s_type, str(ep_rk), "titlecard", ep_recipe_hash, ep_layers, ep_cached_entry, cache_map=cache_map)
+                                                await _inc_stats(skipped=1)
+                                                write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Up-to-date")
+                                                if item.get("server_updated_at"):
+                                                    cache.update_server_updated_at(s_type, str(ep_rk), "titlecard", ep_data.get("server_updated_at"), cache_map=cache_map)
+                                                continue
+
+                                            ep_sync_reason = f"Forced sync (scope={scope})" if scope not in ("incremental", "changed") else ep_cache_reason
+                                            tc_phase = "reading clean titlecard"
+                                            try:
+                                                with open(clean_tc, "rb") as tcf:
+                                                    tc_base_bytes = tcf.read()
+
+                                                if ep_layers:
+                                                    tc_phase = "compositing titlecard overlays in RAM"
+                                                    tc_comp = await asyncio.to_thread(
+                                                        DynamicOverlayCompositor.composite_overlays,
+                                                        base_image_bytes=tc_base_bytes,
+                                                        layers=ep_layers,
+                                                        canvas_type="landscape",
+                                                        abort_on_missing_asset=True,
+                                                        debug_logging=debug_log_enabled,
+                                                        debug_callback=write_log,
+                                                        item_label=f"Worker {worker_id} | '{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)" if concurrency > 1 else f"'{title}' S{s_num:02d}E{ep_num:02d} (Titlecard)"
+                                                    )
+                                                else:
+                                                    tc_comp = tc_base_bytes
+
+                                                if s_type == "plex" and scope in ("incremental", "changed") and ep_cached_entry:
+                                                    tc_phase = "comparing rendered titlecard with selected Plex artwork"
+                                                    try:
+                                                        previous_snapshot = json.loads(ep_cached_entry.get("attr_snapshot") or "{}")
+                                                    except (TypeError, ValueError):
+                                                        previous_snapshot = {}
+                                                    identical, identity_reason, verified_snapshot = await _plex_rendered_titlecard_status(
+                                                        http_client, s_url, ep_rk, creds.get("token"), previous_snapshot, ep_data.get("server_thumb"), tc_comp
+                                                    )
+                                                    if identical:
+                                                        snapshot_value = snapshot_overlay_layers(titlecard_attr_snapshot(ep_data, verified_snapshot or json.dumps(previous_snapshot, sort_keys=True)), ep_layers)
+                                                        fingerprints_saved = cache.update_verified_fingerprints(
+                                                            s_type, str(ep_rk), "titlecard", tc_clean_hash, ep_recipe_hash, ep_meta_hash,
+                                                            snapshot_value, tc_mtime, tc_size, cache_map=cache_map,
+                                                            media_file_path=ep_data["media_file_path"], detected_video_source=ep_data["video_source"],
+                                                            server_updated_at=ep_data.get("server_updated_at"),
+                                                            detected_languages=",".join(sorted(ep_data["audio_languages"])) if ep_data.get("audio_languages") else None,
+                                                            detected_resolution=ep_data.get("resolution"), detected_audio_codec=ep_data.get("audio_codec"),
+                                                            detected_video_format=ep_data.get("video_format")
+                                                        )
+                                                        if not fingerprints_saved:
+                                                            await _inc_stats(failed=1)
+                                                            write_log(f"  [!] {w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' already matches Plex, but cache fingerprints could not be saved. No upload performed.")
+                                                            continue
+                                                        await _inc_stats(skipped=1)
+                                                        write_log(f"  [-] {w_tag}Skipped Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' -> Selected artwork already matches rendered output; cache fingerprints refreshed (no upload) [Reason: {ep_sync_reason}]")
+                                                        continue
+
+                                                tc_success = False
+                                                tc_snapshot = None
+                                                tc_phase = f"uploading titlecard to {s_type.upper()}"
+                                                if s_type == "plex":
+                                                    tc_resp = await _post_artwork_with_retry(
+                                                        http_client,
+                                                        f"{s_url}/library/metadata/{ep_rk}/posters",
+                                                        headers={"X-Plex-Token": creds.get("token"), "Content-Type": "image/jpeg"},
+                                                        content=tc_comp,
+                                                        item_label=f"{w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name})",
+                                                        write_log=write_log,
+                                                        dry_run=dry_run
+                                                    )
+                                                    tc_success = tc_resp is not None and tc_resp.status_code in [200, 201]
+                                                    if tc_success:
+                                                        tc_phase = "confirming Plex titlecard selection"
+                                                        tc_snapshot = await _confirm_plex_titlecard(http_client, s_url, ep_rk, creds.get("token"), tc_comp)
+                                                elif s_type in ["jellyfin", "emby"]:
+                                                    b64_tc = base64.b64encode(tc_comp)
+                                                    tc_resp = await _post_artwork_with_retry(
+                                                        http_client,
+                                                        f"{s_url}/Items/{ep_rk}/Images/Primary",
+                                                        headers=headers,
+                                                        content=b64_tc,
+                                                        item_label=f"{w_tag}Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name})",
+                                                        write_log=write_log,
+                                                        dry_run=dry_run
+                                                    )
+                                                    tc_success = tc_resp is not None and tc_resp.status_code in [200, 201, 204]
+
+                                                if _cancel_requested:
+                                                    return
+                                                if tc_success:
+                                                    cache.record_push(
+                                                        server_type=s_type,
+                                                        server_url=s_url,
+                                                        item_id=str(ep_rk),
+                                                        asset_type="titlecard",
+                                                        clean_asset_path=str(clean_tc),
+                                                        clean_asset_mtime=tc_mtime,
+                                                        clean_asset_size=tc_size,
+                                                        clean_asset_hash=tc_clean_hash,
+                                                        overlay_recipe_hash=ep_recipe_hash,
+                                                        item_title=f"{title} S{s_num:02d}E{ep_num:02d} - {ep_title}",
+                                                        library_name=lib_name,
+                                                        media_type="episode",
+                                                        status="synced",
+                                                        server_updated_at=ep_data.get("server_updated_at"),
+                                                        attr_snapshot=titlecard_attr_snapshot(ep_data, tc_snapshot),
+                                                        detected_languages=",".join(sorted(ep_data.get("audio_languages", []))) if ep_data.get("audio_languages") else None,
+                                                        runtime_mins=ep_data.get("runtime_mins"),
+                                                        edition=None,
+                                                        show_status=item.get("status"),
+                                                        metadata_hash=ep_meta_hash,
+                                                        detected_audio_codec=ep_data.get("audio_codec"),
+                                                        detected_video_format=ep_data.get("video_format"),
+                                                        detected_resolution=ep_data.get("resolution"),
+                                                        cache_map=cache_map,
+                                                        resolved_layers=ep_layers,
+                                                        media_file_path=ep_data["media_file_path"],
+                                                        detected_video_source=ep_data["video_source"]
+                                                    )
+                                                    await _inc_stats(synced=1)
+                                                    write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
+                                                elif dry_run:
+                                                    await _inc_stats(skipped=1)
+                                                else:
+                                                    await _inc_stats(failed=1)
+                                                    http_detail = format_http_failure(tc_resp)
+                                                    write_log(f"  [-] {w_tag}Failed uploading Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                                    logger.error(f"[OverlaySync] {w_tag}Failed uploading Titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) to {s_type.upper()}: {http_detail}")
+                                            except OverlayAssetMissingError as ame:
+                                                await _inc_stats(failed=1)
+                                                write_log(f"  [!] {w_tag}Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) [Titlecard]: {ame.message}. Server artwork left untouched.")
+                                                logger.warning(f"[OverlaySync] {w_tag}Aborted overlay for '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) [Titlecard]: {ame.message}")
+                                            except Exception as ep_err:
+                                                await _inc_stats(failed=1)
+                                                err_details = format_sync_error(ep_err, phase=tc_phase)
+                                                write_log(f"  [-] {w_tag}Error compositing/uploading titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}): {err_details}")
+                                                logger.error(f"[OverlaySync] {w_tag}Error compositing/uploading titlecard '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) during {tc_phase}: {err_details}", exc_info=True)
+                                    except Exception as ep_discovery_err:
+                                        err_details = format_sync_error(ep_discovery_err, phase="querying season episodes")
+                                        logger.error(f"[OverlaySync] {w_tag}Episode discovery error for '{title} S{s_num:02d}' ({lib_name}): {err_details}", exc_info=True)
+                                        write_log(f"  [-] {w_tag}Error querying episodes for '{title} S{s_num:02d}' ({lib_name}): {err_details}")
+                        except Exception as season_err:
+                            err_details = format_sync_error(season_err, phase="evaluating seasons and titlecards")
+                            logger.error(f"[OverlaySync] {w_tag}Season/Titlecard scan error for '{title}' ({lib_name}): {err_details}", exc_info=True)
+                            write_log(f"  [-] {w_tag}Error evaluating seasons/titlecards for '{title}' ({lib_name}): {err_details}")
+
+                worker_pool = asyncio.Queue()
+                for wid in range(1, concurrency + 1):
+                    worker_pool.put_nowait(wid)
+
+                async def _worker(it):
+                    if _cancel_requested:
+                        return
+                    wid = await worker_pool.get()
+                    try:
+                        if _cancel_requested:
+                            return
+                        await _process_sync_item(it, worker_id=wid)
+                    except Exception as it_err:
+                        err_details = format_sync_error(it_err)
+                        logger.error(f"[OverlaySync] [Worker {wid}] Unhandled error processing '{it.get('title')}': {err_details}", exc_info=True)
+                        write_log(f"  [-] [Worker {wid}] Unhandled error processing '{it.get('title')}': {err_details}")
+                        await _inc_stats(failed=1)
+                    finally:
+                        worker_pool.put_nowait(wid)
+
+                await asyncio.gather(*[_worker(it) for it in media_items], return_exceptions=True)
+
+                total_synced += server_stats["synced"]
+                total_skipped += server_stats["skipped"]
+                total_failed += server_stats["failed"]
+
+                if _cancel_requested:
+                    write_log("Dynamic overlay sync was stopped by user. Halting.")
+                    break
+
+        try:
+            cache.prune_recipe_snapshots()
+        except Exception as cleanup_error:
+            logger.warning("[OverlaySync] Could not prune unused recipe diagnostics: %s", cleanup_error)
+
+        runtime_seconds = max(0, time.monotonic() - sync_started_at)
+        runtime_hours, runtime_remainder = divmod(int(runtime_seconds), 3600)
+        runtime_minutes, runtime_secs = divmod(runtime_remainder, 60)
+        runtime_text = f"{runtime_hours}h {runtime_minutes}m {runtime_secs}s"
+        if _cancel_requested:
+            write_log("=" * 70)
+            write_log("DYNAMIC OVERLAYS SYNC STOPPED BY USER")
+            write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed | Runtime: {runtime_text}")
+            write_log("=" * 70)
+            res = {
+                "success": True,
+                "stopped": True,
+                "total_synced": total_synced,
+                "total_skipped": total_skipped,
+                "total_failed": total_failed,
+                "runtime_seconds": runtime_seconds,
+                "message": "Dynamic overlay sync was stopped by user.",
+                "log_file": "DynamicOverlaysSync.log"
+            }
+            _last_sync_result = res
+            return res
+
+        if scope == "changed":
+            try:
+                # The saved report predates this sync; re-detect so resolved items drop out of "View Changes"
+                refreshed = await detect_media_changes(
+                    target_server=target_server, library=library, base_dir=base_dir, config_path=config_path
+                )
+                write_log(f"Change report refreshed: {refreshed.get('changed_count', 0)} item(s) still pending.")
+                from dynamic_overlays_service import save_dynamic_overlays_settings
+                save_dynamic_overlays_settings({"last_change_detection_summary": refreshed.get("summary")})
+            except Exception as refresh_err:
+                logger.warning("[OverlaySync] Could not refresh change detection report: %s", refresh_err)
+
+        write_log("=" * 70)
+        write_log(f"DYNAMIC OVERLAYS SYNC COMPLETE")
+        provider_summary = provider_run_state.snapshot()
+        write_log(f"OMDb run summary: {json.dumps({key: value for key, value in provider_summary.items() if key != 'mdblist'}, sort_keys=True)}")
+        write_log(f"MDBList run summary: {json.dumps(provider_summary['mdblist'], sort_keys=True)}")
+        write_log(f"Summary: {total_synced} Synced | {total_skipped} Skipped (Unmodified) | {total_failed} Failed | Runtime: {runtime_text}")
+        write_log("=" * 70)
+
+        res = {
+            "success": True,
+            "total_synced": total_synced,
+            "total_skipped": total_skipped,
+            "total_failed": total_failed,
+            "runtime_seconds": runtime_seconds,
+            "log_file": "DynamicOverlaysSync.log"
+        }
+        _last_sync_result = res
+        return res
+
+    except Exception as e:
+        write_log(f"FATAL ERROR in overlay sync task: {e}")
+        res = {"success": False, "error": str(e)}
+        _last_sync_result = res
+        return res
+    finally:
+        if log_file_handle and not log_file_handle.closed:
+            try:
+                log_file_handle.close()
+            except Exception:
+                pass
+
+# ==============================================================================
+# FAST BULK CHANGE AUTODETECTION
+# ==============================================================================
+
+async def detect_media_changes(
+    target_server: str = "all",
+    library: str = "all",
+    base_dir: Optional[Path] = None,
+    config_path: Optional[Path] = None
+) -> Dict[str, Any]:
+    """
+    High-speed bulk change autodetection for media items across Plex, Jellyfin, and Emby.
+    Fast-scans in bulk:
+    - Audio language updates (e.g. ['en'] -> ['de', 'en'])
+    - Edition / Cut upgrades (e.g. Theatrical -> Director's Cut)
+    - Runtime / Duration modifications (e.g. 105m -> 135m)
+    - TV Show status transitions (e.g. returning -> ended / canceled / airing)
+    - Clean artwork file modifications on disk
+    - Uncached / newly added media items
+    Returns summary counters and list of items with changes.
+    """
+    if not base_dir:
+        base_dir = Path(".")
+    if not config_path:
+        config_path = base_dir / "config.json"
+
+    server_info = get_server_credentials(config_path)
+    real_asset_path = server_info.get("asset_path") or resolve_configured_asset_path(base_dir / "assets")
+    cache = await asyncio.to_thread(OverlayCache, base_dir / "database" / "overlay_cache.db")
+
+    summary = {
+        "languages": 0,
+        "editions": 0,
+        "runtimes": 0,
+        "status": 0,
+        "new": 0,
+        "asset_modified": 0
+    }
+
+    try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled in Master Switch.",
+                "total_scanned": 0,
+                "changed_count": 0,
+                "changes": [],
+                "summary": summary
+            }
+    except Exception:
+        pass
+
+    creds_map = {}
+    for s_name in ["plex", "jellyfin", "emby", "silo"]:
+        s_data = server_info.get(s_name)
+        if s_data and s_data.get("url") and s_data.get("enabled"):
+            creds_map[s_name] = {
+                "url": s_data.get("url"),
+                "token": s_data.get("token"),
+                "api_key": s_data.get("api_key"),
+                "profile_id": s_data.get("profile_id"),
+                "excluded": s_data.get("excluded_libs", [])
+            }
+
+    # Load dynamic overlay rules from config.yml
+    library_rules_map = {}
+    overlays_dir = base_dir / "Overlayfiles" / "dynamic_overlays"
+    if not overlays_dir.exists():
+        legacy = base_dir / "Overlayfiles" / "kometa"
+        if legacy.exists():
+            overlays_dir = legacy
+    config_yml = overlays_dir / "configs" / "config.yml"
+    if config_yml.exists():
+        try:
+            import yaml
+            with open(config_yml, "r", encoding="utf-8") as yf:
+                raw_cfg = yaml.safe_load(yf) or {}
+                raw_libs = raw_cfg.get("libraries", {})
+                for l_name, l_data in raw_libs.items():
+                    if isinstance(l_data, dict):
+                        rules = l_data.get("overlay_files") or l_data.get("overlays") or []
+                        if rules:
+                            library_rules_map[l_name.lower()] = rules
+        except Exception as ye:
+            logger.debug(f"[DetectChanges] Error loading config.yml: {ye}")
+
+    if not library_rules_map:
+        return {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "target_server": target_server,
+            "library": library,
+            "total_scanned": 0,
+            "changed_count": 0,
+            "unchanged_count": 0,
+            "changes": [],
+            "summary": summary
+        }
+
+    total_scanned = 0
+    changed_items = []
+    dir_cache: Dict[str, Any] = {}
+
+    servers_to_scan = []
+    if target_server == "all":
+        servers_to_scan = [s for s in ["plex", "jellyfin", "emby", "silo"] if s in creds_map]
+    elif target_server.lower() in creds_map:
+        servers_to_scan = [target_server.lower()]
+
+    async with httpx.AsyncClient(timeout=15.0, verify=False) as http_client:
+        for s_type in servers_to_scan:
+            creds = creds_map[s_type]
+            s_url = creds["url"]
+            excluded = [str(x).lower() for x in creds.get("excluded", [])]
+            cache_map = cache.load_cache_map(s_type)
+
+            if s_type == "silo":
+                silo = SiloClient(http_client, s_url, creds["api_key"], creds.get("profile_id"))
+                for folder in await silo.libraries():
+                    name = folder["name"]
+                    if name.lower() in excluded or (library != "all" and name.casefold() != library.casefold()):
+                        continue
+                    if not resolve_library_rules(name, folder["type"], library_rules_map)[1]:
+                        continue
+                    for item in await silo.library_items(folder):
+                        clean_asset = find_clean_asset(real_asset_path, name, item["root_folder"], item["title"], "poster", year=item.get("year"), dir_cache=dir_cache)
+                        if not clean_asset:
+                            continue
+                        total_scanned += 1
+                        cached = cache_map.get(("silo", item["id"], "poster"))
+                        differences = []
+                        if not cached or cached.get("status") not in ("synced", "skipped"):
+                            differences.append("new")
+                        else:
+                            if abs(clean_asset.stat().st_mtime - float(cached.get("clean_asset_mtime") or 0)) > 1:
+                                differences.append("asset_modified")
+                            silo_rules = resolve_library_rules(name, "show", library_rules_map)[1]
+                            silo_needs_streams = _parent_stream_aggregation_requested(silo_rules) or any(term in json.dumps(silo_rules).lower() for term in ("resolution", "overlays_tv"))
+                            if item["media_type"] == "show" and silo_needs_streams:
+                                stream_data = await fetch_show_episode_stream_data(http_client, "silo", s_url, item["id"], creds, cache_map)
+                                if stream_data:
+                                    item.update(stream_data["aggregate"])
+                            if sorted(item.get("audio_languages") or []) != sorted(filter(None, (cached.get("detected_languages") or "").split(","))):
+                                differences.append("languages")
+                            for category, current_key, cached_key in (("editions", "edition", "edition"), ("runtimes", "runtime_mins", "runtime_mins"), ("status", "status", "show_status")):
+                                if item.get(current_key) != cached.get(cached_key):
+                                    differences.append(category)
+                            if item.get("resolution") != cached.get("detected_resolution") or item.get("audio_codec") != cached.get("detected_audio_codec"):
+                                differences.append("metadata")
+                            snapshot = json.loads(cached.get("attr_snapshot") or "{}")
+                            if any(bool(item.get(key)) != bool(snapshot.get(key)) for key in ("has_hdr", "has_dolby_vision")) and "metadata" not in differences:
+                                differences.append("metadata")
+                        if differences:
+                            for category in differences:
+                                summary[category] = summary.get(category, 0) + 1
+                            changed_items.append({"id": item["id"], "title": item["title"], "library": name, "server_type": "silo",
+                                "media_type": item["media_type"], "change_types": differences, "details": ", ".join(differences),
+                                "cached": None, "current": {"edition": item.get("edition"), "runtime_mins": item.get("runtime_mins"), "status": item.get("status")}})
+            elif s_type == "plex":
+                token = creds.get("token")
+                try:
+                    sec_resp = await http_client.get(
+                        f"{s_url}/library/sections",
+                        headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                    )
+                    if sec_resp.status_code == 200:
+                        sec_root = fromstring(sec_resp.content)
+                        for d in sec_root.findall(".//Directory"):
+                            sec_title = d.get("title", "")
+                            sec_type = d.get("type", "")
+                            sec_key = d.get("key", "")
+                            if sec_type not in ["movie", "show"]:
+                                continue
+                            if library != "all" and sec_title.lower() != library.lower():
+                                continue
+                            if library == "all" and sec_title.lower() in excluded:
+                                continue
+                            matched_k, matched_rules = resolve_library_rules(sec_title, sec_type, library_rules_map)
+                            if matched_k == "none" or not matched_rules:
+                                continue
+
+                            items_resp = await http_client.get(
+                                f"{s_url}/library/sections/{sec_key}/all",
+                                headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                            )
+                            if items_resp.status_code == 200:
+                                i_root = fromstring(items_resp.content)
+                                tag = ".//Directory" if sec_type == "show" else ".//Video"
+                                for it in i_root.findall(tag):
+                                    if total_scanned % 5 == 0:
+                                        await asyncio.sleep(0)
+                                    rk = it.get("ratingKey")
+                                    t = it.get("title", "")
+                                    part = it.find(".//Part")
+                                    part_file = part.get("file") if part is not None else None
+                                    rf = Path(part_file).parent.name if part_file else t
+                                    dur = int(it.get("duration") or 0)
+                                    rt_mins = dur // 60000 if dur > 0 else None
+                                    ed_val = it.get("editionTitle") or it.get("edition") or extract_edition(part_file, rf, t)
+                                    s_up_at = it.get("updatedAt") or it.get("addedAt")
+                                    status_val = it.get("status")
+
+                                    clean_asset = find_clean_asset(
+                                        assets_dir=real_asset_path,
+                                        library_name=sec_title,
+                                        root_folder=rf,
+                                        title=t,
+                                        asset_type="poster",
+                                        year=it.get("year"),
+                                        dir_cache=dir_cache
+                                    )
+                                    if not clean_asset:
+                                        continue
+
+                                    total_scanned += 1
+                                    cached = cache_map.get((s_type.lower(), str(rk), "poster"))
+                                    item_changes = []
+                                    detail_notes = []
+
+                                    if not cached or cached.get("status") not in ("synced", "skipped"):
+                                        summary["new"] += 1
+                                        changed_items.append({
+                                            "id": str(rk),
+                                            "title": t,
+                                            "library": sec_title,
+                                            "server_type": s_type,
+                                            "media_type": sec_type,
+                                            "change_types": ["new"],
+                                            "details": "New item (overlay not yet cached)",
+                                            "cached": None,
+                                            "current": {
+                                                "edition": ed_val,
+                                                "runtime_mins": rt_mins,
+                                                "server_updated_at": s_up_at,
+                                                "status": status_val
+                                            }
+                                        })
+                                        continue
+
+                                    # Check base artwork modification on disk
+                                    try:
+                                        disk_mtime = clean_asset.stat().st_mtime
+                                        cached_mtime = float(cached.get("clean_asset_mtime") or 0.0)
+                                        if abs(disk_mtime - cached_mtime) > 1.0:
+                                            item_changes.append("asset_modified")
+                                            detail_notes.append("Clean base artwork modified on disk")
+                                            summary["asset_modified"] += 1
+                                    except Exception:
+                                        pass
+
+                                    # Check server updated timestamp
+                                    cached_up = cached.get("server_updated_at")
+                                    if s_up_at and cached_up and str(s_up_at) != str(cached_up):
+                                        # Query metadata XML to detect exact changes (languages, cut, runtime)
+                                        try:
+                                            m_resp = await http_client.get(
+                                                f"{s_url}/library/metadata/{rk}",
+                                                headers={"X-Plex-Token": token, "Accept": "application/xml"}
+                                            )
+                                            if m_resp.status_code == 200:
+                                                m_root = fromstring(m_resp.content)
+                                                cur_langs = []
+                                                for s in m_root.findall(".//Stream"):
+                                                    if s.get("streamType") == "2":
+                                                        lc = s.get("languageCode") or s.get("language")
+                                                        if lc:
+                                                            nl = LANGUAGE_MAP.get(lc.lower(), lc.lower())
+                                                            if nl not in cur_langs:
+                                                                cur_langs.append(nl)
+                                                for v_node in m_root.findall(".//Video"):
+                                                    if v_node.get("editionTitle"):
+                                                        ed_val = v_node.get("editionTitle")
+                                                    dur_node = int(v_node.get("duration") or 0)
+                                                    if dur_node > 0:
+                                                        rt_mins = dur_node // 60000
+                                                    if not status_val and v_node.get("status"):
+                                                        status_val = v_node.get("status")
+
+                                                if sec_type == "movie":
+                                                    cached_langs = sorted([l.strip().lower() for l in (cached.get("detected_languages") or "").split(",") if l.strip()])
+                                                    cur_langs = sorted(cur_langs)
+                                                    if cur_langs != cached_langs:
+                                                        item_changes.append("languages")
+                                                        detail_notes.append(f"Audio languages: {cached_langs or '[]'} -> {cur_langs or '[]'}")
+                                                        summary["languages"] += 1
+
+                                                    cached_rt = cached.get("runtime_mins")
+                                                    if rt_mins and cached_rt and abs(rt_mins - cached_rt) > 1:
+                                                        item_changes.append("runtime")
+                                                        detail_notes.append(f"Runtime: {cached_rt}m -> {rt_mins}m")
+                                                        summary["runtimes"] += 1
+
+                                                    cached_ed = cached.get("edition")
+                                                    if ed_val and str(ed_val).strip().lower() != str(cached_ed or "").strip().lower():
+                                                        item_changes.append("edition")
+                                                        detail_notes.append(f"Edition: '{cached_ed or 'Standard'}' -> '{ed_val}'")
+                                                        summary["editions"] += 1
+
+                                                cached_st = cached.get("show_status")
+                                                if status_val and cached_st and status_val.strip().lower() != cached_st.strip().lower():
+                                                    item_changes.append("status")
+                                                    detail_notes.append(f"Status: '{cached_st}' -> '{status_val}'")
+                                                    summary["status"] += 1
+                                        except Exception as m_e:
+                                            logger.debug(f"[DetectChanges] Plex item {rk} detail query error: {m_e}")
+
+                                    # Check TV show status cached in ratings_cache
+                                    if sec_type == "show" and "status" not in item_changes:
+                                        try:
+                                            st_cached = ratings_cache.get_show_status(s_type, str(rk))
+                                            if st_cached and st_cached.get("status"):
+                                                cur_status = st_cached["status"].strip().lower()
+                                                cached_st = str(cached.get("show_status") or "").strip().lower()
+                                                if cached_st and cur_status and cur_status != cached_st:
+                                                    item_changes.append("status")
+                                                    detail_notes.append(f"Show status changed: '{cached_st}' -> '{cur_status}'")
+                                                    summary["status"] += 1
+                                        except Exception:
+                                            pass
+
+                                    if item_changes:
+                                        changed_items.append({
+                                            "id": str(rk),
+                                            "title": t,
+                                            "library": sec_title,
+                                            "server_type": s_type,
+                                            "media_type": sec_type,
+                                            "change_types": item_changes,
+                                            "details": "; ".join(detail_notes) if detail_notes else "Media attributes updated",
+                                            "cached": {
+                                                "edition": cached.get("edition"),
+                                                "runtime_mins": cached.get("runtime_mins"),
+                                                "detected_languages": cached.get("detected_languages"),
+                                                "show_status": cached.get("show_status"),
+                                                "server_updated_at": cached.get("server_updated_at")
+                                            },
+                                            "current": {
+                                                "edition": ed_val,
+                                                "runtime_mins": rt_mins,
+                                                "status": status_val,
+                                                "server_updated_at": s_up_at
+                                            }
+                                        })
+                except Exception as pe:
+                    logger.warning(f"[DetectChanges] Plex detection error: {pe}")
+
+            elif s_type in ["jellyfin", "emby"]:
+                api_key = creds.get("api_key")
+                headers = {
+                    "X-Emby-Token": api_key,
+                    "Authorization": f'MediaBrowser Token="{api_key}"',
+                    "Accept": "application/json"
+                }
+                try:
+                    vf_resp = await http_client.get(f"{s_url}/Library/VirtualFolders", headers=headers)
+                    if vf_resp.status_code == 200:
+                        vfolders = vf_resp.json()
+                        for lib_obj in vfolders:
+                            lib_name = lib_obj.get("Name", "")
+                            lib_id = lib_obj.get("ItemId") or lib_obj.get("Id", "")
+                            if library != "all" and lib_name.lower() != library.lower():
+                                continue
+                            if library == "all" and any(lib_name.lower() == str(ex).lower() for ex in excluded):
+                                continue
+                            matched_k, matched_rules = resolve_library_rules(lib_name, "movie", library_rules_map)
+                            if matched_k == "none" or not matched_rules:
+                                continue
+
+                            items_params = {
+                                "ParentId": lib_id,
+                                "Recursive": "true",
+                                "IncludeItemTypes": "Movie,Series",
+                                "CollapseBoxSetItems": "false",
+                                "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                            }
+                            it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
+                            if it_resp.status_code == 200:
+                                lib_items = it_resp.json().get("Items", [])
+                                for item_obj in lib_items:
+                                    it_id = item_obj.get("Id")
+                                    it_name = item_obj.get("Name", "")
+                                    it_type = "movie" if item_obj.get("Type") == "Movie" else "show"
+                                    it_path = item_obj.get("Path", "")
+                                    it_p = Path(it_path) if it_path else None
+                                    if it_p:
+                                        rf = it_p.name if (it_type == "show" or not it_p.suffix) else it_p.parent.name
+                                    else:
+                                        rf = it_name
+                                    streams = item_obj.get("MediaStreams", [])
+                                    if not streams and item_obj.get("MediaSources"):
+                                        for ms in item_obj.get("MediaSources", []):
+                                            streams.extend(ms.get("MediaStreams", []))
+
+                                    cur_langs = []
+                                    vid_w = item_obj.get("Width") or 0
+                                    vid_h = item_obj.get("Height") or 0
+                                    for s in streams:
+                                        stype = s.get("Type")
+                                        if stype == "Audio":
+                                            lc = s.get("Language") or s.get("DisplayLanguage")
+                                            if lc:
+                                                norm_l = LANGUAGE_MAP.get(lc.lower(), lc.lower())
+                                                if norm_l not in cur_langs:
+                                                    cur_langs.append(norm_l)
+                                        elif stype == "Video":
+                                            sw = s.get("Width") or 0
+                                            sh = s.get("Height") or 0
+                                            if sw > vid_w:
+                                                vid_w = sw
+                                            if sh > vid_h:
+                                                vid_h = sh
+
+                                    cur_langs = sorted(cur_langs)
+                                    res_val = "1080p"
+                                    if any(k in (lib_name or "").lower() for k in ["4k", "uhd", "2160"]):
+                                        res_val = "4K"
+                                    elif vid_w >= 3800 or vid_h >= 2000:
+                                        res_val = "4K"
+                                    elif any(k in (it_path or "").lower() or k in (rf or "").lower() for k in ["4k", "uhd", "2160"]):
+                                        res_val = "4K"
+                                    elif vid_w >= 1900 or vid_h >= 1000:
+                                        res_val = "1080p"
+                                    elif vid_w >= 1200 or vid_h >= 700:
+                                        res_val = "720p"
+                                    elif vid_w > 0:
+                                        res_val = f"{vid_h}p" if vid_h else f"{vid_w}p"
+                                    else:
+                                        res_val = "1080p"
+
+                                    ed_val = item_obj.get("Edition") or item_obj.get("Version") or extract_edition(it_path, it_name)
+                                    s_up_at = item_obj.get("DateModified") or item_obj.get("DateCreated")
+                                    rt_mins = (item_obj.get("RunTimeTicks", 0) // 600000000) or None
+                                    status_val = item_obj.get("Status")
+
+                                    if total_scanned % 5 == 0:
+                                        await asyncio.sleep(0)
+
+                                    p_ids = item_obj.get("ProviderIds") or {}
+                                    clean_asset = find_clean_asset(
+                                        assets_dir=real_asset_path,
+                                        library_name=lib_name,
+                                        root_folder=rf,
+                                        title=it_name,
+                                        asset_type="poster",
+                                        year=item_obj.get("ProductionYear"),
+                                        imdb_id=p_ids.get("Imdb"),
+                                        tmdb_id=p_ids.get("Tmdb"),
+                                        tvdb_id=p_ids.get("Tvdb"),
+                                        dir_cache=dir_cache
+                                    )
+                                    if not clean_asset:
+                                        continue
+
+                                    total_scanned += 1
+                                    cached = cache_map.get((s_type.lower(), str(it_id), "poster"))
+                                    item_changes = []
+                                    detail_notes = []
+
+                                    if not cached or cached.get("status") not in ("synced", "skipped"):
+                                        summary["new"] += 1
+                                        changed_items.append({
+                                            "id": str(it_id),
+                                            "title": it_name,
+                                            "library": lib_name,
+                                            "server_type": s_type,
+                                            "media_type": it_type,
+                                            "change_types": ["new"],
+                                            "details": "New item (overlay not yet cached)",
+                                            "cached": None,
+                                            "current": {
+                                                "edition": ed_val,
+                                                "runtime_mins": rt_mins,
+                                                "detected_languages": cur_langs,
+                                                "status": status_val,
+                                                "resolution": res_val,
+                                                "server_updated_at": s_up_at
+                                            }
+                                        })
+                                        continue
+
+                                    try:
+                                        disk_mtime = clean_asset.stat().st_mtime
+                                        cached_mtime = float(cached.get("clean_asset_mtime") or 0.0)
+                                        if abs(disk_mtime - cached_mtime) > 1.0:
+                                            item_changes.append("asset_modified")
+                                            detail_notes.append("Clean base artwork modified on disk")
+                                            summary["asset_modified"] += 1
+                                    except Exception:
+                                        pass
+
+                                    if str(it_type or "").lower() == "movie":
+                                        cached_langs = sorted([l.strip().lower() for l in (cached.get("detected_languages") or "").split(",") if l.strip()])
+                                        if cur_langs != cached_langs:
+                                            item_changes.append("languages")
+                                            detail_notes.append(f"Audio languages: {cached_langs or '[]'} -> {cur_langs or '[]'}")
+                                            summary["languages"] += 1
+
+                                        cached_rt = cached.get("runtime_mins")
+                                        if rt_mins and cached_rt and abs(rt_mins - cached_rt) > 1:
+                                            item_changes.append("runtime")
+                                            detail_notes.append(f"Runtime: {cached_rt}m -> {rt_mins}m")
+                                            summary["runtimes"] += 1
+
+                                        cached_ed = cached.get("edition")
+                                        if ed_val and str(ed_val).strip().lower() != str(cached_ed or "").strip().lower():
+                                            item_changes.append("edition")
+                                            detail_notes.append(f"Edition: '{cached_ed or 'Standard'}' -> '{ed_val}'")
+                                            summary["editions"] += 1
+
+                                    cached_st = cached.get("show_status")
+                                    if status_val and cached_st and str(status_val).strip().lower() != str(cached_st).strip().lower():
+                                        item_changes.append("status")
+                                        detail_notes.append(f"Status: '{cached_st}' -> '{status_val}'")
+                                        summary["status"] += 1
+
+                                    if item_changes:
+                                        changed_items.append({
+                                            "id": str(it_id),
+                                            "title": it_name,
+                                            "library": lib_name,
+                                            "server_type": s_type,
+                                            "media_type": it_type,
+                                            "change_types": item_changes,
+                                            "details": "; ".join(detail_notes) if detail_notes else "Media attributes updated",
+                                            "cached": {
+                                                "edition": cached.get("edition"),
+                                                "runtime_mins": cached.get("runtime_mins"),
+                                                "detected_languages": cached.get("detected_languages"),
+                                                "show_status": cached.get("show_status"),
+                                                "server_updated_at": cached.get("server_updated_at")
+                                            },
+                                            "current": {
+                                                "edition": ed_val,
+                                                "runtime_mins": rt_mins,
+                                                "detected_languages": cur_langs,
+                                                "status": status_val,
+                                                "server_updated_at": s_up_at
+                                            }
+                                        })
+                except Exception as je:
+                    logger.warning(f"[DetectChanges] {s_type} detection error: {je}")
+
+    result_report = {
+        "success": True,
+        "timestamp": datetime.now().isoformat(),
+        "target_server": target_server,
+        "library": library,
+        "total_scanned": total_scanned,
+        "changed_count": len(changed_items),
+        "unchanged_count": max(0, total_scanned - len(changed_items)),
+        "changes": changed_items,
+        "summary": summary
+    }
+
+    try:
+        db_dir = base_dir / "database"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        report_file = db_dir / "last_change_detection_report.json"
+        with open(report_file, "w", encoding="utf-8") as f:
+            json.dump(result_report, f, indent=2)
+    except Exception as save_err:
+        logger.warning(f"[DetectChanges] Could not persist last change detection report: {save_err}")
+
+    return result_report
+
+
+def get_last_detection_report(base_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Retrieve the most recent saved change detection report from disk."""
+    if not base_dir:
+        base_dir = Path(".")
+    report_file = base_dir / "database" / "last_change_detection_report.json"
+    if report_file.exists():
+        try:
+            with open(report_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"[DetectChanges] Error reading last report from {report_file}: {e}")
+    return {
+        "success": True,
+        "timestamp": None,
+        "target_server": "all",
+        "library": "all",
+        "total_scanned": 0,
+        "changed_count": 0,
+        "unchanged_count": 0,
+        "changes": [],
+        "summary": {
+            "languages": 0,
+            "editions": 0,
+            "runtimes": 0,
+            "status": 0,
+            "new": 0,
+            "asset_modified": 0
+        }
+    }
+
+
+# ==============================================================================
+# BACKGROUND CHANGE DETECTOR DAEMON
+# ==============================================================================
+
+_change_detector_running = False
+_change_detector_thread = None
+
+def should_auto_resync_changed_items(settings: Dict[str, Any], changed_count: int) -> bool:
+    return bool(
+        settings.get("enabled", False)
+        and settings.get("change_detection_enabled", True)
+        and changed_count > 0
+        and settings.get("auto_resync_on_change", True)
+    )
+
+
+def _background_change_detector_loop(
+    base_dir: Optional[Path] = None,
+    config_path: Optional[Path] = None,
+    logs_dir: Optional[Path] = None
+):
+    """Background daemon loop that periodically autodetects media language, cut, runtime, and status changes."""
+    logger.info("[OverlayChangeDetector] Background media change monitor loop started.")
+    if not base_dir:
+        base_dir = Path(".")
+    if not config_path:
+        config_path = base_dir / "config.json"
+    if not logs_dir:
+        logs_dir = base_dir / "UILogs"
+
+    from dynamic_overlays_service import save_dynamic_overlays_settings
+
+    while _change_detector_running:
+        try:
+            settings = get_dynamic_overlays_settings()
+            if not settings.get("enabled", False) or not settings.get("change_detection_enabled", True):
+                for _ in range(30):
+                    if not _change_detector_running:
+                        break
+                    time.sleep(1)
+                continue
+
+            # Verify that libraries are actually configured in config.yml
+            overlays_dir = base_dir / "Overlayfiles" / "dynamic_overlays"
+            if not overlays_dir.exists():
+                legacy = base_dir / "Overlayfiles" / "kometa"
+                if legacy.exists():
+                    overlays_dir = legacy
+            config_yml = overlays_dir / "configs" / "config.yml"
+            has_configured_libs = False
+            if config_yml.exists():
+                try:
+                    import yaml
+                    with open(config_yml, "r", encoding="utf-8") as yf:
+                        raw_cfg = yaml.safe_load(yf) or {}
+                        raw_libs = raw_cfg.get("libraries", {})
+                        if isinstance(raw_libs, dict):
+                            for _, l_data in raw_libs.items():
+                                if isinstance(l_data, dict) and (l_data.get("overlay_files") or l_data.get("overlays")):
+                                    has_configured_libs = True
+                                    break
+                except Exception:
+                    pass
+
+            if not has_configured_libs and not settings.get("regenerate_assets_on_title_change", False):
+                for _ in range(30):
+                    if not _change_detector_running:
+                        break
+                    time.sleep(1)
+                continue
+
+            interval_mins = max(5, int(settings.get("change_detection_interval_minutes", 60)))
+            last_run_str = settings.get("last_change_detection_at")
+            should_run = False
+
+            if not last_run_str:
+                # First run after enabling: record timestamp so we do not trigger an immediate sync
+                save_dynamic_overlays_settings({
+                    "last_change_detection_at": datetime.now().isoformat()
+                })
+                should_run = False
+            else:
+                try:
+                    last_run_dt = datetime.fromisoformat(last_run_str)
+                    elapsed_secs = (datetime.now() - last_run_dt).total_seconds()
+                    if elapsed_secs >= (interval_mins * 60):
+                        should_run = True
+                except Exception:
+                    should_run = True
+
+            if should_run:
+                if is_overlay_sync_running():
+                    logger.debug("[OverlayChangeDetector] Sync task already active; skipping iteration.")
+                    for _ in range(30):
+                        if not _change_detector_running:
+                            break
+                        time.sleep(1)
+                    continue
+
+                logger.info("[OverlayChangeDetector] Running scheduled bulk change detection...")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                report = {}
+                try:
+                    from asset_title_changes import regenerate_changed_asset_titles
+                    title_report = loop.run_until_complete(regenerate_changed_asset_titles(base_dir, config_path))
+                    report = loop.run_until_complete(
+                        detect_media_changes(
+                            target_server="all",
+                            library="all",
+                            base_dir=base_dir,
+                            config_path=config_path
+                        )
+                    )
+                    report.setdefault("summary", {})["titles"] = title_report["detected"]
+                finally:
+                    loop.close()
+
+                latest_settings = get_dynamic_overlays_settings()
+                if not latest_settings.get("enabled", False) or not latest_settings.get("change_detection_enabled", True):
+                    logger.info("[OverlayChangeDetector] Master switch or background checking was disabled during scan; discarding the result.")
+                    for _ in range(30):
+                        if not _change_detector_running:
+                            break
+                        time.sleep(1)
+                    continue
+
+                save_dynamic_overlays_settings({
+                    "last_change_detection_at": datetime.now().isoformat(),
+                    "last_change_detection_summary": report.get("summary")
+                })
+
+                changed_count = report.get("changed_count", 0)
+                if should_auto_resync_changed_items(latest_settings, changed_count):
+                    logger.info(f"[OverlayChangeDetector] Detected {changed_count} updated media item(s). Auto-triggering resync...")
+                    resync_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(resync_loop)
+                    try:
+                        resync_loop.run_until_complete(
+                            run_overlay_sync_task(
+                                target_server="all",
+                                scope="changed",
+                                library="all",
+                                base_dir=base_dir,
+                                config_path=config_path,
+                                log_file_path=logs_dir / "DynamicOverlaysSync.log"
+                            )
+                        )
+                        logger.info(f"[OverlayChangeDetector] Auto-resync completed for {changed_count} item(s).")
+                    finally:
+                        resync_loop.close()
+                else:
+                    logger.debug(f"[OverlayChangeDetector] Scan complete. {changed_count} changed item(s) found.")
+
+        except Exception as e:
+            logger.error(f"[OverlayChangeDetector] Error in background monitor loop: {e}", exc_info=True)
+
+        for _ in range(30):
+            if not _change_detector_running:
+                break
+            time.sleep(1)
+
+    logger.info("[OverlayChangeDetector] Background media change monitor loop stopped.")
+
+
+def start_overlay_change_detector_background(
+    base_dir: Optional[Path] = None,
+    config_path: Optional[Path] = None,
+    logs_dir: Optional[Path] = None
+):
+    """Start background change detection daemon thread."""
+    global _change_detector_running, _change_detector_thread
+    if _change_detector_thread is not None and _change_detector_thread.is_alive():
+        return
+    _change_detector_running = True
+    _change_detector_thread = threading.Thread(
+        target=_background_change_detector_loop,
+        args=(base_dir, config_path, logs_dir),
+        daemon=True,
+        name="DynamicOverlaysChangeDetector"
+    )
+    _change_detector_thread.start()
+    logger.info("Dynamic overlays background change detector daemon started.")
+
+
+def stop_overlay_change_detector_background(wait=False, timeout=30):
+    """Stop background change detection daemon thread."""
+    global _change_detector_running
+    _change_detector_running = False
+    thread = _change_detector_thread
+    if wait and thread is not None:
+        if thread is threading.current_thread():
+            return False
+        thread.join(timeout=timeout)
+        return not thread.is_alive()
+    return True
+
+
+# ==============================================================================
+# BACKWARD COMPATIBILITY ALIASES
+# ==============================================================================
+run_kometa_overlay_sync_task = run_overlay_sync_task
+is_kometa_sync_running = is_overlay_sync_running
+
+

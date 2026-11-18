@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useTranslation } from "react-i18next";
 import {
   RefreshCw,
@@ -278,10 +279,10 @@ function TestGallery() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       <ScrollToButtons />
       {/* Header - Modernized to match RunModes & ConfigEditor */}
-      <div className="flex items-center justify-end">
+      <WorkspaceHeader icon={Play} title={t("testGallery.title", "Test Gallery")}>
         <div className="flex gap-3">
           <button
             onClick={() => fetchImages(true)}
@@ -309,7 +310,7 @@ function TestGallery() {
             <span>{t("testGallery.startTestMode")}</span>
           </button>
         </div>
-      </div>
+      </WorkspaceHeader>
 
       {/* Running Status */}
       {status.running && (
@@ -466,11 +467,11 @@ function TestGallery() {
       {/* Image Modal - Enhanced */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          className="app-dialog-backdrop fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setSelectedImage(null)}
         >
           <div
-            className="relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden"
+            className="app-dialog-panel relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <button
