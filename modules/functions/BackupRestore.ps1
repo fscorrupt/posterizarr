@@ -541,8 +541,8 @@ function MassDownloadPlexArtwork {
                     $TestPath = $EntryDir
                     $Testfile = "poster"
 
-                    if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                        New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                    if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                        New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                     }
                 }
                 Else {
@@ -625,7 +625,7 @@ function MassDownloadPlexArtwork {
 
                             }
                             # Move file back to original naming with Brackets.
-                            if (Get-ChildItem -LiteralPath $PosterImage -ErrorAction SilentlyContinue -WarningAction SilentlyContinue) {
+                            if (Test-Path -LiteralPath $PosterImage -PathType Leaf) {
                                 try {
                                     if ($LibraryFolders -eq 'true' -and !(Test-Path -LiteralPath $EntryDir)) {
                                         New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
@@ -669,8 +669,8 @@ function MassDownloadPlexArtwork {
                         $TestPath = $EntryDir
                         $Testfile = "background"
 
-                        if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                            New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                        if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                            New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                         }
                     }
                     Else {
@@ -863,8 +863,8 @@ function MassDownloadPlexArtwork {
                 $TestPath = $EntryDir
                 $Testfile = "poster"
 
-                if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                    New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                    New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                 }
             }
             Else {
@@ -936,7 +936,7 @@ function MassDownloadPlexArtwork {
                             $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
 
                         }
-                        if (Get-ChildItem -LiteralPath $PosterImage -ErrorAction SilentlyContinue -WarningAction SilentlyContinue) {
+                        if (Test-Path -LiteralPath $PosterImage -PathType Leaf) {
                             # Move file back to original naming with Brackets.
                             try {
                                 # Attempt to move the item
@@ -979,8 +979,8 @@ function MassDownloadPlexArtwork {
                     $TestPath = $EntryDir
                     $Testfile = "background"
 
-                    if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                        New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                    if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                        New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                     }
                 }
                 Else {
