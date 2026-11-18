@@ -831,7 +831,10 @@ function GetTMDBSeasonPoster {
                     if (!$global:SeasonOnlyTextless) {
                         if ($global:WidthHeightFilter -eq 'true') {
                             if ($global:TMDBVoteSorting -eq 'primary') {
-                                $filteredPosters = $response.poster | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
+                                $filteredPosters = $response.posters | Where-Object {
+                                    $_.width -ge $global:PosterMinWidth -and
+                                    $_.height -ge $global:PosterMinHeight
+                                }
 
                                 if ($filteredPosters) {
                                     $posterpath = $filteredPosters[0].file_path
@@ -2899,7 +2902,8 @@ function UploadOtherMediaServerArtwork {
                 $response = Invoke-WebRequest -Uri $ImageUrl -OutFile $tempFile -Headers $headers -ErrorAction Stop
 
                 $magickcommand = "& `"$magick`" identify -verbose `"$tempFile`""
-                try { $magickcommand | Out-File $magickLog -Append -ErrorAction Stop } catch {}
+                try { $magickcommand | Out-File $magickLog -Append
+ -ErrorAction Stop } catch {}
                 $value = Invoke-Expression $magickcommand | Select-String -Pattern 'overlay|titlecard|created with ppm|created with posterizarr'
 
                 Remove-Item $tempFile -Force -ErrorAction SilentlyContinue | out-null
