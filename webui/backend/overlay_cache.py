@@ -14,6 +14,7 @@ and compatible with the overlay systems pioneered by the Kometa Project
 
 import os
 import json
+import time
 import hashlib
 import sqlite3
 import threading
@@ -133,14 +134,60 @@ def describe_overlay_layer_changes(attr_snapshot, layers, shared_snapshots=None)
     return "; ".join(changes[:4]) + (f"; {len(changes) - 4} more changes" if len(changes) > 4 else "")
 
 
-def get_overlay_database_stats(database_dir: Path, anime_db_path: Optional[Path] = None) -> Dict[str, Any]:
-    databases = []
-    for name, db_path in (
+_EXCLUDED_DATABASES = frozenset({"config.db"})
+
+
+def _resolve_browsable_databases(
+    database_dir: Path, anime_db_path: Optional[Path] = None
+) -> List[Tuple[str, Path]]:
+    canonical = [
         ("Overlay Cache", database_dir / "overlay_cache.db"),
         ("AniMetaFill", anime_db_path or database_dir / "animetafill.db"),
-    ):
+        ("Image Choices", database_dir / "imagechoices.db"),
+        ("Runtime History", database_dir / "runtime_stats.db"),
+        ("Media Server Exports", database_dir / "media_export.db"),
+        ("Server Libraries", database_dir / "server_libraries.db"),
+        ("Plex Push Cache", database_dir / "plex_push_cache.db"),
+        ("Job Queue", database_dir / "queue.db"),
+        ("IMDb Dataset", database_dir / "imdb_dataset.db"),
+    ]
+    resolved = [
+        (label, path)
+        for label, path in canonical
+        if path.name.lower() not in _EXCLUDED_DATABASES
+    ]
+    seen_names = {path.name.lower() for _, path in resolved}
+    if database_dir.is_dir():
+        for candidate in sorted(database_dir.glob("*.db")):
+            lower_name = candidate.name.lower()
+            if lower_name in _EXCLUDED_DATABASES or lower_name in seen_names:
+                continue
+            try:
+                if not candidate.is_file() or candidate.stat().st_size == 0:
+                    continue
+            except OSError:
+                continue
+            label = candidate.stem.replace("_", " ").replace("-", " ").title()
+            resolved.append((label, candidate))
+            seen_names.add(lower_name)
+    return resolved
+
+
+def _attach_deadline(conn: sqlite3.Connection, seconds: float = 5.0) -> None:
+    deadline = time.monotonic() + seconds
+    conn.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 50000)
+
+
+def get_overlay_database_stats(database_dir: Path, anime_db_path: Optional[Path] = None) -> Dict[str, Any]:
+    databases = []
+    for name, db_path in _resolve_browsable_databases(database_dir, anime_db_path):
+        exists = False
+        try:
+            exists = db_path.is_file() and db_path.stat().st_size > 0
+        except OSError:
+            exists = False
         entry = {
-            "name": name, "filename": db_path.name, "exists": db_path.is_file(),
+            "name": name, "filename": db_path.name, "exists": exists,
             "size_bytes": 0, "wal_bytes": 0, "total_records": 0, "tables": [],
         }
         try:
@@ -148,32 +195,66 @@ def get_overlay_database_stats(database_dir: Path, anime_db_path: Optional[Path]
                 entry["size_bytes"] = db_path.stat().st_size
                 wal_path = Path(f"{db_path}-wal")
                 entry["wal_bytes"] = wal_path.stat().st_size if wal_path.is_file() else 0
+                db_filename = db_path.name.lower()
                 with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)) as conn:
-                    table_names = [row[0] for row in conn.execute(
-                        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-                    )]
+                    _attach_deadline(conn, seconds=5.0)
+                    table_names = sorted(
+                        (
+                            row[0]
+                            for row in conn.execute(
+                                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+                            )
+                        ),
+                        key=lambda name: (name == "migration_info", name),
+                    )
                     for table_name in table_names:
                         quoted_name = '"' + table_name.replace('"', '""') + '"'
+                        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({quoted_name})")}
                         row_count = conn.execute(f"SELECT COUNT(*) FROM {quoted_name}").fetchone()[0]
                         table = {"name": table_name, "records": row_count}
-                        if table_name == "dynamic_overlay_cache":
+                        if db_filename == "overlay_cache.db" and table_name == "dynamic_overlay_cache":
                             for column in ("status", "server_type", "asset_type"):
-                                table[column] = dict(conn.execute(
-                                    f'SELECT "{column}", COUNT(*) FROM {quoted_name} GROUP BY "{column}"'
-                                ))
-                        elif table_name == "media_ratings_cache":
+                                if column in columns:
+                                    table[column] = dict(conn.execute(
+                                        f'SELECT "{column}", COUNT(*) FROM {quoted_name} GROUP BY "{column}"'
+                                    ))
+                        elif db_filename == "overlay_cache.db" and table_name == "media_ratings_cache" and "expires_at" in columns:
                             valid = conn.execute(
                                 f"SELECT COUNT(*) FROM {quoted_name} WHERE expires_at > ?",
                                 (datetime.utcnow().isoformat(),)
                             ).fetchone()[0]
                             table.update(valid=valid, expired=row_count - valid)
-                        elif table_name == "episodes":
-                            table["shows"] = conn.execute(f"SELECT COUNT(DISTINCT anime_title) FROM {quoted_name}").fetchone()[0]
-                            table["category"] = dict(conn.execute(
-                                f"SELECT category, COUNT(*) FROM {quoted_name} GROUP BY category"
+                        elif db_filename == "animetafill.db" and table_name == "episodes":
+                            if "anime_title" in columns:
+                                table["shows"] = conn.execute(f"SELECT COUNT(DISTINCT anime_title) FROM {quoted_name}").fetchone()[0]
+                            if "category" in columns:
+                                table["category"] = dict(conn.execute(
+                                    f"SELECT category, COUNT(*) FROM {quoted_name} GROUP BY category"
+                                ))
+                        elif db_filename == "imagechoices.db" and table_name == "imagechoices" and "Type" in columns:
+                            table["type"] = dict(conn.execute(
+                                f'SELECT "Type", COUNT(*) FROM {quoted_name} GROUP BY "Type"'
+                            ))
+                        elif db_filename == "runtime_stats.db" and table_name == "runtime_stats" and "mode" in columns:
+                            table["mode"] = dict(conn.execute(
+                                f'SELECT "mode", COUNT(*) FROM {quoted_name} GROUP BY "mode"'
+                            ))
+                        elif db_filename == "queue.db" and table_name == "queue_items" and "status" in columns:
+                            table["status"] = dict(conn.execute(
+                                f'SELECT "status", COUNT(*) FROM {quoted_name} GROUP BY "status"'
+                            ))
+                        elif db_filename == "server_libraries.db" and table_name == "media_server_libraries" and "server_type" in columns:
+                            table["server_type"] = dict(conn.execute(
+                                f'SELECT "server_type", COUNT(*) FROM {quoted_name} GROUP BY "server_type"'
                             ))
                         entry["tables"].append(table)
                         entry["total_records"] += row_count
+        except sqlite3.OperationalError as error:
+            entry["error"] = (
+                "Query timed out reading database statistics."
+                if "interrupted" in str(error).lower()
+                else str(error)
+            )
         except (sqlite3.Error, OSError) as error:
             entry["error"] = str(error)
         databases.append(entry)
@@ -190,50 +271,65 @@ def get_overlay_database_entries(
     descending: bool = True,
     anime_db_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
+    if not database or "/" in database or "\\" in database or database.lower() in _EXCLUDED_DATABASES:
+        raise ValueError("Unknown database")
     paths = {
-        "overlay_cache.db": database_dir / "overlay_cache.db",
-        "animetafill.db": anime_db_path or database_dir / "animetafill.db",
+        path.name: path
+        for _, path in _resolve_browsable_databases(database_dir, anime_db_path)
     }
     if database not in paths:
-        raise ValueError("Unknown overlay database")
+        raise ValueError("Unknown database")
     db_path = paths[database]
     page = max(1, int(page))
     limit = max(1, min(200, int(limit)))
+    exists = False
+    try:
+        exists = db_path.is_file() and db_path.stat().st_size > 0
+    except OSError:
+        exists = False
     result = {"database": database, "table": table, "page": page, "limit": limit,
-              "exists": db_path.is_file(), "columns": [], "entries": [], "total": 0, "total_pages": 0}
+              "exists": exists, "columns": [], "entries": [], "total": 0, "total_pages": 0}
     if not result["exists"]:
         return result
-    with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)) as conn:
-        conn.row_factory = sqlite3.Row
-        tables = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-        )}
-        if table not in tables:
-            raise ValueError("Unknown overlay database table")
-        quoted_table = '"' + table.replace('"', '""') + '"'
-        schema = list(conn.execute(f"PRAGMA table_info({quoted_table})"))
-        columns = [column["name"] for column in schema]
-        result["columns"] = columns
-        if sort_by and sort_by not in columns:
-            raise ValueError("Unknown sort column")
-        order_column = sort_by or next((column["name"] for column in schema if column["pk"]), columns[0])
-        quote = lambda name: '"' + name.replace('"', '""') + '"'
-        parameters = []
-        where = ""
-        if search:
-            pattern = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-            where = " WHERE " + " OR ".join(f"CAST({quote(column)} AS TEXT) LIKE ? ESCAPE '\\'" for column in columns)
-            parameters = [pattern] * len(columns)
-        result["total"] = conn.execute(f"SELECT COUNT(*) FROM {quoted_table}{where}", parameters).fetchone()[0]
-        result["total_pages"] = (result["total"] + limit - 1) // limit
-        result["page"] = min(page, max(1, result["total_pages"]))
-        order_columns = [order_column] + [column for column in columns if column != order_column and any(field["name"] == column and field["pk"] for field in schema)]
-        order = ", ".join(f"{quote(column)} {'DESC' if descending else 'ASC'}" for column in order_columns)
-        rows = conn.execute(
-            f"SELECT * FROM {quoted_table}{where} ORDER BY {order} LIMIT ? OFFSET ?",
-            [*parameters, limit, (result["page"] - 1) * limit],
-        )
-        result["entries"] = [dict(row) for row in rows]
+    try:
+        with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)) as conn:
+            _attach_deadline(conn, seconds=5.0)
+            conn.row_factory = sqlite3.Row
+            tables = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            )}
+            if table not in tables:
+                raise ValueError("Unknown database table")
+            quoted_table = '"' + table.replace('"', '""') + '"'
+            schema = list(conn.execute(f"PRAGMA table_info({quoted_table})"))
+            columns = [column["name"] for column in schema]
+            result["columns"] = columns
+            if not columns:
+                return result
+            if sort_by and sort_by not in columns:
+                raise ValueError("Unknown sort column")
+            order_column = sort_by or next((column["name"] for column in schema if column["pk"]), columns[0])
+            quote = lambda name: '"' + name.replace('"', '""') + '"'
+            parameters = []
+            where = ""
+            if search:
+                pattern = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                where = " WHERE " + " OR ".join(f"CAST({quote(column)} AS TEXT) LIKE ? ESCAPE '\\'" for column in columns)
+                parameters = [pattern] * len(columns)
+            result["total"] = conn.execute(f"SELECT COUNT(*) FROM {quoted_table}{where}", parameters).fetchone()[0]
+            result["total_pages"] = (result["total"] + limit - 1) // limit
+            result["page"] = min(page, max(1, result["total_pages"]))
+            order_columns = [order_column] + [column for column in columns if column != order_column and any(field["name"] == column and field["pk"] for field in schema)]
+            order = ", ".join(f"{quote(column)} {'DESC' if descending else 'ASC'}" for column in order_columns)
+            rows = conn.execute(
+                f"SELECT * FROM {quoted_table}{where} ORDER BY {order} LIMIT ? OFFSET ?",
+                [*parameters, limit, (result["page"] - 1) * limit],
+            )
+            result["entries"] = [dict(row) for row in rows]
+    except sqlite3.OperationalError as error:
+        if "interrupted" in str(error).lower():
+            raise TimeoutError("Query timed out. Try a more specific search or browse without a search filter.") from error
+        raise
     return result
 
 def compute_metadata_hash(

@@ -38,10 +38,29 @@ const MODE_STYLES = {
   scheduled: { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' },
   manual: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/30' },
   testing: { bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/30' },
-  dynamic_overlays: { bg: 'bg-fuchsia-500/15', text: 'text-fuchsia-400', border: 'border-fuchsia-500/30' },
+  tautulli: { bg: 'bg-orange-500/15', text: 'text-orange-400', border: 'border-orange-500/30' },
+  arr: { bg: 'bg-cyan-500/15', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+  backup: { bg: 'bg-teal-500/15', text: 'text-teal-400', border: 'border-teal-500/30' },
+  syncjelly: { bg: 'bg-indigo-500/15', text: 'text-indigo-400', border: 'border-indigo-500/30' },
+  syncemby: { bg: 'bg-lime-500/15', text: 'text-lime-400', border: 'border-lime-500/30' },
+  replace: { bg: 'bg-sky-500/15', text: 'text-sky-400', border: 'border-sky-500/30' },
   replacer: { bg: 'bg-cyan-500/15', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+  dynamic_overlays: { bg: 'bg-fuchsia-500/15', text: 'text-fuchsia-400', border: 'border-fuchsia-500/30' },
   default: { bg: 'bg-gray-500/15', text: 'text-gray-300', border: 'border-gray-500/30' },
 };
+
+const BASE_RUN_MODES = [
+  'scheduled',
+  'normal',
+  'manual',
+  'testing',
+  'tautulli',
+  'arr',
+  'backup',
+  'syncjelly',
+  'syncemby',
+  'replace',
+];
 
 // --- UTILITIES ---
 const getSafeValue = (data, key) => {
@@ -56,6 +75,35 @@ const formatBytes = (bytes, decimals = 1) => {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
+const parseSpaceSavedBytes = (val) => {
+  if (val === null || val === undefined) return 0;
+  const str = String(val).trim();
+  if (!str || str === '0') return 0;
+  const match = str.match(/^(-?[\d.,]+)\s*(bytes?|b|kb|kib|mb|mib|gb|gib|tb|tib)?$/i);
+  if (!match) return 0;
+  let numStr = match[1];
+  if (numStr.includes(',') && numStr.includes('.')) {
+    numStr = numStr.replace(/,/g, '');
+  } else if (/,\d{3}(?!\d)/.test(numStr)) {
+    numStr = numStr.replace(/,/g, '');
+  } else {
+    numStr = numStr.replace(',', '.');
+  }
+  const num = parseFloat(numStr);
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  const unit = (match[2] || 'b').toLowerCase();
+  if (unit === 'tb' || unit === 'tib') return num * (1024 ** 4);
+  if (unit === 'gb' || unit === 'gib') return num * (1024 ** 3);
+  if (unit === 'mb' || unit === 'mib') return num * (1024 ** 2);
+  if (unit === 'kb' || unit === 'kib') return num * 1024;
+  return num;
+};
+
+const formatSpaceSaved = (val) => {
+  const bytes = parseSpaceSavedBytes(val);
+  return bytes > 0 ? formatBytes(bytes, 2) : '0 B';
 };
 
 const formatDuration = (seconds) => {
@@ -170,7 +218,7 @@ const generateMockRuns = (count = 28) => {
       images_cleared: 0,
       folders_cleared: 0,
       space_saved,
-      script_version: '2.1.0',
+      script_version: '4.0.0',
       im_version: 'ImageMagick 7.1.1-29',
       log_file: `posterizarr_${timestamp.slice(0, 10)}.log`,
       status: errors > 0 ? 'warning' : 'completed',
@@ -187,12 +235,12 @@ export default function RuntimeHistory() {
   // Core Data
   const [history, setHistory] = useState([]);
   const [providerStats, setProviderStats] = useState([]);
-  const [assetOverview, setAssetOverview] = useState(null);
   const [assetStats, setAssetStats] = useState(null);
   const [exportStats, setExportStats] = useState(null);
   const [overlayStats, setOverlayStats] = useState([]);
   const [overlayDatabaseStats, setOverlayDatabaseStats] = useState(null);
   const [overlayDatabaseError, setOverlayDatabaseError] = useState("");
+  const [selectedDbTarget, setSelectedDbTarget] = useState(null);
 
   // UI & Filter States
   const [loading, setLoading] = useState(true);
@@ -218,6 +266,11 @@ export default function RuntimeHistory() {
         tableSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }, 100);
+  };
+
+  const handleBrowseDatabase = (database, table) => {
+    setSelectedDbTarget({ database, table, seq: Date.now() });
+    document.getElementById("overlay-database-records")?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   // Inspector & Modal States
@@ -254,16 +307,15 @@ export default function RuntimeHistory() {
       const usePlex = configData?.success && configData?.config?.UsePlex === "true";
 
       const requests = [
-        fetch(`${API_URL}/runtime-history?limit=1500&offset=0`).then(r => r.json()).catch(() => ({ success: false })),
+        fetch(`${API_URL}/runtime-history?limit=50000&offset=0${rangeDays < 9999 ? `&days=${rangeDays}` : ''}`).then(r => r.json()).catch(() => ({ success: false })),
         fetch(`${API_URL}/analytics/providers?days=${Math.min(rangeDays, 365)}`).then(r => r.json()).catch(() => ({ success: false })),
-        fetch(`${API_URL}/assets/overview`).then(r => r.json()).catch(() => null),
         fetch(`${API_URL}/assets/stats`).then(r => r.json()).catch(() => ({ success: false })),
         fetch(`${API_URL}/overlayfiles`).then(r => r.json()).catch(() => ({ success: false })),
         fetch(usePlex ? `${API_URL}/plex-export/statistics` : `${API_URL}/other-media-export/statistics`).then(r => r.json()).catch(() => ({ success: false })),
         fetch(`${API_URL}/dynamic-overlays/database-stats`).then(r => r.json()).catch(() => ({ success: false }))
       ];
 
-      const [histData, provData, overData, statsData, overlayData, expData, databaseData] = await Promise.all(requests);
+      const [histData, provData, statsData, overlayData, expData, databaseData] = await Promise.all(requests);
 
       if (databaseData?.success && Array.isArray(databaseData.databases)) {
         setOverlayDatabaseStats(databaseData.databases);
@@ -282,15 +334,14 @@ export default function RuntimeHistory() {
       if (provData?.success && Array.isArray(provData.stats)) {
         setProviderStats(provData.stats);
       }
-      if (overData) setAssetOverview(overData);
       if (statsData?.success) setAssetStats(statsData);
 
       if (overlayData?.success && Array.isArray(overlayData.files)) {
         const fonts = overlayData.files.filter(f => f.type === 'font');
         const images = overlayData.files.filter(f => f.type === 'image');
         setOverlayStats([
-          { label: 'Installed Fonts', value: fonts.length, size: fonts.reduce((acc, f) => acc + (f.size || 0), 0), type: 'font' },
-          { label: 'Dynamic Overlays', value: images.length, size: images.reduce((acc, f) => acc + (f.size || 0), 0), type: 'image' }
+          { labelKey: 'runtime_history.ui.installedFonts', value: fonts.length, size: fonts.reduce((acc, f) => acc + (f.size || 0), 0), type: 'font' },
+          { labelKey: 'runtime_history.ui.overlayImages', value: images.length, size: images.reduce((acc, f) => acc + (f.size || 0), 0), type: 'image' }
         ]);
       }
 
@@ -326,6 +377,14 @@ export default function RuntimeHistory() {
     return history;
   }, [history, useDemoData, rangeDays]);
 
+  const availableModes = useMemo(() => {
+    const modeSet = new Set(BASE_RUN_MODES);
+    for (const run of rawDataset) {
+      if (run.mode) modeSet.add(String(run.mode).toLowerCase());
+    }
+    return Array.from(modeSet);
+  }, [rawDataset]);
+
   // Filtered by Time Range using robust date parsing
   const timeFilteredHistory = useMemo(() => {
     if (!rawDataset.length) return [];
@@ -353,11 +412,12 @@ export default function RuntimeHistory() {
         minDurationSec: 0,
         maxDurationSec: 0,
         totalErrors: 0,
-        totalSpaceSaved: "0 MB",
+        totalSpaceSaved: "0 B",
         posters: 0,
         titlecards: 0,
         seasons: 0,
-        backgrounds: 0
+        backgrounds: 0,
+        collections: 0
       };
     }
 
@@ -371,6 +431,8 @@ export default function RuntimeHistory() {
     let titlecards = 0;
     let seasons = 0;
     let backgrounds = 0;
+    let collections = 0;
+    let totalSpaceSavedBytes = 0;
 
     timeFilteredHistory.forEach(r => {
       const err = r.errors || 0;
@@ -387,6 +449,8 @@ export default function RuntimeHistory() {
       titlecards += (r.titlecards || 0);
       seasons += (r.seasons || 0);
       backgrounds += (r.backgrounds || 0);
+      collections += (r.collections || 0);
+      totalSpaceSavedBytes += parseSpaceSavedBytes(r.space_saved);
     });
 
     const avgDur = Math.round(totalDuration / totalRuns);
@@ -403,11 +467,12 @@ export default function RuntimeHistory() {
       minDurationSec: minDur === Infinity ? 0 : minDur,
       maxDurationSec: maxDur,
       totalErrors: errorCount,
-      totalSpaceSaved: formatBytes(totalImages * 350 * 1024),
+      totalSpaceSaved: totalSpaceSavedBytes > 0 ? formatBytes(totalSpaceSavedBytes, 2) : "0 B",
       posters,
       titlecards,
       seasons,
-      backgrounds
+      backgrounds,
+      collections
     };
   }, [timeFilteredHistory]);
 
@@ -435,6 +500,7 @@ export default function RuntimeHistory() {
           titlecards: run.titlecards || 0,
           seasons: run.seasons || 0,
           backgrounds: run.backgrounds || 0,
+          collections: run.collections || 0,
           errors: run.errors || 0,
           mode: run.mode || 'normal',
           raw: run,
@@ -460,6 +526,7 @@ export default function RuntimeHistory() {
           titlecards: 0,
           seasons: 0,
           backgrounds: 0,
+          collections: 0,
           errors: 0
         });
       }
@@ -473,6 +540,7 @@ export default function RuntimeHistory() {
       b.titlecards += (run.titlecards || 0);
       b.seasons += (run.seasons || 0);
       b.backgrounds += (run.backgrounds || 0);
+      b.collections += (run.collections || 0);
       b.errors += (run.errors || 0);
     }
 
@@ -492,6 +560,7 @@ export default function RuntimeHistory() {
         titlecards: b.titlecards,
         seasons: b.seasons,
         backgrounds: b.backgrounds,
+        collections: b.collections,
         errors: b.errors,
         runCount: b.runs.length,
         raw: latestRun,
@@ -622,7 +691,7 @@ export default function RuntimeHistory() {
       showInfo("No records available to export");
       return;
     }
-    const headers = ["ID", "Timestamp", "Mode", "Duration_Seconds", "Duration_Formatted", "Total_Images", "Posters", "Seasons", "Backgrounds", "Titlecards", "Errors", "Space_Saved", "Script_Version", "Log_File", "Status"];
+    const headers = ["ID", "Timestamp", "Mode", "Duration_Seconds", "Duration_Formatted", "Total_Images", "Posters", "Seasons", "Backgrounds", "Titlecards", "Collections", "Errors", "Space_Saved", "Script_Version", "Log_File", "Status"];
     const rows = timeFilteredHistory.map(r => [
       r.id,
       r.start_time || r.timestamp,
@@ -634,6 +703,7 @@ export default function RuntimeHistory() {
       r.seasons || 0,
       r.backgrounds || 0,
       r.titlecards || 0,
+      r.collections || 0,
       r.errors || 0,
       `"${r.space_saved || ''}"`,
       `"${r.script_version || ''}"`,
@@ -1011,7 +1081,7 @@ export default function RuntimeHistory() {
           <div className="my-1">
             <div className="text-2xl lg:text-3xl font-bold tracking-tight text-white">{kpis.totalAssets.toLocaleString()}</div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 truncate">
-              {kpis.posters}P · {kpis.titlecards}T · {kpis.seasons}S · {kpis.backgrounds}B
+              {kpis.posters}P · {kpis.titlecards}T · {kpis.seasons}S · {kpis.backgrounds}B{kpis.collections > 0 ? ` · ${kpis.collections}C` : ''}
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2 flex">
@@ -1019,6 +1089,9 @@ export default function RuntimeHistory() {
             <div style={{ width: `${(kpis.titlecards / Math.max(kpis.totalAssets, 1)) * 100}%` }} className="bg-purple-400 h-full"></div>
             <div style={{ width: `${(kpis.seasons / Math.max(kpis.totalAssets, 1)) * 100}%` }} className="bg-emerald-400 h-full"></div>
             <div style={{ width: `${(kpis.backgrounds / Math.max(kpis.totalAssets, 1)) * 100}%` }} className="bg-gray-400 h-full"></div>
+            {kpis.collections > 0 && (
+              <div style={{ width: `${(kpis.collections / Math.max(kpis.totalAssets, 1)) * 100}%` }} className="bg-amber-400 h-full"></div>
+            )}
           </div>
         </div>
 
@@ -1083,7 +1156,7 @@ export default function RuntimeHistory() {
               {assetStats?.stats?.total_size ? formatBytes(assetStats.stats.total_size) : kpis.totalSpaceSaved}
             </div>
             <div className="text-[11px] text-theme-text-muted mt-0.5 flex items-center justify-between">
-              <span>{t('runtime_history.kpis.savedApprox', { value: kpis.totalSpaceSaved })}</span>
+              <span>{t('runtime_history.kpis.cleanupFreed', { value: kpis.totalSpaceSaved })}</span>
             </div>
           </div>
           <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mt-2">
@@ -1269,6 +1342,7 @@ export default function RuntimeHistory() {
                   titlecards={kpis.titlecards}
                   seasons={kpis.seasons}
                   backgrounds={kpis.backgrounds}
+                  collections={kpis.collections}
                   total={kpis.totalAssets}
                 />
               </div>
@@ -1377,51 +1451,84 @@ export default function RuntimeHistory() {
               {overlayDatabaseError ? (
                 <p role="status" className="text-sm text-amber-400">{overlayDatabaseError}</p>
               ) : overlayDatabaseStats ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {overlayDatabaseStats.map(database => (
-                    <div key={database.filename} className="min-w-0">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
-                        <h4 className="text-sm font-semibold text-theme-text">{database.name}</h4>
-                        <span className="font-mono text-xs text-theme-muted">{formatBytes(database.size_bytes + database.wal_bytes)}</span>
-                      </div>
-                      <div className="text-xs text-theme-muted font-mono break-all mb-3">{database.filename}</div>
-                      {database.error ? (
-                        <p className="text-xs text-amber-400 break-words">{database.error}</p>
-                      ) : !database.exists ? (
-                        <p className="text-xs text-theme-muted">{t('runtime_history.ui.notCreatedYet')}</p>
-                      ) : (
-                        <dl className="space-y-3">
-                          {database.tables.map(table => (
-                            <div key={table.name}>
-                              <div className="flex justify-between items-baseline gap-3 text-xs">
-                                <dt className="text-theme-text break-all">{({dynamic_overlay_cache: t('runtime_history.ui.artworkFingerprints'), media_ratings_cache: t('runtime_history.ui.ratingsShowMetadata'), episodes: t('runtime_history.ui.classifiedEpisodes'), updates: t('runtime_history.ui.trackedShows')})[table.name] || table.name}</dt>
-                                <dd className="font-mono font-semibold tabular-nums text-theme-text">{table.records.toLocaleString()}</dd>
-                              </div>
-                              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-theme-muted mt-1">
-                                {table.valid !== undefined && <span>{t('runtime_history.ui.validExpiredCounts', { valid: table.valid.toLocaleString(), expired: table.expired.toLocaleString() })}</span>}
-                                {table.shows !== undefined && <span>{t('runtime_history.ui.showsCount', { count: table.shows.toLocaleString() })}</span>}
-                                {['status', 'server_type', 'asset_type', 'category'].map(group => table[group] && (
-                                  <span key={group} className="break-words">
-                                    {Object.entries(table[group]).map(([label, count]) => `${label || 'unknown'}: ${count.toLocaleString()}`).join(' / ')}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                          <div className="flex justify-between border-t border-theme pt-2 text-xs">
-                            <dt className="text-theme-muted">{t('runtime_history.ui.totalRecords')}</dt>
-                            <dd className="font-mono font-semibold text-theme-text">{database.total_records.toLocaleString()}</dd>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {overlayDatabaseStats.map(database => {
+                    const dbDisplayName = t(`runtime_history.dbBrowser.databases.${database.filename}`, { defaultValue: database.name });
+                    return (
+                      <div
+                        key={database.filename}
+                        className="min-w-0 rounded-xl border border-white/[0.07] bg-black/25 p-4 flex flex-col justify-between gap-3"
+                      >
+                        <div>
+                          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                            <h4 className="text-sm font-semibold text-theme-text">{dbDisplayName}</h4>
+                            <span className="font-mono text-xs text-theme-muted">{formatBytes(database.size_bytes + database.wal_bytes)}</span>
                           </div>
-                          {database.wal_bytes > 0 && <div className="text-[11px] text-theme-muted">{t('runtime_history.ui.walSize', { value: formatBytes(database.wal_bytes) })}</div>}
-                        </dl>
-                      )}
-                    </div>
-                  ))}
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <span className="text-xs text-theme-muted font-mono break-all">{database.filename}</span>
+                            {database.exists && database.tables?.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleBrowseDatabase(database.filename, database.tables[0].name)}
+                                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-theme-text hover:border-theme-primary/50 hover:text-theme-primary transition-colors shrink-0"
+                              >
+                                <Eye size={11} /> {t('runtime_history.ui.browseTable')}
+                              </button>
+                            )}
+                          </div>
+                          {database.error ? (
+                            <p className="text-xs text-amber-400 break-words">{database.error}</p>
+                          ) : !database.exists ? (
+                            <p className="text-xs text-theme-muted">{t('runtime_history.ui.notCreatedYet')}</p>
+                          ) : (
+                            <div className="space-y-2.5">
+                              {database.tables.map(table => {
+                                const tableKey = database.filename === 'imdb_dataset.db' && table.name === 'episodes' ? 'imdb_episodes' : table.name;
+                                const tableLabel = t(`runtime_history.dbBrowser.tables.${tableKey}`, { defaultValue: table.name.replaceAll('_', ' ') });
+                                return (
+                                  <div key={table.name}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleBrowseDatabase(database.filename, table.name)}
+                                      className="w-full flex justify-between items-baseline gap-3 text-xs text-left rounded-md px-1.5 py-0.5 -mx-1.5 hover:bg-white/[0.05] hover:text-theme-primary transition-colors group"
+                                    >
+                                      <span className="text-theme-text group-hover:text-theme-primary break-all">{tableLabel}</span>
+                                      <span className="font-mono font-semibold tabular-nums text-theme-text shrink-0">{table.records.toLocaleString()}</span>
+                                    </button>
+                                    {(table.valid !== undefined || table.shows !== undefined || ['status', 'server_type', 'asset_type', 'category', 'type', 'mode'].some(g => table[g])) && (
+                                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-theme-muted mt-0.5">
+                                        {table.valid !== undefined && <span>{t('runtime_history.ui.validExpiredCounts', { valid: table.valid.toLocaleString(), expired: table.expired.toLocaleString() })}</span>}
+                                        {table.shows !== undefined && <span>{t('runtime_history.ui.showsCount', { count: table.shows.toLocaleString() })}</span>}
+                                        {['status', 'server_type', 'asset_type', 'category', 'type', 'mode'].map(group => table[group] && (
+                                          <span key={group} className="break-words">
+                                            {Object.entries(table[group]).map(([label, count]) => `${label || 'unknown'}: ${count.toLocaleString()}`).join(' / ')}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        {database.exists && !database.error && (
+                          <div className="pt-2 border-t border-white/[0.06] space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-theme-muted">{t('runtime_history.ui.totalRecords')}</span>
+                              <span className="font-mono font-semibold text-theme-text">{database.total_records.toLocaleString()}</span>
+                            </div>
+                            {database.wal_bytes > 0 && <div className="text-[11px] text-theme-muted">{t('runtime_history.ui.walSize', { value: formatBytes(database.wal_bytes) })}</div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : <p role="status" className="text-sm text-theme-muted">{t('runtime_history.ui.loadingDatabaseStats')}</p>}
             </section>
 
-            <OverlayDatabaseBrowser databases={overlayDatabaseStats} />
+            <OverlayDatabaseBrowser databases={overlayDatabaseStats} selectedTarget={selectedDbTarget} />
 
             {/* Overlay Cache Resources */}
             <div
@@ -1447,7 +1554,7 @@ export default function RuntimeHistory() {
                         {stat.type === 'font' ? <FileType size={18} /> : <FileImage size={18} />}
                       </div>
                       <div>
-                        <div className="text-xs font-semibold text-white">{stat.label}</div>
+                        <div className="text-xs font-semibold text-white">{stat.labelKey ? t(stat.labelKey) : stat.label}</div>
                         <div className="text-[10px] text-theme-text-muted">{formatBytes(stat.size)}</div>
                       </div>
                     </div>
@@ -1559,13 +1666,11 @@ export default function RuntimeHistory() {
                 className="bg-black/40 border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
               >
                 <option value="all">{t('runtime_history.ui.allModes')}</option>
-                <option value="scheduled">{t('runtime_history.ui.scheduled')}</option>
-                <option value="normal">{t('runtime_history.ui.normal')}</option>
-                <option value="manual">{t('runtime_history.ui.manual')}</option>
-                <option value="testing">{t('runtime_history.ui.testing')}</option>
-                <option value="tautulli">{t('runtime_history.ui.tautulli')}</option>
-                <option value="arr">{t('runtime_history.ui.arr')}</option>
-                <option value="dynamic_overlays">{t('runtime_history.ui.dynamicOverlays')}</option>
+                {availableModes.map(modeOption => (
+                  <option key={modeOption} value={modeOption}>
+                    {t(`runtime_history.ui.${modeOption === 'dynamic_overlays' ? 'dynamicOverlays' : modeOption}`, { defaultValue: modeOption })}
+                  </option>
+                ))}
               </select>
 
               {/* Status Filter */}
@@ -1757,7 +1862,7 @@ export default function RuntimeHistory() {
                         {/* Breakdown preview */}
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           <span className="text-[10px] font-mono text-theme-text-muted bg-black/25 px-2 py-0.5 rounded-md border border-white/[0.04]">
-                            {entry.posters || 0}P · {entry.titlecards || 0}T · {entry.seasons || 0}S
+                            {entry.posters || 0}P · {entry.titlecards || 0}T · {entry.seasons || 0}S · {entry.backgrounds || 0}B{(entry.collections || 0) > 0 ? ` · ${entry.collections}C` : ''}
                           </span>
                         </td>
 
@@ -1868,9 +1973,14 @@ export default function RuntimeHistory() {
                 <div>
                   <div className="flex items-center gap-2.5">
                     <h2 className="text-lg font-bold text-white">{t('runtime_history.ui.executionNumber', { id: selectedEntry.id })}</h2>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border bg-amber-500/15 border-amber-500/30 text-amber-400">
-                      {selectedEntry.mode || 'normal'}
-                    </span>
+                    {(() => {
+                      const modalModeStyle = MODE_STYLES[selectedEntry.mode?.toLowerCase()] || MODE_STYLES.default;
+                      return (
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border ${modalModeStyle.bg} ${modalModeStyle.border} ${modalModeStyle.text}`}>
+                          {selectedEntry.mode || 'normal'}
+                        </span>
+                      );
+                    })()}
                     <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border ${(selectedEntry.errors || 0) > 0 ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'}`}>
                       {(selectedEntry.errors || 0) > 0 ? t('runtime_history.ui.errorCount', { count: selectedEntry.errors }) : t('runtime_history.ui.success')}
                     </span>
@@ -1910,7 +2020,7 @@ export default function RuntimeHistory() {
                     : 'border-transparent text-theme-text-muted hover:text-white'
                 }`}
               >
-                <Image size={14} /> {t('runtime_history.ui.createdAssetsCount', { count: selectedEntry.total_images || 0 })}
+                <Image size={14} /> {t('runtime_history.ui.createdAssetsCount', { count: loadingRunAssets ? (selectedEntry.total_images || 0) : runAssets.length })}
               </button>
             </div>
 
@@ -1948,7 +2058,7 @@ export default function RuntimeHistory() {
                     <div className="bg-black/30 p-3.5 rounded-xl border border-white/[0.06]">
                       <div className="text-[11px] text-theme-text-muted uppercase font-semibold">{t('runtime_history.ui.spaceSaved')}</div>
                       <div className="text-xl font-bold font-mono text-sky-400 mt-1">
-                        {selectedEntry.space_saved || "0 KB"}
+                        {formatSpaceSaved(selectedEntry.space_saved)}
                       </div>
                       <div className="text-[10px] text-theme-text-muted mt-0.5">{t('runtime_history.ui.imageCompressionGains')}</div>
                     </div>
@@ -1979,22 +2089,34 @@ export default function RuntimeHistory() {
                   {/* Telemetry Tags */}
                   <div>
                     <h4 className="text-xs font-bold text-theme-text-muted uppercase tracking-wider mb-3">{t('runtime_history.ui.advancedEngineTelemetry')}</h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 text-xs">
+                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between gap-2">
                         <span className="text-theme-text-muted">{t('runtime_history.ui.fallbacksTriggered')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.fallbacks || 0}</span>
                       </div>
-                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
+                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between gap-2">
                         <span className="text-theme-text-muted">{t('runtime_history.ui.textlessPosters')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.textless || 0}</span>
                       </div>
-                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
+                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between gap-2">
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.truncated')}</span>
+                        <span className="font-mono font-bold text-white">{selectedEntry.truncated || 0}</span>
+                      </div>
+                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between gap-2">
                         <span className="text-theme-text-muted">{t('runtime_history.ui.tbaEpisodesSkipped')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.tba_skipped || 0}</span>
                       </div>
-                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between">
+                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between gap-2">
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.japChineseSkipped')}</span>
+                        <span className="font-mono font-bold text-white">{selectedEntry.jap_chines_skipped || 0}</span>
+                      </div>
+                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between gap-2">
                         <span className="text-theme-text-muted">{t('runtime_history.ui.clearedItems')}</span>
                         <span className="font-mono font-bold text-white">{selectedEntry.images_cleared || 0}</span>
+                      </div>
+                      <div className="bg-black/30 p-2.5 rounded-xl border border-white/[0.06] flex justify-between gap-2">
+                        <span className="text-theme-text-muted">{t('runtime_history.ui.foldersCleared')}</span>
+                        <span className="font-mono font-bold text-white">{selectedEntry.folders_cleared || 0}</span>
                       </div>
                     </div>
                   </div>
@@ -2005,11 +2127,11 @@ export default function RuntimeHistory() {
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between py-1 border-b border-white/[0.04]">
                         <span className="text-theme-text-muted">{t('runtime_history.ui.engineVersion')}</span>
-                        <span className="font-mono text-white font-medium">{selectedEntry.script_version || "v2.1.0"}</span>
+                        <span className="font-mono text-white font-medium">{selectedEntry.script_version || t('runtime_history.ui.unknown')}</span>
                       </div>
                       <div className="flex items-center justify-between py-1 border-b border-white/[0.04]">
                         <span className="text-theme-text-muted">{t('runtime_history.ui.imageMagickLibrary')}</span>
-                        <span className="font-mono text-white font-medium">{selectedEntry.im_version || "ImageMagick 7.x"}</span>
+                        <span className="font-mono text-white font-medium">{selectedEntry.im_version || t('runtime_history.ui.unknown')}</span>
                       </div>
                       <div className="flex items-center justify-between py-1">
                         <span className="text-theme-text-muted">{t('runtime_history.ui.executionLogFile')}</span>
@@ -2092,7 +2214,9 @@ export default function RuntimeHistory() {
                               </div>
                             </div>
                             <div className="text-right flex-shrink-0">
-                              <span className="font-mono text-[10px] text-theme-text-muted">{asset.created_at || asset.updated_at}</span>
+                              <span className="font-mono text-[10px] text-theme-text-muted">
+                                {(parseRuntimeDate(asset.display_timestamp || asset.created_at || asset.updated_at)?.toLocaleString()) || asset.display_timestamp || asset.created_at || asset.updated_at}
+                              </span>
                             </div>
                           </div>
                         ))}
@@ -2383,6 +2507,12 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
                         <span className="text-white">{(d.seasons || d.raw?.seasons || 0) + (d.backgrounds || d.raw?.backgrounds || 0)}</span>
                       </div>
                     )}
+                    {(d.collections || d.raw?.collections || 0) > 0 && (
+                      <div className="flex justify-between gap-3 text-theme-text-muted">
+                        <span>{t('runtime_history.ui.collections')}:</span>
+                        <span className="text-white">{d.collections || d.raw?.collections || 0}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="text-[9px] text-theme-text-muted mt-1 text-center italic">
                     {d.isBucket ? t('runtime_history.ui.inspectLatestRunHint') : t('runtime_history.ui.inspectRunHint')}
@@ -2406,16 +2536,17 @@ const AssetVolumeBarChart = ({ data, onSelectRun }) => {
 /**
  * Circular SVG Donut Chart for Asset Distribution
  */
-const AssetDonutChart = ({ posters = 0, titlecards = 0, seasons = 0, backgrounds = 0, total = 0 }) => {
+const AssetDonutChart = ({ posters = 0, titlecards = 0, seasons = 0, backgrounds = 0, collections = 0, total = 0 }) => {
   const { t } = useTranslation();
   const slices = [
     { label: t('runtime_history.ui.posters'), count: posters, color: THEME.blue },
     { label: t('runtime_history.ui.titleCards'), count: titlecards, color: THEME.purple },
     { label: t('runtime_history.ui.seasons'), count: seasons, color: THEME.teal },
     { label: t('runtime_history.ui.backgrounds'), count: backgrounds, color: THEME.gray },
+    ...(collections > 0 ? [{ label: t('runtime_history.ui.collections'), count: collections, color: THEME.gold }] : []),
   ];
 
-  const grandTotal = Math.max(total, 1);
+  const grandTotal = Math.max(posters + titlecards + seasons + backgrounds + collections, total, 1);
   let cumulative = 0;
 
   // Arc path generator

@@ -6559,17 +6559,19 @@ async def get_runtime_stats():
 
 @app.get("/api/runtime-history")
 async def get_runtime_history(
-    limit: int = Query(50, ge=1, le=5000),
+    limit: int = Query(50, ge=1, le=50000),
     offset: int = Query(0, ge=0),
     mode: Optional[str] = Query(None),
+    days: Optional[int] = Query(None, ge=1, le=9999),
 ):
     """
     Get runtime history with pagination
 
     Args:
-        limit: Maximum number of entries to return (1-5000)
+        limit: Maximum number of entries to return (1-50000)
         offset: Number of entries to skip
         mode: Filter by mode (optional)
+        days: Filter entries from the last N days (optional)
     """
     try:
         if not RUNTIME_DB_AVAILABLE or not runtime_db:
@@ -6579,8 +6581,8 @@ async def get_runtime_history(
                 "history": [],
             }
 
-        history = runtime_db.get_runtime_history(limit=limit, offset=offset, mode=mode)
-        total = runtime_db.get_runtime_history_total_count(mode=mode)
+        history = runtime_db.get_runtime_history(limit=limit, offset=offset, mode=mode, days=days)
+        total = runtime_db.get_runtime_history_total_count(mode=mode, days=days)
 
         return {
             "success": True,
@@ -6590,6 +6592,7 @@ async def get_runtime_history(
             "limit": limit,
             "offset": offset,
             "mode_filter": mode,
+            "days": days,
         }
 
     except Exception as e:
@@ -6636,6 +6639,9 @@ async def get_runtime_run_assets(run_id: int, wide: bool = Query(False)):
         duration = entry.get("runtime_seconds") or 0
 
         assets = []
+        dt_start = None
+        dt_end = None
+        utc_offset = timedelta(0)
         if DATABASE_AVAILABLE and db and start_raw:
             dt_start = _parse_runtime_asset_date(start_raw)
             dt_end = _parse_runtime_asset_date(end_raw)
@@ -6710,6 +6716,31 @@ async def get_runtime_run_assets(run_id: int, wide: bool = Query(False)):
                     s, e = e, s
                 raw_assets = db.get_assets_created_between(s, e, run_id=run_id)
                 assets = [dict(row) for row in raw_assets]
+
+        if assets and dt_start and utc_offset != timedelta(0):
+            dt_end_eff = dt_end or dt_start
+            dt_mid = dt_start + (dt_end_eff - dt_start) / 2
+            local_win_start = dt_start - timedelta(seconds=90)
+            local_win_end = dt_end_eff + timedelta(seconds=90)
+            utc_win_start = dt_start - utc_offset - timedelta(seconds=90)
+            utc_win_end = dt_end_eff - utc_offset + timedelta(seconds=90)
+            for asset in assets:
+                raw_ts = asset.get("created_at") or asset.get("updated_at")
+                asset_dt = _parse_runtime_asset_date(raw_ts)
+                if not asset_dt:
+                    continue
+                in_local = local_win_start <= asset_dt <= local_win_end
+                in_utc = utc_win_start <= asset_dt <= utc_win_end
+                is_utc_row = (in_utc and not in_local) or (
+                    not in_local
+                    and abs((asset_dt - (dt_mid - utc_offset)).total_seconds())
+                    < abs((asset_dt - dt_mid).total_seconds())
+                )
+                asset["display_timestamp"] = (
+                    (asset_dt + utc_offset).strftime("%Y-%m-%d %H:%M:%S")
+                    if is_utc_row
+                    else raw_ts
+                )
 
         return {
             "success": True,
@@ -6959,7 +6990,7 @@ async def import_json_runtime_data():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/analytics/providers")
-async def get_provider_stats(days: int = Query(30, ge=7, le=365)):
+async def get_provider_stats(days: int = Query(30, ge=1, le=365)):
     """Get provider source statistics over time"""
     try:
         if not DATABASE_AVAILABLE or not db:
@@ -21748,9 +21779,11 @@ async def get_dynamic_overlays_database_entries_endpoint(
         return {"success": True, **data}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
+    except TimeoutError as error:
+        return {"success": False, "error": str(error)}
     except Exception as error:
         logger.error(f"Error browsing overlay database: {error}")
-        return {"success": False, "error": "Could not read overlay database records."}
+        return {"success": False, "error": "Could not read database records."}
 
 @app.post("/api/dynamic-overlays/ratings-cache/clear")
 async def clear_dynamic_overlays_ratings_cache_endpoint():

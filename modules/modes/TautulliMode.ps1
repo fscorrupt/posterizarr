@@ -1,4 +1,4 @@
-#region Tautulli Mode
+﻿#region Tautulli Mode
     # Get Plex data for this Show/Movie
     # {rating_key}	The unique identifier for the movie, episode, or track.
     # {parent_rating_key}	The unique identifier for the season or album.
@@ -432,9 +432,11 @@
     Write-TextSizeCacheSummary
     Write-Entry -Message "Script execution time: $FormattedTimespawn" -Path $global:configLogging -Color White -log Info
 
+    # Calculate Counts
+    $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
     # Export json
     $jsonObject = [PSCustomObject]@{
-        Posters              = if ($posterCount) { $posterCount } Else { 0 }
+        Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
         Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
         Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
         Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }

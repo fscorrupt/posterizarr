@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Play,
-  Square,
   TestTube,
   FolderOpen,
   Save,
@@ -32,6 +31,7 @@ import DangerZone from "./DangerZone";
 import RestoreModeModal from "./modals/RestoreModeModal";
 import NormalModeModal from "./modals/NormalModeModal";
 import TestingModeModal from "./modals/TestingModeModal";
+import ResetPostersModal from "./modals/ResetPostersModal";
 import { useToast } from "../context/ToastContext";
 import { BLUEPRINTS } from "./Blueprints";
 import WorkspaceHeader from "./WorkspaceHeader";
@@ -514,6 +514,8 @@ function RunModes() {
   const [status, setStatus] = useState({
     running: false,
     current_mode: null,
+    running_file_exists: false,
+    already_running_detected: false,
   });
 
   // Manual Mode Form State
@@ -613,6 +615,7 @@ function RunModes() {
   const [showBackupModeModal, setShowBackupModeModal] = useState(false);
   const [showRestoreModeModal, setShowRestoreModeModal] = useState(false);
   const [showLogoUpdaterModal, setShowLogoUpdaterModal] = useState(false);
+  const [showResetPostersModal, setShowResetPostersModal] = useState(false);
   const [logoUpdaterLibrary, setLogoUpdaterLibrary] = useState("");
   const [forceLogoReplace, setForceLogoReplace] = useState(false);
   const [logoExifCheck, setLogoExifCheck] = useState(false);
@@ -713,6 +716,7 @@ function RunModes() {
 
   useEffect(() => {
     fetchStatus();
+    fetchConfig();
 
     // Load custom blueprints
     fetch("/api/custom-blueprints")
@@ -1187,17 +1191,19 @@ function RunModes() {
     }
   };
 
-  const resetPosters = async () => {
+  const resetPosters = (selectedLibrary = resetLibrary) => {
     if (status.running) {
       showError(t("runModes.reset.stopFirst"));
       return;
     }
 
-    if (!resetLibrary.trim()) {
+    const libraryName = String(selectedLibrary || "").trim();
+    if (!libraryName) {
       showError(t("runModes.validation.libraryNameRequired"));
       return;
     }
 
+    setResetLibrary(libraryName);
     setResetConfirm(true);
   };
 
@@ -1216,30 +1222,13 @@ function RunModes() {
 
       const data = await response.json();
 
-      if (data.success) {
+      if (response.ok && data.success) {
         showSuccess(data.message);
         setResetLibrary("");
-      } else {
-        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
-      }
-    } catch (error) {
-      showError(t("runModes.validation.errorOccurred", { error: error.message }));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const stopScript = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/stop`, { method: "POST" });
-      const data = await response.json();
-
-      if (data.success) {
-        showSuccess(t("dashboard.stopped"));
+        setShowResetPostersModal(false);
         fetchStatus();
       } else {
-        showError(t("runModes.validation.errorOccurred", { error: data.message || t("runModes.validation.unknownError") }));
+        showError(t("runModes.validation.errorOccurred", { error: data.detail || data.message || t("runModes.validation.unknownError") }));
       }
     } catch (error) {
       showError(t("runModes.validation.errorOccurred", { error: error.message }));
@@ -2190,6 +2179,21 @@ const LogoUpdaterModal = React.memo(({
 });
 
   const hints = getHints(manualForm.posterType);
+  const isConfigTrue = (value) => String(value).toLowerCase() === "true";
+  const resetServerType =
+    siloEnabled || isConfigTrue(globalConfig?.UseSilo ?? globalConfig?.SiloPart?.UseSilo)
+      ? "silo"
+      : isConfigTrue(globalConfig?.UsePlex ?? globalConfig?.PlexPart?.UsePlex)
+      ? "plex"
+      : isConfigTrue(globalConfig?.UseJellyfin ?? globalConfig?.JellyfinPart?.UseJellyfin)
+      ? "jellyfin"
+      : isConfigTrue(globalConfig?.UseEmby ?? globalConfig?.EmbyPart?.UseEmby)
+      ? "emby"
+      : "plex";
+  const hasRunningFile = Boolean(
+    status.running_file_exists || status.already_running_detected
+  );
+  const showDangerZone = Boolean(status.running || hasRunningFile);
 
   return (
     <div className="workspace-page space-y-6">
@@ -2376,6 +2380,16 @@ const LogoUpdaterModal = React.memo(({
         t={t}
       />
 
+      <ResetPostersModal
+        show={showResetPostersModal}
+        onClose={() => setShowResetPostersModal(false)}
+        onStart={resetPosters}
+        loading={loading}
+        status={status}
+        serverType={resetServerType}
+        siloEnabled={siloEnabled}
+      />
+
       {/* TMDB Modal - Now with stable props */}
       <TMDBPosterSearchModal
         tmdbSearch={tmdbSearch}
@@ -2408,31 +2422,15 @@ const LogoUpdaterModal = React.memo(({
       </WorkspaceHeader>
       <SiloSupportNotice enabled={siloEnabled} />
 
-      {/* Stop Button (shown when running) */}
-      {status.running && (
-        <div className="bg-orange-950/40 rounded-xl p-4 border border-orange-600/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-orange-400" />
-              <div>
-                <p className="font-medium text-orange-200">
-                  {t("runModes.status.running")}
-                </p>
-                <p className="text-sm text-orange-300/80">
-                  {t("runModes.status.stopFirst")}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={stopScript}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg font-medium transition-all"
-            >
-              <Square className="w-4 h-4" />
-              {t("runModes.status.stopButton")}
-            </button>
-          </div>
-        </div>
+      {showDangerZone && (
+        <DangerZone
+          compact
+          status={status}
+          loading={loading}
+          onStatusUpdate={fetchStatus}
+          onSuccess={showSuccess}
+          onError={showError}
+        />
       )}
 
       {/* Quick Run Modes */}
@@ -2571,6 +2569,21 @@ const LogoUpdaterModal = React.memo(({
             </h3>
             <p className="text-sm text-theme-muted text-center">
               {t("runModes.quickRun.logoUpdater.description")}
+            </p>
+          </button>
+
+          {/* Reset Posters Mode */}
+          <button
+            onClick={() => setShowResetPostersModal(true)}
+            disabled={loading || status.running}
+            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-red-950/30 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-red-500/30 hover:border-red-500 transition-all group"
+          >
+            <RotateCcw className="w-8 h-8 text-red-400 mb-3 group-hover:scale-110 transition-transform" />
+            <h3 className="font-semibold text-theme-text mb-1">
+              {t("runModes.reset.title")}
+            </h3>
+            <p className="text-sm text-theme-muted text-center">
+              {t("runModes.reset.description")}
             </p>
           </button>
         </div>
@@ -3505,73 +3518,6 @@ const LogoUpdaterModal = React.memo(({
           </div>
         </div>
       </div>
-
-      {/* Reset Posters */}
-      <div className="bg-red-950/40 rounded-xl p-6 border-2 border-red-600/50">
-        <SiloSupportNotice enabled={siloEnabled} scope="reset" />
-        <div className="flex items-center mb-4">
-          <div className="p-2 rounded-lg bg-red-600/20 mr-3">
-            <RotateCcw className="w-6 h-6 text-red-300" />
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-red-300">
-              {t("runModes.reset.title")}
-            </h2>
-            <p className="text-sm text-red-200">
-              {t("runModes.reset.description")}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-red-900/20 border-l-4 border-red-500 p-4 rounded mb-4">
-          <div className="flex items-start">
-            <AlertCircle className="w-5 h-5 text-red-400 mr-3 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-red-200">
-              <p className="font-semibold mb-1">
-                {t("runModes.reset.warning")}
-              </p>
-              <p>{t("runModes.reset.warningText")}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={resetLibrary}
-              onChange={(e) => setResetLibrary(e.target.value)}
-              placeholder={t("runModes.reset.placeholder")}
-              disabled={loading || status.running}
-              className="w-full px-4 py-3 pr-10 bg-theme-card border border-red-500/50 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
-            />
-            {resetLibrary && !loading && !status.running && (
-              <button
-                type="button"
-                onClick={() => setResetLibrary("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-red-300 hover:text-white p-1 hover:bg-red-500/20 rounded-full transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          <button
-            onClick={resetPosters}
-            disabled={loading || status.running || !resetLibrary.trim()}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-red-700 hover:bg-red-800 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg font-medium transition-all border border-red-600 whitespace-nowrap shadow-sm"
-          >
-            <RotateCcw className="w-5 h-5" />
-            {t("runModes.reset.button")}
-          </button>
-        </div>
-      </div>
-
-      {/* Danger Zone */}
-      <DangerZone
-        status={status}
-        loading={loading}
-        onStatusUpdate={fetchStatus}
-      />
 
       {/* Folder Selector Modal */}
       {showFolderSelector && (

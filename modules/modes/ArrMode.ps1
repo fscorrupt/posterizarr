@@ -1,4 +1,4 @@
-#region Arr Mode
+﻿#region Arr Mode
     $global:posterCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['posterCount'] = 0 }
     if ($global:runspaceStats) { $global:runspaceStats['PlexRootPosterUploads'] = 0 }
@@ -970,9 +970,11 @@
         Write-TextSizeCacheSummary
         Write-Entry -Message "Script execution time: $FormattedTimespawn" -Path $global:configLogging -Color White -log Info
 
+        # Calculate Counts
+        $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
         # Export json
         $jsonObject = [PSCustomObject]@{
-            Posters              = if ($posterCount) { $posterCount } Else { 0 }
+            Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
             Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
             Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
             Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
@@ -1392,9 +1394,11 @@
         # Send Notification
         # Send-SummaryNotification -ScriptMode $Mode -FormattedTimespawn $FormattedTimespawn -ErrorCount $errorCount -FallbackCount $FallbackCount.count -TextlessCount $TextlessCount.count -TruncatedCount $TextTruncatedCount.count -PosterUnknownCount $PosterUnknownCount -SkipTBACount $SkipTBACount -SkipJapTitleCount $SkipJapTitleCount -PosterCount $posterCount -BackgroundCount $BackgroundCount -SeasonCount $SeasonCount -EpisodeCount $EpisodeCount
 
+        # Calculate Counts
+        $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
         # Export json
         $jsonObject = [PSCustomObject]@{
-            Posters              = if ($posterCount) { $posterCount } Else { 0 }
+            Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
             Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
             Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
             Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }

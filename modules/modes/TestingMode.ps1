@@ -1,4 +1,4 @@
-#region Testing Mode
+﻿#region Testing Mode
     # Helper to create the initial test images
     function New-TestImage-IfNotExists {
         param (
@@ -525,7 +525,7 @@
         $SummaryCount = Import-Csv -LiteralPath "$global:ScriptRoot\Logs\ImageChoices.csv" -Delimiter ';'
         $FallbackCount = @($SummaryCount | Where-Object Fallback -eq 'true')
         $TextlessCount = @($SummaryCount | Where-Object Language -eq 'Textless')
-        $TextTruncatedCount = @($SummaryCount | Where-TextTruncated -eq 'true')
+        $TextTruncatedCount = @($SummaryCount | Where-Object TextTruncated -eq 'true')
         $TextCount = @($SummaryCount | Where-Object Textless -eq 'false')
     }
 

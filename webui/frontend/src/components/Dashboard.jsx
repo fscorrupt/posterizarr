@@ -662,6 +662,22 @@ function Dashboard() {
            </div>
         </div>
         </div>
+        {status.running && (
+          <div className="relative bg-gradient-to-r from-orange-500/10 to-red-500/10 border-t border-orange-500/20 px-5 py-3 flex items-center gap-3">
+            <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+            <div className="p-1.5 bg-orange-500/20 rounded-lg animate-pulse flex-shrink-0">
+              <Zap className="w-4 h-4 text-orange-400" />
+            </div>
+            <div className="min-w-0 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+              <h3 className="text-sm font-semibold text-orange-100 whitespace-nowrap">
+                {t("dashboard.banners.executionInProgress")}
+              </h3>
+              <p className="text-xs text-orange-200/75">
+                {t("dashboard.banners.reviewLogs")}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -803,27 +819,7 @@ function Dashboard() {
       )
     };
 
-    return cardOrder.map((key) => {
-        const component = cardComponents[key];
-        if (key === "statusCards" && status.running) {
-           return (
-             <React.Fragment key={key}>
-                {component}
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/20 p-6 flex items-center justify-between animate-in slide-in-from-top-4 duration-500">
-                   <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                   <div className="flex items-center gap-4 relative z-10">
-                      <div className="p-3 bg-orange-500/20 rounded-xl animate-pulse"><Zap className="w-6 h-6 text-orange-400" /></div>
-                      <div>
-                         <h3 className="text-lg font-bold text-orange-100">{t("dashboard.banners.executionInProgress")}</h3>
-                         <p className="text-orange-200/70 text-sm">{t("dashboard.banners.reviewLogs")}</p>
-                      </div>
-                   </div>
-                </div>
-             </React.Fragment>
-           )
-        }
-        return component;
-    }).filter(Boolean);
+    return cardOrder.map((key) => cardComponents[key]).filter(Boolean);
   };
 
   return (

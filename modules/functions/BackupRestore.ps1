@@ -1,4 +1,4 @@
-function MassDownloadPlexArtwork {
+﻿function MassDownloadPlexArtwork {
     $Mode = "backup"
     $global:Mode = "backup"
     Write-Entry -Message "Backup Mode Started..." -Path $global:configLogging -Color White -log Info
@@ -1455,9 +1455,11 @@ function MassDownloadPlexArtwork {
     $argTruncated = if ($TextTruncatedCount -is [array]) { $TextTruncatedCount.count } else { 0 }
     Send-SummaryNotification -ScriptMode $Mode -FormattedTimespawn $FormattedTimespawn -ErrorCount $errorCount -FallbackCount $argFallback -TextlessCount $argTextless -TruncatedCount $argTruncated -PosterUnknownCount $PosterUnknownCount -PosterCount $posterCount -BackgroundCount $BackgroundCount -SeasonCount $SeasonCount -EpisodeCount $EpisodeCount
 
+    # Calculate Counts
+    $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
     # Export json
     $jsonObject = [PSCustomObject]@{
-        Posters              = if ($posterCount) { $posterCount } Else { 0 }
+        Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
         Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
         Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
         Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
@@ -1651,9 +1653,11 @@ function MassDownloadJellyEmbyArtwork {
     $argTruncated = if ($TextTruncatedCount -is [array]) { $TextTruncatedCount.count } else { 0 }
     Send-SummaryNotification -ScriptMode $Mode -FormattedTimespawn $FormattedTimespawn -ErrorCount $errorCount -FallbackCount $argFallback -TextlessCount $argTextless -TruncatedCount $argTruncated -PosterUnknownCount $PosterUnknownCount -PosterCount $posterCount -BackgroundCount $BackgroundCount -SeasonCount $SeasonCount -EpisodeCount $EpisodeCount
 
+    # Calculate Counts
+    $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
     # Export json
     $jsonObject = [PSCustomObject]@{
-        Posters              = if ($posterCount) { $posterCount } Else { 0 }
+        Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
         Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
         Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
         Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }

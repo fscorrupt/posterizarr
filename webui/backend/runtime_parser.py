@@ -238,12 +238,12 @@ def parse_runtime_from_json(json_path: Path, mode: str = None) -> Optional[Dict]
         runtime_formatted = f"{hours}h {minutes}m {seconds}s"
 
         # Parse image counts - handle None values from JSON
-        total_images = (
-            (data.get("Posters") or 0)
-            + (data.get("Backgrounds") or 0)
-            + (data.get("Titlecards") or 0)
-            + (data.get("Seasons") or 0)
-        )
+        posters = max(0, int(data.get("Posters") or 0))
+        backgrounds = max(0, int(data.get("Backgrounds") or 0))
+        titlecards = max(0, int(data.get("Titlecards") or 0))
+        seasons = max(0, int(data.get("Seasons") or 0))
+        collections = max(0, int(data.get("Collections") or 0))
+        total_images = posters + backgrounds + titlecards + seasons + collections
 
         # Parse fallback count - support both old and new formats
         fallback_count = 0
@@ -331,11 +331,11 @@ def parse_runtime_from_json(json_path: Path, mode: str = None) -> Optional[Dict]
             "runtime_seconds": runtime_seconds,
             "runtime_formatted": runtime_formatted,
             "total_images": total_images,
-            "posters": data.get("Posters") or 0,
-            "seasons": data.get("Seasons") or 0,
-            "backgrounds": data.get("Backgrounds") or 0,
-            "titlecards": data.get("Titlecards") or 0,
-            "collections": data.get("Collections") or 0,
+            "posters": posters,
+            "seasons": seasons,
+            "backgrounds": backgrounds,
+            "titlecards": titlecards,
+            "collections": collections,
             "errors": data.get("Errors") or 0,
             "fallbacks": fallback_count,
             "textless": textless_count,
