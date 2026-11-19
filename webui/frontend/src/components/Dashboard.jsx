@@ -439,11 +439,34 @@ function Dashboard() {
     return colors[levelLower] || colors.default;
   };
 
-  const UnifiedControlDeck = () => {
+  const hasRunningFile = Boolean(
+    status.running_file_exists || status.already_running_detected
+  );
+  const showDangerZone = Boolean(status.running || hasRunningFile);
+  const firstVisibleCard = cardOrder.find((key) => visibleCards[key]);
+  const embedDangerZoneInDeck =
+    showDangerZone && firstVisibleCard === "statusCards";
+
+  const renderControlDeck = () => {
     if (!visibleCards.statusCards) return null;
 
     return (
-      <div className="bg-theme-card rounded-3xl border border-theme shadow-lg overflow-hidden grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(15rem,1.5fr)_minmax(0,1.3fr)_minmax(0,1fr)] md:divide-x divide-theme">
+      <div
+        key="statusCards"
+        className="bg-theme-card rounded-3xl border border-theme shadow-lg overflow-hidden"
+      >
+        {embedDangerZoneInDeck && (
+          <DangerZone
+            compact
+            embedded
+            status={status}
+            loading={loading}
+            onStatusUpdate={fetchStatus}
+            onSuccess={showSuccess}
+            onError={showError}
+          />
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(15rem,1.5fr)_minmax(0,1.3fr)_minmax(0,1fr)] md:divide-x divide-theme">
 
         {/* SECTION 1: SCRIPT ENGINE */}
         <div className="flex-1 p-6 relative group hover:bg-theme-hover/20 transition-colors">
@@ -638,13 +661,14 @@ function Dashboard() {
               )}
            </div>
         </div>
+        </div>
       </div>
     );
   };
 
   const renderDashboardCards = () => {
     const cardComponents = {
-      statusCards: <UnifiedControlDeck />,
+      statusCards: renderControlDeck(),
       runtimeStats: visibleCards.runtimeStats && (
         <RuntimeStats key="runtimeStats" refreshTrigger={runtimeStatsRefreshTrigger} />
       ),
@@ -827,8 +851,17 @@ function Dashboard() {
            </div>
         </div>
       )}
+      {showDangerZone && !embedDangerZoneInDeck && (
+        <DangerZone
+          compact
+          status={status}
+          loading={loading}
+          onStatusUpdate={fetchStatus}
+          onSuccess={showSuccess}
+          onError={showError}
+        />
+      )}
       {renderDashboardCards()}
-      <DangerZone status={status} loading={loading} onStatusUpdate={fetchStatus} onSuccess={showSuccess} onError={showError} />
       <ConfirmDialog isOpen={deleteConfirm} onClose={() => setDeleteConfirm(false)} onConfirm={deleteRunningFile} title={t("dashboard.deleteConfirmTitle")} message={t("dashboard.deleteConfirmMessage")} confirmText={t("common.delete")} type="warning" />
       {showCardsModal && (
         <div className="app-dialog-backdrop fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
