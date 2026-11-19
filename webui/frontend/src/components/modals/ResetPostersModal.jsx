@@ -4,6 +4,15 @@ import { useTranslation } from "react-i18next";
 import SiloSupportNotice from "../SiloSupportNotice";
 
 const API_URL = "/api";
+const ALLOWED_LIBRARY_TYPES = new Set([
+  "movie",
+  "movies",
+  "show",
+  "shows",
+  "series",
+  "tvshows",
+  "tvshow",
+]);
 
 const ResetPostersModal = React.memo(
   ({
@@ -37,10 +46,14 @@ const ResetPostersModal = React.memo(
             const unique = new Map();
             for (const item of data.libraries || []) {
               const name = String(item?.name || "").trim();
+              const libType = String(item?.type || "").trim();
+              if (!ALLOWED_LIBRARY_TYPES.has(libType.toLowerCase())) {
+                continue;
+              }
               if (name && !unique.has(name)) {
                 unique.set(name, {
                   name,
-                  type: item?.type ? String(item.type) : "",
+                  type: libType,
                 });
               }
             }
