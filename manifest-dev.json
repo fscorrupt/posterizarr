@@ -2,8 +2,8 @@
   {
     "name": "Posterizarr (Dev)",
     "guid": "f62d8560-6123-4567-89ab-cdef12345678",
-    "description": "Local asset metadata provider and real-time WebSocket sync engine. Instantly maps and updates posters, backgrounds, seasons, and title cards without library scans.",
-    "overview": "A companion plugin for Posterizarr that maps local assets to Jellyfin library items and connects to Posterizarr's real-time WebSocket stream (/ws/events) to instantaneously apply rendered artwork in under a second.",
+    "description": "Maps local Posterizarr assets to Jellyfin and optionally mirrors selected Plex artwork with real-time updates and scheduled sync.",
+    "overview": "The Posterizarr companion plugin maps local assets to Jellyfin and can optionally mirror selected Plex artwork. It supports real-time Posterizarr updates, scheduled Plex Direct Sync, and local collection syncing.",
     "owner": "Posterizarr",
     "category": "Metadata",
     "imageUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/dev/docs/images/Plugin_logo.png",

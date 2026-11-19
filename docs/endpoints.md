@@ -13,10 +13,10 @@ The following API endpoints are available.
 ## External Provider API
 
 These endpoints are opt-in: they do not change regular Posterizarr runs or
-media-server artwork. Both require a Posterizarr API key in the `X-API-Key`
-header or as an `Authorization: Bearer` token, even when Web UI authentication
-is disabled. Create a key in the Web UI. Query-string keys and Basic Auth are
-not accepted by these endpoints.
+media-server artwork. Both require a Posterizarr API key—either in the
+`X-API-Key` header (recommended), as an `Authorization: Bearer` token, or as an
+`api_key` query parameter—even when Web UI authentication is disabled. Create a
+key in the Web UI. Basic Auth is not accepted by these endpoints.
 
 ### `GET /api/provider/v1/asset/{media_type}/{item_id}`
 
@@ -79,10 +79,10 @@ curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/sho
 curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/603?provider=tmdb&asset_type=titlecard&season_number=2&episode_number=3" --output titlecard.jpg
 ```
 
-The API requires an authentication header. A consumer that only supplies a
-`url_poster` URL to Plex cannot use it directly unless it can provide that
-header; a Kometa integration would need to download the image with credentials
-and upload the downloaded file. Do not put an API key in a URL.
+Prefer sending the key via `X-API-Key` or `Authorization: Bearer` headers so
+credentials are not exposed in URLs, reverse-proxy logs, or third-party media
+server metadata. While `?api_key=YOUR_KEY` is supported for consumers that
+cannot send custom headers, avoid passing API keys in shared or logged URLs.
 
 ### `GET /api/provider/v1/ratings/{media_type}/{item_id}`
 
@@ -189,9 +189,11 @@ configurations are unaffected.
 
 ## Dynamic Overlays
 
+The `/api/dynamic-overlays/episode-title-changes*` endpoints power **Asset Title Review** across all configured text-enabled artwork types (`episode`, `season`, `movie`, and `show`).
+
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/dynamic-overlays/episode-title-changes` | Paged review candidates. Optional `search`, `limit`, `offset`, `status_filter` (`all`, `eligible`, `blocked`), `reason_filter` (`all`, `none`, or a blocking reason), and `review_type` (`all`, `historical`, `future`) filter the result set and eligible count. |
+| `GET /api/dynamic-overlays/episode-title-changes` | Paged review candidates. Optional `search`, `limit`, `offset`, `status_filter` (`all`, `eligible`, `blocked`), `reason_filter` (`all`, `none`, or a blocking reason), `review_type` (`all`, `historical`, `future`), and `media_type_filter` (`all`, `episode`, `season`, `movie`, `show`) filter the result set and eligible count. |
 | `POST /api/dynamic-overlays/episode-title-changes/rebuild` | Confirmed queue recreation; returns `409` while another run is active. `candidate_ids` or `all_eligible` with `search` and the same filters selects candidates. Optional `force_unknown_text: true` includes safe uncertain-text candidates and media-server originals (re-downloaded and EXIF-checked) in either selection. |
 | `POST /api/dynamic-overlays/episode-title-changes/queue` | Confirmed queueing with the same body as `rebuild`. Allowed while a run is active. Returns `queued` and `queue_ids`; these items start automatically once no run, queue, overlay sync, or cleanup is active. |
 | `POST /api/dynamic-overlays/episode-title-changes/dismiss` | Permanently hides one review entry (`candidate_id`) with any blocking reason. |

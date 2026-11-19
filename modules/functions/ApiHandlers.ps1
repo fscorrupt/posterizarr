@@ -2909,8 +2909,7 @@ function UploadOtherMediaServerArtwork {
                 $response = Invoke-WebRequest -Uri $ImageUrl -OutFile $tempFile -Headers $headers -ErrorAction Stop
 
                 $magickcommand = "& `"$magick`" identify -verbose `"$tempFile`""
-                try { $magickcommand | Out-File $magickLog -Append
- -ErrorAction Stop } catch {}
+                try { $magickcommand | Out-File $magickLog -Append -ErrorAction Stop } catch {}
                 $value = Invoke-Expression $magickcommand | Select-String -Pattern 'overlay|titlecard|created with ppm|created with posterizarr'
 
                 Remove-Item $tempFile -Force -ErrorAction SilentlyContinue | out-null
