@@ -1025,10 +1025,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#recreate-episode-titlecards-when-titles-change" class="md-nav__link">
+  <a href="#recreate-artwork-when-titles-change-asset-title-review" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Recreate Episode Titlecards When Titles Change
+        Recreate Artwork When Titles Change (Asset Title Review)
       </span>
     </span>
   </a>
@@ -2169,10 +2169,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#recreate-episode-titlecards-when-titles-change" class="md-nav__link">
+  <a href="#recreate-artwork-when-titles-change-asset-title-review" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Recreate Episode Titlecards When Titles Change
+        Recreate Artwork When Titles Change (Asset Title Review)
       </span>
     </span>
   </a>
@@ -2593,8 +2593,7 @@ so the old audience score is not drawn a second time.</p>
 <p>Widths scale from the portrait 1000 x 1500 or landscape 1920 x 1080 reference
 canvas to the output artwork. These controls affect multi-provider badges, not
 the compact single-score badge. Previewing and saving do not upload artwork;
-existing configurations without the new fields retain their legacy rendering.
-DynamicOverlaysSync.log.oldDynamicOverlaysSync.log.old</p>
+existing configurations without the new fields retain their legacy rendering.</p>
 <h3 id="simkl-catalog-ratings">SIMKL Catalog Ratings</h3>
 <p>Open <strong>Visual Badges &gt; Overlay Engine, Concurrency &amp; Provider Settings</strong> and
 enter the optional <strong>SIMKL Client ID</strong> beside the MDBList/OMDb credentials.
@@ -3104,7 +3103,7 @@ After updating, run a full overlay sync for the affected shows and seasons.</p>
 <td><code>/dynamic-overlays?tab=media-changes</code></td>
 </tr>
 <tr>
-<td><strong>Episode Title Review</strong></td>
+<td><strong>Asset Title Review</strong></td>
 <td>Historical title comparison, optional title automation, recreation through the queue</td>
 <td><code>/dynamic-overlays?tab=episode-titles</code></td>
 </tr>
@@ -3130,7 +3129,7 @@ libraries and counts; no live artwork jobs were run to create them.</em></p>
 <p><img alt="Media Changes view showing background checks, interval, and Dry Run" src="../images/44-overlay-media-changes.png" /></p>
 <p><em>Open <strong>Sync &amp; Maintenance &gt; Media Changes</strong> for Background Checking, its check
 interval, Automatic Overlay Resync, and Dry Run. The background-check description
-also covers optional episode-titlecard recreation.</em></p>
+also covers optional artwork recreation when titles change.</em></p>
 <ul>
 <li><strong>Background Checking</strong> controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.</li>
 <li><strong>Automatic Overlay Resync</strong> controls whether detected changes start the overlay render pipeline.</li>
@@ -3138,8 +3137,8 @@ also covers optional episode-titlecard recreation.</em></p>
 <li>Turn off <strong>Background Checking</strong> as well to stop periodic change scans entirely.</li>
 <li>The <strong>Master Switch</strong> is the hard stop: when disabled, background detection and sync processing do not run. Switching it off also stops the detector and cancels active sync work before any subsequent upload.</li>
 </ul>
-<h4 id="recreate-episode-titlecards-when-titles-change">Recreate Episode Titlecards When Titles Change</h4>
-<p><strong>Sync &amp; Maintenance &gt; Episode Title Review &gt; Recreate episode titlecards when titles change</strong> is
+<h4 id="recreate-artwork-when-titles-change-asset-title-review">Recreate Artwork When Titles Change (Asset Title Review)</h4>
+<p><strong>Sync &amp; Maintenance &gt; Asset Title Review &gt; Recreate artwork when titles change</strong> is
 optional and off by default. With the Master Switch and Background Checking on,
 it compares titles at the configured background-check interval. The default
 interval is 60 minutes, and the first check waits for that interval. Automatic
@@ -3147,72 +3146,82 @@ recreation applies to later title changes; existing historical review candidates
 remain manual. It is independent of <strong>Automatic Overlay Resync</strong>. Keep <strong>Dry Run</strong>
 on to log eligible changes without recreating files or uploading artwork; turn it
 off to apply changes.</p>
-<p>The monitor supports only existing episode titlecards on Plex, Jellyfin, and
-Emby. Movie/show posters, season posters, backgrounds, and collection posters
-are excluded from this title-change automation. Their normal generation and
-overlay workflows are unchanged. The monitor uses stable episode IDs after the
-initial match, so a title change does not rename asset folders. Initial matching
-uses the library, season and episode together with the media server's show-folder
-name or provider IDs, including tags such as <code>[tvdb-452595]</code> in asset folder names.
-Plex show locations are fetched when bulk listings omit them; different mount
-prefixes and localized display titles do not prevent folder matching. Ambiguous
-matches are skipped. No previous overlay sync is required. The first
-successful scan also compares the episode title recorded in ImageChoices with
-the current server title. Existing differences become historical review
-candidates, including when an older version already established a baseline.
-The scan itself never recreates historical titlecards automatically.</p>
-<p>Open <strong>Sync &amp; Maintenance &gt; Episode Title Review</strong> and select <strong>Compare titles</strong> for
-an initial, read-only artwork audit. The table shows the existing image, series,
-episode number, previous title, current title, and eligibility. Historical rows
-are explicitly review candidates: ImageChoices is not an exact rendering log,
-and unknown or truncated historical text cannot be safely recreated automatically.
-Missing sources, textful sources, and placeholder titles remain visible with a
-blocking reason. Unmatched episodes and missing image files are not guessed.
-Use the status, blocking-reason, and review-type filters together with the search
-field to narrow results across all pages. The eligible count and bulk actions use
-the active filters, not only the rows currently visible on screen.</p>
+<p>The monitor checks existing text-enabled artwork on Plex, Jellyfin, and Emby
+according to <code>config.json</code>: episode titlecards (when <code>TitleCards</code> and episode
+title/number text are enabled), season posters (when <code>SeasonPosters</code> and
+<code>AddText</code> are enabled and <code>SeasonPosterOverrideSeasonName</code>/<code>OverrideSeasonName</code>
+is off), and movie/show posters (when <code>Posters</code> and <code>AddText</code> are enabled).
+Backgrounds and collection posters are excluded from title-change automation;
+their normal generation and overlay workflows are unchanged. The monitor uses
+stable server item IDs after the initial match, so a title change does not rename
+asset folders. Initial matching uses the library (and season/episode coordinates
+where applicable) together with the media server's folder name or provider IDs,
+including tags such as <code>[tvdb-452595]</code> in asset folder names. Plex show
+locations are fetched when bulk listings omit them; different mount prefixes and
+localized display titles do not prevent folder matching. Ambiguous matches are
+skipped. No previous overlay sync is required. The first successful scan also
+compares the title recorded in ImageChoices with the current server title.
+Existing differences become historical review candidates, including when an
+older version already established a baseline. The scan itself never recreates
+historical artwork automatically.</p>
+<p>Open <strong>Sync &amp; Maintenance &gt; Asset Title Review</strong> and select <strong>Compare titles</strong>
+for an initial, read-only artwork audit (scans can also run during an active
+overlay sync). The table shows the existing image, media item (<code>Media / Item</code>),
+previous title, current title, and eligibility across movies, shows, seasons,
+and episodes. Historical rows are explicitly review candidates: ImageChoices is
+not an exact rendering log, and unknown or truncated historical text cannot be
+safely recreated automatically. Missing sources, textful sources, and placeholder
+titles remain visible with a blocking reason. Unmatched items and missing image
+files are not guessed. Use the status, blocking-reason, review-type, and
+media-type (<code>All Types</code>, <code>Episodes</code>, <code>Seasons</code>, <code>Movies</code>, <code>Shows</code>) filters
+together with the search field to narrow results across all pages. The eligible
+count and bulk actions use the active filters, not only the rows currently
+visible on screen.</p>
 <p>Images originally taken from a media server are never reused for recreation,
 even when their URL is public or their stored language is Textless. The server
-may now return a titlecard with existing overlays rather than the original image.
+may now return artwork with existing overlays rather than the original image.
 These rows show <strong>Original was taken from a media server</strong> and are excluded from
 normal, bulk, automatic, force, and resumed-queue recreation. The backend logs
 that a provider original is required; it does not fetch another media-server
 thumbnail or silently perform a provider search.</p>
 <p>For <strong>media-server source</strong> and <strong>missing-source</strong> entries, use the row's
 <strong>Choose a provider image in Asset Replacer</strong> action. It opens the existing
-Asset Replacer on its provider tab with the series, library, folder, season,
-episode, and current episode title prefilled. Available series provider IDs
-are carried into an automatic, read-only provider lookup when opened from this
-review. The provider previews and modal header show the target <code>SxxExx</code> coordinates
-as UI labels only; they are not added to the image. Choose a result to continue
-with the modal's normal replacement or queue workflow. The original media-server
-URL is never preselected as the new source.
+Asset Replacer on its provider tab with the item, library, folder, season,
+episode, and current title prefilled as applicable. Available provider IDs are
+carried into an automatic, read-only provider lookup when opened from this
+review. For episodes, the provider previews and modal header show the target
+<code>SxxExx</code> coordinates as UI labels only; they are not added to the image. Choose a
+result to continue with the modal's normal replacement or queue workflow. The
+original media-server URL is never preselected as the new source.
 Opening or queueing a replacement does not acknowledge the review entry as
-completed. A successful processed titlecard replacement from a URL, upload, or
-the normal asset queue acknowledges only the matching file and rendered episode
-title. Failed processes and mismatching titles leave the review entry intact.
+completed. A successful processed artwork replacement from a URL, upload, or
+the normal asset queue acknowledges only the matching file and rendered title.
+Failed processes and mismatching titles leave the review entry intact.
 The entry disappears on the next review refresh (normally within 15 seconds).
 For replacements completed before this acknowledgment was available, <strong>Compare
 titles</strong> also reconciles the baseline when ImageChoices records the current
-episode title without truncation. A missing original download URL does not keep
-an already confirmed current title in the review. This confirms the local
-titlecard; final media-server upload remains a separate overlay-sync step.
+title without truncation. A missing original download URL does not keep an
+already confirmed current title in the review. This confirms the local artwork;
+final media-server upload remains a separate overlay-sync step.
 The Master Switch must be on and Dry Run off to open this replacement
 workflow from the review.
 Use <strong>Permanently hide this review entry</strong> on any blocked row (for example a
-media-server source or an image that already contains text) to dismiss it. The
-dismissal persists across scans for that same title and source; a later title or
-source change can create a new review entry.</p>
+media-server source or an image that already contains text) to dismiss it, or
+select multiple rows and use <strong>Hide selected</strong> to dismiss them together and
+accept their current artwork text. The dismissal persists across scans for that
+same title and source; a later title or source change can create a new review
+entry.</p>
 <p>If only the previous image text is unknown, the row can offer <strong>Fast: Normal Run
-for this episode</strong>. It temporarily removes the local titlecard and starts the
-ordinary Normal Mode, just like the bulk Fast action. Artwork on the media server
-is untouched, and Normal Mode applies its usual source and EXIF checks. If no
-replacement is generated locally, the previous titlecard is restored. Unknown-
-text rows remain excluded from automatic recreation and ordinary selected/all-
-eligible actions.</p>
+for this item</strong> (with media-specific labels for shows, seasons, movies, and
+episodes). It temporarily removes the local artwork file and starts the ordinary
+Normal Mode, just like the bulk Fast action. Artwork on the media server is
+untouched, and Normal Mode applies its usual source and EXIF checks. If no
+replacement is generated locally, the previous file is restored. Unknown-text
+rows remain excluded from automatic recreation and ordinary selected/all-eligible
+actions.</p>
 <p>Enable <strong>Include uncertain text and media server originals</strong> to include these
 forceable rows in page selection and bulk processing. Queue and Fast actions
-work on the selected episodes or on all matching candidates across pages, using
+work on the selected items or on all matching candidates across pages, using
 the current search and filters. A separate bulk warning confirms replacement
 despite uncertain old text. Missing sources, sources that already contain text,
 and placeholder titles stay blocked.
@@ -3226,8 +3235,8 @@ dedicated <code>EpisodeTitleChanges.log</code>, not the backend/browser UI logs.
 The explicit override is retained in the existing queue if the job is resumed.
 After updating from an earlier version, run <strong>Compare titles</strong> once to refresh
 source eligibility for already cached review entries.</p>
-<p><img alt="Episode Title Review with search and status, reason, and review-type filters" src="../images/45-episode-title-review.png" /></p>
-<p><em>Illustrative review records show two historical candidates and one
+<p><img alt="Asset Title Review with search and status, reason, and review-type filters" src="../images/45-episode-title-review.png" /></p>
+<p><em>Illustrative review records show historical candidates and a
 media-server-source block. Artwork thumbnails are existing published showcase
 examples, not results from a live title scan.</em></p>
 <p>Title comparisons ignore uppercase/lowercase differences, including accented
@@ -3235,23 +3244,25 @@ characters. Existing case-only candidates are hidden and removed by the next
 successful scan without rendering or uploading artwork. Displayed titles and
 the original text in ImageChoices are preserved; actual wording changes still
 remain review candidates.</p>
-<p>Use the row's recreate action for one episode, select several entries with the
-checkboxes, or choose <strong>All eligible matches</strong>. The all action includes every
-eligible result of the current search, not just the current page. Each action
-requires confirmation. Manual recreation does not require the automatic title
-option or Background Checking, but the Master Switch must be on and Dry Run off.</p>
+<p>Use the row's recreate action (labeled for the item's media type) for one item,
+select several entries with the checkboxes, or choose <strong>All eligible matches</strong>.
+The all action includes every eligible result of the current search and active
+filters, not just the current page. Each action requires confirmation (with
+media-specific titles and prompts for single-item rebuilds). Manual recreation
+does not require the automatic title option or Background Checking, but the
+Master Switch must be on and Dry Run off.</p>
 <p><strong>Recreate selected</strong> is only available while no other Posterizarr run is active. Use
-<strong>Add to queue</strong> instead to queue the selected episodes immediately, even while a
+<strong>Add to queue</strong> instead to queue the selected items immediately, even while a
 run, overlay sync, or cleanup is active. The queued entries start automatically
 when everything else has finished. Only these entries are started; other pending
 queue items still wait for a manual queue start.</p>
 <p>For a one-time bulk rebuild, <strong>Fast: Normal Run</strong> temporarily backs up and removes
-the eligible local titlecard files matching the current search, then starts the
+the eligible local artwork files matching the current search, then starts the
 ordinary parallel Normal Mode. Artwork on the media server is not deleted. The
 normal run scans configured libraries, so it may also create other missing assets.
 If the run fails or does not generate a replacement file, the previous local
-titlecard is restored. The existing queue action remains available for slower,
-per-episode processing without a full Normal Mode run.
+artwork is restored. The existing queue action remains available for slower,
+per-item processing without a full Normal Mode run.
 While it runs, the review shows preparation, Normal Mode, and local-file
 finalization phases with elapsed time. Normal Mode does not report per-review-item
 progress, so the display uses an indeterminate bar and does not invent an ETA.
@@ -3269,13 +3280,13 @@ confirmation. This screenshot shows the dialog only; the example job was cancell
 is retained; the normal run may process other missing assets in configured libraries.</em></p>
 <p><img alt="Fast Normal Run progress showing phase, elapsed time, and overlay batch behavior" src="../images/50-episode-title-fast-run-status.png" /></p>
 <p><em>The status reports elapsed time and the current phase. Normal Mode does not expose
-per-episode progress; final counts report recreated titlecards and local originals restored.</em></p>
+per-item progress; final counts report recreated artwork and local originals restored.</em></p>
 <p>Confirmed recreation uses the existing <strong>Asset Queue</strong> and queue processor,
-not a separate rendering worker. The queue contains a dedicated episode-title
+not a separate rendering worker. The queue contains a dedicated title-change
 operation referencing the persisted review candidate. Pending/processing
 duplicates are reused. Only the selected queue IDs are started; unrelated
 pending replacements are not processed. Progress and failures are visible in
-the review and the ordinary queue. Cancelling stops before the next episode;
+the review and the ordinary queue. Cancelling stops before the next item;
 remaining queue entries stay pending and can be resumed from the queue. Failed
 entries retain their review candidate for retry. A successful render and server
 upload acknowledge the new title and remove its review entry.</p>
@@ -3294,16 +3305,18 @@ search and cannot translate text already baked into a provider image. Custom
 per-asset edits or previously used one-off blueprint overrides are not restored;
 the current generator configuration governs the rebuilt asset.</p>
 <p>Generic episode placeholders such as <code>Episode 2</code>, <code>Folge #2.2</code>, <code>TBA</code>, and
-<code>Untitled</code> are not treated as finished replacement titles. Titlecards that were
-never created still need the ordinary generation workflow. Only the affected
-episode titlecard is rebuilt and passed to a targeted overlay sync. If the
-library has no dynamic-overlay rules, the titlecard is sent directly to its
-exact episode item. A failed generation or upload leaves the title change pending.
-Historical candidates remain manual-only across subsequent scans; only later
-title changes on otherwise reconciled episodes qualify for the optional automatic
-workflow. A series-title change alone does not recreate its episodes.
-The legacy setting key <code>regenerate_assets_on_title_change</code> is retained for
-compatibility but now applies exclusively to episode titlecards.
+<code>Untitled</code> (and <code>TBA</code>/<code>TBD</code>/<code>To Be Announced</code>/<code>Untitled</code> for movies, shows, and
+seasons) are not treated as finished replacement titles. Artwork that was never
+created still needs the ordinary generation workflow. Only the affected artwork
+item (movie poster, show poster, season poster, or episode titlecard) is rebuilt
+and passed to a targeted overlay sync. If the library has no dynamic-overlay
+rules, the rebuilt asset is sent directly to its exact media-server item. A
+failed generation or upload leaves the title change pending. Historical
+candidates remain manual-only across subsequent scans; only later title changes
+on otherwise reconciled items qualify for the optional automatic workflow. A
+series-title change alone does not recreate its episodes.
+The setting key <code>regenerate_assets_on_title_change</code> applies across all
+configured text-enabled artwork types (episodes, seasons, movies, and shows).
 Progress is logged under <code>[TitleChanges]</code> in the backend log;
 rendering uses the existing manual-run log and targeted overlays use
 <code>DynamicOverlaysSync.log</code>.</p>

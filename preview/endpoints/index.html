@@ -6578,10 +6578,10 @@
 <hr />
 <h2 id="external-provider-api">External Provider API</h2>
 <p>These endpoints are opt-in: they do not change regular Posterizarr runs or
-media-server artwork. Both require a Posterizarr API key in the <code>X-API-Key</code>
-header or as an <code>Authorization: Bearer</code> token, even when Web UI authentication
-is disabled. Create a key in the Web UI. Query-string keys and Basic Auth are
-not accepted by these endpoints.</p>
+media-server artwork. Both require a Posterizarr API key—either in the
+<code>X-API-Key</code> header (recommended), as an <code>Authorization: Bearer</code> token, or as an
+<code>api_key</code> query parameter—even when Web UI authentication is disabled. Create a
+key in the Web UI. Basic Auth is not accepted by these endpoints.</p>
 <h3 id="get-apiproviderv1assetmedia_typeitem_id"><code>GET /api/provider/v1/asset/{media_type}/{item_id}</code></h3>
 <p><code>GET /api/provider/v1/poster/{media_type}/{item_id}</code> remains as a backwards-
 compatible alias. <code>media_type</code> is <code>movie</code> or <code>show</code>; the response is a JPEG.
@@ -6635,10 +6635,10 @@ rendering or upstream failures return <code>502</code> or <code>503</code>.</p>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># TMDb episode titlecard</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"X-API-Key: YOUR_KEY"</span><span class="w"> </span><span class="s2">"http://posterizarr:8000/api/provider/v1/asset/show/603?provider=tmdb&amp;asset_type=titlecard&amp;season_number=2&amp;episode_number=3"</span><span class="w"> </span>--output<span class="w"> </span>titlecard.jpg
 </code></pre></div>
-<p>The API requires an authentication header. A consumer that only supplies a
-<code>url_poster</code> URL to Plex cannot use it directly unless it can provide that
-header; a Kometa integration would need to download the image with credentials
-and upload the downloaded file. Do not put an API key in a URL.</p>
+<p>Prefer sending the key via <code>X-API-Key</code> or <code>Authorization: Bearer</code> headers so
+credentials are not exposed in URLs, reverse-proxy logs, or third-party media
+server metadata. While <code>?api_key=YOUR_KEY</code> is supported for consumers that
+cannot send custom headers, avoid passing API keys in shared or logged URLs.</p>
 <h3 id="get-apiproviderv1ratingsmedia_typeitem_id"><code>GET /api/provider/v1/ratings/{media_type}/{item_id}</code></h3>
 <p><code>media_type</code> is <code>movie</code>, <code>show</code>, <code>episode</code>, or <code>season</code>. This endpoint reads
 only existing, unexpired entries from the Dynamic Overlays ratings cache; it
@@ -6729,6 +6729,7 @@ variables, authenticate, map item IDs and consume this API. Existing Kometa
 configurations are unaffected.</p>
 <hr />
 <h2 id="dynamic-overlays">Dynamic Overlays</h2>
+<p>The <code>/api/dynamic-overlays/episode-title-changes*</code> endpoints power <strong>Asset Title Review</strong> across all configured text-enabled artwork types (<code>episode</code>, <code>season</code>, <code>movie</code>, and <code>show</code>).</p>
 <table>
 <thead>
 <tr>
@@ -6739,7 +6740,7 @@ configurations are unaffected.</p>
 <tbody>
 <tr>
 <td><code>GET /api/dynamic-overlays/episode-title-changes</code></td>
-<td>Paged review candidates. Optional <code>search</code>, <code>limit</code>, <code>offset</code>, <code>status_filter</code> (<code>all</code>, <code>eligible</code>, <code>blocked</code>), <code>reason_filter</code> (<code>all</code>, <code>none</code>, or a blocking reason), and <code>review_type</code> (<code>all</code>, <code>historical</code>, <code>future</code>) filter the result set and eligible count.</td>
+<td>Paged review candidates. Optional <code>search</code>, <code>limit</code>, <code>offset</code>, <code>status_filter</code> (<code>all</code>, <code>eligible</code>, <code>blocked</code>), <code>reason_filter</code> (<code>all</code>, <code>none</code>, or a blocking reason), <code>review_type</code> (<code>all</code>, <code>historical</code>, <code>future</code>), and <code>media_type_filter</code> (<code>all</code>, <code>episode</code>, <code>season</code>, <code>movie</code>, <code>show</code>) filter the result set and eligible count.</td>
 </tr>
 <tr>
 <td><code>POST /api/dynamic-overlays/episode-title-changes/rebuild</code></td>
