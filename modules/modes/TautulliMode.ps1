@@ -1,4 +1,4 @@
-﻿#region Tautulli Mode
+#region Tautulli Mode
     # Get Plex data for this Show/Movie
     # {rating_key}	The unique identifier for the movie, episode, or track.
     # {parent_rating_key}	The unique identifier for the season or album.

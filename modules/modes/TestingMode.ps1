@@ -1,4 +1,4 @@
-﻿#region Testing Mode
+#region Testing Mode
     # Helper to create the initial test images
     function New-TestImage-IfNotExists {
         param (

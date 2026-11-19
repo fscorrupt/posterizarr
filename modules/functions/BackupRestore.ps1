@@ -1,4 +1,4 @@
-﻿function MassDownloadPlexArtwork {
+function MassDownloadPlexArtwork {
     $Mode = "backup"
     $global:Mode = "backup"
     Write-Entry -Message "Backup Mode Started..." -Path $global:configLogging -Color White -log Info

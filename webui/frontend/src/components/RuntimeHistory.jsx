@@ -2164,14 +2164,17 @@ export default function RuntimeHistory() {
                         {t('runtime_history.ui.displayingAssetChoices', { count: runAssets.length })}
                       </div>
                       <div className="divide-y divide-white/[0.06] border border-white/[0.08] rounded-xl overflow-hidden bg-black/30">
-                        {runAssets.map((asset, idx) => (
+                        {runAssets.map((asset, idx) => {
+                          const isLandscape = /episode|title\s*card|background|backdrop|fanart/i.test(asset.Type || "");
+                          const thumbFrameClass = isLandscape ? "w-24 aspect-video" : "w-10 h-14";
+                          return (
                           <div key={idx} className="p-3 flex items-center justify-between hover:bg-white/[0.03] transition-colors text-xs gap-3">
                             <div className="flex items-center gap-3 min-w-0">
                               {asset.DownloadSource && typeof asset.DownloadSource === 'string' && asset.DownloadSource.startsWith('http') ? (
                                 <img
                                   src={asset.DownloadSource}
                                   alt={asset.Title || t('runtime_history.ui.asset')}
-                                  className="w-10 h-14 rounded-md object-cover border border-white/10 shadow-md bg-black/40 flex-shrink-0"
+                                  className={`${thumbFrameClass} rounded-md object-cover border border-white/10 shadow-md bg-black/40 flex-shrink-0`}
                                   loading="lazy"
                                   onError={(e) => {
                                     e.target.style.display = 'none';
@@ -2180,7 +2183,7 @@ export default function RuntimeHistory() {
                                 />
                               ) : null}
                               <div
-                                className={`p-2.5 rounded-lg bg-blue-500/10 text-blue-400 flex-shrink-0 ${
+                                className={`${thumbFrameClass} items-center justify-center rounded-md bg-blue-500/10 text-blue-400 flex-shrink-0 ${
                                   asset.DownloadSource && typeof asset.DownloadSource === 'string' && asset.DownloadSource.startsWith('http') ? 'hidden' : 'flex'
                                 }`}
                               >
@@ -2219,7 +2222,8 @@ export default function RuntimeHistory() {
                               </span>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ) : (
