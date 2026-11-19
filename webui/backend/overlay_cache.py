@@ -106,6 +106,27 @@ def snapshot_overlay_layers(attr_snapshot, layers):
     return json.dumps(snapshot, sort_keys=True)
 
 
+def _index_layers_by_identity(layer_list):
+    keys = []
+    by_key = {}
+    labels = {}
+    name_counts = {}
+    for idx, layer in enumerate(layer_list):
+        base_name = str(layer.get("name") or "")
+        if base_name:
+            occ_index = name_counts.get(base_name, 0)
+            name_counts[base_name] = occ_index + 1
+            key = ("named", base_name, occ_index)
+            label = base_name if occ_index == 0 else f"{base_name}#{occ_index + 1}"
+        else:
+            key = ("index", idx, 0)
+            label = f"layer[{idx}]"
+        keys.append(key)
+        by_key[key] = layer
+        labels[key] = label
+    return keys, by_key, labels
+
+
 def describe_overlay_layer_changes(attr_snapshot, layers, shared_snapshots=None):
     try:
         snapshot = json.loads(attr_snapshot or "{}")
@@ -119,16 +140,31 @@ def describe_overlay_layer_changes(attr_snapshot, layers, shared_snapshots=None)
     if not isinstance(previous, list) or not all(isinstance(layer, dict) for layer in previous):
         return "previous layer details unavailable"
     current = json.loads(snapshot_overlay_layers(None, layers))["_overlay_layers"]
+    prev_keys, prev_by_key, prev_labels = _index_layers_by_identity(previous)
+    curr_keys, curr_by_key, curr_labels = _index_layers_by_identity(current)
     changes = []
     if len(previous) != len(current):
         changes.append(f"layer count: {len(previous)} -> {len(current)}")
-    for index, (before, after) in enumerate(zip(previous, current)):
-        name = str(after.get("name") or before.get("name") or index)
+    for key in prev_keys:
+        if key not in curr_by_key:
+            changes.append(f"removed layer: {prev_labels[key]}")
+    for key in curr_keys:
+        if key not in prev_by_key:
+            changes.append(f"added layer: {curr_labels[key]}")
+    for key in curr_keys:
+        if key not in prev_by_key:
+            continue
+        before = prev_by_key[key]
+        after = curr_by_key[key]
         for field in sorted(before.keys() | after.keys()):
             if before.get(field) != after.get(field) or (field in before) != (field in after):
-                old_value = json.dumps(before.get(field), ensure_ascii=True)[:120]
-                new_value = json.dumps(after.get(field), ensure_ascii=True)[:120]
-                changes.append(f"{name}.{field}: {old_value} -> {new_value}")
+                old_value = "<missing>" if field not in before else json.dumps(before.get(field), ensure_ascii=True)[:120]
+                new_value = "<missing>" if field not in after else json.dumps(after.get(field), ensure_ascii=True)[:120]
+                changes.append(f"{curr_labels[key]}.{field}: {old_value} -> {new_value}")
+    if not changes and prev_keys != curr_keys:
+        changes.append(
+            f"layer order: {', '.join(prev_labels[k] for k in prev_keys)} -> {', '.join(curr_labels[k] for k in curr_keys)}"
+        )
     if not changes:
         return "layer fields unchanged; fingerprint differs"
     return "; ".join(changes[:4]) + (f"; {len(changes) - 4} more changes" if len(changes) > 4 else "")

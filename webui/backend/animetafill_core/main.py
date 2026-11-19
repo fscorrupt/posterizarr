@@ -75,8 +75,11 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     # 2. Fetch shows from Media Server (Plex, Jellyfin, Emby)
     target_libraries = server_conf.get('libraries') or config.get('target_libraries') or config.get('plex', {}).get('libraries') or []
     shows = scanner.get_shows_from_libraries(target_libraries)
+    scan_failed = bool(getattr(scanner, "last_library_scan_failed", False))
     logger.info(f"Found {len(shows)} shows across {len(target_libraries)} {srv_type.upper()} libraries.")
-    if not shows:
+    if scan_failed and not shows:
+        logger.error(f"{srv_type.upper()} library scan failed with 0 shows returned; preserving existing anime_overlays.yml without overwriting.")
+    elif not shows:
         logger.warning(f"No shows were found in {srv_type.upper()} library/libraries ({target_libraries}). Please ensure your media server is reachable and target libraries are configured.")
 
     json_export_path = os.path.join(data_dir, "anime_database.json")
@@ -84,6 +87,7 @@ def run_sync(scheduler=None, custom_config=None, force=False):
     # -- REVERSE SYNC PHASE: Import manual edits from YAML --
     logger.system("Checking for manual edits in existing YAML...")
     existing_overlays = overlay_gen.get_existing_overlays("anime_overlays.yml")
+    existing_raw_overlays = overlay_gen.get_existing_raw_overlays("anime_overlays.yml")
 
     # Group by title (case-insensitive) to avoid redundant Sonarr lookups
     grouped_edits = {}
@@ -139,6 +143,8 @@ def run_sync(scheduler=None, custom_config=None, force=False):
         skipped_list.append({"title": title, "reason": reason})
         logger.warning(f"Skip: {reason}")
 
+    selected_categories = overlay_conf.get("overlay_categories")
+
     for idx, title in enumerate(shows, 1):
         try:
             logger.divider()
@@ -147,11 +153,26 @@ def run_sync(scheduler=None, custom_config=None, force=False):
             # A. Validate via Sonarr or Native Media Server Mapping (Plex, Jellyfin, Emby)
             series_info = sonarr.get_series_info(title) if sonarr.is_enabled else None
             sonarr_map = {}
+            title_map = {}
             status = 'unknown'
 
             if series_info:
                 status = series_info.get('status', 'unknown')
-                sonarr_map, _ = sonarr.get_absolute_to_season_map(series_info['id'])
+                sonarr_map, title_map = sonarr.get_absolute_to_season_map(series_info['id'])
+                if not sonarr_map and sonarr.last_episode_error:
+                    logger.warning(f"Sonarr episode lookup failed for '{title}'; attempting native {srv_type.upper()} fallback...")
+                    sonarr_map = scanner.get_episode_map(title)
+                    title_map = {}
+                    if not sonarr_map:
+                        preserved = overlay_gen.preserve_show_overlays(
+                            title,
+                            existing_raw_overlays,
+                            selected_categories=selected_categories,
+                        )
+                        if preserved:
+                            logger.warning(f"Preserved {preserved} existing overlay block(s) for '{title}' after Sonarr API error.")
+                        log_skip("Sonarr API error", title)
+                        continue
             else:
                 if sonarr.is_enabled:
                     logger.info("Not found in Sonarr. Attempting native media server fallback...")
@@ -159,7 +180,17 @@ def run_sync(scheduler=None, custom_config=None, force=False):
                     logger.info(f"Sonarr not configured. Using native {srv_type.upper()} episode mapping...")
                 sonarr_map = scanner.get_episode_map(title)
                 if not sonarr_map:
-                    log_skip(f"Not found in {srv_type.upper()} API", title)
+                    if getattr(scanner, "last_episode_lookup_error", None):
+                        preserved = overlay_gen.preserve_show_overlays(
+                            title,
+                            existing_raw_overlays,
+                            selected_categories=selected_categories,
+                        )
+                        if preserved:
+                            logger.warning(f"Preserved {preserved} existing overlay block(s) for '{title}' after transient {srv_type.upper()} error.")
+                        log_skip(f"{srv_type.upper()} API error", title)
+                    else:
+                        log_skip(f"Not found in {srv_type.upper()} API", title)
                     continue
                 logger.success(f"{srv_type.upper()}-native mapping created: {len(sonarr_map)} episodes.")
 
@@ -218,13 +249,12 @@ def run_sync(scheduler=None, custom_config=None, force=False):
             # E. Stage Overlays
             if any(db_mapping.values()):
                 # Use 2-tier mapping (Numeric + Title)
-                sonarr_map, title_map = sonarr.get_absolute_to_season_map(series_info['id']) if series_info else (sonarr_map, {})
                 overlay_gen.add_show_overlays(
                     title,
                     db_mapping,
                     sonarr_map,
                     title_map=title_map,
-                    selected_categories=overlay_conf.get("overlay_categories"),
+                    selected_categories=selected_categories,
                     threshold_mode=overlay_conf.get("overlay_threshold_mode", "none"),
                     threshold_value=overlay_conf.get("overlay_threshold_value", 0),
                     total_episode_count=sonarr_count,
@@ -236,11 +266,29 @@ def run_sync(scheduler=None, custom_config=None, force=False):
 
         except Exception as e:
             logger.error(f"Failed to process {title}: {e}")
+            preserved = overlay_gen.preserve_show_overlays(
+                title,
+                existing_raw_overlays,
+                selected_categories=selected_categories,
+            )
+            if preserved:
+                logger.warning(f"Preserved {preserved} existing overlay block(s) for '{title}' after internal error.")
             log_skip("Internal Error", title)
             continue
 
     # 4. Finalize Exports
-    overlay_gen.save_unified_file("anime_overlays.yml", allow_empty=True)
+    if scan_failed and not shows:
+        logger.warning("Skipping anime_overlays.yml overwrite because media server library scan failed.")
+    else:
+        if scan_failed:
+            preserved_unscanned = overlay_gen.preserve_unscanned_overlays(
+                shows,
+                existing_raw_overlays,
+                selected_categories=selected_categories,
+            )
+            if preserved_unscanned:
+                logger.warning(f"Preserved {preserved_unscanned} existing overlay block(s) for unscanned shows after partial {srv_type.upper()} library scan failure.")
+        overlay_gen.save_unified_file("anime_overlays.yml", allow_empty=True)
     db.export_to_json(json_export_path)
 
     # Export Unmapped Shows report

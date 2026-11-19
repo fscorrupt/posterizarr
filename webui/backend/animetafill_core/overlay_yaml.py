@@ -1,10 +1,11 @@
+import copy
 import yaml
 import os
 import sys
 import re
 import shutil
 import glob
-from typing import Dict, List
+from typing import Dict, List, Optional
 from animetafill_core.logger import logger
 
 class OverlayYamlGenerator:
@@ -12,6 +13,23 @@ class OverlayYamlGenerator:
     Generates YAML files containing surgical episode-level overlays.
     Uses 'filepath.regex' to target episodes without bloating Plex metadata.
     """
+    def get_existing_raw_overlays(self, filename: str = "anime_overlays.yml") -> Dict[str, dict]:
+        """
+        Loads the raw 'overlays' mapping from an existing YAML file so individual
+        show blocks can be preserved if a transient API error prevents regeneration.
+        """
+        file_path = os.path.join(self.output_dir, filename)
+        if not os.path.exists(file_path):
+            return {}
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            if isinstance(data, dict) and isinstance(data.get('overlays'), dict):
+                return data['overlays']
+        except Exception as e:
+            logger.warning(f"Could not read existing YAML overlays from '{file_path}': {e}")
+        return {}
+
     def get_existing_overlays(self, filename: str = "anime_overlays.yml") -> List[dict]:
         """
         Parses the existing YAML file back into a list of raw show info.
@@ -23,7 +41,7 @@ class OverlayYamlGenerator:
 
         results = []
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
                 if not data or 'overlays' not in data:
                     return []
@@ -118,7 +136,7 @@ class OverlayYamlGenerator:
             filename = os.path.basename(file_path)
             if filename == master_filename: continue
             try:
-                with open(file_path, 'r') as f:
+                with open(file_path, 'r', encoding='utf-8') as f:
                     data = yaml.safe_load(f)
                     if data and 'overlays' in data:
                         self.overlays.update(data['overlays'])
@@ -130,6 +148,83 @@ class OverlayYamlGenerator:
         """Strips punctuation/spaces for title-based matching."""
         if not title: return ""
         return re.sub(r'[^a-z0-9]', '', title.lower())
+
+    def _detect_block_category(self, overlay_name: str, details: dict) -> Optional[str]:
+        """Resolve an overlay block's AniMetaFill category from its template label or key."""
+        inv_labels = {str(v).strip().lower(): k for k, v in self.labels.items()}
+        tmpl = details.get("template")
+        raw_label = str(tmpl.get("label", "")).strip().lower() if isinstance(tmpl, dict) else ""
+        if raw_label in inv_labels:
+            return inv_labels[raw_label]
+        lower_key = str(overlay_name).lower()
+        for cat in ("canon", "filler", "mixed"):
+            if cat in raw_label or cat in lower_key:
+                return cat
+        return None
+
+    def _extract_block_show_title(self, details: dict) -> str:
+        """Extract the show title targeted by an existing overlay block."""
+        filters = details.get("filters")
+        if isinstance(filters, dict) and filters.get("show_title"):
+            return str(filters["show_title"]).strip()
+        plex_search = details.get("plex_search")
+        if isinstance(plex_search, dict) and plex_search.get("title.is"):
+            return str(plex_search["title.is"]).strip()
+        return ""
+
+    def _preserve_matching_blocks(
+        self,
+        existing_raw_overlays: Dict[str, dict],
+        predicate,
+        selected_categories: Optional[List[str]] = None,
+    ) -> int:
+        if not isinstance(existing_raw_overlays, dict) or not existing_raw_overlays:
+            return 0
+        allowed_cats = set(selected_categories) if selected_categories is not None else None
+        preserved = 0
+        for block_key, details in existing_raw_overlays.items():
+            if block_key in self.overlays or not isinstance(details, dict):
+                continue
+            show_title = self._extract_block_show_title(details)
+            if not predicate(show_title):
+                continue
+            if allowed_cats is not None:
+                cat = self._detect_block_category(block_key, details)
+                if cat is not None and cat not in allowed_cats:
+                    continue
+            self.overlays[block_key] = copy.deepcopy(details)
+            preserved += 1
+        return preserved
+
+    def preserve_show_overlays(
+        self,
+        anime_title: str,
+        existing_raw_overlays: Dict[str, dict],
+        selected_categories: Optional[List[str]] = None,
+    ) -> int:
+        """Copy existing YAML overlay blocks for a show when a transient error prevents rebuilding them."""
+        target = (anime_title or "").strip().lower()
+        if not target:
+            return 0
+        return self._preserve_matching_blocks(
+            existing_raw_overlays,
+            lambda show_title: show_title.lower() == target,
+            selected_categories=selected_categories,
+        )
+
+    def preserve_unscanned_overlays(
+        self,
+        scanned_shows: List[str],
+        existing_raw_overlays: Dict[str, dict],
+        selected_categories: Optional[List[str]] = None,
+    ) -> int:
+        """Copy existing YAML overlay blocks for shows absent from a partially failed library scan."""
+        scanned_norm = {(s or "").strip().lower() for s in scanned_shows}
+        return self._preserve_matching_blocks(
+            existing_raw_overlays,
+            lambda show_title: show_title.lower() not in scanned_norm,
+            selected_categories=selected_categories,
+        )
 
     def add_show_overlays(
         self,
@@ -219,8 +314,8 @@ class OverlayYamlGenerator:
         file_path = os.path.join(self.output_dir, filename)
         tmp_path = f"{file_path}.tmp"
         try:
-            with open(tmp_path, 'w') as f:
-                yaml.dump({"templates": self._get_templates(), "overlays": self.overlays}, f, default_flow_style=False, sort_keys=False)
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                yaml.dump({"templates": self._get_templates(), "overlays": self.overlays}, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
             os.replace(tmp_path, file_path)
             return file_path
         except Exception:

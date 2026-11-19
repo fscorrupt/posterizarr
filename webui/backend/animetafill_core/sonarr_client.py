@@ -2,6 +2,7 @@ import requests
 import re
 import difflib
 import time
+import unicodedata
 from typing import List, Dict, Optional, Any
 from animetafill_core.logger import logger
 
@@ -18,15 +19,20 @@ class SonarrTranslator:
         self._series_cache: Optional[List[Dict[str, Any]]] = None
         self._series_cache_time: float = 0
         self._episode_cache: Dict[int, tuple] = {}
+        self.last_error: Optional[str] = None
+        self.last_episode_error: Optional[str] = None
 
     def _clean_title(self, title: str) -> str:
         """
-        Removes noise from titles to improve matching accuracy. 
-        Standardizes punctuation and strips seasonal suffixes that often 
+        Removes noise from titles to improve matching accuracy.
+        Standardizes diacritics, punctuation and strips seasonal suffixes that often
         cause mismatches between Plex and Sonarr metadata.
         """
+        # Strip combining marks so accented Latin characters (e.g. Pokémon, Shippūden) match ASCII
+        normalized = unicodedata.normalize("NFKD", title or "")
+        ascii_folded = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
         # Lowercase and handle common dash differences
-        cleaned = title.lower().replace('–', '-').replace('—', '-')
+        cleaned = ascii_folded.lower().replace('–', '-').replace('—', '-')
         # Remove years in parentheses
         cleaned = re.sub(r'\s\(\d{4}\)$', '', cleaned)
         # Remove anything after 'season X' to avoid mismatches
@@ -45,6 +51,7 @@ class SonarrTranslator:
         1. Cleaned exact match against the main title, sort title, and all alt titles.
         2. Fuzzy match (difflib) as a fallback for subtle naming differences.
         """
+        self.last_error = None
         if not self.is_enabled:
             return None
         try:
@@ -112,6 +119,7 @@ class SonarrTranslator:
                     
             return None
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"Sonarr search error: {e}")
             return None
 
@@ -131,17 +139,27 @@ class SonarrTranslator:
         
         Returns: (abs_map, title_map)
         """
+        self.last_episode_error = None
         if not self.is_enabled:
             return {}, {}
         if series_id in self._episode_cache:
             return self._episode_cache[series_id]
         try:
-            response = requests.get(
-                f"{self.url}/api/v3/episode",
-                params={"seriesId": series_id},
-                headers=self.headers,
-                timeout=10
-            )
+            response = None
+            for attempt in range(2):
+                try:
+                    response = requests.get(
+                        f"{self.url}/api/v3/episode",
+                        params={"seriesId": series_id},
+                        headers=self.headers,
+                        timeout=10
+                    )
+                    break
+                except requests.RequestException:
+                    if attempt == 0:
+                        time.sleep(0.5)
+                        continue
+                    raise
             response.raise_for_status()
             episodes = response.json()
             
@@ -197,5 +215,6 @@ class SonarrTranslator:
             self._episode_cache[series_id] = (abs_map, title_map)
             return abs_map, title_map
         except Exception as e:
+            self.last_episode_error = str(e)
             logger.error(f"Error creating mapping for series {series_id}: {e}")
             return {}, {}
