@@ -176,6 +176,26 @@ export function parseInlineTokens(input) {
       continue;
     }
 
+    // 10. Bare HTTP(S) URLs (e.g. GitHub Full Changelog links)
+    if (
+      (cleaned.startsWith("https://", i) || cleaned.startsWith("http://", i)) &&
+      (i === 0 || /[\s(["']/.test(cleaned[i - 1]))
+    ) {
+      const urlMatch = /^https?:\/\/[^\s<>)\]]+/i.exec(cleaned.slice(i));
+      if (urlMatch) {
+        const rawCandidate = urlMatch[0];
+        const trimmedUrl = rawCandidate.replace(/[.,;:!?]+$/, "");
+        const trailing = rawCandidate.slice(trimmedUrl.length);
+        const safeHref = sanitizeUrl(trimmedUrl);
+        if (safeHref) {
+          tokens.push({ type: "link", label: trimmedUrl, href: safeHref });
+          if (trailing) pushTextToken(tokens, trailing);
+          i += rawCandidate.length;
+          continue;
+        }
+      }
+    }
+
     // Plain character
     pushTextToken(tokens, decodeBasicEntities(cleaned[i]));
     i += 1;

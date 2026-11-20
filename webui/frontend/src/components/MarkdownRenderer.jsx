@@ -14,7 +14,7 @@ function renderInline(tokens, keyPrefix = "tok") {
         );
       case "italic":
         return (
-          <em key={key} className="italic text-theme-text/90">
+          <em key={key} className="italic text-theme-text">
             {renderInline(token.children, key)}
           </em>
         );
@@ -22,7 +22,7 @@ function renderInline(tokens, keyPrefix = "tok") {
         return (
           <code
             key={key}
-            className="px-1.5 py-0.5 mx-0.5 rounded bg-theme-bg-dark/80 border border-theme/70 font-mono text-[0.85em] text-theme-primary"
+            className="px-1.5 py-0.5 mx-0.5 rounded bg-black/35 border border-theme font-mono text-[0.85em] text-theme-text"
           >
             {token.value}
           </code>
@@ -80,9 +80,9 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
           case "heading": {
             const headingClasses = {
               1: "text-xl sm:text-2xl font-bold text-theme-text pt-1",
-              2: "text-base sm:text-lg font-bold text-theme-text pt-2 border-b border-theme/60 pb-1.5",
+              2: "text-base sm:text-lg font-bold text-theme-text pt-2 border-b border-theme pb-1.5",
               3: "text-sm sm:text-base font-semibold text-theme-text pt-1.5",
-              4: "text-sm font-semibold text-theme-text/90 pt-1",
+              4: "text-sm font-semibold text-theme-text pt-1",
             };
             const Tag = `h${Math.min(4, Math.max(1, block.level))}`;
             return (
@@ -92,10 +92,10 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
             );
           }
           case "hr":
-            return <hr key={key} className="border-theme/70 my-2" />;
+            return <hr key={key} className="border-theme my-2" />;
           case "image":
             return (
-              <figure key={key} className="my-3 overflow-hidden rounded-lg border border-theme bg-theme-bg-dark/60">
+              <figure key={key} className="my-3 overflow-hidden rounded-lg border border-theme bg-black/30">
                 <img
                   src={block.src}
                   alt={block.alt || "Release preview"}
@@ -103,7 +103,7 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
                   className="w-full h-auto max-h-96 object-contain mx-auto block"
                 />
                 {block.alt && (
-                  <figcaption className="px-3 py-1.5 text-xs text-theme-muted border-t border-theme/50 text-center">
+                  <figcaption className="px-3 py-1.5 text-xs text-theme-muted border-t border-theme text-center">
                     {block.alt}
                   </figcaption>
                 )}
@@ -118,7 +118,7 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3 py-1 rounded-full text-xs font-medium bg-theme-hover/80 hover:bg-theme-primary/20 border border-theme hover:border-theme-primary/40 text-theme-text transition-colors"
+                    className="px-3 py-1 rounded-full text-xs font-medium bg-theme-hover hover:bg-black/40 border border-theme hover:border-theme-primary text-theme-text transition-colors"
                   >
                     {link.label}
                   </a>
@@ -127,7 +127,7 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
             );
           case "table":
             return (
-              <div key={key} className="overflow-x-auto rounded-lg border border-theme bg-theme-bg/40">
+              <div key={key} className="overflow-x-auto rounded-lg border border-theme bg-black/20">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b border-theme">
@@ -138,7 +138,7 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-theme/50">
+                  <tbody className="divide-y divide-white/10">
                     {block.rows.map((row, rIdx) => (
                       <tr key={`${key}-r-${rIdx}`}>
                         {row.map((cell, cIdx) => (
@@ -158,7 +158,7 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
             return (
               <blockquote
                 key={key}
-                className="border-l-2 border-theme-primary bg-theme-primary/5 px-3.5 py-2.5 rounded-r-lg text-theme-text/90"
+                className="border-l-2 border-theme-primary bg-black/25 px-3.5 py-2.5 rounded-r-lg text-theme-text"
               >
                 {renderInline(block.tokens, key)}
               </blockquote>
@@ -167,7 +167,7 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
             return (
               <pre
                 key={key}
-                className="p-3 rounded-lg bg-theme-bg-dark/90 border border-theme text-xs font-mono text-theme-text overflow-x-auto"
+                className="p-3 rounded-lg bg-black/40 border border-theme text-xs font-mono text-theme-text overflow-x-auto"
               >
                 <code>{block.code}</code>
               </pre>

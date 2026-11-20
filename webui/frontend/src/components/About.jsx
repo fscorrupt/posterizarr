@@ -194,10 +194,9 @@ function About() {
 
       {/* Hero Identity Card (Kavita + Seerr style) */}
       <section className="bg-theme-card border border-theme rounded-xl overflow-hidden">
-        <div className="h-1 w-full bg-gradient-to-r from-theme-primary via-theme-accent to-theme-primary" />
         <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div className="flex items-start sm:items-center gap-4 min-w-0">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-theme-bg-dark/80 border border-theme p-2.5 flex items-center justify-center shrink-0 shadow-sm">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-black/30 border border-theme p-2.5 flex items-center justify-center shrink-0 shadow-sm">
               <img
                 src="/favicon.png"
                 alt="Posterizarr"
@@ -248,7 +247,7 @@ function About() {
                   </>
                 )}
 
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-theme-bg-dark/60 text-theme-muted border border-theme inline-flex items-center gap-1">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-black/25 text-theme-muted border border-theme inline-flex items-center gap-1">
                   <Shield className="w-3 h-3" />
                   GPL-3.0
                 </span>
@@ -276,13 +275,13 @@ function About() {
         </div>
       </section>
 
-      {/* System & Runtime Environment Grid */}
+      {/* System & Runtime Environment Spec Table */}
       <section className="bg-theme-card border border-theme rounded-xl p-5 sm:p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-theme-primary/15 border border-theme-primary/30 flex items-center justify-center text-theme-primary">
-              <Server className="w-4 h-4" />
-            </div>
+            <span className="workspace-header-icon">
+              <Server size={18} />
+            </span>
             <h2 className="text-lg font-bold text-theme-text">
               {t("about.systemInfo")}
             </h2>
@@ -302,68 +301,68 @@ function About() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+          <div className="flex items-baseline justify-between gap-4 py-3 border-b border-theme">
+            <dt className="text-xs font-medium text-theme-muted flex items-center gap-2 shrink-0">
               <Code2 className="w-3.5 h-3.5 text-theme-primary" />
               <span>{t("about.version")}</span>
-            </div>
-            <div className="text-sm font-mono font-semibold text-theme-text break-words">
+            </dt>
+            <dd className="text-sm font-mono font-semibold text-theme-text text-right break-words">
               {version.loading ? t("common.loading") : `v${version.local || t("about.unknown")}`}
               {outOfDate && version.remote ? ` → v${version.remote}` : ""}
-            </div>
+            </dd>
           </div>
 
-          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+          <div className="flex items-baseline justify-between gap-4 py-3 border-b border-theme">
+            <dt className="text-xs font-medium text-theme-muted flex items-center gap-2 shrink-0">
               <Server className="w-3.5 h-3.5 text-theme-primary" />
               <span>{t("about.environment")}</span>
-            </div>
-            <div className="text-sm font-medium text-theme-text break-words">
+            </dt>
+            <dd className="text-sm font-medium text-theme-text text-right break-words">
               {environmentLabel}
-            </div>
+            </dd>
           </div>
 
-          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+          <div className="flex items-baseline justify-between gap-4 py-3 border-b border-theme">
+            <dt className="text-xs font-medium text-theme-muted flex items-center gap-2 shrink-0">
               <FolderOpen className="w-3.5 h-3.5 text-theme-primary" />
               <span>{t("about.dataDirectory")}</span>
-            </div>
-            <div className="text-sm font-mono text-theme-text break-all">
+            </dt>
+            <dd className="text-sm font-mono text-theme-text text-right break-all">
               {systemInfo?.data_directory || "/config"}
-            </div>
+            </dd>
           </div>
 
-          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+          <div className="flex items-baseline justify-between gap-4 py-3 border-b border-theme">
+            <dt className="text-xs font-medium text-theme-muted flex items-center gap-2 shrink-0">
               <Clock className="w-3.5 h-3.5 text-theme-primary" />
               <span>{t("about.timeZone")}</span>
-            </div>
-            <div className="text-sm font-medium text-theme-text break-words">
+            </dt>
+            <dd className="text-sm font-medium text-theme-text text-right break-words">
               {resolvedTimezone}
-            </div>
+            </dd>
           </div>
 
-          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+          <div className="flex items-baseline justify-between gap-4 py-3 border-b border-theme md:border-b-0">
+            <dt className="text-xs font-medium text-theme-muted flex items-center gap-2 shrink-0">
               <Terminal className="w-3.5 h-3.5 text-theme-primary" />
               <span>{t("about.runtimeStack")}</span>
-            </div>
-            <div className="text-sm text-theme-text break-words">
+            </dt>
+            <dd className="text-sm text-theme-text text-right break-words">
               {runtimeParts.length ? runtimeParts.join(" · ") : t("about.unknown")}
-            </div>
+            </dd>
           </div>
 
-          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+          <div className="flex items-baseline justify-between gap-4 py-3 border-b-0">
+            <dt className="text-xs font-medium text-theme-muted flex items-center gap-2 shrink-0">
               <Cpu className="w-3.5 h-3.5 text-theme-primary" />
               <span>{t("about.hardware")}</span>
-            </div>
-            <div className="text-sm text-theme-text break-words">
+            </dt>
+            <dd className="text-sm text-theme-text text-right break-words">
               {hardwareSummary}
-            </div>
+            </dd>
           </div>
-        </div>
+        </dl>
       </section>
 
       {/* Changelog & Release History */}
@@ -377,9 +376,9 @@ function About() {
       {/* Resources, Community & Support */}
       <section className="bg-theme-card border border-theme rounded-xl p-5 sm:p-6 space-y-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-theme-primary/15 border border-theme-primary/30 flex items-center justify-center text-theme-primary">
-            <ExternalLink className="w-4 h-4" />
-          </div>
+          <span className="workspace-header-icon">
+            <ExternalLink size={18} />
+          </span>
           <h2 className="text-lg font-bold text-theme-text">
             {t("about.gettingSupport")}
           </h2>
@@ -390,7 +389,7 @@ function About() {
             href="https://fscorrupt.github.io/posterizarr/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
+            className="flex items-center justify-between p-4 bg-black/20 hover:bg-theme-hover border border-theme hover:border-theme-primary rounded-xl transition-all group"
           >
             <div className="flex items-center gap-3 min-w-0">
               <BookOpen className="w-5 h-5 text-theme-primary shrink-0" />
@@ -410,7 +409,7 @@ function About() {
             href="https://fscorrupt.github.io/posterizarr/dynamic_overlays/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
+            className="flex items-center justify-between p-4 bg-black/20 hover:bg-theme-hover border border-theme hover:border-theme-primary rounded-xl transition-all group"
           >
             <div className="flex items-center gap-3 min-w-0">
               <Layers className="w-5 h-5 text-theme-primary shrink-0" />
@@ -430,7 +429,7 @@ function About() {
             href="https://github.com/fscorrupt/posterizarr/issues"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
+            className="flex items-center justify-between p-4 bg-black/20 hover:bg-theme-hover border border-theme hover:border-theme-primary rounded-xl transition-all group"
           >
             <div className="flex items-center gap-3 min-w-0">
               <Github className="w-5 h-5 text-theme-primary shrink-0" />
@@ -450,7 +449,7 @@ function About() {
             href="https://discord.gg/fYyJQSGt54"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
+            className="flex items-center justify-between p-4 bg-black/20 hover:bg-theme-hover border border-theme hover:border-theme-primary rounded-xl transition-all group"
           >
             <div className="flex items-center gap-3 min-w-0">
               <svg
@@ -476,7 +475,7 @@ function About() {
             href="https://ko-fi.com/R6R81S6SC"
             target="_blank"
             rel="noopener noreferrer"
-            className="md:col-span-2 flex items-center justify-between p-4 bg-theme-hover/60 hover:bg-theme-primary/15 border border-theme-primary/35 rounded-xl transition-all group"
+            className="md:col-span-2 flex items-center justify-between p-4 bg-black/20 hover:bg-theme-hover border border-theme hover:border-theme-primary rounded-xl transition-all group"
           >
             <div className="flex items-center gap-3 min-w-0">
               <Heart className="w-5 h-5 text-red-400 shrink-0" />
@@ -489,7 +488,7 @@ function About() {
                 </div>
               </div>
             </div>
-            <div className="px-3 py-1 bg-theme-primary/15 text-theme-primary border border-theme-primary/30 rounded-full text-xs font-medium shrink-0 ml-2">
+            <div className="px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/25 rounded-full text-xs font-medium shrink-0 ml-2">
               {t("about.supportPosterizarr")}
             </div>
           </a>

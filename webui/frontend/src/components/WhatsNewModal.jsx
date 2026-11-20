@@ -56,15 +56,12 @@ export default function WhatsNewModal({
         className="app-dialog-panel relative w-full max-w-3xl max-h-[calc(100dvh-2rem)] bg-theme-card border border-theme rounded-xl shadow-2xl flex flex-col overflow-hidden animate-scaleIn"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Subtle Top Accent Bar */}
-        <div className="h-1 w-full bg-gradient-to-r from-theme-primary via-theme-accent to-theme-primary shrink-0" />
-
         {/* Modal Header */}
-        <div className="px-5 sm:px-6 py-4 border-b border-theme flex items-start justify-between gap-4 bg-theme-bg-dark/40 shrink-0">
+        <div className="px-5 sm:px-6 py-4 border-b border-theme flex items-start justify-between gap-4 bg-black/25 shrink-0">
           <div className="flex items-start gap-3.5 min-w-0">
-            <div className="w-10 h-10 rounded-lg bg-theme-primary/15 border border-theme-primary/30 flex items-center justify-center text-theme-primary shrink-0 mt-0.5">
-              <Sparkles className="w-5 h-5" />
-            </div>
+            <span className="workspace-header-icon mt-0.5">
+              <Sparkles size={18} />
+            </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2
@@ -74,12 +71,12 @@ export default function WhatsNewModal({
                   {t("whatsNew.title", { version: displayVersion })}
                 </h2>
                 {release.version && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-theme-primary/15 text-theme-primary border border-theme-primary/30">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-theme-hover text-theme-text border border-theme">
                     v{displayVersion}
                   </span>
                 )}
                 {publishedDate && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs text-theme-muted bg-theme-hover/70 border border-theme">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs text-theme-muted bg-black/25 border border-theme">
                     <Calendar className="w-3 h-3" />
                     {publishedDate}
                   </span>
@@ -113,7 +110,7 @@ export default function WhatsNewModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="app-dialog-actions px-5 sm:px-6 py-3.5 border-t border-theme bg-theme-bg-dark/40 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="app-dialog-actions px-5 sm:px-6 py-3.5 border-t border-theme bg-black/25 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex flex-wrap items-center gap-2">
             {release.html_url && (
               <a

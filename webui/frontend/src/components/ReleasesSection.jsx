@@ -122,9 +122,9 @@ function ReleasesSection({
     <section className="bg-theme-card border border-theme rounded-xl p-5 sm:p-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-theme-primary/15 border border-theme-primary/30 flex items-center justify-center text-theme-primary">
-            <Tag className="w-4 h-4" />
-          </div>
+          <span className="workspace-header-icon">
+            <Tag size={18} />
+          </span>
           <div>
             <h2 className="text-lg font-bold text-theme-text">
               {t("releasesSection.changelogTitle")}
@@ -172,8 +172,8 @@ function ReleasesSection({
                 key={release.version}
                 className={`border rounded-xl overflow-hidden transition-colors ${
                   isInstalled
-                    ? "border-theme-primary/40 bg-theme-hover/30"
-                    : "border-theme bg-theme-bg/30 hover:border-theme-primary/30"
+                    ? "border-sky-500/35 bg-sky-500/[0.04]"
+                    : "border-theme bg-black/20"
                 }`}
               >
                 <div
@@ -189,7 +189,7 @@ function ReleasesSection({
                       setExpandedVersion(isExpanded ? null : release.version);
                     }
                   }}
-                  className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3.5 cursor-pointer hover:bg-theme-hover/40 transition-colors"
+                  className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3.5 cursor-pointer hover:bg-theme-hover transition-colors"
                 >
                   <div className="flex flex-wrap items-center gap-2.5 min-w-0">
                     <span className="text-theme-text font-bold text-base font-mono">
@@ -203,7 +203,7 @@ function ReleasesSection({
                     )}
 
                     {isInstalled && (
-                      <span className="px-2 py-0.5 bg-theme-primary/15 text-theme-primary rounded-full text-xs font-semibold border border-theme-primary/30">
+                      <span className="px-2 py-0.5 bg-sky-500/15 text-sky-400 rounded-full text-xs font-semibold border border-sky-500/30">
                         {t("releasesSection.installed")}
                       </span>
                     )}
@@ -282,7 +282,7 @@ function ReleasesSection({
                 </div>
 
                 {isExpanded && (
-                  <div className="px-4 sm:px-5 pb-5 pt-4 border-t border-theme/60 bg-theme-bg-dark/35">
+                  <div className="px-4 sm:px-5 pb-5 pt-4 border-t border-theme bg-black/25">
                     {release.body ? (
                       <MarkdownRenderer content={release.body} compact={true} />
                     ) : (
