@@ -56,9 +56,9 @@ conservatively, and let you correct episode IDs or season numbering locally.
 Successful local lookups avoid per-item provider requests; other sources and
 unresolved items can still need external providers.
 
-![Dynamic Overlays Ratings Cache view](images/47-overlay-ratings-cache.png)
+![Ratings Cache & Refresh with Local IMDb Dataset and provider/status filters](images/ui-ratings-cache-imdb.png)
 
-*Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open the local IMDb dataset and ratings cache. The screenshot uses illustrative cache counts.*
+*Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open **Ratings Cache & Refresh**, manage the local IMDb dataset, and filter cached provider scores.*
 
 [Set up the local IMDb dataset](dynamic_overlays.md#local-imdb-dataset).
 The datasets are optional, require disk space for indexing, and are licensed by
@@ -116,11 +116,16 @@ server plugins are optional.
 - **Reuse local work:** manual asset preference, Season/Episode templates, and
 	existing assets instead of downloading a new source.
 - **Protect and maintain libraries:** exclusions, `skip_posterizarr` tags,
-	change detection, backups/restores, and optional cleanup of obsolete assets.
-- **Review and diagnose:** Action Center, searchable logs, CSV exports, and
-	notifications through Discord, Apprise, or Uptime Kuma.
-- **Automate and integrate:** schedules, Tautulli and Sonarr/Radarr webhooks,
-	Plex sync, and optional Agregarr, Jellyfin/Emby plugins, or Kometa workflows.
+	change detection, **Asset Title Review** for renamed titles, backups/restores,
+	and optional cleanup of obsolete assets (including scheduled **[Plex Image Cleanup](plex_image_cleanup.md)**).
+- **Review and diagnose:** Action Center, Insights analytics with a read-only
+	**System Database Browser**, searchable logs, sanitized one-click
+	**Support Bundles**, redesigned **About** page with inline changelogs and
+	post-update **"What's New"** notes, and notifications through Discord, Apprise,
+	or Uptime Kuma.
+- **Automate and integrate:** schedules, **AniMetaFill** anime classification,
+	Tautulli and Sonarr/Radarr webhooks, Plex sync, opt-in **External Provider APIs**,
+	and optional Agregarr, Jellyfin/Emby plugins, or Kometa workflows.
 
 ## Full feature reference
 
@@ -156,9 +161,14 @@ server plugins are optional.
 | **RTL (Right-to-Left) Font Support**     | - Supports **right-to-left (RTL) fonts** for media titles, making it more accessible for non-Latin-based languages such as Arabic or Hebrew.                                                                                                                                                                                                                                                                                                   |
 | **New Line on Specific Symbols**         | - Automatically adds a **new line on specific symbols** (e.g., hyphen or colon) within text to enhance visual aesthetics on overlays.                                                                                                                                                                                                                                                                                                          |
 | **Fallback Options for Title Cards**     | - Uses **background images as title cards** if title-specific artwork is unavailable.                                                                                                                                                                                                                                                                                                                                                          |
-| **Overlay Reset**                        | - Reset all posters in a library of your choice to the Plex default.                                                                                                                                                                                                                                                                                                                                                                           |
+| **Overlay Reset**                        | - Select a supported movie or TV library in the **Reset Posters** modal to reset all posters in that library to the media server default.                                                                                                                                                                                                                                                                                                                                                        |
 | **Plex Collection Diff & Sync**          | - Visual diffing of local collection artwork (Assets/Collections/) against Plex server collections in real-time.<br>- Displays status badges (In Sync, Update Ready, Missing on Plex, No Local Asset).<br>- Allows interactive Local vs Server artwork inspection, 1-click single-collection push, and batch pushing.                                           |
 | **Plex Asset Sync Scheduler**            | - Lightweight, pure Python background sync engine for Plex.<br>- Selectively push artwork (collections, posters, seasons, title cards, backgrounds) directly to Plex on a schedule without running full image generation scripts.<br>- Built-in SQLite change tracking prevents duplicate uploads.                                                                              |
-| **Optional External Asset Compatibility** | - Existing external tools can consume the local library/title artwork layout.<br>- **[Optional Kometa compatibility](kometaintegration.md)** remains documented for users who choose to keep a separate Kometa installation; it is not required by the native overlay engine. |
+| **AniMetaFill**                          | - Scans anime episodes for **Canon**, **Filler**, and **Mixed** status with provider matching and manual overrides.<br>- Supports toggleable overlay categories, per-show thresholds, and optional titlecard badges rendered through Dynamic Overlays. |
+| **Asset Title Review**                   | - Compares existing text-enabled movies, shows, seasons, and episode titlecards against current media-server titles.<br>- Supports bulk dismissal (**Hide selected**), queued rebuilds, **Fast: Normal Run**, and optional automatic regeneration when titles change. |
+| **Plex Image Cleanup**                   | - Scans Plex metadata directories on a schedule or on demand to locate old, unselected uploaded artwork.<br>- Starts in **Read Only (Report)** mode by default with an optional **Quarantine** gallery for review before deletion. See the **[Plex Image Cleanup Guide](plex_image_cleanup.md)**. |
+| **Insights & System Database Browser**   | - Date-filtered runtime history (`24H`–`ALL`), aspect-aware asset thumbnails, and Sample Telemetry Preview.<br>- Includes a read-only, searchable, sortable **System Database Browser** covering Posterizarr SQLite databases (excluding `config.db` for security). |
+| **External Provider APIs**               | - Opt-in API-key-protected endpoints allowing external tools to fetch or generate isolated artwork (`/api/provider/v1/asset`) or query cached ratings (`/api/provider/v1/ratings`). See the **[External Provider API Docs](endpoints.md#external-provider-api)**. |
+| **About & Post-Update Release Notes**    | - Displays live runtime environment details, one-click sanitized **Copy System Info**, inline expandable GitHub release changelogs, and a one-time **"What's New"** dialog after updating to a new stable release. |
 | **Optional External Asset Compatibility** | - Existing external tools can consume the local library/title artwork layout.<br>- **[Optional Kometa compatibility](kometaintegration.md)** remains documented for users who choose to keep a separate Kometa installation; it is not required by the native overlay engine. |
 </details>

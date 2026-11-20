@@ -38,7 +38,7 @@ do not send it the Jellyfin/Emby parameter.
 | **Web UI Frontend** | React 18 + Vite + Tailwind CSS | `webui/frontend/` | Single-page application: Dashboard, Asset Overview, Live Collection Editor, Settings Editor, Logs, Queue Manager, Onboarding Wizard. |
 | **Image Processing** | ImageMagick 7 (`magick`) + Pillow | Alpine packages / `Overlayfiles/` | Compositing overlays, badge positioning, typography rendering, color extraction, textless detection, and UI preview rendering. |
 | **Native Dynamic Overlays** | Python + Pillow + SQLite | `overlay_engine.py`, `overlay_resolver.py`, `overlay_preview.py`, `overlay_sync_service.py`, `overlay_cache.py` | Per-library rules, live preview, in-memory composition, metadata/rating caches, and direct artwork uploads. Supported YAML compatibility does not embed Kometa. |
-| **Databases** | SQLite3 | `database/*.db` | Six specialized databases: `imagechoices.db`, `config.db`, `queue.db`, `server_libraries.db`, `media_export.db`, `runtime_history.db`. |
+| **Databases** | SQLite3 | `database/*.db` | Multi-database storage: `config.db`, `imagechoices.db`, `queue.db`, `server_libraries.db`, `media_export.db`, `runtime_stats.db`, `overlay_cache.db`, `animetafill.db`, `plex_push_cache.db`, and optional `imdb_dataset.db`. |
 | **Containerization** | Docker (Alpine 3.24) | `Dockerfile`, `Start.ps1`, `start.sh` | Multi-stage build with multi-process orchestration (`uvicorn` backend daemon + `pwsh Start.ps1` scheduler/worker). |
 | **Media Server Plugins** | C# (.NET 8/9/10) | `modules/Posterizarr.Plugin*/` | Native plugins for Jellyfin (10.11.x on .NET 9, 12.0.x on .NET 10) and Emby (on .NET 8) providing automated event notifications and metadata sync. |
 
@@ -108,6 +108,8 @@ PosterizarrUI_dev/
 │   │   ├── server_libraries_database.py # Caching layer for media server library structures
 │   │   ├── studio_logos.py    # Scraper, local cache, and delivery engine for production company logos
 │   │   ├── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
+│   │   ├── release_notes.py       # Cached GitHub Releases fetcher & post-update "What's New" evaluator
+│   │   ├── support_bundle.py      # Diagnostic support ZIP builder with credential & IP redaction
 │   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
 │   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
 │   └── frontend/              # Vite + React 18 single-page application
@@ -116,8 +118,8 @@ PosterizarrUI_dev/
 │       │   ├── index.css      # Tailwind CSS directives and custom UI animations
 │       │   ├── components/    # 50+ React components (Dashboard, AssetOverview, CollectionLiveEditor, etc.)
 │       │   ├── context/       # AuthContext, ThemeContext, SidebarContext, ToastContext, DashboardLoadingContext
-│       │   ├── locales/       # Translation dictionaries (en, de, fr, es, etc.)
-│       │   └── utils/         # fetchInterceptor.js (auth & headers), uiLogger.js
+│       │   ├── locales/       # Translation dictionaries (en, de, fr, it, pt)
+│       │   └── utils/         # fetchInterceptor.js (auth & headers), markdownParser.js, uiLogger.js
 │       └── package.json
 │
 └── docs/                      # Complete MkDocs documentation suite
@@ -230,16 +232,20 @@ pwsh ./Posterizarr.ps1 [-ModeSwitch] [Parameters]
 
 ## 6. Database Architecture & Schema Specifications
 
-Posterizarr maintains six dedicated SQLite3 databases located in `database/` (`/config/database/` in Docker):
+Posterizarr maintains specialized SQLite3 databases located in `database/` (`/config/database/` in Docker). All non-secret databases are inspectable via the read-only **System Database Browser** in **Insights** (`config.db` is strictly excluded):
 
 ```text
 database/
-├── config.db              # Web UI settings, authentication, scheduler state, and onboarding
+├── config.db              # Web UI settings, authentication, scheduler state, and onboarding (excluded from DB Browser)
 ├── imagechoices.db        # Artwork metadata, chosen provider URLs, fallback tags, Action Center items
 ├── queue.db               # Background job execution queue and task statuses
-├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby section IDs)
+├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby/Silo section IDs)
 ├── media_export.db        # Media library exports and item metadata
-└── runtime_history.db     # Historical run metrics, processing durations, and asset counts
+├── runtime_stats.db       # Historical run metrics, processing durations, and asset counts
+├── overlay_cache.db       # Dynamic Overlays state, ratings cache, layer snapshots, and title-change baselines
+├── animetafill.db         # Anime episode Canon/Filler/Mixed classifications and manual overrides
+├── plex_push_cache.db     # Plex Collection Explorer & Plex Sync push state and hashes
+└── imdb_dataset.db        # Optional local IMDb title/episode/ratings index and manual episode mappings
 ```
 
 ### Key Schema Responsibilities:
@@ -250,11 +256,13 @@ database/
    - Manages asynchronous background runs (`Pending`, `Running`, `Completed`, `Failed`).
    - Prevents concurrent script conflicts by staging execution requests and tracking PID and execution timestamps.
 3. **`config.db`**:
-   - Stores WebUI persistent state, basic auth hashes, scheduler cron expressions, and the `onboarding_completed` flag.
+   - Stores WebUI persistent state, basic auth hashes, scheduler cron expressions, `last_seen_release_version`, and the `onboarding_completed` flag.
 4. **`server_libraries.db`**:
-   - Caches library names, types (`movie`, `show`), server UUIDs, and section keys from Plex, Jellyfin, and Emby to minimize external API roundtrips.
-5. **`runtime_history.db`**:
+   - Caches library names, types (`movie`, `show`), server UUIDs, and section keys from Plex, Jellyfin, Emby, and Silo to minimize external API roundtrips.
+5. **`runtime_stats.db`**:
    - Records execution history, run modes, worker counts, total assets created, processing durations, and error logs for display in `RuntimeHistory.jsx`.
+6. **`overlay_cache.db` & `animetafill.db` & `plex_push_cache.db` & `imdb_dataset.db`**:
+   - Store Dynamic Overlays sync fingerprints, multi-provider ratings cache (`media_ratings_cache`), deduplicated `overlay_layer_snapshots`, Asset Title Review baselines, AniMetaFill episode classifications, Plex collection/asset push diffs, and optional local IMDb datasets.
 
 ---
 
@@ -329,7 +337,7 @@ The frontend is a React 18 single-page application built with Vite and Tailwind 
 - `/logs`: Real-Time WebSocket Log Streamer (`LogViewer.jsx`)
 - `/how-it-works`: System Concept & Guide (`HowItWorks.jsx`)
 - `/auto-triggers`: Webhook & Automation Settings (`AutoTriggers.jsx`)
-- `/about`: System Info & Dependencies (`About.jsx`)
+- `/about`: About, Runtime Environment & Release Changelogs (`About.jsx`, `ReleasesSection.jsx`, `WhatsNewModal.jsx`, `MarkdownRenderer.jsx`)
 
 ### React Context Providers:
 - **`AuthProvider`**: Manages session state, basic authentication credentials, and API tokens.
@@ -353,9 +361,12 @@ The backend (`webui/backend/main.py`) provides over 170 REST and WebSocket endpo
 ### Key API Endpoint Groups:
 1. **System & Health**:
    - `GET /api`: Health check.
-   - `GET /api/system-info`: Hardware, memory, CPU, and Docker status.
+   - `GET /api/system-info`: Hardware, memory, CPU, runtime stack, and Docker status.
    - `GET /api/version`: Local vs remote version comparison.
-   - `GET /api/releases`: GitHub changelog notes.
+   - `GET /api/releases`: Cached GitHub release metadata and Markdown changelogs (`?refresh=true` bypasses cache).
+   - `GET /api/whats-new` & `POST /api/whats-new/dismiss`: Post-update release notes eligibility and dismissal state.
+   - `GET /api/dynamic-overlays/database-stats` & `GET /api/dynamic-overlays/database-entries`: Read-only System Database Browser (`config.db` excluded).
+   - `GET /api/provider/v1/asset/{media_type}/{item_id}` & `GET /api/provider/v1/ratings/{media_type}/{item_id}`: Opt-in API-key-protected External Provider APIs.
 2. **Configuration**:
    - `GET /api/config`: Fetches complete configuration (supports categorized and flat views).
    - `POST /api/config`: Saves updated configuration after validation.

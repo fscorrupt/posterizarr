@@ -86,11 +86,13 @@ before starting.
 
 ### Reset Posters
 
-Enter the exact library name in the **Reset Posters** section and choose
-**Reset**. Posterizarr asks for confirmation before replacing selected posters
-with the media server's available default artwork. This changes live server
-artwork and cannot be undone by Posterizarr; make a backup first if you may want
-to restore the current images.
+Choose **Reset Posters** to open the library selection modal (filtered to
+supported movie and TV libraries, with a refresh button to reload the cached
+server list). Select the target library and choose **Reset**; Posterizarr asks
+for confirmation before replacing selected posters with the media server's
+available default artwork. This changes live server artwork and cannot be undone
+by Posterizarr; make a backup first if you may want to restore the current
+images.
 
 ## Create one asset manually {#manual-mode}
 

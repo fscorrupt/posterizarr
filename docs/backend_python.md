@@ -33,6 +33,7 @@ The backend handles the following core responsibilities:
 
 - **`database.py`**: The core SQLAlchemy/SQLite configuration file that establishes connections and base models.
 - **`media_export_database.py`**: Manages the database schema and operations for media exported from Plex/Jellyfin/Emby.
+- **`overlay_cache.py`**: Manages `overlay_cache.db` (Dynamic Overlays fingerprints, media ratings metadata, layer snapshots, and title-change tracking) and implements the read-only multi-database inspector backing `/api/dynamic-overlays/database-stats` and `/api/dynamic-overlays/database-entries` (strictly excluding `config.db`).
 - **`runtime_database.py`**: Manages the schema for runtime statistics (successes, failures, durations).
 - **`server_libraries_database.py`**: Caches the library configurations of connected media servers.
 
@@ -50,6 +51,7 @@ The backend handles the following core responsibilities:
 - **`overlay_generator.py`**: A backend helper script used for generating quick preview overlays for the UI without invoking the full PowerShell stack.
 - **`studio_logos.py`**: Handles studio, network, and production company logo resolution, local caching, and transparent PNG delivery for collection designs and media badges.
 - **`migrate_runtime_data.py`**: A migration script used to upgrade database schemas or runtime data formats between versions.
+- **`release_notes.py`**: TTL-cached GitHub Releases fetcher, strict stable SemVer parser, and post-update "What's New" evaluator backing `/api/releases`, `/api/whats-new`, and `/api/whats-new/dismiss`.
 - **`support_bundle.py`**: Builds the diagnostic ZIP requested by `POST /api/admin/support-zip`, independently of application startup tasks.
 - **`animetafill_service.py`**: Integration service bridging AniMetaFill into Posterizarr's backend. Coordinates anime canon/filler classification tasks, library scans, and triggers overlay generation.
 - **`animetafill_core/`**: Core engine for anime episode classification:

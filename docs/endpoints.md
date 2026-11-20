@@ -252,6 +252,13 @@ ID targets are fetched directly, without listing unrelated libraries. Missing ta
 
 A show target also evaluates its season posters and titlecards. Tautulli and Arr notifications submit the movie/show IDs and libraries processed by their trigger run. Requests received while a sync is running are rejected, not queued.
 
+### System Database Browser
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/dynamic-overlays/database-stats` | Returns file/WAL sizes, table row counts, and status/type/category/mode breakdowns across browsable SQLite databases in `database/` (`overlay_cache.db`, `animetafill.db`, `imagechoices.db`, `runtime_stats.db`, `media_export.db`, `server_libraries.db`, `plex_push_cache.db`, `queue.db`, `imdb_dataset.db`, and other non-excluded `*.db` files). `config.db` is strictly excluded. |
+| `GET /api/dynamic-overlays/database-entries` | Read-only (`?mode=ro`) paginated SQLite table browser with a 5-second query deadline. Accepts `database` (default `overlay_cache.db`), `table` (default `dynamic_overlay_cache`), `page` (`>= 1`, default `1`), `limit` (`1–200`, default `50`), `search` (max `300` chars), `sort_by` (optional column), and `descending` (`true`/`false`, default `true`). Rejects path traversal, `config.db`, unknown tables, and invalid sort columns with HTTP `400`, and returns `{ "success": false, "error": "..." }` on query timeout. |
+
 ## ⚙️ System
 
 ### `/api`
@@ -415,7 +422,9 @@ Details regarding the internal scheduler, next run times, and active jobs.
     ```
 
 ### `/api/runtime-history`
-Returns a full history of previous script executions.
+Returns a paginated history of previous script executions.
+
+- **Query parameters:** `limit` (`1`–`50000`, default `50`), `offset` (`>= 0`, default `0`), `mode` (optional run mode filter), and `days` (`1`–`9999`, optional last-N-days filter).
 
 ??? example "View Response"
     ```json
@@ -442,7 +451,8 @@ Returns a full history of previous script executions.
       "total": 327,
       "limit": 50,
       "offset": 0,
-      "mode_filter": null
+      "mode_filter": null,
+      "days": null
     }
     ```
 
@@ -903,7 +913,7 @@ Endpoint for Tautulli notifications. Maps incoming JSON keys directly to script 
     ```
 ---
 
-## ?? Authentication & Onboarding
+## 🔐 Authentication & Onboarding
 
 ### `/api/onboarding/complete`
 Submits data or triggers an action at `/api/onboarding/complete`.
@@ -958,7 +968,7 @@ Deletes a resource at `/api/auth/keys/{key_id}`.
 
 ---
 
-## ?? Connection Validation
+## ✅ Connection Validation
 
 ### `/api/validate/plex`
 Submits data or triggers an action at `/api/validate/plex`.
@@ -1084,7 +1094,7 @@ integration status endpoint (`GET /api/v1/posterizarr/status`).
 
 ---
 
-## ?? Library & Server Management
+## 📚 Library & Server Management
 
 ### `/api/plex/action`
 Submits data or triggers an action at `/api/plex/action`.
@@ -1169,7 +1179,7 @@ Submits data or triggers an action at `/api/libraries/plex/items`.
 
 ---
 
-## ?? Script Execution & Control
+## ▶️ Script Execution & Control
 
 ### `/api/run/{mode}`
 Submits data or triggers an action at `/api/run/{mode}`.
@@ -1264,7 +1274,7 @@ Submits data or triggers an action at `/api/force-kill`.
 
 ---
 
-## ??? Asset Galleries & Image Choices
+## 🖼️ Asset Galleries & Image Choices
 
 ### `/api/assets/skip`
 Adds the `skip_posterizarr` tag/label to the specified asset in the active media server and removes it from the Action Center.
@@ -1595,7 +1605,7 @@ Submits data or triggers an action at `/api/imagechoices/import`.
 
 ---
 
-## ?? Assets Replacement & Operations
+## 🔄 Assets Replacement & Operations
 
 ### `/api/assets/fetch-replacements`
 Submits data or triggers an action at `/api/assets/fetch-replacements`.
@@ -1670,7 +1680,7 @@ Retrieves data from `/api/cache/status`.
 
 ---
 
-## ?? Scheduler & Queue Management
+## ⏰ Scheduler & Queue Management
 
 ### `/api/scheduler/config`
 Retrieves data from `/api/scheduler/config`.
@@ -1815,7 +1825,7 @@ Submits data or triggers an action at `/api/queue/delete`.
 
 ---
 
-## ??? Fonts & Overlay Creator
+## 🔤 Fonts & Overlay Creator
 
 ### `/api/overlayfiles/upload`
 Submits data or triggers an action at `/api/overlayfiles/upload`.
@@ -1920,7 +1930,7 @@ Submits data or triggers an action at `/api/overlay-creator/save`.
 
 ---
 
-## ?? Runtime History & Exports Additional
+## 📈 Runtime History & Exports Additional
 
 ### `/api/runtime-stats`
 Retrieves data from `/api/runtime-stats`.
@@ -2055,7 +2065,7 @@ Submits data or triggers an action at `/api/other-media-export/import`.
 
 ---
 
-## ?? Additional Configuration & Database
+## 🗄️ Additional Configuration & Database
 
 ### `/api/config/backup`
 Submits data or triggers an action at `/api/config/backup`.
@@ -2180,7 +2190,7 @@ Submits data or triggers an action at `/api/webui-settings`.
 
 ---
 
-## ?? Logs, Diagnostics & Misc
+## 📋 Logs, Diagnostics & Misc
 
 ### `/api/logs/ui`
 Submits data or triggers an action at `/api/logs/ui`.

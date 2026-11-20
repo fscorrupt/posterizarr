@@ -55,14 +55,14 @@ to get through setup; begin with one test library.
 The wizard is a nine-step modal, not a sidebar page. It opens automatically
 when Posterizarr has not recorded setup as complete. **Finish Setup** saves its
 configuration; before then, form edits remain in the wizard. Continue is gated
-on a validated server/library selection and on entering all three provider
-keys.
+on a validated server/library selection and on entering at least one primary
+metadata provider key (TMDb or TheTVDB).
 
 | Step | What it configures |
 |---|---|
 | Welcome | Introduces the guided setup. |
 | Media Server | Choose Plex, Jellyfin, Emby, or experimental <img src="images/silo-logo.png" alt="Silo" width="18"> Silo; enter credentials, test the connection, and select libraries. Plex users can optionally configure a secondary Jellyfin or Emby sync. |
-| API Keys | Enter a TMDb Read Access Token, TheTVDB Project API key, and Fanart.tv personal key. These three fields are required to continue in this wizard; the Test buttons are available for each provider. |
+| API Keys | Enter a TMDb Read Access Token or a TheTVDB Project API key (at least one is required to continue; you can enter both and choose a preferred primary provider). A Fanart.tv personal key is optional. Test buttons are available for each provider, and provider priority is configured automatically from the entered credentials. |
 | Automation | Choose whether to clean unused assets, skip Japanese/Chinese titles, and skip TBA title cards. Leave cleanup off until library scope and exclusions are correct. |
 | Performance | Set Image Processing, output quality, retained logs, and parallel jobs. Lower parallel jobs on memory-limited NAS devices. |
 | Notifications | Choose none, Discord, or Apprise; Uptime Kuma can be configured separately. |

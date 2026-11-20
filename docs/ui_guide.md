@@ -21,9 +21,9 @@ or confirm an upload or cleanup action.
 | **Auto Triggers** | Configure Tautulli, Sonarr, and Radarr events. Native Webhook setup is recommended; Docker and Windows instructions are retained for legacy arrangements. |
 | **Builders** | Expand for Collection Builder, Logo Builder, Overlay Builder, Dynamic Overlays, and Blueprint Builder. |
 | **Configuration** | Search and edit System, Providers, Media Servers, Global Visuals, Posters, Seasons, Backgrounds, Title Cards, and Collections settings. |
-| **Insights** | Explore run history, filters, charts, runtime and asset statistics, exports, and optional demo data. |
+| **Insights** | Explore run history with date-range filters (`24H`–`ALL`), aspect-aware asset thumbnails, charts, runtime and asset statistics, exports, **System Databases** + read-only **Database Records** browsing, and optional demo data. |
 | **Logs** | Search, filter, download, and gather support logs. |
-| **How It Works / About** | Read the in-app workflow overview and application/build information. |
+| **How It Works / About** | Read the in-app workflow overview, inspect live runtime environment details, copy sanitized System Info, browse inline GitHub release changelogs, and reopen the post-update **What's New** dialog. |
 
 The general first-run wizard appears automatically when setup is incomplete; it
 is not a sidebar destination. Its steps and save behavior are covered in
@@ -185,19 +185,24 @@ and response formats are in the [API reference](endpoints.md).
 ![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
 
 *Choose **Sync & Maintenance** for the separate **Synchronize**, **Media Changes**,
-**Episode Title Review**, **Overlay Cache**, and **Ratings Cache** views. The
+**Asset Title Review**, **Overlay Cache**, and **Ratings Cache** views. The
 screenshot shows Synchronize with Dry Run on and illustrative library counts.*
 
-![Episode Title Review with historical title differences and eligibility](images/45-episode-title-review.png)
+![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)
 
-*Episode Title Review compares existing titlecards with current episode titles
-and filters by eligibility, blocking reason, or historical/future status. The
-initial scan does not recreate artwork. These are sample review records; queue
-and Fast Normal Run actions require confirmation.*
+*Asset Title Review compares existing text-enabled movies, shows, seasons, and
+titlecards with current media-server titles and filters by eligibility, blocking
+reason, historical/future status, or media type (`All Types`, `Episodes`,
+`Seasons`, `Movies`, `Shows`). Supports bulk **Hide selected**, queued
+rebuilds, and confirmed Fast Normal Run actions without recreating artwork on
+the initial scan.*
 
-![AniMetaFill settings](images/23-animetafill.png)
+![AniMetaFill titlecard badge styling, 16:9 stage preview, and Anime Classification Database](images/ui-animetafill.png)
 
-*Choose **AniMetaFill** under Dynamic Overlays to configure anime discovery and local metadata workflows.*
+*Choose **AniMetaFill** under Dynamic Overlays to configure Canon, Filler, and
+Mixed episode scanning, preview 16:9 titlecard badges live, toggle overlay
+categories, set per-show thresholds, and manage manual overrides in the Anime
+Classification Database.*
 
 Start with **Dry Run** and a narrow library/item scope. The [Dynamic Overlays guide](dynamic_overlays.md)
 documents rating sources, local IMDb datasets and episode mappings, bundles,
@@ -215,9 +220,13 @@ logo workflows](modes.md#logo-updater), and the [capabilities guide](capabilitie
 
 *Choose **Auto Triggers** to configure Tautulli, Sonarr, or Radarr; the native webhook method is recommended.*
 
-![Insights analytics](images/12-insights.png)
+![Insights runtime analytics and asset creation velocity](images/ui-insights.png)
 
-*Choose **Insights** for execution history and analytics. Demo mode is simulated data.*
+*Choose **Insights** for execution history and analytics with date-range filters (`24H`, `7D`, `30D`, `90D`, `1Y`, `ALL`), aspect-aware asset thumbnails (`16:9` vs `2:3`), and interactive Sample Telemetry Preview (demo data).*
+
+![Read-only System Database Browser across Posterizarr SQLite databases](images/ui-database-browser.png)
+
+*Scroll to **System Databases** and **Database Records** in **Insights** for a read-only, searchable, sortable, paginated browser across Posterizarr's SQLite databases (`overlay_cache.db`, `animetafill.db`, `imagechoices.db`, `runtime_stats.db`, `media_export.db`, `server_libraries.db`, `plex_push_cache.db`, `queue.db`, and `imdb_dataset.db`; `config.db` is excluded for security).*
 
 ![Logs search and filters](images/13-logs.png)
 
@@ -236,5 +245,5 @@ line workflows.
 
 ![About Posterizarr version and release information](images/33-about.png)
 
-*Choose **About** in the sidebar for version, update, and release information.*
+*Choose **About** in the sidebar for live **System & Runtime Environment** details (version, Docker/OS environment, data directory, time zone, Python/PowerShell/ImageMagick stack, CPU/memory), one-click sanitized **Copy System Info**, inline expandable **Changelog & Release History**, and the **What's New** button to reopen the one-time post-update release notes dialog shown after upgrading to a new stable release.*
 

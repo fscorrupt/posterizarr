@@ -292,13 +292,9 @@ Downloads can exceed 1 GB compressed; allow several GB of free disk space and
 time for the initial indexing, especially on a NAS. Files are streamed to disk
 and imported in bounded batches, not loaded entirely into RAM.
 
-![Dynamic Overlays Ratings Cache view](images/47-overlay-ratings-cache.png)
+![Ratings Cache & Refresh with Local IMDb Dataset and provider/status filters](images/ui-ratings-cache-imdb.png)
 
-*Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open Local IMDb Dataset and the ratings cache.*
-
-*Development-build screenshot with illustrative cache counts. The local IMDb
-dataset controls are inside **Browse Ratings**, not on this overview. The counts
-shown are example data, not download requirements or a performance benchmark.*
+*Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open **Ratings Cache & Refresh** for Local IMDb Dataset controls, automatic refresh scheduling, and provider/status filters.*
 
 The index and explicit episode mappings are stored in
 `database/imdb_dataset.db` under the normal application data directory. Only
@@ -808,11 +804,11 @@ The explicit override is retained in the existing queue if the job is resumed.
 After updating from an earlier version, run **Compare titles** once to refresh
 source eligibility for already cached review entries.
 
-![Asset Title Review with search and status, reason, and review-type filters](images/45-episode-title-review.png)
+![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)
 
-*Illustrative review records show historical candidates and a
-media-server-source block. Artwork thumbnails are existing published showcase
-examples, not results from a live title scan.*
+*Asset Title Review compares existing text-enabled artwork against current
+media-server titles across episodes, seasons, movies, and shows, with filters
+for eligibility, blocking reason, review type, and media type.*
 
 Title comparisons ignore uppercase/lowercase differences, including accented
 characters. Existing case-only candidates are hidden and removed by the next
