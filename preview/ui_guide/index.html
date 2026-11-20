@@ -1801,7 +1801,7 @@ or confirm an upload or cleanup action.</p>
 </tr>
 <tr>
 <td><strong>Insights</strong></td>
-<td>Explore run history, filters, charts, runtime and asset statistics, exports, and optional demo data.</td>
+<td>Explore run history with date-range filters (<code>24H</code>–<code>ALL</code>), aspect-aware asset thumbnails, charts, runtime and asset statistics, exports, <strong>System Databases</strong> + read-only <strong>Database Records</strong> browsing, and optional demo data.</td>
 </tr>
 <tr>
 <td><strong>Logs</strong></td>
@@ -1809,7 +1809,7 @@ or confirm an upload or cleanup action.</p>
 </tr>
 <tr>
 <td><strong>How It Works / About</strong></td>
-<td>Read the in-app workflow overview and application/build information.</td>
+<td>Read the in-app workflow overview, inspect live runtime environment details, copy sanitized System Info, browse inline GitHub release changelogs, and reopen the post-update <strong>What's New</strong> dialog.</td>
 </tr>
 </tbody>
 </table>
@@ -1902,15 +1902,20 @@ and response formats are in the <a href="../endpoints/">API reference</a>.</p>
 <p><em>Choose <strong>Live Preview</strong> to inspect sample artwork and adjust badge placement. Previewing does not upload artwork.</em></p>
 <p><img alt="Dynamic Overlays Synchronize view with separate maintenance tabs" src="../images/22-overlay-sync-cache.png" /></p>
 <p><em>Choose <strong>Sync &amp; Maintenance</strong> for the separate <strong>Synchronize</strong>, <strong>Media Changes</strong>,
-<strong>Episode Title Review</strong>, <strong>Overlay Cache</strong>, and <strong>Ratings Cache</strong> views. The
+<strong>Asset Title Review</strong>, <strong>Overlay Cache</strong>, and <strong>Ratings Cache</strong> views. The
 screenshot shows Synchronize with Dry Run on and illustrative library counts.</em></p>
-<p><img alt="Episode Title Review with historical title differences and eligibility" src="../images/45-episode-title-review.png" /></p>
-<p><em>Episode Title Review compares existing titlecards with current episode titles
-and filters by eligibility, blocking reason, or historical/future status. The
-initial scan does not recreate artwork. These are sample review records; queue
-and Fast Normal Run actions require confirmation.</em></p>
-<p><img alt="AniMetaFill settings" src="../images/23-animetafill.png" /></p>
-<p><em>Choose <strong>AniMetaFill</strong> under Dynamic Overlays to configure anime discovery and local metadata workflows.</em></p>
+<p><img alt="Asset Title Review comparing current media-server titles against existing artwork" src="../images/ui-asset-title-review.png" /></p>
+<p><em>Asset Title Review compares existing text-enabled movies, shows, seasons, and
+titlecards with current media-server titles and filters by eligibility, blocking
+reason, historical/future status, or media type (<code>All Types</code>, <code>Episodes</code>,
+<code>Seasons</code>, <code>Movies</code>, <code>Shows</code>). Supports bulk <strong>Hide selected</strong>, queued
+rebuilds, and confirmed Fast Normal Run actions without recreating artwork on
+the initial scan.</em></p>
+<p><img alt="AniMetaFill titlecard badge styling, 16:9 stage preview, and Anime Classification Database" src="../images/ui-animetafill.png" /></p>
+<p><em>Choose <strong>AniMetaFill</strong> under Dynamic Overlays to configure Canon, Filler, and
+Mixed episode scanning, preview 16:9 titlecard badges live, toggle overlay
+categories, set per-show thresholds, and manage manual overrides in the Anime
+Classification Database.</em></p>
 <p>Start with <strong>Dry Run</strong> and a narrow library/item scope. The <a href="../dynamic_overlays/">Dynamic Overlays guide</a>
 documents rating sources, local IMDb datasets and episode mappings, bundles,
 cache refresh, retry behavior, and Kometa compatibility limits. Other builders
@@ -1921,8 +1926,10 @@ logo workflows</a>, and the <a href="../capabilities/">capabilities guide</a>.</
 <p><em>Choose <strong>Scheduler</strong> to create, enable, or run scheduled tasks. In Docker, disable the container timer with <code>RUN_TIME=disabled</code> before using this scheduler.</em></p>
 <p><img alt="Auto Triggers setup" src="../images/05-auto-triggers.png" /></p>
 <p><em>Choose <strong>Auto Triggers</strong> to configure Tautulli, Sonarr, or Radarr; the native webhook method is recommended.</em></p>
-<p><img alt="Insights analytics" src="../images/12-insights.png" /></p>
-<p><em>Choose <strong>Insights</strong> for execution history and analytics. Demo mode is simulated data.</em></p>
+<p><img alt="Insights runtime analytics and asset creation velocity" src="../images/ui-insights.png" /></p>
+<p><em>Choose <strong>Insights</strong> for execution history and analytics with date-range filters (<code>24H</code>, <code>7D</code>, <code>30D</code>, <code>90D</code>, <code>1Y</code>, <code>ALL</code>), aspect-aware asset thumbnails (<code>16:9</code> vs <code>2:3</code>), and interactive Sample Telemetry Preview (demo data).</em></p>
+<p><img alt="Read-only System Database Browser across Posterizarr SQLite databases" src="../images/ui-database-browser.png" /></p>
+<p><em>Scroll to <strong>System Databases</strong> and <strong>Database Records</strong> in <strong>Insights</strong> for a read-only, searchable, sortable, paginated browser across Posterizarr's SQLite databases (<code>overlay_cache.db</code>, <code>animetafill.db</code>, <code>imagechoices.db</code>, <code>runtime_stats.db</code>, <code>media_export.db</code>, <code>server_libraries.db</code>, <code>plex_push_cache.db</code>, <code>queue.db</code>, and <code>imdb_dataset.db</code>; <code>config.db</code> is excluded for security).</em></p>
 <p><img alt="Logs search and filters" src="../images/13-logs.png" /></p>
 <p><em>Choose <strong>Logs</strong> to find errors, download logs, or gather support information.</em></p>
 <p>Schedule only after a small run has produced the expected result. The
@@ -1933,7 +1940,7 @@ line workflows.</p>
 <p><img alt="How Posterizarr Works workflow page" src="../images/32-how-it-works.png" /></p>
 <p><em>Choose <strong>How It Works</strong> in the sidebar for the in-app workflow overview.</em></p>
 <p><img alt="About Posterizarr version and release information" src="../images/33-about.png" /></p>
-<p><em>Choose <strong>About</strong> in the sidebar for version, update, and release information.</em></p>
+<p><em>Choose <strong>About</strong> in the sidebar for live <strong>System &amp; Runtime Environment</strong> details (version, Docker/OS environment, data directory, time zone, Python/PowerShell/ImageMagick stack, CPU/memory), one-click sanitized <strong>Copy System Info</strong>, inline expandable <strong>Changelog &amp; Release History</strong>, and the <strong>What's New</strong> button to reopen the one-time post-update release notes dialog shown after upgrading to a new stable release.</em></p>
 
 
 

@@ -1779,8 +1779,8 @@ to get through setup; begin with one test library.</p>
 <p>The wizard is a nine-step modal, not a sidebar page. It opens automatically
 when Posterizarr has not recorded setup as complete. <strong>Finish Setup</strong> saves its
 configuration; before then, form edits remain in the wizard. Continue is gated
-on a validated server/library selection and on entering all three provider
-keys.</p>
+on a validated server/library selection and on entering at least one primary
+metadata provider key (TMDb or TheTVDB).</p>
 <table>
 <thead>
 <tr>
@@ -1799,7 +1799,7 @@ keys.</p>
 </tr>
 <tr>
 <td>API Keys</td>
-<td>Enter a TMDb Read Access Token, TheTVDB Project API key, and Fanart.tv personal key. These three fields are required to continue in this wizard; the Test buttons are available for each provider.</td>
+<td>Enter a TMDb Read Access Token or a TheTVDB Project API key (at least one is required to continue; you can enter both and choose a preferred primary provider). A Fanart.tv personal key is optional. Test buttons are available for each provider, and provider priority is configured automatically from the entered credentials.</td>
 </tr>
 <tr>
 <td>Automation</td>

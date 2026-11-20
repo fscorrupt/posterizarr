@@ -1793,8 +1793,8 @@ Posterizarr can fill missing IMDb ratings from that index, match episodes
 conservatively, and let you correct episode IDs or season numbering locally.
 Successful local lookups avoid per-item provider requests; other sources and
 unresolved items can still need external providers.</p>
-<p><img alt="Dynamic Overlays Ratings Cache view" src="../images/47-overlay-ratings-cache.png" /></p>
-<p><em>Navigate to <strong>Builders &gt; Dynamic Overlays &gt; Sync &amp; Maintenance &gt; Ratings Cache</strong>, then choose <strong>Browse Ratings</strong> to open the local IMDb dataset and ratings cache. The screenshot uses illustrative cache counts.</em></p>
+<p><img alt="Ratings Cache &amp; Refresh with Local IMDb Dataset and provider/status filters" src="../images/ui-ratings-cache-imdb.png" /></p>
+<p><em>Navigate to <strong>Builders &gt; Dynamic Overlays &gt; Sync &amp; Maintenance &gt; Ratings Cache</strong>, then choose <strong>Browse Ratings</strong> to open <strong>Ratings Cache &amp; Refresh</strong>, manage the local IMDb dataset, and filter cached provider scores.</em></p>
 <p><a href="../dynamic_overlays/#local-imdb-dataset">Set up the local IMDb dataset</a>.
 The datasets are optional, require disk space for indexing, and are licensed by
 IMDb for non-commercial use only.</p>
@@ -1835,11 +1835,16 @@ server plugins are optional.</p>
 <li><strong>Reuse local work:</strong> manual asset preference, Season/Episode templates, and
     existing assets instead of downloading a new source.</li>
 <li><strong>Protect and maintain libraries:</strong> exclusions, <code>skip_posterizarr</code> tags,
-    change detection, backups/restores, and optional cleanup of obsolete assets.</li>
-<li><strong>Review and diagnose:</strong> Action Center, searchable logs, CSV exports, and
-    notifications through Discord, Apprise, or Uptime Kuma.</li>
-<li><strong>Automate and integrate:</strong> schedules, Tautulli and Sonarr/Radarr webhooks,
-    Plex sync, and optional Agregarr, Jellyfin/Emby plugins, or Kometa workflows.</li>
+    change detection, <strong>Asset Title Review</strong> for renamed titles, backups/restores,
+    and optional cleanup of obsolete assets (including scheduled <strong><a href="../plex_image_cleanup/">Plex Image Cleanup</a></strong>).</li>
+<li><strong>Review and diagnose:</strong> Action Center, Insights analytics with a read-only
+    <strong>System Database Browser</strong>, searchable logs, sanitized one-click
+    <strong>Support Bundles</strong>, redesigned <strong>About</strong> page with inline changelogs and
+    post-update <strong>"What's New"</strong> notes, and notifications through Discord, Apprise,
+    or Uptime Kuma.</li>
+<li><strong>Automate and integrate:</strong> schedules, <strong>AniMetaFill</strong> anime classification,
+    Tautulli and Sonarr/Radarr webhooks, Plex sync, opt-in <strong>External Provider APIs</strong>,
+    and optional Agregarr, Jellyfin/Emby plugins, or Kometa workflows.</li>
 </ul>
 <h2 id="full-feature-reference">Full feature reference</h2>
 <details>
@@ -1958,7 +1963,7 @@ server plugins are optional.</p>
 </tr>
 <tr>
 <td><strong>Overlay Reset</strong></td>
-<td>- Reset all posters in a library of your choice to the Plex default.</td>
+<td>- Select a supported movie or TV library in the <strong>Reset Posters</strong> modal to reset all posters in that library to the media server default.</td>
 </tr>
 <tr>
 <td><strong>Plex Collection Diff &amp; Sync</strong></td>
@@ -1969,8 +1974,28 @@ server plugins are optional.</p>
 <td>- Lightweight, pure Python background sync engine for Plex.<br>- Selectively push artwork (collections, posters, seasons, title cards, backgrounds) directly to Plex on a schedule without running full image generation scripts.<br>- Built-in SQLite change tracking prevents duplicate uploads.</td>
 </tr>
 <tr>
-<td><strong>Optional External Asset Compatibility</strong></td>
-<td>- Existing external tools can consume the local library/title artwork layout.<br>- <strong><a href="../kometaintegration/">Optional Kometa compatibility</a></strong> remains documented for users who choose to keep a separate Kometa installation; it is not required by the native overlay engine.</td>
+<td><strong>AniMetaFill</strong></td>
+<td>- Scans anime episodes for <strong>Canon</strong>, <strong>Filler</strong>, and <strong>Mixed</strong> status with provider matching and manual overrides.<br>- Supports toggleable overlay categories, per-show thresholds, and optional titlecard badges rendered through Dynamic Overlays.</td>
+</tr>
+<tr>
+<td><strong>Asset Title Review</strong></td>
+<td>- Compares existing text-enabled movies, shows, seasons, and episode titlecards against current media-server titles.<br>- Supports bulk dismissal (<strong>Hide selected</strong>), queued rebuilds, <strong>Fast: Normal Run</strong>, and optional automatic regeneration when titles change.</td>
+</tr>
+<tr>
+<td><strong>Plex Image Cleanup</strong></td>
+<td>- Scans Plex metadata directories on a schedule or on demand to locate old, unselected uploaded artwork.<br>- Starts in <strong>Read Only (Report)</strong> mode by default with an optional <strong>Quarantine</strong> gallery for review before deletion. See the <strong><a href="../plex_image_cleanup/">Plex Image Cleanup Guide</a></strong>.</td>
+</tr>
+<tr>
+<td><strong>Insights &amp; System Database Browser</strong></td>
+<td>- Date-filtered runtime history (<code>24H</code>–<code>ALL</code>), aspect-aware asset thumbnails, and Sample Telemetry Preview.<br>- Includes a read-only, searchable, sortable <strong>System Database Browser</strong> covering Posterizarr SQLite databases (excluding <code>config.db</code> for security).</td>
+</tr>
+<tr>
+<td><strong>External Provider APIs</strong></td>
+<td>- Opt-in API-key-protected endpoints allowing external tools to fetch or generate isolated artwork (<code>/api/provider/v1/asset</code>) or query cached ratings (<code>/api/provider/v1/ratings</code>). See the <strong><a href="../endpoints/#external-provider-api">External Provider API Docs</a></strong>.</td>
+</tr>
+<tr>
+<td><strong>About &amp; Post-Update Release Notes</strong></td>
+<td>- Displays live runtime environment details, one-click sanitized <strong>Copy System Info</strong>, inline expandable GitHub release changelogs, and a one-time <strong>"What's New"</strong> dialog after updating to a new stable release.</td>
 </tr>
 <tr>
 <td><strong>Optional External Asset Compatibility</strong></td>

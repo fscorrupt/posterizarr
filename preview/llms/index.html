@@ -3126,7 +3126,7 @@ do not send it the Jellyfin/Emby parameter.</p>
 <td style="text-align: left;"><strong>Databases</strong></td>
 <td style="text-align: left;">SQLite3</td>
 <td style="text-align: left;"><code>database/*.db</code></td>
-<td style="text-align: left;">Six specialized databases: <code>imagechoices.db</code>, <code>config.db</code>, <code>queue.db</code>, <code>server_libraries.db</code>, <code>media_export.db</code>, <code>runtime_history.db</code>.</td>
+<td style="text-align: left;">Multi-database storage: <code>config.db</code>, <code>imagechoices.db</code>, <code>queue.db</code>, <code>server_libraries.db</code>, <code>media_export.db</code>, <code>runtime_stats.db</code>, <code>overlay_cache.db</code>, <code>animetafill.db</code>, <code>plex_push_cache.db</code>, and optional <code>imdb_dataset.db</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Containerization</strong></td>
@@ -3205,19 +3205,21 @@ do not send it the Jellyfin/Emby parameter.</p>
 <a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>│   │   ├── server_libraries_database.py # Caching layer for media server library structures
 <a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>│   │   ├── studio_logos.py    # Scraper, local cache, and delivery engine for production company logos
 <a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>│   │   ├── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
-<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>│   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
-<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>│   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
-<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>│   └── frontend/              # Vite + React 18 single-page application
-<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>│       ├── src/
-<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>│       │   ├── App.jsx        # Root routing table, theme provider, and top-level modals
-<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>│       │   ├── index.css      # Tailwind CSS directives and custom UI animations
-<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>│       │   ├── components/    # 50+ React components (Dashboard, AssetOverview, CollectionLiveEditor, etc.)
-<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>│       │   ├── context/       # AuthContext, ThemeContext, SidebarContext, ToastContext, DashboardLoadingContext
-<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>│       │   ├── locales/       # Translation dictionaries (en, de, fr, es, etc.)
-<a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>│       │   └── utils/         # fetchInterceptor.js (auth &amp; headers), uiLogger.js
-<a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>│       └── package.json
-<a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>│
-<a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>└── docs/                      # Complete MkDocs documentation suite
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>│   │   ├── release_notes.py       # Cached GitHub Releases fetcher &amp; post-update "What's New" evaluator
+<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>│   │   ├── support_bundle.py      # Diagnostic support ZIP builder with credential &amp; IP redaction
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>│   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
+<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>│   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
+<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>│   └── frontend/              # Vite + React 18 single-page application
+<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>│       ├── src/
+<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>│       │   ├── App.jsx        # Root routing table, theme provider, and top-level modals
+<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>│       │   ├── index.css      # Tailwind CSS directives and custom UI animations
+<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>│       │   ├── components/    # 50+ React components (Dashboard, AssetOverview, CollectionLiveEditor, etc.)
+<a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>│       │   ├── context/       # AuthContext, ThemeContext, SidebarContext, ToastContext, DashboardLoadingContext
+<a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>│       │   ├── locales/       # Translation dictionaries (en, de, fr, it, pt)
+<a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>│       │   └── utils/         # fetchInterceptor.js (auth &amp; headers), markdownParser.js, uiLogger.js
+<a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>│       └── package.json
+<a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>│
+<a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>└── docs/                      # Complete MkDocs documentation suite
 </code></pre></div>
 <hr />
 <h2 id="4-runtime-container-lifecycle">4. Runtime &amp; Container Lifecycle</h2>
@@ -3329,14 +3331,18 @@ do not send it the Jellyfin/Emby parameter.</p>
 </ul>
 <hr />
 <h2 id="6-database-architecture-schema-specifications">6. Database Architecture &amp; Schema Specifications</h2>
-<p>Posterizarr maintains six dedicated SQLite3 databases located in <code>database/</code> (<code>/config/database/</code> in Docker):</p>
+<p>Posterizarr maintains specialized SQLite3 databases located in <code>database/</code> (<code>/config/database/</code> in Docker). All non-secret databases are inspectable via the read-only <strong>System Database Browser</strong> in <strong>Insights</strong> (<code>config.db</code> is strictly excluded):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>database/
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── config.db              # Web UI settings, authentication, scheduler state, and onboarding
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── config.db              # Web UI settings, authentication, scheduler state, and onboarding (excluded from DB Browser)
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>├── imagechoices.db        # Artwork metadata, chosen provider URLs, fallback tags, Action Center items
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>├── queue.db               # Background job execution queue and task statuses
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby section IDs)
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby/Silo section IDs)
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>├── media_export.db        # Media library exports and item metadata
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>└── runtime_history.db     # Historical run metrics, processing durations, and asset counts
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>├── runtime_stats.db       # Historical run metrics, processing durations, and asset counts
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>├── overlay_cache.db       # Dynamic Overlays state, ratings cache, layer snapshots, and title-change baselines
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>├── animetafill.db         # Anime episode Canon/Filler/Mixed classifications and manual overrides
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>├── plex_push_cache.db     # Plex Collection Explorer &amp; Plex Sync push state and hashes
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>└── imdb_dataset.db        # Optional local IMDb title/episode/ratings index and manual episode mappings
 </code></pre></div>
 <h3 id="key-schema-responsibilities">Key Schema Responsibilities:</h3>
 <ol>
@@ -3347,11 +3353,13 @@ do not send it the Jellyfin/Emby parameter.</p>
 <li>Manages asynchronous background runs (<code>Pending</code>, <code>Running</code>, <code>Completed</code>, <code>Failed</code>).</li>
 <li>Prevents concurrent script conflicts by staging execution requests and tracking PID and execution timestamps.</li>
 <li><strong><code>config.db</code></strong>:</li>
-<li>Stores WebUI persistent state, basic auth hashes, scheduler cron expressions, and the <code>onboarding_completed</code> flag.</li>
+<li>Stores WebUI persistent state, basic auth hashes, scheduler cron expressions, <code>last_seen_release_version</code>, and the <code>onboarding_completed</code> flag.</li>
 <li><strong><code>server_libraries.db</code></strong>:</li>
-<li>Caches library names, types (<code>movie</code>, <code>show</code>), server UUIDs, and section keys from Plex, Jellyfin, and Emby to minimize external API roundtrips.</li>
-<li><strong><code>runtime_history.db</code></strong>:</li>
+<li>Caches library names, types (<code>movie</code>, <code>show</code>), server UUIDs, and section keys from Plex, Jellyfin, Emby, and Silo to minimize external API roundtrips.</li>
+<li><strong><code>runtime_stats.db</code></strong>:</li>
 <li>Records execution history, run modes, worker counts, total assets created, processing durations, and error logs for display in <code>RuntimeHistory.jsx</code>.</li>
+<li><strong><code>overlay_cache.db</code> &amp; <code>animetafill.db</code> &amp; <code>plex_push_cache.db</code> &amp; <code>imdb_dataset.db</code></strong>:</li>
+<li>Store Dynamic Overlays sync fingerprints, multi-provider ratings cache (<code>media_ratings_cache</code>), deduplicated <code>overlay_layer_snapshots</code>, Asset Title Review baselines, AniMetaFill episode classifications, Plex collection/asset push diffs, and optional local IMDb datasets.</li>
 </ol>
 <hr />
 <h2 id="7-imagemagick-composition-rendering-pipeline">7. ImageMagick Composition &amp; Rendering Pipeline</h2>
@@ -3421,7 +3429,7 @@ do not send it the Jellyfin/Emby parameter.</p>
 <li><code>/logs</code>: Real-Time WebSocket Log Streamer (<code>LogViewer.jsx</code>)</li>
 <li><code>/how-it-works</code>: System Concept &amp; Guide (<code>HowItWorks.jsx</code>)</li>
 <li><code>/auto-triggers</code>: Webhook &amp; Automation Settings (<code>AutoTriggers.jsx</code>)</li>
-<li><code>/about</code>: System Info &amp; Dependencies (<code>About.jsx</code>)</li>
+<li><code>/about</code>: About, Runtime Environment &amp; Release Changelogs (<code>About.jsx</code>, <code>ReleasesSection.jsx</code>, <code>WhatsNewModal.jsx</code>, <code>MarkdownRenderer.jsx</code>)</li>
 </ul>
 <h3 id="react-context-providers">React Context Providers:</h3>
 <ul>
@@ -3445,9 +3453,12 @@ do not send it the Jellyfin/Emby parameter.</p>
 <ol>
 <li><strong>System &amp; Health</strong>:</li>
 <li><code>GET /api</code>: Health check.</li>
-<li><code>GET /api/system-info</code>: Hardware, memory, CPU, and Docker status.</li>
+<li><code>GET /api/system-info</code>: Hardware, memory, CPU, runtime stack, and Docker status.</li>
 <li><code>GET /api/version</code>: Local vs remote version comparison.</li>
-<li><code>GET /api/releases</code>: GitHub changelog notes.</li>
+<li><code>GET /api/releases</code>: Cached GitHub release metadata and Markdown changelogs (<code>?refresh=true</code> bypasses cache).</li>
+<li><code>GET /api/whats-new</code> &amp; <code>POST /api/whats-new/dismiss</code>: Post-update release notes eligibility and dismissal state.</li>
+<li><code>GET /api/dynamic-overlays/database-stats</code> &amp; <code>GET /api/dynamic-overlays/database-entries</code>: Read-only System Database Browser (<code>config.db</code> excluded).</li>
+<li><code>GET /api/provider/v1/asset/{media_type}/{item_id}</code> &amp; <code>GET /api/provider/v1/ratings/{media_type}/{item_id}</code>: Opt-in API-key-protected External Provider APIs.</li>
 <li><strong>Configuration</strong>:</li>
 <li><code>GET /api/config</code>: Fetches complete configuration (supports categorized and flat views).</li>
 <li><code>POST /api/config</code>: Saves updated configuration after validation.</li>

@@ -1855,6 +1855,7 @@
 <ul>
 <li><strong><code>database.py</code></strong>: The core SQLAlchemy/SQLite configuration file that establishes connections and base models.</li>
 <li><strong><code>media_export_database.py</code></strong>: Manages the database schema and operations for media exported from Plex/Jellyfin/Emby.</li>
+<li><strong><code>overlay_cache.py</code></strong>: Manages <code>overlay_cache.db</code> (Dynamic Overlays fingerprints, media ratings metadata, layer snapshots, and title-change tracking) and implements the read-only multi-database inspector backing <code>/api/dynamic-overlays/database-stats</code> and <code>/api/dynamic-overlays/database-entries</code> (strictly excluding <code>config.db</code>).</li>
 <li><strong><code>runtime_database.py</code></strong>: Manages the schema for runtime statistics (successes, failures, durations).</li>
 <li><strong><code>server_libraries_database.py</code></strong>: Caches the library configurations of connected media servers.</li>
 </ul>
@@ -1872,6 +1873,7 @@
 <li><strong><code>overlay_generator.py</code></strong>: A backend helper script used for generating quick preview overlays for the UI without invoking the full PowerShell stack.</li>
 <li><strong><code>studio_logos.py</code></strong>: Handles studio, network, and production company logo resolution, local caching, and transparent PNG delivery for collection designs and media badges.</li>
 <li><strong><code>migrate_runtime_data.py</code></strong>: A migration script used to upgrade database schemas or runtime data formats between versions.</li>
+<li><strong><code>release_notes.py</code></strong>: TTL-cached GitHub Releases fetcher, strict stable SemVer parser, and post-update "What's New" evaluator backing <code>/api/releases</code>, <code>/api/whats-new</code>, and <code>/api/whats-new/dismiss</code>.</li>
 <li><strong><code>support_bundle.py</code></strong>: Builds the diagnostic ZIP requested by <code>POST /api/admin/support-zip</code>, independently of application startup tasks.</li>
 <li><strong><code>animetafill_service.py</code></strong>: Integration service bridging AniMetaFill into Posterizarr's backend. Coordinates anime canon/filler classification tasks, library scans, and triggers overlay generation.</li>
 <li><strong><code>animetafill_core/</code></strong>: Core engine for anime episode classification:</li>
