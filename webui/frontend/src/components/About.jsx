@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
 import {
   Info,
@@ -9,281 +9,519 @@ import {
   CheckCircle,
   RefreshCw,
   Loader2,
+  BookOpen,
+  Sparkles,
+  Copy,
+  Check,
+  Server,
+  Cpu,
+  Clock,
+  FolderOpen,
+  Terminal,
+  Shield,
+  Layers,
+  Code2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useToast } from "../context/ToastContext";
 import ReleasesSection from "./ReleasesSection";
+import WhatsNewModal from "./WhatsNewModal";
 
 const API_URL = "/api";
 const REPO_URL = "https://github.com/fscorrupt/posterizarr/releases/latest";
 
+function normalizeTag(version) {
+  if (!version || typeof version !== "string") return "";
+  return version.trim().replace(/^v/i, "").toLowerCase();
+}
+
 function About() {
   const { t } = useTranslation();
+  const { showSuccess, showError } = useToast();
   const [version, setVersion] = useState({
     local: null,
+    raw_local: null,
     remote: null,
     is_update_available: false,
     loading: true,
   });
+  const [systemInfo, setSystemInfo] = useState(null);
+  const [releases, setReleases] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [releaseRefreshTrigger, setReleaseRefreshTrigger] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [modalRelease, setModalRelease] = useState(null);
 
-  useEffect(() => {
-    fetchVersion();
-  }, []);
-
-  const fetchVersion = async () => {
+  const fetchAboutData = useCallback(async (forceReleaseRefresh = false) => {
     setRefreshing(true);
     try {
-      const response = await fetch(`${API_URL}/version`);
-      const data = await response.json();
+      const [verRes, sysRes] = await Promise.all([
+        fetch(`${API_URL}/version`).then((r) => r.json()).catch(() => null),
+        fetch(`${API_URL}/system-info`).then((r) => r.json()).catch(() => null),
+      ]);
 
-      setVersion({
-        local: data.local,
-        remote: data.remote,
-        is_update_available: data.is_update_available || false,
-        loading: false,
-      });
+      if (verRes) {
+        setVersion({
+          local: verRes.local || null,
+          raw_local: verRes.raw_local || verRes.local || null,
+          remote: verRes.remote || null,
+          is_update_available: Boolean(verRes.is_update_available),
+          loading: false,
+        });
+      } else {
+        setVersion((prev) => ({ ...prev, loading: false }));
+      }
+
+      if (sysRes) {
+        setSystemInfo(sysRes);
+      }
+
+      if (forceReleaseRefresh) {
+        setReleaseRefreshTrigger((c) => c + 1);
+      }
     } catch (error) {
-      console.error("Error fetching version:", error);
-      setVersion({
-        local: null,
-        remote: null,
-        is_update_available: false,
-        loading: false,
-      });
+      console.error("Error fetching about details:", error);
+      setVersion((prev) => ({ ...prev, loading: false }));
     } finally {
       setRefreshing(false);
     }
-  };
+  }, []);
 
-  const isOutOfDate = () => {
-    if (version.is_update_available !== undefined) {
-      return version.is_update_available;
-    }
-    if (!version.local || !version.remote) return false;
-    return version.local !== version.remote;
-  };
+  useEffect(() => {
+    fetchAboutData(false);
+  }, [fetchAboutData]);
 
-  const VersionDisplay = () => {
-    if (version.loading) {
-      return (
-        <div className="flex items-center gap-2">
-          <span className="text-theme-text">{t("common.loading")}</span>
-          <Loader2 className="w-4 h-4 text-theme-muted animate-spin" />
-        </div>
+  const isDevBuild = Boolean(version.local && String(version.local).includes("-dev"));
+  const outOfDate = Boolean(
+    version.is_update_available !== undefined
+      ? version.is_update_available
+      : version.local && version.remote && version.local !== version.remote
+  );
+
+  const resolvedTimezone =
+    systemInfo?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const environmentLabel = systemInfo
+    ? [
+        systemInfo.is_docker ? "Docker" : null,
+        systemInfo.os_version && systemInfo.os_version !== "Unknown"
+          ? systemInfo.os_version
+          : systemInfo.platform,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : t("common.loading");
+
+  const runtimeParts = [
+    systemInfo?.python_version ? `Python ${systemInfo.python_version}` : null,
+    systemInfo?.powershell_version ? `PowerShell ${systemInfo.powershell_version}` : null,
+    systemInfo?.imagemagick_version || null,
+  ].filter(Boolean);
+
+  const hardwareSummary = systemInfo
+    ? [
+        systemInfo.cpu_cores ? `${systemInfo.cpu_cores} cores` : null,
+        systemInfo.used_memory && systemInfo.total_memory
+          ? `${systemInfo.used_memory} / ${systemInfo.total_memory} (${systemInfo.memory_percent ?? 0}%)`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : t("common.loading");
+
+  const preferredReleaseForWhatsNew = (() => {
+    if (!releases.length) return null;
+    const normLocal = normalizeTag(version.raw_local || version.local);
+    if (!isDevBuild && normLocal) {
+      const exact = releases.find(
+        (r) => !r.is_prerelease && normalizeTag(r.version) === normLocal
       );
+      if (exact) return exact;
     }
+    return releases.find((r) => !r.is_prerelease) || releases[0];
+  })();
 
-    const outOfDate = isOutOfDate();
+  const handleCopySystemInfo = async () => {
+    const lines = [
+      `Posterizarr Version: ${version.local || t("about.unknown")}`,
+      version.remote ? `Latest Release: ${version.remote}` : null,
+      `Environment: ${environmentLabel}`,
+      systemInfo?.data_directory ? `Data Directory: ${systemInfo.data_directory}` : null,
+      resolvedTimezone ? `Time Zone: ${resolvedTimezone}` : null,
+      runtimeParts.length ? `Runtime: ${runtimeParts.join(" | ")}` : null,
+      systemInfo?.cpu_model && systemInfo.cpu_model !== "Unknown"
+        ? `CPU: ${systemInfo.cpu_model} (${systemInfo.cpu_cores || 0} cores)`
+        : null,
+      systemInfo?.total_memory && systemInfo.total_memory !== "Unknown"
+        ? `Memory: ${systemInfo.used_memory} / ${systemInfo.total_memory} (${systemInfo.memory_percent ?? 0}%)`
+        : null,
+    ].filter(Boolean);
 
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-theme-text font-medium">
-          {version.local || t("about.unknown")}
-        </span>
-        {outOfDate && version.remote && (
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-            <span className="px-3 py-1 bg-orange-500/20 text-orange-400 rounded-full text-xs font-medium border border-orange-500/30 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />
-              {t("about.outOfDate")}
-            </span>
-          </a>
-        )}
-        {!outOfDate && version.remote && (
-          <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-medium border border-green-500/30 flex items-center gap-1">
-            <CheckCircle className="w-3 h-3" />
-            {t("about.upToDate")}
-          </span>
-        )}
-      </div>
-    );
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopied(true);
+      showSuccess(t("about.copied"));
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showError("Clipboard copy is unavailable in this browser context.");
+    }
   };
 
   return (
     <div className="workspace-page space-y-6">
-      <WorkspaceHeader icon={Info} title={t("about.title")} />
-      {/* Beta Warning Banner */}
-      <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 flex items-start gap-3">
-        <Info className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
-        <p className="text-orange-300 text-sm">
-          {t("about.betaWarning")}{" "}
-          <a
-            href="https://github.com/fscorrupt/posterizarr/issues"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-orange-400 hover:text-orange-300 underline font-medium inline-flex items-center gap-1"
-          >
-            GitHub
-            <ExternalLink className="w-3 h-3" />
-          </a>
-          !
-        </p>
-      </div>
-
-      {/* About Posterizarr Section */}
-      <div className="workspace-section space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-theme-text flex items-center gap-2">
-            <Info className="w-6 h-6 text-theme-primary" />
-            {t("about.title")}
-          </h2>
+      <WorkspaceHeader icon={Info} title={t("about.title")} subtitle={t("about.tagline")}>
+        {preferredReleaseForWhatsNew && (
           <button
-            onClick={fetchVersion}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 rounded-lg text-sm font-medium transition-all shadow-sm"
+            type="button"
+            onClick={() => setModalRelease(preferredReleaseForWhatsNew)}
+            className="workspace-command hover:text-theme-primary transition-colors"
           >
-            <RefreshCw
-              className={`w-4 h-4 text-theme-primary ${
-                refreshing ? "animate-spin" : ""
-              }`}
-            />
-            <span className="text-sm">{t("common.refresh")}</span>
+            <Sparkles className="w-4 h-4 text-theme-primary" />
+            <span>{t("about.whatsNew")}</span>
           </button>
-        </div>
+        )}
+        <button
+          type="button"
+          onClick={() => fetchAboutData(true)}
+          disabled={refreshing}
+          className="workspace-command hover:text-theme-primary transition-colors"
+        >
+          <RefreshCw
+            className={`w-4 h-4 text-theme-primary ${refreshing ? "animate-spin" : ""}`}
+          />
+          <span>{t("common.refresh")}</span>
+        </button>
+      </WorkspaceHeader>
 
-        <div className="space-y-4">
-          {/* Version */}
-          <div className="flex justify-between items-center py-3 border-b border-theme">
-            <span className="text-theme-muted font-medium">
-              {t("about.version")}
-            </span>
-            <VersionDisplay />
+      {/* Hero Identity Card (Kavita + Seerr style) */}
+      <section className="bg-theme-card border border-theme rounded-xl overflow-hidden">
+        <div className="h-1 w-full bg-gradient-to-r from-theme-primary via-theme-accent to-theme-primary" />
+        <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="flex items-start sm:items-center gap-4 min-w-0">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-theme-bg-dark/80 border border-theme p-2.5 flex items-center justify-center shrink-0 shadow-sm">
+              <img
+                src="/favicon.png"
+                alt="Posterizarr"
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h2 className="text-xl sm:text-2xl font-bold text-theme-text tracking-tight">
+                  Posterizarr
+                </h2>
+
+                {version.loading ? (
+                  <Loader2 className="w-4 h-4 text-theme-muted animate-spin" />
+                ) : (
+                  <>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-theme-hover text-theme-text border border-theme">
+                      v{version.local || t("about.unknown")}
+                    </span>
+
+                    {isDevBuild && (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                        {t("about.devBuild")}
+                      </span>
+                    )}
+
+                    {!isDevBuild && outOfDate && version.remote && (
+                      <a
+                        href={REPO_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-0.5 bg-orange-500/20 text-orange-400 rounded-full text-xs font-medium border border-orange-500/30 inline-flex items-center gap-1 hover:bg-orange-500/30 transition-colors"
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                        <span>
+                          {t("about.outOfDate")} · v{version.remote}
+                        </span>
+                      </a>
+                    )}
+
+                    {!isDevBuild && !outOfDate && version.remote && (
+                      <span className="px-2.5 py-0.5 bg-green-500/15 text-green-400 rounded-full text-xs font-medium border border-green-500/30 inline-flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        <span>{t("about.upToDate")}</span>
+                      </span>
+                    )}
+                  </>
+                )}
+
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-theme-bg-dark/60 text-theme-muted border border-theme inline-flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  GPL-3.0
+                </span>
+              </div>
+
+              <p className="text-sm text-theme-muted">{t("about.description")}</p>
+            </div>
           </div>
 
-          {/* Latest Available (if out of date) */}
-          {isOutOfDate() && version.remote && (
-            <div className="flex justify-between items-center py-3 border-b border-theme">
-              <span className="text-theme-muted font-medium">
-                {t("about.latestAvailable")}
-              </span>
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {outOfDate && version.remote && (
               <a
                 href={REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-green-400 font-medium hover:underline"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-button text-button hover:opacity-90 transition-opacity"
               >
-                <span>{version.remote}</span>
+                <ExternalLink className="w-4 h-4" />
+                <span>
+                  {t("about.latestAvailable")}: v{version.remote}
+                </span>
               </a>
-            </div>
-          )}
-
-          {/* Data Directory */}
-          <div className="flex justify-between items-center py-3 border-b border-theme">
-            <span className="text-theme-muted font-medium">
-              {t("about.dataDirectory")}
-            </span>
-            <span className="text-theme-text font-mono text-sm">
-              /app/config
-            </span>
-          </div>
-
-          {/* Time Zone */}
-          <div className="flex justify-between items-center py-3">
-            <span className="text-theme-muted font-medium">
-              {t("about.timeZone")}
-            </span>
-            <span className="text-theme-text">
-              {Intl.DateTimeFormat().resolvedOptions().timeZone}
-            </span>
+            )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Releases Section */}
-      <ReleasesSection />
+      {/* System & Runtime Environment Grid */}
+      <section className="bg-theme-card border border-theme rounded-xl p-5 sm:p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-theme-primary/15 border border-theme-primary/30 flex items-center justify-center text-theme-primary">
+              <Server className="w-4 h-4" />
+            </div>
+            <h2 className="text-lg font-bold text-theme-text">
+              {t("about.systemInfo")}
+            </h2>
+          </div>
 
-      {/* Getting Support Section*/}
-      <div className="bg-theme-card border border-theme rounded-lg p-6 space-y-4">
-        <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
-          <ExternalLink className="w-6 h-6 text-theme-primary" />
-          {t("about.gettingSupport")}
-        </h2>
+          <button
+            type="button"
+            onClick={handleCopySystemInfo}
+            className="workspace-command hover:text-theme-primary transition-colors"
+          >
+            {copied ? (
+              <Check className="w-4 h-4 text-green-400" />
+            ) : (
+              <Copy className="w-4 h-4 text-theme-primary" />
+            )}
+            <span>{copied ? t("about.copied") : t("about.copySystemInfo")}</span>
+          </button>
+        </div>
 
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+              <Code2 className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("about.version")}</span>
+            </div>
+            <div className="text-sm font-mono font-semibold text-theme-text break-words">
+              {version.loading ? t("common.loading") : `v${version.local || t("about.unknown")}`}
+              {outOfDate && version.remote ? ` → v${version.remote}` : ""}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+              <Server className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("about.environment")}</span>
+            </div>
+            <div className="text-sm font-medium text-theme-text break-words">
+              {environmentLabel}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+              <FolderOpen className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("about.dataDirectory")}</span>
+            </div>
+            <div className="text-sm font-mono text-theme-text break-all">
+              {systemInfo?.data_directory || "/config"}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+              <Clock className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("about.timeZone")}</span>
+            </div>
+            <div className="text-sm font-medium text-theme-text break-words">
+              {resolvedTimezone}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+              <Terminal className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("about.runtimeStack")}</span>
+            </div>
+            <div className="text-sm text-theme-text break-words">
+              {runtimeParts.length ? runtimeParts.join(" · ") : t("about.unknown")}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-theme-bg/50 border border-theme/70 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-theme-muted uppercase tracking-wider">
+              <Cpu className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("about.hardware")}</span>
+            </div>
+            <div className="text-sm text-theme-text break-words">
+              {hardwareSummary}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Changelog & Release History */}
+      <ReleasesSection
+        installedVersion={version.local}
+        refreshTrigger={releaseRefreshTrigger}
+        onOpenModal={(release) => setModalRelease(release)}
+        onReleasesLoaded={setReleases}
+      />
+
+      {/* Resources, Community & Support */}
+      <section className="bg-theme-card border border-theme rounded-xl p-5 sm:p-6 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-theme-primary/15 border border-theme-primary/30 flex items-center justify-center text-theme-primary">
+            <ExternalLink className="w-4 h-4" />
+          </div>
+          <h2 className="text-lg font-bold text-theme-text">
+            {t("about.gettingSupport")}
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <a
+            href="https://fscorrupt.github.io/posterizarr/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <BookOpen className="w-5 h-5 text-theme-primary shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-theme-text">
+                  {t("about.docsLink")}
+                </div>
+                <div className="text-xs text-theme-muted truncate">
+                  {t("about.docsDesc")}
+                </div>
+              </div>
+            </div>
+            <ExternalLink className="w-4 h-4 text-theme-muted group-hover:text-theme-primary shrink-0 ml-2" />
+          </a>
+
+          <a
+            href="https://fscorrupt.github.io/posterizarr/dynamic_overlays/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <Layers className="w-5 h-5 text-theme-primary shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-theme-text">
+                  {t("about.overlaysGuide")}
+                </div>
+                <div className="text-xs text-theme-muted truncate">
+                  {t("about.overlaysGuideDesc")}
+                </div>
+              </div>
+            </div>
+            <ExternalLink className="w-4 h-4 text-theme-muted group-hover:text-theme-primary shrink-0 ml-2" />
+          </a>
+
           <a
             href="https://github.com/fscorrupt/posterizarr/issues"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between p-3 bg-theme-hover hover:bg-theme-primary/20 border border-theme rounded-lg transition-all group"
+            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
           >
-            <div className="flex items-center gap-3">
-              <Github className="w-5 h-5 text-theme-primary" />
-              <span className="text-theme-text font-medium">
-                {t("about.githubIssues")}
-              </span>
+            <div className="flex items-center gap-3 min-w-0">
+              <Github className="w-5 h-5 text-theme-primary shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-theme-text">
+                  {t("about.githubIssues")}
+                </div>
+                <div className="text-xs text-theme-muted truncate">
+                  {t("about.githubIssuesDesc")}
+                </div>
+              </div>
             </div>
-            <ExternalLink className="w-4 h-4 text-theme-muted group-hover:text-theme-primary transition-colors" />
+            <ExternalLink className="w-4 h-4 text-theme-muted group-hover:text-theme-primary shrink-0 ml-2" />
           </a>
 
           <a
             href="https://discord.gg/fYyJQSGt54"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between p-3 bg-theme-hover hover:bg-theme-primary/20 border border-theme rounded-lg transition-all group"
+            className="flex items-center justify-between p-4 bg-theme-hover/50 hover:bg-theme-primary/10 border border-theme hover:border-theme-primary/40 rounded-xl transition-all group"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <svg
-                className="w-5 h-5 text-theme-primary"
+                className="w-5 h-5 text-theme-primary shrink-0"
                 viewBox="0 0 24 24"
                 fill="currentColor"
               >
                 <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.956-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.955-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.946 2.418-2.157 2.418z" />
               </svg>
-              <span className="text-theme-text font-medium">
-                {t("about.discordServer")}
-              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-theme-text">
+                  {t("about.discordServer")}
+                </div>
+                <div className="text-xs text-theme-muted truncate">
+                  {t("about.discordDesc")}
+                </div>
+              </div>
             </div>
-            <ExternalLink className="w-4 h-4 text-theme-muted group-hover:text-theme-primary transition-colors" />
+            <ExternalLink className="w-4 h-4 text-theme-muted group-hover:text-theme-primary shrink-0 ml-2" />
+          </a>
+
+          <a
+            href="https://ko-fi.com/R6R81S6SC"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="md:col-span-2 flex items-center justify-between p-4 bg-theme-hover/60 hover:bg-theme-primary/15 border border-theme-primary/35 rounded-xl transition-all group"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <Heart className="w-5 h-5 text-red-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-theme-text">
+                  {t("about.helpPayForCoffee")}
+                </div>
+                <div className="text-xs text-theme-muted">
+                  {t("about.supportDevelopment")}
+                </div>
+              </div>
+            </div>
+            <div className="px-3 py-1 bg-theme-primary/15 text-theme-primary border border-theme-primary/30 rounded-full text-xs font-medium shrink-0 ml-2">
+              {t("about.supportPosterizarr")}
+            </div>
           </a>
         </div>
-      </div>
+      </section>
 
-      {/* Support Posterizarr Section*/}
-      <div className="bg-theme-card border border-theme rounded-lg p-6 space-y-4">
-        <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
-          <Heart className="w-6 h-6 text-red-400" />
-          {t("about.supportPosterizarr")}
-        </h2>
-
-        <a
-          href="https://ko-fi.com/R6R81S6SC"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-between p-4 bg-theme-hover hover:bg-theme-primary/20 border border-theme-primary/30 rounded-lg transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <Heart className="w-6 h-6 text-theme-primary" />
-            <div>
-              <p className="text-theme-text font-medium">
-                {t("about.helpPayForCoffee")}
-              </p>
-              <p className="text-theme-muted text-sm">
-                {t("about.supportDevelopment")}
-              </p>
-            </div>
-          </div>
-          <div className="px-3 py-1 bg-theme-primary/20 text-theme-primary rounded-full text-xs font-medium">
-            {t("about.preferred")}
-          </div>
-        </a>
-      </div>
-
-      {/* WebUI Developer Credit */}
-      <div className="bg-theme-card border border-theme rounded-lg p-4">
-        <p className="text-theme-muted text-sm text-center flex items-center justify-center gap-2">
-          {t("about.webuiDevelopedWith")}
+      {/* Open Source & Credits Footer */}
+      <footer className="bg-theme-card border border-theme rounded-xl p-4 sm:p-5 text-center space-y-1.5">
+        <p className="text-theme-text text-sm flex flex-wrap items-center justify-center gap-1.5">
+          <span>{t("about.webuiDevelopedWith")}</span>
           <Heart className="w-4 h-4 text-red-400 inline" />
-          {t("about.by")}
+          <span>{t("about.by")}</span>
           <a
             href="https://github.com/fscorrupt/posterizarr"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-theme-primary hover:underline font-medium"
+            className="text-theme-primary hover:underline font-semibold"
           >
-            cyb3rgh05t & fscorrupt
+            cyb3rgh05t &amp; fscorrupt
           </a>
-          {t("about.forTheCommunity")}
+          <span>{t("about.forTheCommunity")}</span>
         </p>
-      </div>
+        <p className="text-xs text-theme-muted">{t("about.openSourceNote")}</p>
+      </footer>
+
+      <WhatsNewModal
+        isOpen={Boolean(modalRelease)}
+        release={modalRelease}
+        installedVersion={modalRelease?.version}
+        isPreview={true}
+        onClose={() => setModalRelease(null)}
+      />
     </div>
   );
 }

@@ -77,6 +77,23 @@ try:
 except ImportError:
     from config_password import preserve_masked_basic_auth_password
 
+try:
+    from .release_notes import (
+        evaluate_whats_new,
+        fetch_github_releases_cached,
+        normalize_version_tag,
+        parse_stable_semver,
+        resolve_next_seen_version,
+    )
+except ImportError:
+    from release_notes import (
+        evaluate_whats_new,
+        fetch_github_releases_cached,
+        normalize_version_tag,
+        parse_stable_semver,
+        resolve_next_seen_version,
+    )
+
 # Check if running in Docker
 IS_DOCKER = (
     os.path.exists("/.dockerenv")
@@ -349,6 +366,7 @@ def load_webui_settings():
         "auto_queue_changes": False,
         "auto_overlay_sync": False,
         "auto_kometa_overlay_sync": False,
+        "last_seen_release_version": None,
     }
 
     try:
@@ -2075,6 +2093,7 @@ async def get_script_version():
 
     return {
         "local": display_version,
+        "raw_local": local_version,
         "remote": remote_version,
         "is_update_available": is_update_available,  # Boolean for update availability
     }
@@ -2463,6 +2482,17 @@ async def complete_onboarding():
         success = config_db.set_value('_root', 'onboarding_completed', True)
         if success:
             logger.info("Onboarding marked as completed by user.")
+            try:
+                settings = load_webui_settings()
+                if not settings.get("last_seen_release_version"):
+                    version_info = await get_script_version()
+                    if parse_stable_semver(version_info.get("local")) is not None:
+                        normalized = normalize_version_tag(version_info.get("raw_local"))
+                        if normalized:
+                            settings["last_seen_release_version"] = normalized
+                            save_webui_settings(settings)
+            except Exception as exc:
+                logger.debug(f"Could not record initial release version after onboarding: {exc}")
             return {"success": True, "message": "Onboarding completed"}
     return JSONResponse(
         status_code=500,
@@ -5625,6 +5655,30 @@ async def receive_ui_logs_batch(batch: UILogBatch):
         return {"success": False, "error": str(e)}
 
 
+def _probe_runtime_tool_version(commands: List[List[str]], pattern: Optional[str] = None) -> Optional[str]:
+    """Run a quick non-blocking version probe for an external runtime binary."""
+    import platform as _platform
+    kwargs: Dict[str, Any] = {"capture_output": True, "text": True, "timeout": 2}
+    if _platform.system() == "Windows" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    for cmd in commands:
+        try:
+            res = subprocess.run(cmd, **kwargs)
+            output = (res.stdout or res.stderr or "").strip()
+            if not output:
+                continue
+            first_line = output.splitlines()[0].strip()
+            if pattern:
+                match = re.search(pattern, first_line)
+                if match:
+                    return match.group(1) if match.groups() else match.group(0)
+            return first_line
+        except Exception:
+            continue
+    return None
+
+
 def _get_static_system_info():
     """Get system information (CPU, RAM, OS, Platform) - Optimized for Docker & Windows"""
     import platform
@@ -5639,7 +5693,18 @@ def _get_static_system_info():
         "os_version": "Unknown",
         "cpu_model": "Unknown",
         "cpu_cores": os.cpu_count() or 0,
-        "is_docker": Path("/.dockerenv").exists() or Path("/run/secrets/docker_secret").exists()
+        "is_docker": Path("/.dockerenv").exists() or Path("/run/secrets/docker_secret").exists(),
+        "data_directory": str(BASE_DIR),
+        "python_version": platform.python_version(),
+        "timezone": os.environ.get("TZ") or (time.tzname[0] if time.tzname else "UTC"),
+        "powershell_version": _probe_runtime_tool_version(
+            [["pwsh", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"]],
+            r"(\d+\.\d+(?:\.\d+)*)",
+        ),
+        "imagemagick_version": _probe_runtime_tool_version(
+            [["magick", "-version"]],
+            r"(ImageMagick\s+\S+)",
+        ),
     }
 
     try:
@@ -11204,53 +11269,73 @@ async def get_version_ui():
 
 
 @app.get("/api/releases")
-async def get_github_releases():
+async def get_github_releases(refresh: bool = False):
     """
-    Fetches all releases from GitHub and returns them formatted
+    Fetches all releases from GitHub and returns them formatted (TTL cached)
     """
+    result = await fetch_github_releases_cached(force_refresh=refresh)
+    if result.get("success"):
+        return {"success": True, "releases": result.get("releases", [])}
+    return {
+        "success": False,
+        "error": result.get("error", "Could not fetch releases from GitHub"),
+        "releases": [],
+    }
+
+
+@app.get("/api/whats-new")
+async def get_whats_new():
+    """Evaluate whether the post-update What's New changelog should be displayed once."""
+    onboarding_completed = False
+    if CONFIG_DATABASE_AVAILABLE and config_db:
+        val = config_db.get_value('_root', 'onboarding_completed')
+        if val is not None:
+            onboarding_completed = bool(val)
+
+    settings = load_webui_settings()
+    last_seen = settings.get("last_seen_release_version")
+    version_info = await get_script_version()
+    releases_result = await fetch_github_releases_cached(force_refresh=False)
+    releases = releases_result.get("releases") or [] if releases_result.get("success") else []
+
+    evaluation = evaluate_whats_new(
+        raw_local_version=version_info.get("raw_local"),
+        display_local_version=version_info.get("local"),
+        last_seen_version=last_seen,
+        onboarding_completed=onboarding_completed,
+        releases=releases,
+    )
+    return {"success": True, **evaluation}
+
+
+@app.post("/api/whats-new/dismiss")
+async def dismiss_whats_new(request: Request):
+    """Persist the highest seen stable release version so What's New appears once per release."""
+    payload: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.github.com/repos/fscorrupt/posterizarr/releases",
-                headers={"Accept": "application/vnd.github.v3+json"},
-                timeout=10.0,
-            )
-            response.raise_for_status()
-            releases = response.json()
+        raw_body = await request.body()
+        if raw_body:
+            parsed = json.loads(raw_body)
+            if isinstance(parsed, dict):
+                payload = parsed
+    except Exception:
+        payload = {}
 
-            # Format the releases for frontend display
-            formatted_releases = []
-            for release in releases[:10]:  # Only last 10 releases
-                published_date = datetime.fromisoformat(
-                    release["published_at"].replace("Z", "+00:00")
-                )
-                days_ago = (datetime.now(published_date.tzinfo) - published_date).days
+    requested_version = payload.get("version")
+    if not requested_version:
+        version_info = await get_script_version()
+        requested_version = version_info.get("raw_local") or version_info.get("local")
 
-                formatted_releases.append(
-                    {
-                        "version": release["tag_name"],
-                        "name": release["name"],
-                        "published_at": release["published_at"],
-                        "days_ago": days_ago,
-                        "is_prerelease": release["prerelease"],
-                        "is_draft": release["draft"],
-                        "html_url": release["html_url"],
-                        "body": release["body"],  # Changelog-Text
-                    }
-                )
+    current_settings = load_webui_settings()
+    current_seen = current_settings.get("last_seen_release_version")
+    next_seen = resolve_next_seen_version(current_seen, requested_version)
 
-            return {"success": True, "releases": formatted_releases}
+    if next_seen and next_seen != normalize_version_tag(current_seen):
+        current_settings["last_seen_release_version"] = next_seen
+        if not save_webui_settings(current_settings):
+            raise HTTPException(status_code=500, detail="Failed to persist dismissed release version")
 
-    except httpx.RequestError as e:
-        logger.error(f"Could not fetch releases from GitHub: {e}")
-        return {
-            "success": False,
-            "error": "Could not fetch releases from GitHub",
-            "releases": [],
-        }
-    except Exception as e:
-        logger.error(f"Error fetching releases: {e}")
-        return {"success": False, "error": str(e), "releases": []}
+    return {"success": True, "last_seen_version": next_seen}
 
 
 @app.get("/api/dashboard/all")

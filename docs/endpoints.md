@@ -266,10 +266,8 @@ Returns the basic status of the API server.
     ```
 
 ### `/api/system-info`
-Returns hardware and OS information about the host system.
-OS, CPU model, core count, and Docker detection are cached for the backend process
-lifetime. Memory usage is collected on every request. Collection runs in worker
-threads so system probes do not block unrelated API requests.
+Returns hardware, runtime tool, and OS information about the host system.
+OS, CPU model, core count, Docker detection, data directory, timezone, and runtime versions (Python, PowerShell, ImageMagick) are cached for the backend process lifetime. Memory usage is collected on every request. Collection runs in worker threads so system probes do not block unrelated API requests.
 
 ??? example "View Response"
     ```json
@@ -278,6 +276,11 @@ threads so system probes do not block unrelated API requests.
       "os_version": "Alpine Linux v3.22",
       "cpu_model": "11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz",
       "cpu_cores": 8,
+      "data_directory": "/config",
+      "python_version": "3.12.10",
+      "timezone": "UTC",
+      "powershell_version": "7.4.6",
+      "imagemagick_version": "ImageMagick 7.1.1-29",
       "total_memory": "63931 MB",
       "used_memory": "9589 MB",
       "free_memory": "54342 MB",
@@ -287,19 +290,20 @@ threads so system probes do not block unrelated API requests.
     ```
 
 ### `/api/version`
-Checks installed version against remote GitHub version.
+Checks installed version (`local` and `raw_local`) against the remote GitHub version.
 
 ??? example "View Response"
     ```json
     {
-      "local": "2.1.15",
-      "remote": "2.1.15",
+      "local": "4.0.0",
+      "raw_local": "4.0.0",
+      "remote": "4.0.0",
       "is_update_available": false
     }
     ```
 
 ### `/api/releases`
-Fetches the latest release notes from GitHub.
+Fetches the latest releases and Markdown changelogs from GitHub (TTL-cached). Pass `?refresh=true` to bypass the cache and query GitHub immediately.
 
 ??? example "View Response"
     ```json
@@ -307,16 +311,42 @@ Fetches the latest release notes from GitHub.
       "success": true,
       "releases": [
         {
-          "version": "2.1.15",
-          "name": "v2.1.15",
-          "published_at": "2025-11-21T11:00:57Z",
-          "days_ago": 4,
+          "version": "4.0.0",
+          "name": "Posterizarr 4.0.0",
+          "published_at": "2026-11-20T11:00:00Z",
+          "days_ago": 0,
           "is_prerelease": false,
           "is_draft": false,
-          "html_url": "[https://github.com/fscorrupt/posterizarr/releases/tag/2.1.15](https://github.com/fscorrupt/posterizarr/releases/tag/2.1.15)",
-          "body": "## What's Changed\r\n* Fix missing assets in gallery..."
+          "html_url": "https://github.com/fscorrupt/posterizarr/releases/tag/4.0.0",
+          "body": "## Highlights at a Glance\r\n..."
         }
       ]
+    }
+    ```
+
+### `GET /api/whats-new`
+Evaluates whether the one-time post-update "What's New" modal should be shown for the currently installed stable release. Returns `should_show: true` only when onboarding has completed, the installed version is a published stable GitHub release (not a `-dev` or prerelease build), and the installed version is strictly newer than the stored `last_seen_release_version`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "should_show": false,
+      "installed_version": "4.0.0",
+      "display_version": "4.0.0",
+      "last_seen_version": "4.0.0",
+      "release": null
+    }
+    ```
+
+### `POST /api/whats-new/dismiss`
+Persists the dismissed stable release version in `webui_settings.json` (`last_seen_release_version`), advancing monotonically so the post-update popup is not shown again for the same or older versions. Accepts an optional JSON body `{"version": "4.0.0"}` (defaults to the currently installed version).
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "last_seen_version": "4.0.0"
     }
     ```
 
