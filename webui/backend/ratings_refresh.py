@@ -476,7 +476,7 @@ class RatingsRefreshService:
             for source in ("simkl", "mal"):
                 if item.get(f"{source}_rating") is not None and source not in enabled_sources:
                     enabled_sources.append(source)
-        return await resolve_media_ratings(
+        result = await resolve_media_ratings(
             server, item["item_id"], item.get("title") or item["item_id"], item.get("year"), item["media_type"],
             item.get("imdb_id"), item.get("tmdb_id"), plex_xml_bytes=xml_bytes,
             tmdb_api_key=credentials.get("tmdb_token"), mdblist_api_key=settings.get("mdblist_api_key"),
@@ -487,6 +487,22 @@ class RatingsRefreshService:
             provider_run_state=self.provider_run_state,
             rating_context=rating_context,
         )
+        if item["media_type"] == "show" and item.get("tmdb_id"):
+            try:
+                from overlay_sync_service import resolve_tmdb_show_info
+                await resolve_tmdb_show_info(
+                    tmdb_id=item["tmdb_id"],
+                    tmdb_token=credentials.get("tmdb_token"),
+                    http_client=client,
+                    server_type=server,
+                    item_id=str(item["item_id"]),
+                    title=item.get("title") or "",
+                    year=item.get("year"),
+                    force_refresh=True,
+                )
+            except Exception as status_error:
+                logger.debug("[RatingsRefresh] Show status refresh skipped for %s/%s: %s", server, item["item_id"], status_error)
+        return result
 
     async def backfill_episode_coordinates(self, credentials, batch_size=500):
         """Populate missing episode coordinates from media-server metadata only."""

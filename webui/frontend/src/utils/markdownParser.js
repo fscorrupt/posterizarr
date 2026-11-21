@@ -366,6 +366,13 @@ function parseListBlock(lines, startIndex) {
   };
 }
 
+function parsePositiveDimension(rawValue) {
+  const match = /^\s*(\d{1,4})(?:px)?\s*$/i.exec(String(rawValue || ""));
+  if (!match) return null;
+  const num = Number(match[1]);
+  return Number.isInteger(num) && num >= 16 && num <= 2400 ? num : null;
+}
+
 function parseHtmlBlock(rawHtml) {
   const cleaned = stripBlockedTagContent(rawHtml).trim();
   const blocks = [];
@@ -377,8 +384,13 @@ function parseHtmlBlock(rawHtml) {
   while ((imgMatch = imgRegex.exec(cleaned)) !== null) {
     const src = sanitizeUrl(extractHtmlAttribute(imgMatch[1], "src"));
     const alt = extractHtmlAttribute(imgMatch[1], "alt");
+    const width = parsePositiveDimension(extractHtmlAttribute(imgMatch[1], "width"));
+    const height = parsePositiveDimension(extractHtmlAttribute(imgMatch[1], "height"));
     if (src) {
-      blocks.push({ type: "image", src, alt });
+      const imageBlock = { type: "image", src, alt };
+      if (width !== null) imageBlock.width = width;
+      if (height !== null) imageBlock.height = height;
+      blocks.push(imageBlock);
       foundImg = true;
     }
   }

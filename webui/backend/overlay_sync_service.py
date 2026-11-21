@@ -1272,7 +1272,8 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
     return info
 
 
-_TMDB_SHOW_CACHE: Dict[str, Dict[str, Any]] = {}
+_TMDB_SHOW_CACHE_TTL_SECONDS = 600
+_TMDB_SHOW_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _TMDB_MOVIE_CR_CACHE: Dict[str, Optional[str]] = {}
 
 
@@ -1289,7 +1290,8 @@ async def resolve_tmdb_show_info(
     server_type: Optional[str] = None,
     item_id: Optional[str] = None,
     title: str = "",
-    year: Optional[int] = None
+    year: Optional[int] = None,
+    force_refresh: bool = False,
 ) -> Dict[str, Any]:
     """
     Fetches show status, networks, and age/content rating from persistent cache or TMDb API.
@@ -1298,19 +1300,23 @@ async def resolve_tmdb_show_info(
     """
     clean_id = str(tmdb_id).strip() if tmdb_id else ""
 
-    # 1. Check persistent SQLite ratings/status cache first
-    try:
-        from ratings_service import ratings_cache
-        if server_type and item_id:
-            cached_status = ratings_cache.get_show_status(server_type, str(item_id), clean_id or None)
-            if cached_status and cached_status.get("status"):
-                return cached_status
-    except Exception as cache_read_err:
-        logger.debug(f"[OverlaySync] Persistent show cache read error: {cache_read_err}")
+    if not force_refresh:
+        # 1. Check persistent SQLite ratings/status cache first
+        try:
+            from ratings_service import ratings_cache
+            if server_type and item_id:
+                cached_status = ratings_cache.get_show_status(server_type, str(item_id), clean_id or None)
+                if cached_status and cached_status.get("status"):
+                    return cached_status
+        except Exception as cache_read_err:
+            logger.debug(f"[OverlaySync] Persistent show cache read error: {cache_read_err}")
 
-    # 2. Check in-memory session cache
-    if clean_id and clean_id in _TMDB_SHOW_CACHE:
-        return _TMDB_SHOW_CACHE[clean_id]
+        # 2. Check short-lived in-memory session cache
+        if clean_id and clean_id in _TMDB_SHOW_CACHE:
+            expires_at_mono, cached_info = _TMDB_SHOW_CACHE[clean_id]
+            if time.monotonic() < expires_at_mono:
+                return cached_info
+            _TMDB_SHOW_CACHE.pop(clean_id, None)
 
     if not clean_id:
         return {}
@@ -1367,7 +1373,7 @@ async def resolve_tmdb_show_info(
                 "network": nets[0] if nets else None,
                 "content_rating": content_rating
             }
-            _TMDB_SHOW_CACHE[clean_id] = info
+            _TMDB_SHOW_CACHE[clean_id] = (time.monotonic() + _TMDB_SHOW_CACHE_TTL_SECONDS, info)
 
             # Save to persistent SQLite ratings & status cache
             try:
@@ -3955,6 +3961,29 @@ async def _run_overlay_sync_task(
             except Exception as ye:
                 write_log(f"Warning loading config.yml: {ye}")
 
+        if library_rules_map:
+            native_only_defaults = {"resolution", "ratings", "rating", "single_rating", "streaming"}
+            referenced_non_native = sorted({
+                f"{str(rule['default']).strip()}.yml"
+                for lib_rules in library_rules_map.values()
+                for rule in lib_rules
+                if isinstance(rule, dict)
+                and rule.get("default")
+                and str(rule["default"]).strip().lower() not in native_only_defaults
+            })
+            if referenced_non_native:
+                candidate_default_dirs = _get_overlay_config_engine(overlays_dir).candidate_default_dirs
+                missing_defaults = [
+                    fname for fname in referenced_non_native + ["templates.yml"]
+                    if not any((d / fname).is_file() for d in candidate_default_dirs)
+                ]
+                if missing_defaults:
+                    write_log(
+                        f"Warning: Missing default overlay template file(s): {', '.join(missing_defaults)}. "
+                        "Non-native overlays may not render as expected until you run 'Import Default Templates' "
+                        "or 'Fetch All Missing' in Dynamic Overlays -> Assets & Defaults."
+                    )
+
         if not library_rules_map:
             msg = "No libraries configured with dynamic overlay rules in config.yml. Sync skipped."
             write_log(f"Notice: {msg}")
@@ -4596,9 +4625,13 @@ async def _run_overlay_sync_task(
                                 write_log(f"  [Debug] {w_tag}'{title}': resolution from episodes -> show={item['resolution']}, seasons={season_res}")
 
                     # For TV Shows across all server types: resolve canonical status, networks, and content rating from TMDb API
-                    # Fast-path: if status is already cached and server_updated_at matches, skip remote TMDb HTTP call!
-                    needs_tmdb = (scope not in ("incremental", "changed")) or needs_snapshot_refresh or not cached_entry or not cached_entry.get("attr_snapshot") or str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or "")
-                    if m_type == "show" and needs_status and (needs_tmdb or not item.get("status")):
+                    # Fast-path: if status is already cached and unexpired and server_updated_at matches, skip remote TMDb HTTP call!
+                    server_changed = bool(cached_entry and str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or ""))
+                    needs_tmdb = (scope not in ("incremental", "changed")) or needs_snapshot_refresh or not cached_entry or not cached_entry.get("attr_snapshot") or server_changed
+                    cached_show_status = ratings_cache.get_show_status(s_type, str(item_id), item.get("tmdb_id")) if (m_type == "show" and needs_status and not needs_tmdb and s_type and item_id) else None
+                    status_cache_expired = bool(not needs_tmdb and item.get("tmdb_id") and cached_show_status is None)
+                    status_cache_differs = bool(cached_show_status and cached_show_status.get("status") and cached_show_status["status"].strip().lower() != str(item.get("status") or "").strip().lower())
+                    if m_type == "show" and needs_status and (needs_tmdb or status_cache_expired or status_cache_differs or not item.get("status")):
                         if item.get("tmdb_id"):
                             tmdb_token = creds.get("tmdb_token")
                             show_info = await resolve_tmdb_show_info(
@@ -4608,7 +4641,8 @@ async def _run_overlay_sync_task(
                                 server_type=s_type,
                                 item_id=str(item_id),
                                 title=title,
-                                year=item.get("year")
+                                year=item.get("year"),
+                                force_refresh=(scope not in ("incremental", "changed") or server_changed),
                             )
                             if show_info.get("status"):
                                 item["status"] = show_info["status"]
@@ -6614,6 +6648,19 @@ async def detect_media_changes(
                                         item_changes.append("status")
                                         detail_notes.append(f"Status: '{cached_st}' -> '{status_val}'")
                                         summary["status"] += 1
+
+                                    if str(it_type or "").lower() == "show" and "status" not in item_changes:
+                                        try:
+                                            st_cached = ratings_cache.get_show_status(s_type, str(it_id))
+                                            if st_cached and st_cached.get("status"):
+                                                cur_status = st_cached["status"].strip().lower()
+                                                cached_st_val = str(cached.get("show_status") or "").strip().lower()
+                                                if cached_st_val and cur_status and cur_status != cached_st_val:
+                                                    item_changes.append("status")
+                                                    detail_notes.append(f"Show status changed: '{cached_st_val}' -> '{cur_status}'")
+                                                    summary["status"] += 1
+                                        except Exception:
+                                            pass
 
                                     if item_changes:
                                         changed_items.append({

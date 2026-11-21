@@ -140,6 +140,21 @@ def get_candidate_asset_dirs() -> List[Path]:
     return dirs
 
 
+def _get_writable_asset_save_dir(candidate_asset_dirs: List[Path]) -> Path:
+    """Return the writable assets/ folder for on-demand Kometa image downloads."""
+    try:
+        from dynamic_overlays_service import get_overlays_dir
+        overlays_dir = get_overlays_dir()
+        if overlays_dir:
+            return overlays_dir / "assets"
+    except Exception:
+        pass
+    for candidate in candidate_asset_dirs:
+        if candidate.name.lower() == "assets":
+            return candidate
+    return PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets"
+
+
 def _resolve_in_allowed_dirs(raw_path: Union[str, Path], allowed_dirs: List[Path]) -> Optional[str]:
     """Return normalized absolute path string if raw_path points to an existing file inside allowed_dirs."""
     if not raw_path:
@@ -809,7 +824,7 @@ class DynamicOverlayCompositor:
                                     with httpx.Client(timeout=10.0, follow_redirects=False) as h_client:
                                         r_resp = safe_sync_get(h_client, raw_url)
                                         if r_resp.status_code == 200:
-                                            save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
+                                            save_dir = _get_writable_asset_save_dir(candidate_asset_dirs)
                                             save_base = os.path.normpath(os.path.abspath(str(save_dir)))
                                             rel_sub = raw_url[len(KOMETA_IMAGES_RAW) + 1:] if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/") else ip.name
                                             save_path_str = _safe_join_within(save_dir, rel_sub)
@@ -989,7 +1004,7 @@ class DynamicOverlayCompositor:
                             with httpx.Client(timeout=10.0, follow_redirects=False) as h_client:
                                 r_resp = safe_sync_get(h_client, raw_url)
                                 if r_resp.status_code == 200:
-                                    save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
+                                    save_dir = _get_writable_asset_save_dir(candidate_asset_dirs)
                                     save_base = os.path.normpath(os.path.abspath(str(save_dir)))
                                     rel_sub = raw_url[len(KOMETA_IMAGES_RAW) + 1:] if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/") else bp.name
                                     save_path_str = _safe_join_within(save_dir, rel_sub)

@@ -93,15 +93,21 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
           }
           case "hr":
             return <hr key={key} className="border-theme my-2" />;
-          case "image":
+          case "image": {
+            const imgStyle = {};
+            if (block.width) imgStyle.maxWidth = `min(100%, ${block.width}px)`;
+            if (block.height) imgStyle.maxHeight = `${block.height}px`;
             return (
               <figure key={key} className="my-3 overflow-hidden rounded-lg border border-theme bg-black/30">
-                <img
-                  src={block.src}
-                  alt={block.alt || "Release preview"}
-                  loading="lazy"
-                  className="w-full h-auto max-h-96 object-contain mx-auto block"
-                />
+                <div className="p-2 flex justify-center">
+                  <img
+                    src={block.src}
+                    alt={block.alt || "Release preview"}
+                    loading="lazy"
+                    style={Object.keys(imgStyle).length ? imgStyle : undefined}
+                    className="w-auto max-w-full h-auto max-h-96 object-contain mx-auto block rounded"
+                  />
+                </div>
                 {block.alt && (
                   <figcaption className="px-3 py-1.5 text-xs text-theme-muted border-t border-theme text-center">
                     {block.alt}
@@ -109,6 +115,7 @@ function MarkdownRenderer({ content, compact = false, className = "" }) {
                 )}
               </figure>
             );
+          }
           case "linkBar":
             return (
               <div key={key} className="flex flex-wrap items-center gap-2 py-1">

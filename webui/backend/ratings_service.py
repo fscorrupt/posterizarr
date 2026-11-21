@@ -868,9 +868,15 @@ class RatingsCacheManager:
                             show_status = excluded.show_status,
                             network = COALESCE(excluded.network, media_ratings_cache.network),
                             content_rating = COALESCE(excluded.content_rating, media_ratings_cache.content_rating),
-                            source = excluded.source,
+                            source = COALESCE(NULLIF(media_ratings_cache.source, ''), excluded.source),
                             cached_at = excluded.cached_at,
-                            expires_at = excluded.expires_at;
+                            expires_at = CASE
+                                WHEN media_ratings_cache.expires_at IS NOT NULL
+                                     AND media_ratings_cache.expires_at > excluded.cached_at
+                                     AND media_ratings_cache.expires_at < excluded.expires_at
+                                THEN media_ratings_cache.expires_at
+                                ELSE excluded.expires_at
+                            END;
                         """,
                         (
                             server_type.lower(),

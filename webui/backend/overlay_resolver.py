@@ -10,6 +10,7 @@ Handles:
 
 import os
 import re
+import copy
 import yaml
 import shutil
 import logging
@@ -153,6 +154,130 @@ OFFICIAL_OVERLAY_DEFAULTS = [
     "video_format.yml",
 ]
 OFFICIAL_KOMETA_OVERLAY_DEFAULTS = OFFICIAL_OVERLAY_DEFAULTS
+
+# Built-in fallback mirror of Kometa's standard template (defaults/templates.yml) so
+# default overlay YAMLs keep expanding even before defaults/templates.yml is downloaded.
+BUILTIN_STANDARD_TEMPLATE = {
+    "default": {
+        "font": "fonts/Inter-Medium.ttf",
+        "font_size": 55,
+        "font_color": "#FFFFFF",
+        "back_radius": 30,
+        "weight_<<key>>": "<<weight>>",
+        "file_<<key>>": "<<file>>",
+        "url_<<key>>": "<<url>>",
+        "git_<<key>>": "<<git>>",
+        "repo_<<key>>": "<<repo>>",
+        "default": "<<pmm>>",
+        "pmm_<<key>>": "<<default>>",
+        "default_<<key>>": "<<pmm_<<key>>>>",
+        "font_<<key>>": "<<font>>",
+        "font_size_<<key>>": "<<font_size>>",
+        "font_color_<<key>>": "<<font_color>>",
+        "font_style_<<key>>": "<<font_style>>",
+        "final_horizontal_offset": "<<horizontal_offset>>",
+        "horizontal_offset_<<key>>": "<<final_horizontal_offset>>",
+        "horizontal_align_<<key>>": "<<horizontal_align>>",
+        "final_vertical_offset": "<<vertical_offset>>",
+        "vertical_offset_<<key>>": "<<final_vertical_offset>>",
+        "vertical_align_<<key>>": "<<vertical_align>>",
+        "stroke_width_<<key>>": "<<stroke_width>>",
+        "stroke_color_<<key>>": "<<stroke_color>>",
+        "back_color_<<key>>": "<<back_color>>",
+        "back_width_<<key>>": "<<back_width>>",
+        "back_height_<<key>>": "<<back_height>>",
+        "back_align_<<key>>": "<<back_align>>",
+        "back_radius_<<key>>": "<<back_radius>>",
+        "back_padding_<<key>>": "<<back_padding>>",
+        "back_line_color_<<key>>": "<<back_line_color>>",
+        "back_line_width_<<key>>": "<<back_line_width>>",
+        "scale_width_<<key>>": "<<scale_width>>",
+        "scale_height_<<key>>": "<<scale_height>>",
+        "final_name": "<<overlay_name>>",
+        "builder_level": "<<overlay_level>>",
+    },
+    "optional": [
+        "overlay_level",
+        "use_<<key>>",
+        "use_<<alt>>",
+        "allowed_libraries",
+        "suppress_overlays",
+        "file",
+        "url",
+        "git",
+        "repo",
+        "pmm",
+        "group",
+        "queue",
+        "weight",
+        "font_style",
+        "horizontal_offset",
+        "horizontal_align",
+        "vertical_offset",
+        "vertical_align",
+        "stroke_width",
+        "stroke_color",
+        "back_color",
+        "back_width",
+        "back_height",
+        "back_align",
+        "back_padding",
+        "back_line_color",
+        "back_line_width",
+        "addon_offset",
+        "addon_position",
+        "scale_width",
+        "scale_height",
+    ],
+    "conditionals": {
+        "final_use": {
+            "conditions": [
+                {"use_<<key>>.exists": True, "value": "<<use_<<key>>>>"},
+                {"use_all": False, "value": False},
+            ]
+        }
+    },
+    "builder_level": "<<builder_level>>",
+    "run_definition": [
+        "<<final_use>>",
+        "<<use_<<alt>>>>",
+        "<<allowed_libraries>>",
+    ],
+    "suppress_overlays": "<<suppress_overlays>>",
+    "overlay": {
+        "name": "<<final_name>>",
+        "file": "<<file_<<key>>>>",
+        "url": "<<url_<<key>>>>",
+        "git": "<<git_<<key>>>>",
+        "repo": "<<repo_<<key>>>>",
+        "default": "<<default_<<key>>>>",
+        "group": "<<group>>",
+        "queue": "<<queue>>",
+        "weight": "<<weight_<<key>>>>",
+        "horizontal_offset": "<<horizontal_offset_<<key>>>>",
+        "horizontal_align": "<<horizontal_align_<<key>>>>",
+        "vertical_offset": "<<vertical_offset_<<key>>>>",
+        "vertical_align": "<<vertical_align_<<key>>>>",
+        "font": "<<font_<<key>>>>",
+        "font_style": "<<font_style_<<key>>>>",
+        "font_size": "<<font_size_<<key>>>>",
+        "font_color": "<<font_color_<<key>>>>",
+        "stroke_width": "<<stroke_width_<<key>>>>",
+        "stroke_color": "<<stroke_color_<<key>>>>",
+        "back_color": "<<back_color_<<key>>>>",
+        "back_width": "<<back_width_<<key>>>>",
+        "back_height": "<<back_height_<<key>>>>",
+        "back_align": "<<back_align_<<key>>>>",
+        "back_padding": "<<back_padding_<<key>>>>",
+        "back_radius": "<<back_radius_<<key>>>>",
+        "back_line_color": "<<back_line_color_<<key>>>>",
+        "back_line_width": "<<back_line_width_<<key>>>>",
+        "addon_offset": "<<addon_offset>>",
+        "addon_position": "<<addon_position>>",
+        "scale_width": "<<scale_width_<<key>>>>",
+        "scale_height": "<<scale_height_<<key>>>>",
+    },
+}
 
 
 def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
@@ -830,13 +955,22 @@ class OverlayResolver:
                         "template_defaults": self.get_template_variable_defaults(entry),
                         "variables": entry.get("template_variables") or {}
                     })
-                    # Add default template asset
+                    # Add default template asset and shared templates.yml dependency
                     all_referenced_assets[f"default:{def_name}"] = {
                         "category": "template",
                         "name": f"{def_name}.yml",
                         "type": "default_template",
                         "ref": def_name
                     }
+                    all_referenced_assets.setdefault("default:templates", {
+                        "category": "template",
+                        "name": "templates.yml",
+                        "type": "default_template",
+                        "ref": "templates",
+                    })
+                    if "templates" not in parsed_def_assets:
+                        parsed_def_assets.add("templates")
+                        self._parse_overlay_file_assets("templates.yml", all_referenced_assets, search_defaults=True)
                     # Also parse the default template if present in defaults_dir for sub-assets (fonts, images)
                     if def_name not in parsed_def_assets:
                         parsed_def_assets.add(def_name)
@@ -1014,10 +1148,37 @@ class OverlayResolver:
 
         try:
             data = load_cached_yaml_file(file_path)
-            if not data:
+            if not isinstance(data, dict) or not data:
                 return
         except Exception:
             return
+
+        ext_tpl = data.get("external_templates")
+        for ext_entry in (ext_tpl if isinstance(ext_tpl, list) else [ext_tpl]):
+            if not isinstance(ext_entry, dict):
+                continue
+            ext_default = str(ext_entry.get("default") or "").strip()
+            if ext_default and not is_template_placeholder(ext_default):
+                ext_fname = ext_default if ext_default.lower().endswith((".yml", ".yaml")) else f"{ext_default}.yml"
+                ext_stem = Path(ext_fname).stem
+                asset_collector[f"default:{ext_stem}"] = {
+                    "category": "template",
+                    "name": ext_fname,
+                    "type": "default_template",
+                    "ref": ext_stem,
+                }
+            ext_vars = ext_entry.get("template_variables")
+            if isinstance(ext_vars, dict) and ext_vars.get("font"):
+                raw_font = str(ext_vars["font"]).strip()
+                if not is_template_placeholder(raw_font):
+                    font_name = Path(raw_font).name
+                    if font_name.lower().endswith((".ttf", ".otf", ".woff", ".woff2")):
+                        asset_collector[f"font:{font_name}"] = {
+                            "category": "font",
+                            "name": font_name,
+                            "type": "font",
+                            "path_in_config": ext_vars["font"],
+                        }
 
         # Check templates and overlays
         templates = data.get("templates", {})
@@ -1512,20 +1673,34 @@ class OverlayResolver:
                     pass
 
     async def fetch_all_missing(self) -> Dict[str, Any]:
-        """Fetch all fetchable missing assets in batch."""
-        analysis = self.scan_and_analyze_rules()
-        readiness = analysis.get("readiness", {})
-        assets = readiness.get("assets", [])
-
+        """Fetch all fetchable missing assets in batch (with a second pass for newly uncovered dependencies)."""
         results = []
-        for a in assets:
-            if a.get("status") == "fetchable":
+        attempted: Set[Tuple[str, str]] = set()
+
+        for _ in range(2):
+            analysis = self.scan_and_analyze_rules()
+            readiness = analysis.get("readiness", {})
+            assets = readiness.get("assets", [])
+
+            pass_results = []
+            for a in assets:
+                if a.get("status") != "fetchable":
+                    continue
+                item_key = (str(a.get("category") or ""), str(a.get("name") or ""))
+                if item_key in attempted:
+                    continue
+                attempted.add(item_key)
                 res = await self.fetch_asset(
                     asset_name=a["name"],
                     category=a["category"],
                     custom_url=a.get("download_url")
                 )
-                results.append({"name": a["name"], "result": res})
+                entry = {"name": a["name"], "result": res}
+                results.append(entry)
+                pass_results.append(entry)
+
+            if not pass_results or not any(r["result"].get("success") for r in pass_results):
+                break
 
         # Re-run readiness check after downloads
         fresh_analysis = self.scan_and_analyze_rules()
@@ -2400,7 +2575,11 @@ class OverlayConfigEngine:
     """
     def __init__(self, project_root: Path):
         self.project_root = Path(project_root)
-        if (self.project_root / "assets").exists() and ((self.project_root / "defaults").exists() or (self.project_root / "configs").exists()):
+        if (
+            self.project_root.name.lower() in ("dynamic_overlays", "kometa")
+            or (self.project_root / "defaults").exists()
+            or (self.project_root / "configs").exists()
+        ):
             self.overlays_dir = self.project_root
         else:
             self.overlays_dir = self.project_root / "Overlayfiles" / "dynamic_overlays"
@@ -2413,6 +2592,7 @@ class OverlayConfigEngine:
         self.configs_dir = self.overlays_dir / "configs"
         self.assets_dir = self.overlays_dir / "assets"
         self.fonts_dir = self.overlays_dir / "fonts"
+        self._missing_templates_warned = False
 
         # Multi-root resolution: Collect all viable base candidate directories across Docker, project, and config
         self.candidate_roots: List[Path] = []
@@ -2420,7 +2600,7 @@ class OverlayConfigEngine:
             if r and Path(r).exists() and Path(r) not in self.candidate_roots:
                 self.candidate_roots.append(Path(r))
 
-        self.candidate_font_dirs: List[Path] = []
+        self.candidate_font_dirs: List[Path] = [self.fonts_dir]
         for cr in self.candidate_roots:
             for sub in [
                 cr / "Overlayfiles" / "dynamic_overlays" / "fonts",
@@ -2434,8 +2614,9 @@ class OverlayConfigEngine:
         if Path("/usr/share/fonts/custom") not in self.candidate_font_dirs:
             self.candidate_font_dirs.append(Path("/usr/share/fonts/custom"))
 
-        # Bare <root>/assets is deliberately excluded: in Docker PROJECT_ROOT is "/" and /assets is the media asset mount
-        self.candidate_asset_dirs: List[Path] = [self.assets_dir] if self.assets_dir.exists() else []
+        # Bare <root>/assets is deliberately excluded: in Docker PROJECT_ROOT is "/" and /assets is the media asset mount.
+        # Keep self.assets_dir first even if it has not been created yet so on-demand assets never target configs/.
+        self.candidate_asset_dirs: List[Path] = [self.assets_dir]
         for cr in self.candidate_roots:
             for sub in [
                 cr / "Overlayfiles" / "dynamic_overlays" / "assets",
@@ -2453,7 +2634,8 @@ class OverlayConfigEngine:
             if defaults_images_dir not in self.candidate_asset_dirs:
                 self.candidate_asset_dirs.append(defaults_images_dir)
 
-        self.candidate_default_dirs: List[Path] = []
+        # Keep self.defaults_dir first even if it does not exist yet so later imports are picked up without restart.
+        self.candidate_default_dirs: List[Path] = [self.defaults_dir]
         for cr in self.candidate_roots:
             for sub in [
                 cr / "Overlayfiles" / "dynamic_overlays" / "defaults",
@@ -2470,8 +2652,16 @@ class OverlayConfigEngine:
             data = load_cached_yaml_file(default_dir / "templates.yml")
             templates = data.get("templates") if isinstance(data, dict) else None
             if isinstance(templates, dict) and templates:
+                self._missing_templates_warned = False
                 return templates
-        return {}
+        if not self._missing_templates_warned:
+            self._missing_templates_warned = True
+            logger.warning(
+                "[OverlayConfigEngine] defaults/templates.yml was not found in %s; falling back to built-in 'standard' template. "
+                "Run 'Import Default Templates' or 'Fetch All Missing' in Dynamic Overlays -> Assets & Defaults.",
+                self.defaults_dir,
+            )
+        return {"standard": copy.deepcopy(BUILTIN_STANDARD_TEMPLATE)}
 
     def resolve_image_path(self, raw_path: Optional[str]) -> Optional[Path]:
         if not raw_path or str(raw_path).startswith("text(") or str(raw_path).startswith("blur("):
@@ -2510,8 +2700,7 @@ class OverlayConfigEngine:
                             return candidate
             official_url = resolve_official_kometa_image_url(f"flag/{flag_style}/{filenames[-1]}")
             if official_url:
-                base_target = self.candidate_asset_dirs[0] if self.candidate_asset_dirs else self.assets_dir
-                return base_target / "flag" / flag_style / Path(official_url).name
+                return self.assets_dir / "flag" / flag_style / Path(official_url).name
             return None
 
         sub_dirs = [
@@ -2564,8 +2753,7 @@ class OverlayConfigEngine:
         official_url = resolve_official_kometa_image_url(p_str)
         if official_url:
             target_sub = official_url[len(KOMETA_IMAGES_RAW) + 1:] if official_url.startswith(f"{KOMETA_IMAGES_RAW}/") else Path(p_str).name
-            base_target = self.candidate_asset_dirs[0] if self.candidate_asset_dirs else (self.project_root / "Overlayfiles" / "dynamic_overlays" / "assets")
-            return base_target / target_sub
+            return self.assets_dir / target_sub
 
         return None
 
