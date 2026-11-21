@@ -7,6 +7,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
 import ConfirmDialog from "./ConfirmDialog";
+import { useToast } from "../context/ToastContext";
 
 const taskNameKeys = {
   import_images: "topNavbar.tasks.imageDownload",
@@ -44,6 +45,7 @@ const TopNavbar = () => {
 
   // Dialog States
   const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const { showSuccess, showError } = useToast();
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [taskToStop, setTaskToStop] = useState(null);
 
@@ -100,12 +102,16 @@ const TopNavbar = () => {
       const data = await response.json();
 
       if (data.success) {
+        if (data.stale_lock_cleared) showSuccess(data.message);
         fetchStatus();
       } else {
         console.error("Stop failed:", data.message || data.error);
+        showError(data.message || data.error || t("dangerZone.stopError"));
+        fetchStatus();
       }
     } catch (error) {
       console.error("Failed to stop system", error);
+      showError(`${t("dangerZone.stopError")}: ${error.message}`);
     } finally {
       setShowStopConfirm(false);
       setTaskToStop(null);
