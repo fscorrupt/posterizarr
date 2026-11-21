@@ -671,12 +671,11 @@ The former **Sync & Cache** page is split into **Sync & Maintenance** views:
 | --- | --- | --- |
 | **Synchronize** | Sync controls, automatic application to new media, sync log | `/dynamic-overlays?tab=sync` |
 | **Media Changes** | Metadata monitoring, detected changes, intervals, Dry Run | `/dynamic-overlays?tab=media-changes` |
-| **Asset Title Review** | Historical title comparison, optional title automation, recreation through the queue | `/dynamic-overlays?tab=episode-titles` |
 | **Overlay Cache** | Cache statistics, browser, cleanup, recently updated artwork | `/dynamic-overlays?tab=overlay-cache` |
 | **Ratings Cache** | Ratings cache, refresh controls, Local IMDb Dataset | `/dynamic-overlays?tab=ratings-cache` |
 
 The selected view is retained in the URL and local preference. The legacy
-`tab=cache` link opens Overlay Cache. Changing views does not stop running jobs.
+`tab=cache` link opens Overlay Cache, and `tab=episode-titles` redirects to the standalone **Asset Management $\to$ Asset Title Review** view (`/asset-title-review`). Changing views does not stop running jobs.
 
 ![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
 
@@ -700,14 +699,17 @@ also covers optional artwork recreation when titles change.*
 
 #### Recreate Artwork When Titles Change (Asset Title Review)
 
-**Sync & Maintenance > Asset Title Review > Recreate artwork when titles change** is
-optional and off by default. With the Master Switch and Background Checking on,
-it compares titles at the configured background-check interval. The default
-interval is 60 minutes, and the first check waits for that interval. Automatic
-recreation applies to later title changes; existing historical review candidates
-remain manual. It is independent of **Automatic Overlay Resync**. Keep **Dry Run**
-on to log eligible changes without recreating files or uploading artwork; turn it
-off to apply changes.
+**Asset Management > Asset Title Review** (`/asset-title-review`) is a standalone
+feature and works even when Dynamic Overlays is off and no overlay rules are
+configured. **Recreate artwork when titles change** is optional and off by default.
+When turned on, it checks titles automatically at its own configured interval
+(default **60 minutes**, with the first check waiting one interval), independent of
+the Dynamic Overlays Master Switch, Background Checking, and **Automatic Overlay Resync**.
+Turn on the page's standalone **Dry Run** switch to log eligible changes without
+recreating files or uploading artwork; keep it off to apply changes. When Dynamic
+Overlays is enabled and the library has overlay rules configured, recreated assets
+automatically run through targeted overlay sync before upload; otherwise they are
+uploaded directly to Plex, Jellyfin, or Emby.
 
 The monitor checks existing text-enabled artwork on Plex, Jellyfin, and Emby
 according to `config.json`: episode titlecards (when `TitleCards` and episode
@@ -728,7 +730,7 @@ Existing differences become historical review candidates, including when an
 older version already established a baseline. The scan itself never recreates
 historical artwork automatically.
 
-Open **Sync & Maintenance > Asset Title Review** and select **Compare titles**
+Open **Asset Management > Asset Title Review** (`/asset-title-review`) and select **Compare titles**
 for an initial, read-only artwork audit (scans can also run during an active
 overlay sync). The table shows the existing image, media item (`Media / Item`),
 previous title, current title, and eligibility across movies, shows, seasons,
@@ -769,8 +771,7 @@ titles** also reconciles the baseline when ImageChoices records the current
 title without truncation. A missing original download URL does not keep an
 already confirmed current title in the review. This confirms the local artwork;
 final media-server upload remains a separate overlay-sync step.
-The Master Switch must be on and Dry Run off to open this replacement
-workflow from the review.
+The standalone **Dry Run** toggle on the Asset Title Review page must be off to open this replacement workflow from the review.
 Use **Permanently hide this review entry** on any blocked row (for example a
 media-server source or an image that already contains text) to dismiss it, or
 select multiple rows and use **Hide selected** to dismiss them together and
@@ -821,8 +822,8 @@ select several entries with the checkboxes, or choose **All eligible matches**.
 The all action includes every eligible result of the current search and active
 filters, not just the current page. Each action requires confirmation (with
 media-specific titles and prompts for single-item rebuilds). Manual recreation
-does not require the automatic title option or Background Checking, but the
-Master Switch must be on and Dry Run off.
+does not require the automatic title option, Background Checking, or the Dynamic
+Overlays Master Switch, as long as the Asset Title Review **Dry Run** toggle is off.
 
 **Recreate selected** is only available while no other Posterizarr run is active. Use
 **Add to queue** instead to queue the selected items immediately, even while a

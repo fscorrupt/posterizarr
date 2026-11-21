@@ -1,4 +1,20 @@
 {
+  "assetTitleReview": {
+    "subtitle": "Surveille les affiches avec texte, affiches de saison et cartons de titre par rapport à Plex, Jellyfin et Emby — fonctionne de manière autonome sans Dynamic Overlays.",
+    "autoRecreateLabel": "Recréer les images si les titres changent",
+    "autoRecreateHint": "Vérifie automatiquement les nouveaux titres renommés à l’intervalle configuré et recrée puis envoie les illustrations avec texte. Les candidats historiques ImageChoices restent manuels.",
+    "intervalLabel": "Intervalle de vérification",
+    "dryRunLabel": "Simulation",
+    "dryRunHint": "Détecte et journalise les changements de titre sans recréer de fichiers ni les envoyer au serveur multimédia.",
+    "dryRunBadge": "SIMULATION",
+    "lastCheck": "Dernière vérification automatique",
+    "neverChecked": "Jamais",
+    "summary": "{{detected}} détectés · {{regenerated}} recréés",
+    "standaloneBadge": "Mode autonome — envoi direct vers le serveur multimédia",
+    "overlaysActiveBadge": "Dynamic Overlays actif — les superpositions sont resynchronisées automatiquement",
+    "saved": "Paramètres de vérification des titres enregistrés.",
+    "saveFailed": "Impossible d’enregistrer les paramètres de vérification des titres."
+  },
   "overlayBundle": {
     "export": "Exporter le paquet",
     "import": "Importer le paquet",
@@ -1106,6 +1122,7 @@
     "howItWorks": "Fonctionnement",
     "autoTriggers": "Déclencheurs automatiques",
     "assetOverview": "Centre d'actions",
+    "assetTitleReview": "Vérification des titres",
     "assetReplacer": "Remplacement de ressource",
     "assetsManager": "Gestionnaire de superposition",
     "manualAssets": "Ressources manuelles",
@@ -2274,6 +2291,22 @@
     "replaceSuccess": "Ressource remplacée avec succès !"
   },
   "configEditor": {
+    "logoSource": {
+      "clearlogo": "Clearlogo (logo titre uniquement)",
+      "clearart": "Clearart (logo avec illustration)"
+    },
+    "autoChanged": {
+      "typeSelected": "Défini automatiquement sur Clearlogo : un logo nécessite un type, sinon ni le logo ni le titre texte n'est dessiné."
+    },
+    "dependency": {
+      "goTo": "Aller à {{setting}}",
+      "titleLogo": "Titre : logo {{type}}, car {{parent}} est activé (Visuels globaux). Ce commutateur ne s'applique alors qu'aux éléments sans logo, et uniquement si le repli sur le texte est activé.",
+      "titleText": "Titre : texte, car {{parent}} est désactivé (Visuels globaux).",
+      "titleNone": "Aucun titre ne sera dessiné : ce commutateur et {{parent}} (Visuels globaux) sont tous deux désactivés.",
+      "seasonShowTitle": "Nom de la série affiché en : {{style}}. Les affiches de saison suivent {{parent}} (Visuels globaux) ; il n'existe pas de commutateur de logo distinct pour les saisons.",
+      "styleLogo": "logo {{type}}",
+      "styleText": "texte"
+    },
     "skipWordsHelp": "Regex acceptées entre /barres obliques/ (SkipTBA requis).",
     "skipWordsTbaExample": "Reconnaît TBA ou tba, avec des espaces éventuels autour.",
     "skipWordsEpisodeExample": "Reconnaît des titres provisoires comme Folge 12, Episode #12 ou Episode 12.5.",
@@ -2503,6 +2536,24 @@
     "unknownLanguage": "Langue inconnue",
     "notPrimaryProvider": "Fournisseur non principal",
     "truncatedText": "Texte tronqué",
+    "hints": {
+      "assetsWithIssues": "Chaque élément non résolu qui présente au moins un des indicateurs comptés dans les autres cartes. Marquez un élément comme résolu pour le retirer de ce compteur.",
+      "missingAssets": "Aucune image n'a été trouvée pour ces éléments chez aucun fournisseur activé, rien n'a donc été créé.",
+      "missingAssetsAtFavProvider": "Votre serveur multimédia ne dispose d'aucun identifiant pour ces éléments chez votre fournisseur favori (par exemple aucun ID TMDB), ils n'ont donc pas pu y être recherchés ni liés. Chaque élément affiche ceci comme « Lien manquant ».",
+      "nonPrimaryLang": "L'image n'est pas dans la première langue de votre ordre de langues. Une affiche avec une langue (au lieu de sans texte) comporte généralement son titre imprimé dessus.",
+      "nonPrimaryProvider": "L'image provient d'un autre fournisseur que votre fournisseur favori.",
+      "truncatedTextCategory": "Le titre nécessitait une police plus petite que la taille minimale configurée ; il a donc été dessiné à la taille minimale et peut être tronqué.",
+      "missingAsset": "Aucune image n'a été trouvée pour cet élément chez aucun fournisseur activé, rien n'a donc été créé. Solution : utilisez Remplacer pour choisir ou téléverser une image, ou relancez une fois l'illustration disponible.",
+      "missingLink": "Votre serveur multimédia ne dispose d'aucun identifiant pour cet élément chez votre fournisseur favori (par exemple aucun ID TMDB), Posterizarr n'a donc pas pu le rechercher ni s'y lier. Solution : corrigez l'association dans votre serveur multimédia (Plex : Corriger l'association ou Actualiser les métadonnées ; Jellyfin/Emby : Identifier) afin que l'ID soit renseigné, puis relancez.",
+      "notPrimaryProvider": "Cette image provient d'un autre fournisseur que votre fournisseur favori, généralement parce que ce dernier n'avait rien d'utilisable. Solution : marquez comme résolu si le rendu convient, ou utilisez Remplacer pour choisir une autre image.",
+      "notPrimaryLanguage": "Cette image est en {{lang}}, et non dans la première entrée de votre ordre de langues ({{primary}}). Une affiche avec une langue comporte généralement son titre imprimé dessus. Solution : marquez comme résolu, utilisez Remplacer ou modifiez l'ordre des langues dans Configuration.",
+      "unknownLanguage": "Le fournisseur n'a pas indiqué de langue pour cette image, elle peut donc contenir du texte ou non. Solution : vérifiez l'image, puis marquez comme résolu ou utilisez Remplacer.",
+      "truncated": "Le titre nécessitait une police plus petite que la taille minimale configurée ; il a donc été dessiné à la taille minimale et peut être tronqué. Solution : vérifiez l'image ; utilisez Remplacer avec un titre plus court, ou réduisez la taille minimale de police / agrandissez la zone de texte dans Configuration.",
+      "logoNotPrimaryProvider": "Le logo provient d'un autre fournisseur que votre fournisseur favori. Solution : marquez comme résolu si le rendu convient.",
+      "logoLanguage": "Le logo est en {{lang}}, et non dans la première entrée de votre ordre de langues des logos ({{primary}}). Solution : marquez comme résolu ou modifiez l'ordre des langues des logos dans Configuration.",
+      "logoTextFallback": "Aucun logo n'a été trouvé, le titre a donc été écrit en texte à la place (LogoTextFallback). Solution : marquez comme résolu si le texte convient.",
+      "textlessCode": "XX = sans texte"
+    },
     "manual": "Manuel",
     "searchPlaceholder": "Rechercher par titre ou chemin...",
     "allTypes": "Tous les types",
@@ -3793,6 +3844,7 @@
     "fanartNote": "Fournisseur complémentaire optionnel pour les logos, arrière-plans et illustrations de personnages en haute résolution.",
     "badgeActive": "Actif",
     "badgeOptional": "Optionnel",
+    "badgeRequired": "Requis (au moins un)",
     "badgeFreeInstant": "Gratuit et instantané",
     "badgeProjectOrPin": "Clé projet / PIN",
     "localServerFallback": "Secours serveur local",

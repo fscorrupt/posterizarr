@@ -1,4 +1,20 @@
 {
+  "assetTitleReview": {
+    "subtitle": "Monitoriza posters, posters de temporada e cartões de título com texto face ao Plex, Jellyfin e Emby — funciona de forma autónoma sem Dynamic Overlays.",
+    "autoRecreateLabel": "Recriar imagens quando os títulos mudarem",
+    "autoRecreateHint": "Verifica automaticamente novos títulos renomeados no intervalo configurado e recria e envia as imagens com texto. Os candidatos históricos do ImageChoices permanecem manuais.",
+    "intervalLabel": "Intervalo de verificação",
+    "dryRunLabel": "Simulação",
+    "dryRunHint": "Deteta e regista alterações de título sem recriar ficheiros nem enviar para o servidor de mídia.",
+    "dryRunBadge": "SIMULAÇÃO",
+    "lastCheck": "Última verificação automática",
+    "neverChecked": "Nunca",
+    "summary": "{{detected}} detetados · {{regenerated}} recriados",
+    "standaloneBadge": "Modo autónomo — envio direto para o servidor de mídia",
+    "overlaysActiveBadge": "Dynamic Overlays ativo — as sobreposições são ressincronizadas automaticamente",
+    "saved": "Definições de verificação de títulos guardadas.",
+    "saveFailed": "Não foi possível guardar as definições de verificação de títulos."
+  },
   "overlayBundle": {
     "export": "Exportar pacote",
     "import": "Importar pacote",
@@ -1106,6 +1122,7 @@
     "howItWorks": "Como funciona",
     "autoTriggers": "Gatilhos automáticos",
     "assetOverview": "Central de Ações",
+    "assetTitleReview": "Revisão dos títulos",
     "assetReplacer": "Substituidor de ativos",
     "assetsManager": "Gerenciador de sobreposição",
     "manualAssets": "Ativos manuais",
@@ -2274,6 +2291,22 @@
     "replaceSuccess": "Ativo substituído com sucesso!"
   },
   "configEditor": {
+    "logoSource": {
+      "clearlogo": "Clearlogo (apenas logotipo do título)",
+      "clearart": "Clearart (logotipo com arte)"
+    },
+    "autoChanged": {
+      "typeSelected": "Definido automaticamente como Clearlogo: um logotipo precisa de um tipo, caso contrário nem o logotipo nem o texto do título é desenhado."
+    },
+    "dependency": {
+      "goTo": "Ir para {{setting}}",
+      "titleLogo": "Título: logotipo {{type}}, porque {{parent}} está ativado (Visuais Globais). Este interruptor só importa então para itens sem logotipo, e apenas se o fallback para texto estiver ativado.",
+      "titleText": "Título: texto, porque {{parent}} está desativado (Visuais Globais).",
+      "titleNone": "Nenhum título será desenhado: este interruptor e {{parent}} (Visuais Globais) estão ambos desativados.",
+      "seasonShowTitle": "Nome da série desenhado como: {{style}}. Pôsteres de temporada seguem {{parent}} (Visuais Globais); não há um interruptor de logotipo separado para temporadas.",
+      "styleLogo": "logotipo {{type}}",
+      "styleText": "texto"
+    },
     "skipWordsHelp": "Regex suportadas entre /barras/ (requer SkipTBA).",
     "skipWordsTbaExample": "Reconhece TBA ou tba, mesmo com espaços antes ou depois.",
     "skipWordsEpisodeExample": "Reconhece títulos provisórios como Folge 12, Episode #12 ou Episode 12.5.",
@@ -2502,6 +2535,24 @@
     "unknownLanguage": "Idioma desconhecido",
     "notPrimaryProvider": "Provedor não primário",
     "truncatedText": "Texto truncado",
+    "hints": {
+      "assetsWithIssues": "Todos os itens não resolvidos que possuem pelo menos um dos sinalizadores contados nos outros cartões. Marque um item como resolvido para removê-lo desta contagem.",
+      "missingAssets": "Nenhuma imagem foi encontrada para estes itens em nenhum provedor ativado, portanto nada foi criado para eles.",
+      "missingAssetsAtFavProvider": "Seu servidor multimédia não possui um ID para estes itens no seu provedor favorito (por exemplo, nenhum ID TMDB), portanto não foi possível procurá-los ou vinculá-los lá. Cada item exibe isso como \"Link ausente\".",
+      "nonPrimaryLang": "A imagem não está no primeiro idioma da sua ordem de idiomas. Um pôster com idioma (em vez de sem texto) geralmente já tem o título impresso nele.",
+      "nonPrimaryProvider": "A imagem veio de um provedor diferente do seu provedor favorito.",
+      "truncatedTextCategory": "O título precisava de uma fonte menor do que o tamanho mínimo configurado, então foi desenhado no tamanho mínimo e pode ficar cortado.",
+      "missingAsset": "Nenhuma imagem foi encontrada para este item em nenhum provedor ativado, portanto nada foi criado. Solução: use Substituir para escolher ou enviar uma imagem, ou execute novamente quando houver arte disponível.",
+      "missingLink": "Seu servidor multimédia não possui um ID para este item no seu provedor favorito (por exemplo, nenhum ID TMDB), portanto o Posterizarr não pôde procurá-lo ou vinculá-lo lá. Solução: corrija a correspondência no seu servidor multimédia (Plex: Corrigir correspondência ou Atualizar metadados; Jellyfin/Emby: Identificar) para preencher o ID e execute novamente.",
+      "notPrimaryProvider": "Esta imagem veio de um provedor diferente do seu provedor favorito, geralmente porque o favorito não tinha nada utilizável. Solução: marque como resolvido se estiver bom, ou use Substituir para escolher outra imagem.",
+      "notPrimaryLanguage": "Esta imagem está em {{lang}}, não na primeira entrada da sua ordem de idiomas ({{primary}}). Um pôster com idioma geralmente já tem o título impresso nele. Solução: marque como resolvido, use Substituir ou altere a ordem de idiomas em Configuração.",
+      "unknownLanguage": "O provedor não informou um idioma para esta imagem, então ela pode ou não conter texto. Solução: verifique a imagem e marque como resolvido ou use Substituir.",
+      "truncated": "O título precisava de uma fonte menor do que o tamanho mínimo configurado, então foi desenhado no tamanho mínimo e pode ficar cortado. Solução: verifique a imagem; use Substituir com um título mais curto, ou reduza o tamanho mínimo da fonte ou aumente a caixa de texto em Configuração.",
+      "logoNotPrimaryProvider": "O logotipo veio de um provedor diferente do seu provedor favorito. Solução: marque como resolvido se estiver bom.",
+      "logoLanguage": "O logotipo está em {{lang}}, não na primeira entrada da sua ordem de idiomas de logotipo ({{primary}}). Solução: marque como resolvido ou altere a ordem de idiomas de logotipo em Configuração.",
+      "logoTextFallback": "Nenhum logotipo foi encontrado, então o título foi escrito como texto no lugar (LogoTextFallback). Solução: marque como resolvido se o texto estiver bom.",
+      "textlessCode": "XX = sem texto"
+    },
     "manual": "Manual",
     "searchPlaceholder": "Pesquisar por título ou caminho...",
     "allTypes": "Todos os tipos",
@@ -3792,6 +3843,7 @@
     "fanartNote": "Provedor suplementar opcional para logotipos, planos de fundo e artes de personagens em alta resolução.",
     "badgeActive": "Ativo",
     "badgeOptional": "Opcional",
+    "badgeRequired": "Obrigatório (pelo menos um)",
     "badgeFreeInstant": "Gratuito e Instantâneo",
     "badgeProjectOrPin": "Chave de Projeto / PIN",
     "localServerFallback": "Fallback do Servidor Local",

@@ -1,4 +1,20 @@
 {
+  "assetTitleReview": {
+    "subtitle": "Überwacht textbasierte Poster, Staffelposter und Titelkarten gegen Plex, Jellyfin und Emby — funktioniert eigenständig ohne Dynamic Overlays.",
+    "autoRecreateLabel": "Assets bei Titeländerung neu erstellen",
+    "autoRecreateHint": "Prüft im eingestellten Intervall automatisch auf neu umbenannte Titel und erstellt sowie überträgt betroffene Grafiken neu. Vorhandene ImageChoices-Prüfkandidaten bleiben manuell.",
+    "intervalLabel": "Prüfintervall",
+    "dryRunLabel": "Dry Run",
+    "dryRunHint": "Erkennt und protokolliert Titeländerungen, ohne Dateien neu zu erstellen oder an den Medienserver zu senden.",
+    "dryRunBadge": "DRY RUN",
+    "lastCheck": "Letzte automatische Prüfung",
+    "neverChecked": "Nie",
+    "summary": "{{detected}} erkannt · {{regenerated}} neu erstellt",
+    "standaloneBadge": "Eigenständiger Modus — direkter Upload zum Medienserver",
+    "overlaysActiveBadge": "Dynamic Overlays aktiv — Overlays werden automatisch mit synchronisiert",
+    "saved": "Einstellungen für den Titelabgleich gespeichert.",
+    "saveFailed": "Einstellungen für den Titelabgleich konnten nicht gespeichert werden."
+  },
   "overlayBundle": {
     "export": "Paket exportieren",
     "import": "Paket importieren",
@@ -1106,6 +1122,7 @@
     "howItWorks": "Wie es funktioniert",
     "autoTriggers": "Auto Trigger",
     "assetOverview": "Aktionszentrum",
+    "assetTitleReview": "Asset-Titelabgleich",
     "assetReplacer": "Asset-Ersetzer",
     "assetsManager": "Overlay-Manager",
     "manualAssets": "Manuelle Assets",
@@ -3878,6 +3895,7 @@
     "fanartNote": "Optionaler Zusatzanbieter für hochauflösende Logos, Hintergründe und Charakter-Artworks.",
     "badgeActive": "Aktiv",
     "badgeOptional": "Optional",
+    "badgeRequired": "Erforderlich (mindestens eins)",
     "badgeFreeInstant": "Kostenlos & Sofort",
     "badgeProjectOrPin": "Projekt-Key / PIN",
     "localServerFallback": "Lokaler Server-Fallback",

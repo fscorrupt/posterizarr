@@ -32,6 +32,7 @@ const TopNavbar = () => {
     "/queue": "topNavbar.views.queue",
     "/dynamic-overlays": "dynamicOverlays.title",
     "/assets-manager": "topNavbar.views.assetManager",
+    "/asset-title-review": "nav.assetTitleReview",
     "/blueprints": "topNavbar.views.blueprints",
     "/logs": "topNavbar.views.logs",
     "/image-quarantine": "topNavbar.views.imageQuarantine",

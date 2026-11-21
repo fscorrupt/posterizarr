@@ -6779,7 +6779,53 @@ def _background_change_detector_loop(
     while _change_detector_running:
         try:
             settings = get_dynamic_overlays_settings()
-            if not settings.get("enabled", False) or not settings.get("change_detection_enabled", True):
+            overlay_monitoring_active = bool(settings.get("enabled", False) and settings.get("change_detection_enabled", True))
+            title_monitoring_active = bool(settings.get("regenerate_assets_on_title_change", False))
+            if not overlay_monitoring_active and not title_monitoring_active:
+                for _ in range(30):
+                    if not _change_detector_running:
+                        break
+                    time.sleep(1)
+                continue
+
+            if title_monitoring_active:
+                title_interval_mins = max(5, int(settings.get("title_change_interval_minutes", 60)))
+                last_title_str = settings.get("last_title_change_check_at")
+                should_run_title = False
+                if not last_title_str:
+                    save_dynamic_overlays_settings({
+                        "last_title_change_check_at": datetime.now().isoformat()
+                    })
+                else:
+                    try:
+                        elapsed_title_secs = (datetime.now() - datetime.fromisoformat(last_title_str)).total_seconds()
+                        if elapsed_title_secs >= (title_interval_mins * 60):
+                            should_run_title = True
+                    except Exception:
+                        should_run_title = True
+
+                if should_run_title and not is_overlay_sync_running():
+                    logger.info("[TitleChanges] Running scheduled title change check...")
+                    title_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(title_loop)
+                    title_report = {"detected": 0, "regenerated": 0}
+                    try:
+                        from asset_title_changes import regenerate_changed_asset_titles
+                        title_report = title_loop.run_until_complete(regenerate_changed_asset_titles(base_dir, config_path))
+                    finally:
+                        title_loop.close()
+
+                    latest_title_settings = get_dynamic_overlays_settings()
+                    if latest_title_settings.get("regenerate_assets_on_title_change", False):
+                        save_dynamic_overlays_settings({
+                            "last_title_change_check_at": datetime.now().isoformat(),
+                            "last_title_change_summary": {
+                                "detected": int(title_report.get("detected", 0)),
+                                "regenerated": int(title_report.get("regenerated", 0)),
+                            },
+                        })
+
+            if not overlay_monitoring_active:
                 for _ in range(30):
                     if not _change_detector_running:
                         break
@@ -6808,7 +6854,7 @@ def _background_change_detector_loop(
                 except Exception:
                     pass
 
-            if not has_configured_libs and not settings.get("regenerate_assets_on_title_change", False):
+            if not has_configured_libs:
                 for _ in range(30):
                     if not _change_detector_running:
                         break
@@ -6848,8 +6894,6 @@ def _background_change_detector_loop(
                 asyncio.set_event_loop(loop)
                 report = {}
                 try:
-                    from asset_title_changes import regenerate_changed_asset_titles
-                    title_report = loop.run_until_complete(regenerate_changed_asset_titles(base_dir, config_path))
                     report = loop.run_until_complete(
                         detect_media_changes(
                             target_server="all",
@@ -6858,7 +6902,6 @@ def _background_change_detector_loop(
                             config_path=config_path
                         )
                     )
-                    report.setdefault("summary", {})["titles"] = title_report["detected"]
                 finally:
                     loop.close()
 

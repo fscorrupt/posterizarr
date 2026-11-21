@@ -30,6 +30,7 @@ import Dashboard from "./components/Dashboard";
 import GalleryHub from "./components/GalleryHub";
 import AssetsManager from "./components/AssetsManager";
 import ManualAssets from "./components/ManualAssets";
+import AssetTitleReviewPage from "./components/AssetTitleReviewPage";
 import About from "./components/About";
 import HowItWorks from "./components/HowItWorks";
 import AutoTriggers from "./components/AutoTriggers";
@@ -350,6 +351,7 @@ function AppContent() {
                 <Route path="/scheduler" element={<SchedulerSettings />} />
                 <Route path="/assets-manager" element={<AssetsManager />} />
                 <Route path="/manual-assets" element={<ManualAssets />} />
+                <Route path="/asset-title-review" element={<AssetTitleReviewPage />} />
                 {/* Route for Backup Assets - pointing to GalleryHub which handles the rendering */}
                 <Route path="/asset-backups" element={<GalleryHub />} />
                 <Route path="/image-quarantine" element={<ImageQuarantine />} />

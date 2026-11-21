@@ -1,4 +1,20 @@
 {
+  "assetTitleReview": {
+    "subtitle": "Monitor text-enabled posters, season posters, and episode titlecards against Plex, Jellyfin, and Emby — works standalone without Dynamic Overlays.",
+    "autoRecreateLabel": "Recreate artwork when titles change",
+    "autoRecreateHint": "Automatically checks for newly renamed titles at the configured interval and recreates & uploads text-enabled artwork. Historical ImageChoices review candidates remain manual.",
+    "intervalLabel": "Check interval",
+    "dryRunLabel": "Dry Run",
+    "dryRunHint": "Detect and log title changes without recreating files or uploading to the media server.",
+    "dryRunBadge": "DRY RUN",
+    "lastCheck": "Last automatic check",
+    "neverChecked": "Never",
+    "summary": "{{detected}} detected · {{regenerated}} recreated",
+    "standaloneBadge": "Standalone mode — direct upload to media server",
+    "overlaysActiveBadge": "Dynamic Overlays active — overlays re-sync automatically",
+    "saved": "Title check settings saved.",
+    "saveFailed": "Could not save title check settings."
+  },
   "overlayBundle": {
     "export": "Export bundle",
     "import": "Import bundle",
@@ -1106,6 +1122,7 @@
     "howItWorks": "How It Works",
     "autoTriggers": "Auto Triggers",
     "assetOverview": "Action Center",
+    "assetTitleReview": "Asset Title Review",
     "assetReplacer": "Asset Replacer",
     "assetsManager": "Overlay Manager",
     "manualAssets": "Manual Assets",
@@ -3820,6 +3837,7 @@
     "fanartNote": "Optional supplementary provider for high-resolution logos, backgrounds, and character art.",
     "badgeActive": "Active",
     "badgeOptional": "Optional",
+    "badgeRequired": "Required (at least one)",
     "badgeFreeInstant": "Free & Instant",
     "badgeProjectOrPin": "Project Key / PIN",
     "localServerFallback": "Local Server Fallback",

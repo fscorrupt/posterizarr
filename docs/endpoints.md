@@ -189,7 +189,7 @@ configurations are unaffected.
 
 ## Dynamic Overlays
 
-The `/api/dynamic-overlays/episode-title-changes*` endpoints power **Asset Title Review** across all configured text-enabled artwork types (`episode`, `season`, `movie`, and `show`).
+The `/api/dynamic-overlays/episode-title-changes*` endpoints power the standalone **Asset Title Review** page (`/asset-title-review`) across all configured text-enabled artwork types (`episode`, `season`, `movie`, and `show`). They work independently even when the Dynamic Overlays Master Switch (`enabled`) is off.
 
 | Endpoint | Purpose |
 |---|---|

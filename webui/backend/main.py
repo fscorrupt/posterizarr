@@ -15711,36 +15711,37 @@ async def regenerate_asset_title(job, manual=False):
 
     target_media_type = "movie" if media_type == "movie" else "show"
     target_asset_type = "titlecard" if media_type == "episode" else ("season" if media_type == "season" else "poster")
-    target_item = {
-        "id": job["parent_id"] if media_type == "episode" else job["item_id"],
-        "server_type": job["server_type"],
-        "library_name": job["library"],
-        "media_type": target_media_type,
-        "asset_type": target_asset_type,
-        "season_number": job.get("season"),
-        "episode_number": job.get("episode"),
-        "force_reapply": False,
-    }
-    result = await run_overlay_sync_task(
-        target_server=job["server_type"], scope="incremental", library=job["library"],
-        base_dir=BASE_DIR, config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
-        target_items=[target_item],
-    )
-    if not result.get("success") or result.get("stopped") or result.get("total_failed", 0):
-        return False
-    if result.get("total_synced", 0) + result.get("total_skipped", 0):
-        return True
-    from overlay_sync_service import resolve_library_rules
-    rules_path = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "configs" / "config.yml"
-    if not rules_path.is_file():
-        rules_path = BASE_DIR / "Overlayfiles" / "kometa" / "configs" / "config.yml"
-    if rules_path.is_file():
-        with open(rules_path, encoding="utf-8-sig") as rules_file:
-            libraries = (yaml.safe_load(rules_file) or {}).get("libraries") or {}
-        library_rules = {str(name).lower(): data.get("overlay_files") or data.get("overlays") or [] for name, data in libraries.items() if isinstance(data, dict)}
-        if resolve_library_rules(job["library"], target_media_type, library_rules)[1]:
-            logger.warning("[TitleChanges] Configured overlay target was not processed: %s", target.name)
+    if settings.get("enabled", False):
+        target_item = {
+            "id": job["parent_id"] if media_type == "episode" else job["item_id"],
+            "server_type": job["server_type"],
+            "library_name": job["library"],
+            "media_type": target_media_type,
+            "asset_type": target_asset_type,
+            "season_number": job.get("season"),
+            "episode_number": job.get("episode"),
+            "force_reapply": False,
+        }
+        result = await run_overlay_sync_task(
+            target_server=job["server_type"], scope="incremental", library=job["library"],
+            base_dir=BASE_DIR, config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+            target_items=[target_item],
+        )
+        if not result.get("success") or result.get("stopped") or result.get("total_failed", 0):
             return False
+        if result.get("total_synced", 0) + result.get("total_skipped", 0):
+            return True
+        from overlay_sync_service import resolve_library_rules
+        rules_path = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "configs" / "config.yml"
+        if not rules_path.is_file():
+            rules_path = BASE_DIR / "Overlayfiles" / "kometa" / "configs" / "config.yml"
+        if rules_path.is_file():
+            with open(rules_path, encoding="utf-8-sig") as rules_file:
+                libraries = (yaml.safe_load(rules_file) or {}).get("libraries") or {}
+            library_rules = {str(name).lower(): data.get("overlay_files") or data.get("overlays") or [] for name, data in libraries.items() if isinstance(data, dict)}
+            if resolve_library_rules(job["library"], target_media_type, library_rules)[1]:
+                logger.warning("[TitleChanges] Configured overlay target was not processed: %s", target.name)
+                return False
     content = target.read_bytes()
     async with httpx.AsyncClient(timeout=30, verify=False) as client:
         if job["server_type"] == "plex":
@@ -21240,7 +21241,7 @@ async def get_episode_title_changes(
     except (ValueError, FileNotFoundError):
         result = {"entries": [], "total": 0, "eligible": 0}
     return {"success": True, **result, "job": episode_title_review.status(),
-            "can_scan": bool(settings.get("enabled")),
+            "can_scan": True,
             "can_rebuild": title_regeneration_allowed(settings, manual=True)}
 
 
@@ -21292,8 +21293,6 @@ async def queue_episode_title_changes(request: EpisodeTitleRebuildRequest):
     if bool(request.candidate_ids) == bool(request.all_eligible):
         raise HTTPException(status_code=400, detail="invalid_selection")
     settings = get_dynamic_overlays_settings()
-    if not settings.get("enabled"):
-        raise HTTPException(status_code=400, detail="master_off")
     if not title_regeneration_allowed(settings, manual=True):
         raise HTTPException(status_code=400, detail="rebuild_disabled")
     monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
@@ -21359,8 +21358,6 @@ async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequ
     if bool(request.candidate_ids) == bool(request.all_eligible):
         raise HTTPException(status_code=400, detail="invalid_selection")
     settings = get_dynamic_overlays_settings()
-    if not settings.get("enabled"):
-        raise HTTPException(status_code=400, detail="master_off")
     if not title_regeneration_allowed(settings, manual=True):
         raise HTTPException(status_code=400, detail="rebuild_disabled")
     if not episode_title_review.operation_lock.acquire(blocking=False):
@@ -21710,6 +21707,8 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     change_detection_interval_minutes: Optional[int] = None
     auto_resync_on_change: Optional[bool] = None
     regenerate_assets_on_title_change: Optional[bool] = None
+    title_change_interval_minutes: Optional[int] = Field(default=None, ge=5, le=10080)
+    title_change_dry_run: Optional[bool] = None
     change_detection_dry_run: Optional[bool] = None
     fast_bulk_query_enabled: Optional[bool] = None
     debug_logging: Optional[bool] = None
@@ -21834,7 +21833,7 @@ async def import_dynamic_overlay_bundle(
             await asyncio.to_thread(imdb_dataset.configure, plan["imdb_dataset"])
         from dynamic_overlays_service import get_dynamic_overlays_settings
         saved = await asyncio.to_thread(get_dynamic_overlays_settings)
-        if saved.get("enabled") and saved.get("change_detection_enabled", True):
+        if (saved.get("enabled", False) and saved.get("change_detection_enabled", True)) or saved.get("regenerate_assets_on_title_change", False):
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
         return {"success": True, **result, "message": "Overlay bundle imported in Dry Run. No artwork was uploaded."}
     except BundleError as error:
@@ -21869,7 +21868,7 @@ async def save_dynamic_overlays_settings_endpoint(req: DynamicOverlaysSettingsRe
             logger.error("Dynamic overlay settings did not persist for one or more requested fields.")
             return {"success": False, "error": "settings_not_persisted"}
         from overlay_sync_service import stop_overlay_change_detector_background
-        if saved.get("enabled", False) and saved.get("change_detection_enabled", True):
+        if (saved.get("enabled", False) and saved.get("change_detection_enabled", True)) or saved.get("regenerate_assets_on_title_change", False):
             from overlay_sync_service import start_overlay_change_detector_background
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
         else:

@@ -15,7 +15,6 @@ import SiloSupportNotice from "./SiloSupportNotice";
 import MediaServerLogo from "./MediaServerLogo";
 import ConfirmDialog from "./ConfirmDialog";
 import ImdbDatasetPanel from "./ImdbDatasetPanel";
-import EpisodeTitleReview from "./EpisodeTitleReview";
 import OverlayBundleTransfer from "./OverlayBundleTransfer";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -157,7 +156,6 @@ const DEFAULT_RATING_SOURCES = ["imdb", "tomatoes", "tmdb"];
 const MAINTENANCE_TABS = [
   { id: "sync", key: "syncSection", icon: RefreshCw },
   { id: "media-changes", key: "mediaChanges", icon: Activity },
-  { id: "episode-titles", key: "episodeTitles", icon: Clapperboard },
   { id: "overlay-cache", key: "overlayCache", icon: Database },
   { id: "ratings-cache", key: "ratingsCache", icon: Star },
 ];
@@ -558,9 +556,14 @@ export default function DynamicOverlays() {
   });
 
   useEffect(() => {
-    const tab = normalizeOverlayTab(searchParams.get("tab"));
+    const rawTab = searchParams.get("tab");
+    if (rawTab === "episode-titles") {
+      navigate("/asset-title-review", { replace: true });
+      return;
+    }
+    const tab = normalizeOverlayTab(rawTab);
     if (OVERLAY_TAB_IDS.includes(tab)) setActiveTab(tab);
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
@@ -10825,17 +10828,6 @@ export default function DynamicOverlays() {
           </div>
 
           )}
-
-          {activeTab === "episode-titles" && (<>
-            <label className="flex items-center justify-between gap-3 border-b border-theme pb-3 text-sm text-theme-text">
-              <span className="min-w-0"><span className="block">{t("dynamicOverlays.changeDetection.regenerateTitles")}</span>
-                <span className="mt-1 block text-xs text-theme-muted">{t("dynamicOverlays.changeDetection.regenerateTitlesDescription")}</span></span>
-              <input type="checkbox" role="switch" checked={featureSettings?.regenerate_assets_on_title_change === true}
-                onChange={event => handleUpdateDynamicSettings({ regenerate_assets_on_title_change: event.target.checked })}
-                className="h-4 w-4 shrink-0 accent-theme-primary" />
-            </label>
-            <EpisodeTitleReview enabled={featureSettings?.enabled === true} dryRun={isChangeDetectionDryRun} />
-          </>)}
 
           {/* OVERLAY CACHE CARD */}
           {activeTab === "overlay-cache" && (

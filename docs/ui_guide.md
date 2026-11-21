@@ -185,7 +185,10 @@ and response formats are in the [API reference](endpoints.md).
 ![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
 
 *Choose **Sync & Maintenance** for the separate **Synchronize**, **Media Changes**,
-**Asset Title Review**, **Overlay Cache**, and **Ratings Cache** views. The
+**Overlay Cache**, and **Ratings Cache** views. **Asset Title Review** lives as a
+standalone page under **Asset Management** (`/asset-title-review`) so it works
+independently even without Dynamic Overlays enabled (and legacy
+`/dynamic-overlays?tab=episode-titles` links redirect there). The
 screenshot shows Synchronize with Dry Run on and illustrative library counts.*
 
 ![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)

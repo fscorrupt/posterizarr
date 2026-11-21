@@ -8,7 +8,7 @@ import AssetReplacer from "./AssetReplacer";
 const endpoint = "/api/dynamic-overlays/episode-title-changes";
 const pageSize = 25;
 
-export default function EpisodeTitleReview({ enabled, dryRun }) {
+export default function EpisodeTitleReview({ enabled = true, dryRun = false, standalone = false }) {
   const { t } = useTranslation();
   const text = (key, values) => t(`dynamicOverlays.episodeTitles.${key}`, values);
   const [data, setData] = useState({ entries: [], total: 0, eligible: 0, job: {} });
@@ -235,7 +235,7 @@ export default function EpisodeTitleReview({ enabled, dryRun }) {
   };
 
   return (
-    <section className="min-w-0 max-w-full space-y-4 border-y border-theme py-5" aria-label={text("title")}>
+    <section className={standalone ? "min-w-0 max-w-full space-y-4" : "min-w-0 max-w-full space-y-4 border-y border-theme py-5"} aria-label={text("title")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text">

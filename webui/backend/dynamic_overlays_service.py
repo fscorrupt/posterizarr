@@ -327,11 +327,15 @@ def get_dynamic_overlays_settings() -> Dict[str, Any]:
         "change_detection_interval_minutes": 60, # Periodic auto-check interval
         "auto_resync_on_change": True,   # Automatically re-composite and sync when media changes detected
         "regenerate_assets_on_title_change": False,
+        "title_change_interval_minutes": 60,
+        "title_change_dry_run": False,
         "change_detection_dry_run": True,  # Detect changes without automatically applying overlays
         "fast_bulk_query_enabled": True, # Bulk section-level query optimization
         "wizard_dismissed": False,       # Onboarding wizard dismissed state
         "last_change_detection_at": None,
         "last_change_detection_summary": None,
+        "last_title_change_check_at": None,
+        "last_title_change_summary": None,
         "last_updated": None
     }
     settings_file = get_dynamic_overlays_settings_file(for_writing=False)
@@ -344,6 +348,13 @@ def get_dynamic_overlays_settings() -> Dict[str, Any]:
             logger.warning(f"Error reading dynamic overlays settings from {settings_file}: {e}")
 
     merged = {**defaults, **data}
+    if "title_change_interval_minutes" not in data and "change_detection_interval_minutes" in data:
+        merged["title_change_interval_minutes"] = data["change_detection_interval_minutes"]
+    if "title_change_dry_run" not in data:
+        if data.get("regenerate_assets_on_title_change") is True and data.get("change_detection_dry_run", True) is True:
+            merged["title_change_dry_run"] = True
+        else:
+            merged["title_change_dry_run"] = False
     try:
         from config_database import ConfigDB
         from main import config_db, CONFIG_DATABASE_AVAILABLE
