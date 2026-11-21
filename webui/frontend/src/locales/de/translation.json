@@ -2274,6 +2274,22 @@
     "replaceSuccess": "Asset erfolgreich ersetzt!"
   },
   "configEditor": {
+    "logoSource": {
+      "clearlogo": "Clearlogo (nur Titel-Logo)",
+      "clearart": "Clearart (Logo mit Artwork)"
+    },
+    "autoChanged": {
+      "typeSelected": "Automatisch auf Clearlogo gesetzt: Ein Logo braucht einen Typ, sonst wird weder Logo noch Titeltext gezeichnet."
+    },
+    "dependency": {
+      "goTo": "Zu {{setting}}",
+      "titleLogo": "Titel: {{type}}-Logo, weil {{parent}} an ist (Globale Visuals). Dieser Schalter zählt dann nur für Einträge ohne Logo und nur, wenn Fallback auf Text an ist.",
+      "titleText": "Titel: Text, weil {{parent}} aus ist (Globale Visuals).",
+      "titleNone": "Es wird kein Titel gezeichnet: Dieser Schalter und {{parent}} (Globale Visuals) sind beide aus.",
+      "seasonShowTitle": "Serienname dargestellt als: {{style}}. Staffelposter folgen {{parent}} (Globale Visuals); für Staffeln gibt es keinen eigenen Logo-Schalter.",
+      "styleLogo": "{{type}}-Logo",
+      "styleText": "Text"
+    },
     "skipWordsHelp": "Regex in /Schrägstrichen/ möglich (SkipTBA erforderlich).",
     "skipWordsTbaExample": "Erkennt TBA oder tba, auch mit Leerraum davor oder danach.",
     "skipWordsEpisodeExample": "Erkennt Platzhalter wie Folge 12, Episode #12 oder Episode 12.5.",

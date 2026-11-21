@@ -2274,6 +2274,22 @@
     "replaceSuccess": "Asset replaced successfully!"
   },
   "configEditor": {
+    "logoSource": {
+      "clearlogo": "Clearlogo (title logo only)",
+      "clearart": "Clearart (logo with artwork)"
+    },
+    "autoChanged": {
+      "typeSelected": "Set to Clearlogo automatically: a logo needs a type, otherwise neither a logo nor the title text is drawn."
+    },
+    "dependency": {
+      "goTo": "Go to {{setting}}",
+      "titleLogo": "Title: {{type}} logo, because {{parent}} is on (Global Visuals). This switch then only matters for items without a logo, and only if Fallback to Text is on.",
+      "titleText": "Title: text, because {{parent}} is off (Global Visuals).",
+      "titleNone": "No title will be drawn: this switch and {{parent}} (Global Visuals) are both off.",
+      "seasonShowTitle": "Show name drawn as: {{style}}. Season posters follow {{parent}} (Global Visuals); there is no separate logo switch for seasons.",
+      "styleLogo": "{{type}} logo",
+      "styleText": "text"
+    },
     "skipWordsHelp": "Regex supported in /slashes/ (requires SkipTBA).",
     "skipWordsTbaExample": "Matches TBA or tba, including surrounding whitespace.",
     "skipWordsEpisodeExample": "Matches placeholders such as Folge 12, Episode #12 or Episode 12.5.",
