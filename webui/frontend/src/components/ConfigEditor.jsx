@@ -140,6 +140,15 @@ function ConfigEditor() {
   const initialAuthStatus = useRef(null);
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Settings the editor just changed on the user's behalf: { key: note }. Highlighted for a few seconds.
+  const [autoChanged, setAutoChanged] = useState({});
+  const autoChangedTimer = useRef(null);
+  const markAutoChanged = (notes) => {
+    setAutoChanged(notes);
+    clearTimeout(autoChangedTimer.current);
+    autoChangedTimer.current = setTimeout(() => setAutoChanged({}), 6000);
+  };
+  useEffect(() => () => clearTimeout(autoChangedTimer.current), []);
   const [hideProviderBanner, setHideProviderBanner] = useState(() => localStorage.getItem('hideProviderBanner') === 'true');
   const lastSavedConfigRef = useRef(null);
 
@@ -620,7 +629,7 @@ function ConfigEditor() {
     if (key === "TitleCardSkipWords" && !getValue("SkipTBA")) return true;
 
     // Logo Logic
-    if (["UseClearlogo", "UseClearart", "LogoTextFallback", "ConvertLogoColor"].includes(key)) {
+    if (["UseClearlogo", "UseClearart", "LogoTextFallback", "ConvertLogoColor", "TextlessPosterBypass"].includes(key)) {
         const useLogo = getValue("UseLogo");
         const useBGLogo = getValue("UseBGLogo");
         if (!useLogo && !useBGLogo) return true;
@@ -806,7 +815,7 @@ function ConfigEditor() {
                                         {/* If Searching: Flat List */}
                                         {searchQuery ? (
                                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                {fields.map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} />)}
+                                                {fields.map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} autoChanged={autoChanged} markAutoChanged={markAutoChanged} />)}
 
                                                 {/* API Key Manager (In Search) */}
                                                 {groupName === "WebUI Settings" && (
@@ -828,7 +837,7 @@ function ConfigEditor() {
                                                             </div>
                                                         )}
                                                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                            {categorizedFields[category].map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} />)}
+                                                            {categorizedFields[category].map(key => <SettingCard key={key} settingKey={key} groupName={groupName} config={config} usingFlatStructure={usingFlatStructure} webuiLogLevel={webuiLogLevel} updateWebuiLogLevel={updateWebuiLogLevel} useJellySync={useJellySync} setUseJellySync={setUseJellySync} useEmbySync={useEmbySync} setUseEmbySync={setUseEmbySync} updateValue={updateValue} getDisplayName={getDisplayName} tooltips={tooltips} commonInputClass={commonInputClass} handleJumpToSetting={handleJumpToSetting} searchQuery={searchQuery} isFieldDisabled={isFieldDisabled} overlayFiles={overlayFiles} fontFiles={fontFiles} uploadingOverlay={uploadingOverlay} uploadingFont={uploadingFont} handleOverlayFileUpload={handleOverlayFileUpload} handleFontFileUpload={handleFontFileUpload} setPreviewOverlay={setPreviewOverlay} setPreviewFont={setPreviewFont} showSuccess={showSuccess} showError={showError} setConfig={setConfig} setHasUnsavedChanges={setHasUnsavedChanges} setValidationErrors={setValidationErrors} autoChanged={autoChanged} markAutoChanged={markAutoChanged} />)}
                                                         </div>
                                                     </div>
                                                 ))}
@@ -1187,7 +1196,7 @@ const LibraryOverridesEditor = ({ value, onChange, disabled, setValidationErrors
 };
 
 // Extracted Setting Card Component for cleaner main loop
-const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges, setValidationErrors }) => {
+const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiLogLevel, updateWebuiLogLevel, useJellySync, setUseJellySync, useEmbySync, setUseEmbySync, updateValue, getDisplayName, tooltips, commonInputClass, handleJumpToSetting, searchQuery, isFieldDisabled, overlayFiles, fontFiles, uploadingOverlay, uploadingFont, handleOverlayFileUpload, handleFontFileUpload, setPreviewOverlay, setPreviewFont, showSuccess, showError, setConfig, setHasUnsavedChanges, setValidationErrors, autoChanged = {}, markAutoChanged = () => {} }) => {
     const { t } = useTranslation();
     const value = usingFlatStructure ? config[settingKey] : config[groupName]?.[settingKey];
         const settingTooltip = settingKey === "UseSilo" || settingKey.startsWith("Silo")
@@ -1204,9 +1213,49 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     const isGlobal = providerPriorityMode === "Global";
     const isPerMediaType = providerPriorityMode === "PerMediaType";
 
+    const isTrue = (v) => v === true || String(v).toLowerCase() === "true";
+    const readPrereq = (key) => (usingFlatStructure ? config[key] : config.PrerequisitePart?.[key]);
+    const applyPrereqUpdates = (updates) => {
+        if (usingFlatStructure) {
+            setConfig({ ...config, ...updates });
+        } else {
+            setConfig({ ...config, PrerequisitePart: { ...(config.PrerequisitePart || {}), ...updates } });
+        }
+        setHasUnsavedChanges(true);
+    };
+    const autoNote = autoChanged[settingKey];
+    // Logo type in effect. With neither switch set the script falls back to Clearlogo (Variables.ps1).
+    const logoTypeName = isTrue(readPrereq("UseClearart")) ? "Clearart" : "Clearlogo";
+
+    // Clearlogo and Clearart are one choice (exactly one is used); the UseClearlogo card renders it as "Logo Type".
+    if (settingKey === "UseClearart") return null;
+
     if (settingKey === "FavProvider" && !isSimple) return null;
     if (settingKey === "ProviderOrder" && !isGlobal) return null;
     if ((settingKey === "MovieProviderOrder" || settingKey === "ShowProviderOrder") && !isPerMediaType) return null;
+
+
+    // Read-only line under a setting that another (parent) setting overrides, with a jump to the parent.
+    const renderDependencyLine = (text, parentGroup, parentKey, dimmed = false) => (
+        <div className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 rounded-lg border border-theme/50 bg-theme-bg/50 text-xs text-theme-muted ${dimmed ? "opacity-50" : ""}`}>
+            <span>{text}</span>
+            <button type="button" onClick={() => handleJumpToSetting(parentGroup, parentKey)} className="inline-flex items-center gap-1 whitespace-nowrap text-theme-primary hover:text-theme-text">
+                {t("configEditor.dependency.goTo", { defaultValue: "Go to {{setting}}", setting: getDisplayName(parentKey) })}<ArrowRight className="w-3.5 h-3.5" />
+            </button>
+        </div>
+    );
+    const titleSourceLine = (logoKey) => {
+        const parent = getDisplayName(logoKey);
+        let text;
+        if (isTrue(readPrereq(logoKey))) {
+            text = t("configEditor.dependency.titleLogo", { defaultValue: "Title: {{type}} logo, because {{parent}} is on (Global Visuals). This switch then only matters for items without a logo, and only if Fallback to Text is on.", type: logoTypeName, parent });
+        } else if (isTrue(value)) {
+            text = t("configEditor.dependency.titleText", { defaultValue: "Title: text, because {{parent}} is off (Global Visuals).", parent });
+        } else {
+            text = t("configEditor.dependency.titleNone", { defaultValue: "No title will be drawn: this switch and {{parent}} (Global Visuals) are both off.", parent });
+        }
+        return renderDependencyLine(text, "Global Visuals", logoKey);
+    };
 
     // Render Input Logic
     const renderInput = () => {
@@ -1455,6 +1504,11 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
             const type = settingKey.includes("Plex") ? "plex" : settingKey.includes("Jellyfin") ? "jellyfin" : settingKey.includes("Silo") ? "silo" : "emby";
             return <LibraryExclusionSelector value={Array.isArray(value) ? value : []} onChange={(newValue) => updateValue(fieldKey, newValue)} helpText={settingTooltip} mediaServerType={type} config={config} disabled={disabled} showIncluded={true} />;
         }
+        if (settingKey === "UseClearlogo") {
+            // Offering "neither" would let logo mode run with no logo type: no logo and no text get drawn.
+            const logoSource = isTrue(readPrereq("UseClearart")) ? "clearart" : "clearlogo";
+            return (<div className="relative"><select value={logoSource} onChange={(e) => applyPrereqUpdates({ UseClearlogo: e.target.value === "clearlogo" ? "true" : "false", UseClearart: e.target.value === "clearart" ? "true" : "false" })} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="clearlogo">{t("configEditor.logoSource.clearlogo", { defaultValue: "Clearlogo (title logo only)" })}</option><option value="clearart">{t("configEditor.logoSource.clearart", { defaultValue: "Clearart (logo with artwork)" })}</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
+        }
         if (settingKey === "FavProvider") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none uppercase`}><option value="tmdb">TMDB</option><option value="tvdb">TVDB</option><option value="fanart">FANART</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "ProviderPriorityMode") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="Simple">Simple (Favorite Provider)</option><option value="Global">Global Custom Order</option><option value="PerMediaType">Per-Media Type Custom Order</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
         if (settingKey === "tmdb_vote_sorting") return (<div className="relative"><select value={stringValue} onChange={(e) => updateValue(fieldKey, e.target.value)} disabled={disabled} className={`${commonInputClass} appearance-none`}><option value="vote_average">Vote Average</option><option value="vote_count">Vote Count</option><option value="primary">Primary (Default TMDB View)</option></select><ChevronDown className="absolute right-3 top-3 w-4 h-4 text-theme-muted pointer-events-none" /></div>);
@@ -1477,6 +1531,11 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                           setConfig(newConfig);
                      }
                      setHasUnsavedChanges(true);
+                     return;
+                 }
+                 if ((settingKey === "UseLogo" || settingKey === "UseBGLogo") && checked && !isTrue(readPrereq("UseClearlogo")) && !isTrue(readPrereq("UseClearart"))) {
+                     applyPrereqUpdates({ [settingKey]: "true", UseClearlogo: "true", UseClearart: "false" });
+                     markAutoChanged({ UseClearlogo: t("configEditor.autoChanged.typeSelected", { defaultValue: "Set to Clearlogo automatically: a logo needs a type, otherwise neither a logo nor the title text is drawn." }) });
                      return;
                  }
                  if (["UsePlex", "UseJellyfin", "UseEmby", "UseSilo"].includes(settingKey) && checked) {
@@ -1528,7 +1587,7 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
     };
 
     return (
-        <div id={uniqueId} className={`border border-theme rounded-xl p-4 bg-theme-card/50 shadow-sm ${isWide ? 'xl:col-span-2' : ''}`}>
+        <div id={uniqueId} className={`border rounded-xl p-4 bg-theme-card/50 shadow-sm transition-colors duration-500 ${autoNote ? 'border-amber-400 ring-2 ring-amber-400/60 motion-safe:animate-pulse' : 'border-theme'} ${isWide ? 'xl:col-span-2' : ''}`}>
             <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0"> {/* FIX: Removed overflow-hidden, added min-w-0 */}
@@ -1554,6 +1613,15 @@ const SettingCard = ({ settingKey, groupName, config, usingFlatStructure, webuiL
                     </div>
                 </div>
                 {renderInput()}
+                <p role="status" aria-live="polite" className={autoNote ? "text-xs text-amber-300" : "sr-only"}>{autoNote || ""}</p>
+
+                {/* Settings that a Global Visuals logo switch overrides: show which applies and link to it. */}
+                {((settingKey === "PosterAddText") || (settingKey === "AddText" && groupName === "PosterOverlayPart")) && titleSourceLine("UseLogo")}
+                {((settingKey === "BackgroundAddText") || (settingKey === "AddText" && groupName === "BackgroundOverlayPart")) && titleSourceLine("UseBGLogo")}
+                {((settingKey === "ShowTitleAddShowTitletoSeason") || (settingKey === "AddShowTitletoSeason" && groupName === "ShowTitleOnSeasonPosterPart")) && renderDependencyLine(
+                    t("configEditor.dependency.seasonShowTitle", { defaultValue: "Show name drawn as: {{style}}. Season posters follow {{parent}} (Global Visuals); there is no separate logo switch for seasons.", style: isTrue(readPrereq("UseLogo")) ? t("configEditor.dependency.styleLogo", { defaultValue: "{{type}} logo", type: logoTypeName }) : t("configEditor.dependency.styleText", { defaultValue: "text" }), parent: getDisplayName("UseLogo") }),
+                    "Global Visuals", "UseLogo", !isTrue(value)
+                )}
 
                 {/* Injected Fields */}
                 {settingKey === "basicAuthPassword" && groupName === "WebUI Settings" && (
