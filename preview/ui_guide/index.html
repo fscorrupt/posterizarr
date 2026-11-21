@@ -1869,6 +1869,8 @@ commands.</p>
 <p><em>Choose <strong>Asset Management &gt; Backup Assets</strong> to browse saved artwork backups.</em></p>
 <p><img alt="Action Center review filters and actions" src="../images/07-action-center.png" /></p>
 <p><em>Choose <strong>Asset Management &gt; Action Center</strong> to filter flagged assets and resolve, replace, or delete their tracking entries.</em></p>
+<p><img alt="Asset Title Review comparing current media-server titles against existing artwork" src="../images/ui-asset-title-review.png" /></p>
+<p><em>Choose <strong>Asset Management &gt; Asset Title Review</strong> (<code>/asset-title-review</code>) to compare existing text-enabled movies, shows, seasons, and titlecards against current media-server titles. Works standalone even when Dynamic Overlays is off, with its own check interval, Dry Run toggle, filters, bulk <strong>Hide selected</strong>, queued rebuilds, and confirmed Fast Normal Run actions.</em></p>
 <p>The galleries, test output, and server export have different purposes: a gallery
 browses available artwork, Test Gallery shows Testing Mode results, and Media
 Server Export browses cached metadata records. Read the <a href="../action_center/">Action Center guide</a>
@@ -1905,15 +1907,7 @@ and response formats are in the <a href="../endpoints/">API reference</a>.</p>
 <strong>Overlay Cache</strong>, and <strong>Ratings Cache</strong> views. <strong>Asset Title Review</strong> lives as a
 standalone page under <strong>Asset Management</strong> (<code>/asset-title-review</code>) so it works
 independently even without Dynamic Overlays enabled (and legacy
-<code>/dynamic-overlays?tab=episode-titles</code> links redirect there). The
-screenshot shows Synchronize with Dry Run on and illustrative library counts.</em></p>
-<p><img alt="Asset Title Review comparing current media-server titles against existing artwork" src="../images/ui-asset-title-review.png" /></p>
-<p><em>Asset Title Review compares existing text-enabled movies, shows, seasons, and
-titlecards with current media-server titles and filters by eligibility, blocking
-reason, historical/future status, or media type (<code>All Types</code>, <code>Episodes</code>,
-<code>Seasons</code>, <code>Movies</code>, <code>Shows</code>). Supports bulk <strong>Hide selected</strong>, queued
-rebuilds, and confirmed Fast Normal Run actions without recreating artwork on
-the initial scan.</em></p>
+<code>/dynamic-overlays?tab=episode-titles</code> links redirect there).</em></p>
 <p><img alt="AniMetaFill titlecard badge styling, 16:9 stage preview, and Anime Classification Database" src="../images/ui-animetafill.png" /></p>
 <p><em>Choose <strong>AniMetaFill</strong> under Dynamic Overlays to configure Canon, Filler, and
 Mixed episode scanning, preview 16:9 titlecard badges live, toggle overlay
