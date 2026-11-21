@@ -99,6 +99,7 @@
   <br>
   <hr>
   Optional anonymous telemetry, disable anytime with <code>"telemetry": false</code> (<a href="https://fscorrupt.github.io/posterizarr/telemetry/">details</a> · <a href="telemetry-worker/worker.js">source</a>)<br>
+  The project maintainer reviews and tests AI-assisted UI and web changes before they are committed.<br>
   Built by <a href="https://github.com/fscorrupt">fscorrupt</a> ·
   <a href=".github/CONTRIBUTING.md">Contributing</a> ·
   <a href="https://discord.gg/fYyJQSGt54">Discord</a> ·
