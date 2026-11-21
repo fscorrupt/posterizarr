@@ -10,6 +10,9 @@
         <loc>https://fscorrupt.github.io/posterizarr/agregarrintegration/</loc>
       </url>
       <url>
+        <loc>https://fscorrupt.github.io/posterizarr/asset_title_review/</loc>
+      </url>
+      <url>
         <loc>https://fscorrupt.github.io/posterizarr/backend_python/</loc>
       </url>
       <url>
@@ -26,6 +29,9 @@
       </url>
       <url>
         <loc>https://fscorrupt.github.io/posterizarr/dynamic_overlays/</loc>
+      </url>
+      <url>
+        <loc>https://fscorrupt.github.io/posterizarr/dynamic_overlays_reference/</loc>
       </url>
       <url>
         <loc>https://fscorrupt.github.io/posterizarr/emby_plugin/</loc>
@@ -74,6 +80,9 @@
       </url>
       <url>
         <loc>https://fscorrupt.github.io/posterizarr/powershell_scripts/</loc>
+      </url>
+      <url>
+        <loc>https://fscorrupt.github.io/posterizarr/quickstart/</loc>
       </url>
       <url>
         <loc>https://fscorrupt.github.io/posterizarr/requirements/</loc>
