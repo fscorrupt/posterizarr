@@ -8930,6 +8930,73 @@ async def run_restore(request: RestoreModeRequest):
             logger.error(f"Error running Restore: {e}")
             raise HTTPException(status_code=500, detail="Internal server error")
 
+def _posterizarr_script_alive() -> bool:
+    """True if any Posterizarr.ps1 PowerShell process is alive (UI, scheduler, webhook or CLI run).
+
+    Errs on the side of "alive" when the process table cannot be read, so a lock
+    file belonging to a real run is never removed.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return True
+    try:
+        for proc in psutil.process_iter(["cmdline"]):
+            try:
+                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            if ("pwsh" in cmdline or "powershell" in cmdline) and "posterizarr.ps1" in cmdline:
+                return True
+        return False
+    except Exception as e:
+        logger.error(f"Error checking for running Posterizarr processes: {e}")
+        return True
+
+
+def _clear_stale_running_file(context: str) -> bool:
+    """Remove Posterizarr.Running when no Posterizarr.ps1 process is alive.
+
+    A stopped, killed or crashed run never reaches the script's own cleanup, so
+    the lock file stays behind and the UI keeps reporting the run as active.
+    Returns True if a stale file was removed.
+    """
+    if not RUNNING_FILE.exists() or _posterizarr_script_alive():
+        return False
+    try:
+        RUNNING_FILE.unlink()
+        logger.warning(f"Removed stale Posterizarr.Running file ({context})")
+        return True
+    except FileNotFoundError:
+        return False
+    except Exception as e:
+        logger.error(f"Failed to remove stale Posterizarr.Running file ({context}): {e}")
+        return False
+
+
+def _no_tracked_process_response() -> dict:
+    """Response for stop/force-kill when the Web UI has no live process of its own."""
+    if not RUNNING_FILE.exists():
+        return {"success": False, "message": "No script is running"}
+    if _posterizarr_script_alive():
+        return {
+            "success": False,
+            "message": "A run started outside the Web UI (webhook, trigger or CLI) is still active. "
+            "It cannot be stopped from here and will clear when it finishes.",
+        }
+    if _clear_stale_running_file("stop requested, no live process"):
+        return {
+            "success": True,
+            "stale_lock_cleared": True,
+            "message": "No script was running. Removed the leftover lock file from an interrupted run.",
+        }
+    return {
+        "success": False,
+        "message": "No script is running, but the leftover lock file could not be removed. "
+        "Use Delete Running File, or check write permissions on the temp folder.",
+    }
+
+
 @app.post("/api/stop")
 async def stop_script():
     """Stop running script gracefully - works for both manual and scheduled runs"""
@@ -8946,7 +9013,7 @@ async def stop_script():
 
         # If nothing is running
         if not manual_running and not scheduler_running:
-            return {"success": False, "message": "No script is running"}
+            return _no_tracked_process_response()
 
         try:
             stopped_processes = []
@@ -8984,6 +9051,8 @@ async def stop_script():
                     logger.error(f"Error stopping scheduler process: {e}")
 
             if stopped_processes:
+                # The script's own cleanup does not run on terminate/kill
+                _clear_stale_running_file("after stop")
                 message = f"Stopped: {', '.join(stopped_processes)}"
                 return {"success": True, "message": message}
             else:
@@ -9010,7 +9079,7 @@ async def force_kill_script():
 
         # If nothing is running
         if not manual_running and not scheduler_running:
-            return {"success": False, "message": "No script is running"}
+            return _no_tracked_process_response()
 
         try:
             killed_processes = []
@@ -9048,6 +9117,8 @@ async def force_kill_script():
                     killed_processes.append("scheduled (cleared)")
 
             if killed_processes:
+                # The script's own cleanup does not run on kill
+                _clear_stale_running_file("after force kill")
                 message = f"Force killed: {', '.join(killed_processes)}"
                 return {"success": True, "message": message}
             else:
