@@ -51,14 +51,11 @@ function stripBlockedTagContent(text) {
 }
 
 function stripUnsafeTags(text) {
-  let current = String(text || "");
+  let current = stripBlockedTagContent(text).replace(/<br\s*\/?>/gi, " ");
   let previous;
   do {
     previous = current;
-    current = current
-      .replace(BLOCKED_TAG_CONTENT_RE, "")
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(ANY_HTML_TAG_RE, "");
+    current = current.replace(ANY_HTML_TAG_RE, "");
   } while (current !== previous);
   return current;
 }

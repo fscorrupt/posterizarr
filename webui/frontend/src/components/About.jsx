@@ -507,7 +507,7 @@ function About() {
             rel="noopener noreferrer"
             className="text-theme-primary hover:underline font-semibold"
           >
-            cyb3rgh05t &amp; fscorrupt
+            fscorrupt
           </a>
           <span>{t("about.forTheCommunity")}</span>
         </p>
