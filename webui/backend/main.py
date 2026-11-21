@@ -20992,6 +20992,172 @@ async def add_dynamic_overlay_rule(req: AddOverlayRuleRequest):
     return res
 
 
+def _list_custom_overlay_image_sources(overlayfiles_dir: Path, assets_dir: Path) -> Dict[str, List[str]]:
+    """List user-usable custom images from Overlayfiles/ and dynamic_overlays/assets/."""
+    builtin_subdirs = {
+        "audio_codec", "cr", "edition", "flag", "flags", "logo", "network",
+        "rating", "resolution", "ribbon", "streaming", "studio",
+    }
+    overlay_builder_files: List[str] = []
+    if overlayfiles_dir.is_dir() and not overlayfiles_dir.is_symlink():
+        for entry in overlayfiles_dir.iterdir():
+            if not entry.is_symlink() and entry.is_file() and entry.suffix.lower() in ALLOWED_IMAGE_EXTS:
+                overlay_builder_files.append(entry.name)
+
+    dynamic_asset_files: List[str] = []
+    if assets_dir.is_dir() and not assets_dir.is_symlink():
+        assets_root = assets_dir.resolve()
+        for entry in assets_dir.rglob("*"):
+            if entry.is_symlink() or not entry.is_file() or entry.suffix.lower() not in ALLOWED_IMAGE_EXTS:
+                continue
+            try:
+                rel = entry.resolve().relative_to(assets_root).as_posix()
+            except (OSError, ValueError):
+                continue
+            top_dir = rel.split("/", 1)[0].lower() if "/" in rel else ""
+            if top_dir in builtin_subdirs:
+                continue
+            dynamic_asset_files.append(rel)
+
+    return {
+        "overlay_builder": sorted(overlay_builder_files, key=str.casefold),
+        "dynamic_assets": sorted(dynamic_asset_files, key=str.casefold),
+    }
+
+
+@app.get("/api/dynamic-overlays/custom-image-sources")
+async def get_custom_overlay_image_sources():
+    """List PNG/image files from Overlay Builder and Dynamic Overlays assets."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        sources = await asyncio.to_thread(
+            _list_custom_overlay_image_sources, OVERLAYFILES_DIR, kometa_resolver.assets_dir
+        )
+        return {"success": True, **sources}
+    except Exception as exc:
+        logger.error(f"Error listing custom overlay image sources: {exc}", exc_info=True)
+        return {"success": False, "error": "Could not list available custom images."}
+
+
+@app.post("/api/dynamic-overlays/rules/add-custom-image")
+async def add_custom_image_overlay_rule(
+    library_name: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    existing_source: Optional[str] = Form(None),
+    existing_image: Optional[str] = Form(None),
+    overlay_name: Optional[str] = Form(None),
+    builder_level: str = Form("movie"),
+    artwork_type: str = Form("poster"),
+    horizontal_align: str = Form("left"),
+    vertical_align: str = Form("top"),
+    horizontal_offset: int = Form(30),
+    vertical_offset: int = Form(30),
+    scale_width: Optional[int] = Form(None),
+    scale_height: Optional[int] = Form(None),
+    fit_full_canvas: bool = Form(False),
+    filename: str = Form("config.yml"),
+):
+    """Upload or reuse a custom PNG/image and create a per-library overlay YAML rule in one step."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+
+    has_upload = file is not None and bool(file.filename)
+    has_existing = bool(existing_source and existing_image)
+    if has_upload == has_existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either an uploaded image file or an existing image selection.",
+        )
+
+    try:
+        kometa_resolver.assets_dir.mkdir(parents=True, exist_ok=True)
+        rel_image = ""
+
+        if has_upload:
+            raw_name = Path(file.filename or "").name
+            safe_dest = safe_resolve_kometa_path(kometa_resolver.assets_dir, raw_name, ALLOWED_IMAGE_EXTS)
+            if not safe_dest:
+                raise HTTPException(status_code=400, detail="Unsupported or invalid image filename.")
+            content = await file.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="Uploaded image file is empty.")
+            if len(content) > 15 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Image size exceeds maximum 15MB limit.")
+            try:
+                with Image.open(io.BytesIO(content)) as img_check:
+                    img_check.verify()
+            except Exception:
+                raise HTTPException(status_code=400, detail="Uploaded file is not a valid image.")
+            await asyncio.to_thread(safe_dest.write_bytes, content)
+            rel_image = safe_dest.name
+        else:
+            src_kind = str(existing_source or "").strip().lower()
+            raw_existing = str(existing_image or "").strip()
+            if src_kind == "overlay_builder":
+                if any(sep in raw_existing for sep in ("/", "\\", "..")) or raw_existing.startswith("~"):
+                    raise HTTPException(status_code=400, detail="Invalid Overlay Builder image selection.")
+                src_path = safe_resolve_kometa_path(OVERLAYFILES_DIR, raw_existing, ALLOWED_IMAGE_EXTS)
+                if not src_path or src_path.is_symlink() or not src_path.is_file():
+                    raise HTTPException(status_code=400, detail="Selected Overlay Builder image was not found.")
+                overlayfiles_root = OVERLAYFILES_DIR.resolve()
+                src_resolved = src_path.resolve()
+                if not src_resolved.is_relative_to(overlayfiles_root):
+                    raise HTTPException(status_code=400, detail="Invalid Overlay Builder image path.")
+                dest_path = safe_resolve_kometa_path(kometa_resolver.assets_dir, src_resolved.name, ALLOWED_IMAGE_EXTS)
+                if not dest_path:
+                    raise HTTPException(status_code=400, detail="Invalid target image filename.")
+                src_bytes = await asyncio.to_thread(src_resolved.read_bytes)
+                if not dest_path.exists() or dest_path.stat().st_size != len(src_bytes) or await asyncio.to_thread(dest_path.read_bytes) != src_bytes:
+                    await asyncio.to_thread(dest_path.write_bytes, src_bytes)
+                rel_image = dest_path.name
+            elif src_kind == "dynamic_assets":
+                src_path = safe_resolve_kometa_path(kometa_resolver.assets_dir, raw_existing, ALLOWED_IMAGE_EXTS)
+                if not src_path or src_path.is_symlink() or not src_path.is_file():
+                    raise HTTPException(status_code=400, detail="Selected Dynamic Overlays asset image was not found.")
+                assets_root = kometa_resolver.assets_dir.resolve()
+                src_resolved = src_path.resolve()
+                if not src_resolved.is_relative_to(assets_root):
+                    raise HTTPException(status_code=400, detail="Invalid Dynamic Overlays asset path.")
+                rel_image = src_resolved.relative_to(assets_root).as_posix()
+            else:
+                raise HTTPException(status_code=400, detail="Unsupported existing image source.")
+
+        res = await asyncio.to_thread(
+            kometa_resolver.create_custom_png_overlay,
+            library_name=library_name,
+            image_filename=rel_image,
+            rule_name=overlay_name,
+            builder_level=builder_level,
+            artwork_type=artwork_type,
+            horizontal_align=horizontal_align,
+            vertical_align=vertical_align,
+            horizontal_offset=horizontal_offset,
+            vertical_offset=vertical_offset,
+            scale_width=scale_width,
+            scale_height=scale_height,
+            fit_full_canvas=fit_full_canvas,
+            config_filename=filename,
+        )
+        if res.get("success"):
+            fresh_scan = await asyncio.to_thread(kometa_resolver.scan_and_analyze_rules)
+            fresh_vis = {}
+            try:
+                from dynamic_overlays_service import parse_config_yml_to_visual, save_visual_config
+                fresh_vis = await asyncio.to_thread(parse_config_yml_to_visual, auto_seed=False)
+                if isinstance(fresh_vis, dict) and fresh_vis.get("libraries"):
+                    await asyncio.to_thread(save_visual_config, fresh_vis)
+            except Exception as vis_err:
+                logger.warning(f"Failed syncing visual config after custom image add: {vis_err}")
+            return {**res, "scan": fresh_scan, "config": fresh_vis}
+        return res
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error adding custom image overlay rule: {exc}", exc_info=True)
+        return {"success": False, "error": "Failed to add custom image overlay rule."}
+
+
 @app.post("/api/dynamic-overlays/rules/update")
 async def update_dynamic_overlay_variables(req: UpdateOverlayVariablesRequest):
     """Update template variables for an overlay rule in a library."""

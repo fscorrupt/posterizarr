@@ -198,6 +198,8 @@ The `/api/dynamic-overlays/episode-title-changes*` endpoints power the standalon
 | `POST /api/dynamic-overlays/episode-title-changes/queue` | Confirmed queueing with the same body as `rebuild`. Allowed while a run is active. Returns `queued` and `queue_ids`; these items start automatically once no run, queue, overlay sync, or cleanup is active. |
 | `POST /api/dynamic-overlays/episode-title-changes/dismiss` | Permanently hides one review entry (`candidate_id`) with any blocking reason. |
 | `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed Fast Normal Run over `candidate_ids` or `all_eligible`, using the same search and filters. Optional `force_unknown_text: true` includes safe uncertain-text candidates. |
+| `GET /api/dynamic-overlays/custom-image-sources` | Lists available custom image files from **Overlay Builder** (`Overlayfiles/`) and `Overlayfiles/dynamic_overlays/assets/` (excluding built-in default subdirectories). |
+| `POST /api/dynamic-overlays/rules/add-custom-image` | Multipart upload (`file`) or existing-image reuse (`existing_source` + `existing_image`) that copies/validates the image, writes a `custom_<name>.yml` (`plex_all: true`) rule, and attaches it to a single library in `config.yml`. |
 
 ### Overlay Bundles
 

@@ -1219,6 +1219,22 @@ class OverlayResolver:
                                 "type": "remote_image",
                                 "url": url_str
                             }
+                elif "file" in ov and ov["file"]:
+                    raw_file = str(ov["file"]).strip().replace("\\", "/")
+                    if (
+                        raw_file
+                        and not is_template_placeholder(raw_file)
+                        and not raw_file.startswith(("text(", "blur("))
+                    ):
+                        rel_name = raw_file[7:] if raw_file.lower().startswith("assets/") else raw_file
+                        if rel_name and not Path(rel_name).suffix:
+                            rel_name = f"{rel_name}.png"
+                        if rel_name and Path(rel_name).suffix.lower() in ALLOWED_IMAGE_EXTS:
+                            asset_collector[f"image:{rel_name}"] = {
+                                "category": "image",
+                                "name": rel_name,
+                                "type": "local_image",
+                            }
                 elif "name" in ov and ov["name"]:
                     raw_name = str(ov["name"]).strip()
                     if not is_template_placeholder(raw_name) and not raw_name.startswith("text("):
@@ -1303,6 +1319,11 @@ class OverlayResolver:
                 target_stem = Path(name_lower).stem
                 found_local = None
                 search_roots = [self.assets_dir, self.defaults_dir / "images", self.overlayfiles_dir]
+                for root in search_roots:
+                    direct_match = safe_resolve_overlay_path(root, name, ALLOWED_IMAGE_EXTS)
+                    if direct_match and direct_match.is_file() and not direct_match.is_symlink():
+                        found_local = direct_match
+                        break
                 sub_folders = [
                     "", "network", "network/color", "network/white",
                     "streaming", "streaming/color", "streaming/white",
@@ -1849,6 +1870,168 @@ class OverlayResolver:
         except Exception as e:
             logger.error(f"[OverlayResolver] Error adding overlay to {library_name}: {e}")
             return {"success": False, "error": str(e)}
+
+    def create_custom_png_overlay(
+        self,
+        library_name: str,
+        image_filename: str,
+        rule_name: Optional[str] = None,
+        builder_level: str = "movie",
+        artwork_type: str = "poster",
+        horizontal_align: str = "left",
+        vertical_align: str = "top",
+        horizontal_offset: int = 30,
+        vertical_offset: int = 30,
+        scale_width: Optional[int] = None,
+        scale_height: Optional[int] = None,
+        fit_full_canvas: bool = False,
+        config_filename: str = "config.yml",
+    ) -> Dict[str, Any]:
+        """Create a standalone YAML rule referencing a local custom image and attach it to a library."""
+        clean_lib = str(library_name or "").strip()
+        if not clean_lib:
+            return {"success": False, "error": "Library name is required."}
+
+        resolved_img = safe_resolve_overlay_path(self.assets_dir, image_filename, ALLOWED_IMAGE_EXTS)
+        if not resolved_img or resolved_img.is_symlink() or not resolved_img.is_file():
+            return {"success": False, "error": "Custom image file was not found in dynamic_overlays/assets/."}
+        assets_root = self.assets_dir.resolve()
+        resolved_real = resolved_img.resolve()
+        if not resolved_real.is_relative_to(assets_root):
+            return {"success": False, "error": "Invalid custom image path."}
+        rel_image = resolved_real.relative_to(assets_root).as_posix()
+
+        b_level = str(builder_level or "").strip().lower()
+        if b_level not in ("", "movie", "show", "season", "episode", "all"):
+            return {"success": False, "error": f"Invalid builder_level: {builder_level}"}
+
+        art_type = str(artwork_type or "poster").strip().lower()
+        if art_type not in ("poster", "backdrop", "both"):
+            return {"success": False, "error": f"Invalid artwork_type: {artwork_type}"}
+
+        h_align = str(horizontal_align or "left").strip().lower()
+        v_align = str(vertical_align or "top").strip().lower()
+        if h_align not in ("left", "center", "right") or v_align not in ("top", "center", "bottom"):
+            return {"success": False, "error": "Invalid alignment value."}
+
+        try:
+            h_off = int(horizontal_offset)
+            v_off = int(vertical_offset)
+        except (TypeError, ValueError):
+            return {"success": False, "error": "Offsets must be integers."}
+        if not (-4000 <= h_off <= 4000 and -4000 <= v_off <= 4000):
+            return {"success": False, "error": "Offsets must be between -4000 and 4000."}
+
+        def _parse_scale(val: Any) -> Optional[int]:
+            if val is None or val == "":
+                return None
+            iv = int(val)
+            if not (1 <= iv <= 4000):
+                raise ValueError("Scale out of range")
+            return iv
+
+        try:
+            sw = _parse_scale(scale_width)
+            sh = _parse_scale(scale_height)
+        except (TypeError, ValueError):
+            return {"success": False, "error": "Scale dimensions must be integers between 1 and 4000."}
+
+        if fit_full_canvas:
+            is_landscape = (b_level == "episode" or art_type == "backdrop")
+            h_align, v_align = "left", "top"
+            h_off, v_off = 0, 0
+            sw = 1920 if is_landscape else 1000
+            sh = 1080 if is_landscape else 1500
+
+        raw_slug = str(rule_name or "").strip() or Path(rel_image).stem
+        slug = re.sub(r"[^a-z0-9_-]+", "_", raw_slug.lower())
+        slug = re.sub(r"_+", "_", slug).strip("_-")[:48] or "custom_overlay"
+
+        self.configs_dir.mkdir(parents=True, exist_ok=True)
+        yaml_path = None
+        yaml_filename = ""
+        for suffix_idx in range(1, 100):
+            cand_name = f"custom_{slug}.yml" if suffix_idx == 1 else f"custom_{slug}_{suffix_idx}.yml"
+            cand_path = safe_resolve_overlay_path(self.configs_dir, cand_name, ALLOWED_CONFIG_EXTS)
+            if not cand_path:
+                return {"success": False, "error": "Could not resolve safe YAML config filename."}
+            if not cand_path.exists():
+                yaml_path, yaml_filename = cand_path, cand_name
+                break
+            try:
+                with open(cand_path, "r", encoding="utf-8-sig") as existing_fp:
+                    existing_yaml = yaml.safe_load(existing_fp) or {}
+                existing_overlays = existing_yaml.get("overlays") if isinstance(existing_yaml, dict) else {}
+                same_file = False
+                if isinstance(existing_overlays, dict):
+                    for ov_block in existing_overlays.values():
+                        ov_inner = ov_block.get("overlay") if isinstance(ov_block, dict) else None
+                        if isinstance(ov_inner, dict) and str(ov_inner.get("file") or "").strip() == rel_image:
+                            same_file = True
+                            break
+                if same_file:
+                    yaml_path, yaml_filename = cand_path, cand_name
+                    break
+            except Exception:
+                continue
+
+        if not yaml_path:
+            return {"success": False, "error": "Too many conflicting custom overlay rules with this name."}
+
+        overlay_key = Path(yaml_filename).stem[len("custom_"):]
+        yaml_payload = {
+            "overlays": {
+                overlay_key: {
+                    "plex_all": True,
+                    "overlay": {
+                        "name": overlay_key,
+                        "file": rel_image,
+                        "horizontal_align": f"<<horizontal_align:{h_align}>>",
+                        "vertical_align": f"<<vertical_align:{v_align}>>",
+                        "horizontal_offset": f"<<horizontal_offset:{h_off}>>",
+                        "vertical_offset": f"<<vertical_offset:{v_off}>>",
+                        "scale_width": "<<scale_width:>>",
+                        "scale_height": "<<scale_height:>>",
+                    },
+                }
+            }
+        }
+        try:
+            with open(yaml_path, "w", encoding="utf-8") as yf:
+                yaml.dump(yaml_payload, yf, sort_keys=False, default_flow_style=False, allow_unicode=True)
+            _YAML_MTIME_CACHE.pop(str(yaml_path.resolve()), None)
+        except Exception as exc:
+            logger.error(f"[OverlayResolver] Error writing custom overlay YAML {yaml_path}: {exc}")
+            return {"success": False, "error": "Failed saving custom overlay YAML file."}
+
+        template_vars: Dict[str, Any] = {
+            "horizontal_align": h_align,
+            "vertical_align": v_align,
+            "horizontal_offset": h_off,
+            "vertical_offset": v_off,
+            "artwork_type": art_type,
+        }
+        if b_level:
+            template_vars["builder_level"] = b_level
+        if sw is not None:
+            template_vars["scale_width"] = sw
+        if sh is not None:
+            template_vars["scale_height"] = sh
+
+        add_res = self.add_library_overlay(
+            clean_lib, "file", f"config/{yaml_filename}", template_vars, config_filename
+        )
+        cfg_resolved = self._resolve_config_path(config_filename)
+        if cfg_resolved:
+            _YAML_MTIME_CACHE.pop(str(cfg_resolved.resolve()), None)
+        if add_res.get("success"):
+            return {
+                **add_res,
+                "yaml_file": f"config/{yaml_filename}",
+                "image_file": rel_image,
+                "overlay_key": overlay_key,
+            }
+        return add_res
 
     def update_library_overlay(
         self,

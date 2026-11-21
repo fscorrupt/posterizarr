@@ -99,6 +99,7 @@ After the wizard, use this safe setup path:
 | **Anime Filler Tag** | Anime Episodes | `anime_overlays.yml` episode regex match | "Canon" (Green), "Filler" (Red), or "Mixed" (Orange) badge via **AniMetaFill**. |
 | **Network Logos** | Seasons | Studio / TV Network | Official network logo (e.g., Netflix, HBO, Disney+, Apple TV+). |
 | **Common Sense Media** | Movies | Common Sense Media age rating | Age rating badge (e.g., `10+`, `14+`, `18+`). |
+| **Custom PNG Images** | Any Library (Movies, Shows, Seasons, Titlecards, Backdrops) | Custom uploaded PNG/JPG/WebP or **Overlay Builder** PNGs | One-click per-library corner badge or full-poster frame via **+ Add Overlay > Custom PNG Image** without writing YAML. |
 
 ---
 

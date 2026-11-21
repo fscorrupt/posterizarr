@@ -112,6 +112,28 @@ When the preview and dry-run log look right:
 
 ---
 
+## Bonus: Apply a Custom PNG Overlay to One Library (e.g. a "Bootlegs" Badge)
+
+Want to slap your own custom PNG badge or frame onto just one library (such as a
+`Cam` or `Bootlegs` movie library) without writing YAML?
+
+- **Quick difference:** **Builders > Overlay Builder** saves static frames in
+  `Overlayfiles/` for global asset generation, while **Builders > Dynamic
+  Overlays** applies rules **per library** in RAM (and can reuse images you
+  created in Overlay Builder).
+1. Open **Builders > Dynamic Overlays > Libraries & Rules**.
+2. On the target library card (for example `Cam`), click **+ Add Overlay** and
+   choose **Custom PNG Image**.
+3. Either upload a PNG/JPG/WebP file or choose an existing PNG from **From
+   Overlay Builder / Assets**.
+4. Pick **Corner Badge** (choose corner, offset, and optional scale width) or
+   **Full Poster / Frame** (ideal for full-size Overlay Builder frames), pick
+   the **Builder Level**, and click **Add Rule to Library**.
+5. Inspect the result in **Live Preview**, then sync only that library via
+   **Sync & Maintenance > Synchronize**.
+
+---
+
 ## Where to Go Next
 
 - **Full onboarding details:** [First-time setup](getting_started.md) and [Web UI map](ui_guide.md)

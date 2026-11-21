@@ -1929,10 +1929,81 @@ export default function DynamicOverlays() {
 
   // Add Overlay Modal
   const [addOverlayModal, setAddOverlayModal] = useState(null); // { libraryName: "TV Shows" }
-  const [newOverlayType, setNewOverlayType] = useState("default"); // "default" or "file"
+  const [newOverlayType, setNewOverlayType] = useState("default"); // "default", "custom_image", or "file"
   const [newOverlayName, setNewOverlayName] = useState("network");
   const [newOverlayLevel, setNewOverlayLevel] = useState("season");
   const [isAddingOverlay, setIsAddingOverlay] = useState(false);
+  const [customImageSources, setCustomImageSources] = useState({ overlay_builder: [], dynamic_assets: [] });
+  const [customImageSourcesLoading, setCustomImageSourcesLoading] = useState(false);
+  const [customImageMode, setCustomImageMode] = useState("upload"); // "upload" | "existing"
+  const [customImageFile, setCustomImageFile] = useState(null);
+  const [customImagePreviewUrl, setCustomImagePreviewUrl] = useState("");
+  const [customExistingSelection, setCustomExistingSelection] = useState("");
+  const [customOverlayLabel, setCustomOverlayLabel] = useState("");
+  const [customPlacementMode, setCustomPlacementMode] = useState("badge"); // "badge" | "full_canvas"
+  const [customCorner, setCustomCorner] = useState("top-left");
+  const [customOffsetX, setCustomOffsetX] = useState("30");
+  const [customOffsetY, setCustomOffsetY] = useState("30");
+  const [customScaleWidth, setCustomScaleWidth] = useState("");
+  const [customArtworkType, setCustomArtworkType] = useState("poster");
+  const customImageInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!customImageFile) {
+      setCustomImagePreviewUrl("");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(customImageFile);
+    setCustomImagePreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [customImageFile]);
+
+  useEffect(() => {
+    if (!addOverlayModal?.libraryName) return;
+    setCustomImageMode("upload");
+    setCustomImageFile(null);
+    setCustomExistingSelection("");
+    setCustomOverlayLabel("");
+    setCustomPlacementMode("badge");
+    setCustomCorner("top-left");
+    setCustomOffsetX("30");
+    setCustomOffsetY("30");
+    setCustomScaleWidth("");
+    setCustomArtworkType("poster");
+
+    let active = true;
+    const controller = new AbortController();
+    setCustomImageSourcesLoading(true);
+    fetch("/api/dynamic-overlays/custom-image-sources", { signal: controller.signal })
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data?.success) {
+          const nextSources = {
+            overlay_builder: Array.isArray(data.overlay_builder) ? data.overlay_builder : [],
+            dynamic_assets: Array.isArray(data.dynamic_assets) ? data.dynamic_assets : [],
+          };
+          setCustomImageSources(nextSources);
+          if (nextSources.overlay_builder.length > 0) {
+            setCustomExistingSelection(`overlay_builder:${nextSources.overlay_builder[0]}`);
+          } else if (nextSources.dynamic_assets.length > 0) {
+            setCustomExistingSelection(`dynamic_assets:${nextSources.dynamic_assets[0]}`);
+          }
+        }
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed loading custom overlay image sources:", err);
+        }
+      })
+      .finally(() => {
+        if (active) setCustomImageSourcesLoading(false);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [addOverlayModal]);
 
   // Add Library Modal
   const [isAddLibraryOpen, setIsAddLibraryOpen] = useState(false);
@@ -3323,6 +3394,82 @@ export default function DynamicOverlays() {
   // 11. Add Rule to Library
   const handleAddOverlay = async () => {
     if (!addOverlayModal?.libraryName) return;
+    if (newOverlayType === "custom_image") {
+      if (customImageMode === "upload" && !customImageFile) {
+        showToast(t("dynamicOverlays.customImage.missingUploadError", "Please choose an image file to upload."), "error");
+        return;
+      }
+      if (customImageMode === "existing" && !customExistingSelection) {
+        showToast(t("dynamicOverlays.customImage.missingExistingError", "Please choose an existing image."), "error");
+        return;
+      }
+      const cornerMap = {
+        "top-left": ["left", "top"],
+        "top-right": ["right", "top"],
+        "bottom-left": ["left", "bottom"],
+        "bottom-right": ["right", "bottom"],
+        "center": ["center", "center"],
+      };
+      const [hAlign, vAlign] = cornerMap[customCorner] || ["left", "top"];
+      try {
+        setIsAddingOverlay(true);
+        const formData = new FormData();
+        formData.append("library_name", addOverlayModal.libraryName);
+        if (customImageMode === "upload" && customImageFile) {
+          formData.append("file", customImageFile);
+        } else {
+          const splitIdx = customExistingSelection.indexOf(":");
+          const existingSource = splitIdx >= 0 ? customExistingSelection.slice(0, splitIdx) : "";
+          const existingImage = splitIdx >= 0 ? customExistingSelection.slice(splitIdx + 1) : "";
+          formData.append("existing_source", existingSource);
+          formData.append("existing_image", existingImage);
+        }
+        if (customOverlayLabel.trim()) formData.append("overlay_name", customOverlayLabel.trim());
+        formData.append("builder_level", newOverlayLevel);
+        formData.append("artwork_type", customArtworkType || "poster");
+        formData.append("horizontal_align", hAlign);
+        formData.append("vertical_align", vAlign);
+        formData.append("horizontal_offset", String(parseInt(customOffsetX, 10) || 0));
+        formData.append("vertical_offset", String(parseInt(customOffsetY, 10) || 0));
+        if (customPlacementMode === "badge" && customScaleWidth.trim()) {
+          const parsedWidth = parseInt(customScaleWidth.trim(), 10);
+          if (Number.isFinite(parsedWidth) && parsedWidth > 0) {
+            formData.append("scale_width", String(parsedWidth));
+          }
+        }
+        formData.append("fit_full_canvas", customPlacementMode === "full_canvas" ? "true" : "false");
+
+        const res = await fetch("/api/dynamic-overlays/rules/add-custom-image", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(
+            t("dynamicOverlays.customImage.addedToast", "Added custom image '{{name}}' to {{library}}!", {
+              name: data.overlay_key || data.image_file || "custom",
+              library: addOverlayModal.libraryName,
+            }),
+            "success"
+          );
+          setAddOverlayModal(null);
+          if (data.scan) setScanData(data.scan);
+          if (data.config?.libraries) setVisualConfig(data.config);
+        } else {
+          showToast(
+            data.detail || data.error || t("dynamicOverlays.customImage.addFailed", "Failed to add custom image overlay."),
+            "error"
+          );
+        }
+      } catch (err) {
+        console.error(err);
+        showToast(t("dynamicOverlays.customImage.addFailed", "Failed to add custom image overlay."), "error");
+      } finally {
+        setIsAddingOverlay(false);
+      }
+      return;
+    }
+
     try {
       setIsAddingOverlay(true);
       const variables = {};
@@ -12481,7 +12628,7 @@ export default function DynamicOverlays() {
       {/* ========================================================================= */}
       {addOverlayModal && (
         <div className="app-dialog-backdrop fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden space-y-5 p-6">
+          <div className="app-dialog-panel bg-theme-card border border-theme rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl space-y-5 p-6">
             <div className="flex items-center justify-between border-b border-theme pb-3">
               <div className="flex items-center gap-2">
                 <Plus className="w-5 h-5 text-emerald-400" />
@@ -12498,29 +12645,42 @@ export default function DynamicOverlays() {
             {/* Type selector */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Overlay Source</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => { setNewOverlayType("default"); setNewOverlayName("network"); }}
-                  className={`py-2 rounded-xl text-xs font-semibold border ${
-                    newOverlayType === "default" ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted"
+                  className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-colors ${
+                    newOverlayType === "default" ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                   }`}
                 >
-                  Overlay Default Presets
+                  {t("dynamicOverlays.customImage.sourcePresets", "Default Presets")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewOverlayType("custom_image");
+                    const libMedia = scanData?.libraries?.[addOverlayModal.libraryName]?.media_type;
+                    setNewOverlayLevel(libMedia === "show" ? "show" : "movie");
+                  }}
+                  className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-colors ${
+                    newOverlayType === "custom_image" ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
+                  }`}
+                >
+                  {t("dynamicOverlays.customImage.sourceCustomPng", "Custom PNG Image")}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setNewOverlayType("file"); setNewOverlayName("config/overlays_movies.yml"); }}
-                  className={`py-2 rounded-xl text-xs font-semibold border ${
-                    newOverlayType === "file" ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted"
+                  className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-colors ${
+                    newOverlayType === "file" ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                   }`}
                 >
-                  Custom File Reference
+                  {t("dynamicOverlays.customImage.sourceCustomYaml", "Custom YAML File")}
                 </button>
               </div>
             </div>
 
-            {/* Name / Preset Selector */}
+            {/* Name / Preset / Custom PNG Selector */}
             {newOverlayType === "default" ? (
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Choose Preset</label>
@@ -12540,6 +12700,242 @@ export default function DynamicOverlays() {
                 <p className="text-[11px] text-theme-muted mt-1">
                   {DEFAULT_OVERLAY_PRESETS.find(p => p.id === newOverlayName)?.desc}
                 </p>
+              </div>
+            ) : newOverlayType === "custom_image" ? (
+              <div className="space-y-4">
+                {/* Upload vs Existing sub-toggle */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                    {t("dynamicOverlays.customImage.modeLabel", "Image Source")}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCustomImageMode("upload")}
+                      className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 ${
+                        customImageMode === "upload" ? "bg-theme-primary/15 text-theme-primary border-theme-primary/50" : "bg-theme-hover border-theme text-theme-muted"
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {t("dynamicOverlays.customImage.modeUpload", "Upload PNG / Image")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomImageMode("existing")}
+                      className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 ${
+                        customImageMode === "existing" ? "bg-theme-primary/15 text-theme-primary border-theme-primary/50" : "bg-theme-hover border-theme text-theme-muted"
+                      }`}
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      {t("dynamicOverlays.customImage.modeExisting", "From Overlay Builder / Assets")}
+                    </button>
+                  </div>
+                </div>
+
+                {customImageMode === "upload" ? (
+                  <div className="space-y-2">
+                    <input
+                      ref={customImageInputRef}
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.webp"
+                      onChange={(e) => {
+                        const chosen = e.target.files?.[0] || null;
+                        setCustomImageFile(chosen);
+                        if (chosen && !customOverlayLabel.trim()) {
+                          setCustomOverlayLabel(chosen.name.replace(/\.[^.]+$/, ""));
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-theme-hover/50 border border-dashed border-theme">
+                      {customImagePreviewUrl ? (
+                        <img src={customImagePreviewUrl} alt="Preview" className="w-12 h-12 rounded-lg object-contain bg-black/40 border border-theme shrink-0" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-theme-card border border-theme flex items-center justify-center text-theme-muted shrink-0">
+                          <ImageIcon className="w-5 h-5" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-theme-text truncate">
+                          {customImageFile ? customImageFile.name : t("dynamicOverlays.customImage.noFileSelected", "No image selected yet")}
+                        </p>
+                        <p className="text-[11px] text-theme-muted">
+                          {t("dynamicOverlays.customImage.uploadHint", "Select a PNG, JPG, or WebP file (max 15 MB). Stored in dynamic_overlays/assets/.")}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => customImageInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-xs font-semibold text-theme-text shrink-0"
+                      >
+                        {t("dynamicOverlays.customImage.chooseFile", "Choose Image File")}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {customImageSourcesLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-theme-muted py-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        {t("dynamicOverlays.customImage.loadingSources", "Loading available images...")}
+                      </div>
+                    ) : (customImageSources.overlay_builder.length === 0 && customImageSources.dynamic_assets.length === 0) ? (
+                      <p className="text-xs text-theme-muted rounded-xl bg-theme-hover/40 border border-theme p-3">
+                        {t("dynamicOverlays.customImage.noExistingImages", "No custom images found yet. Upload one or create a PNG in Builders > Overlay Builder.")}
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        {customExistingSelection.startsWith("overlay_builder:") && (
+                          <img
+                            src={`/api/overlayfiles/preview/${encodeURIComponent(customExistingSelection.slice("overlay_builder:".length))}`}
+                            alt="Selected overlay"
+                            className="w-11 h-11 rounded-lg object-contain bg-black/40 border border-theme shrink-0"
+                          />
+                        )}
+                        <select
+                          value={customExistingSelection}
+                          onChange={(e) => setCustomExistingSelection(e.target.value)}
+                          className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
+                        >
+                          <option value="">{t("dynamicOverlays.customImage.selectExistingPlaceholder", "-- Choose an existing image --")}</option>
+                          {customImageSources.overlay_builder.length > 0 && (
+                            <optgroup label={t("dynamicOverlays.customImage.groupOverlayBuilder", "Overlay Builder (Overlayfiles)")}>
+                              {customImageSources.overlay_builder.map((name) => (
+                                <option key={`ob:${name}`} value={`overlay_builder:${name}`}>{name}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {customImageSources.dynamic_assets.length > 0 && (
+                            <optgroup label={t("dynamicOverlays.customImage.groupDynamicAssets", "Dynamic Overlays Assets")}>
+                              {customImageSources.dynamic_assets.map((name) => (
+                                <option key={`da:${name}`} value={`dynamic_assets:${name}`}>{name}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Optional Rule Name */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                    {t("dynamicOverlays.customImage.ruleNameLabel", "Overlay Name (optional)")}
+                  </label>
+                  <input
+                    type="text"
+                    value={customOverlayLabel}
+                    onChange={(e) => setCustomOverlayLabel(e.target.value)}
+                    placeholder={t("dynamicOverlays.customImage.ruleNamePlaceholder", "e.g. bootlegs")}
+                    className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text"
+                  />
+                </div>
+
+                {/* Placement Mode: Corner Badge vs Full Poster */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                    {t("dynamicOverlays.customImage.placementModeLabel", "Placement Mode")}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCustomPlacementMode("badge")}
+                      className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold border ${
+                        customPlacementMode === "badge" ? "bg-theme-primary/15 text-theme-primary border-theme-primary/50" : "bg-theme-hover border-theme text-theme-muted"
+                      }`}
+                    >
+                      {t("dynamicOverlays.customImage.modeBadge", "Corner Badge")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomPlacementMode("full_canvas")}
+                      className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold border ${
+                        customPlacementMode === "full_canvas" ? "bg-theme-primary/15 text-theme-primary border-theme-primary/50" : "bg-theme-hover border-theme text-theme-muted"
+                      }`}
+                    >
+                      {t("dynamicOverlays.customImage.modeFullCanvas", "Full Poster / Frame")}
+                    </button>
+                  </div>
+                  {customPlacementMode === "full_canvas" && (
+                    <p className="text-[11px] text-theme-muted">
+                      {t("dynamicOverlays.customImage.fullCanvasHint", "Scales automatically to fill the whole poster or frame (ideal for Overlay Builder frames).")}
+                    </p>
+                  )}
+                </div>
+
+                {customPlacementMode === "badge" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5 col-span-2">
+                      <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                        {t("dynamicOverlays.customImage.cornerLabel", "Corner / Position")}
+                      </label>
+                      <select
+                        value={customCorner}
+                        onChange={(e) => setCustomCorner(e.target.value)}
+                        className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
+                      >
+                        <option value="top-left">{t("dynamicOverlays.customImage.cornerTopLeft", "Top Left")}</option>
+                        <option value="top-right">{t("dynamicOverlays.customImage.cornerTopRight", "Top Right")}</option>
+                        <option value="bottom-left">{t("dynamicOverlays.customImage.cornerBottomLeft", "Bottom Left")}</option>
+                        <option value="bottom-right">{t("dynamicOverlays.customImage.cornerBottomRight", "Bottom Right")}</option>
+                        <option value="center">{t("dynamicOverlays.customImage.cornerCenter", "Center")}</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                        {t("dynamicOverlays.customImage.offsetXLabel", "Offset X (px)")}
+                      </label>
+                      <input
+                        type="number"
+                        value={customOffsetX}
+                        onChange={(e) => setCustomOffsetX(e.target.value)}
+                        className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                        {t("dynamicOverlays.customImage.offsetYLabel", "Offset Y (px)")}
+                      </label>
+                      <input
+                        type="number"
+                        value={customOffsetY}
+                        onChange={(e) => setCustomOffsetY(e.target.value)}
+                        className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                        {t("dynamicOverlays.customImage.scaleWidthLabel", "Scale Width (px, optional)")}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="4000"
+                        value={customScaleWidth}
+                        onChange={(e) => setCustomScaleWidth(e.target.value)}
+                        placeholder={t("dynamicOverlays.customImage.scaleWidthPlaceholder", "Auto (natural size)")}
+                        className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Artwork Type */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                    {t("dynamicOverlays.customImage.artworkTypeLabel", "Artwork Type")}
+                  </label>
+                  <select
+                    value={customArtworkType}
+                    onChange={(e) => setCustomArtworkType(e.target.value)}
+                    className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
+                  >
+                    <option value="poster">{t("dynamicOverlays.customImage.artworkTypePoster", "Posters / Titlecards Only")}</option>
+                    <option value="backdrop">{t("dynamicOverlays.customImage.artworkTypeBackdrop", "Backgrounds Only")}</option>
+                    <option value="both">{t("dynamicOverlays.customImage.artworkTypeBoth", "Both Posters & Backgrounds")}</option>
+                  </select>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
