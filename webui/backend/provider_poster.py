@@ -86,20 +86,39 @@ def choose_language_asset(images, languages, *, tvdb=False, min_width=0, min_hei
     return None
 
 
+_CACHE_MEDIA_TYPES = {"movie": "movie", "show": "show"}
+_CACHE_ASSET_TYPES = {
+    "poster": "poster",
+    "background": "background",
+    "season": "season",
+    "titlecard": "titlecard",
+}
+
+
 def poster_cache_path(cache_root, asset_type, media_type, tmdb_id, tvdb_id, season_number, episode_number, config, provider=None):
+    safe_media_type = _CACHE_MEDIA_TYPES.get(media_type)
+    safe_asset_type = _CACHE_ASSET_TYPES.get(asset_type)
+    if not safe_media_type or not safe_asset_type:
+        raise HTTPException(status_code=400, detail="Invalid cache path")
+    try:
+        if tmdb_id:
+            identity = f"tmdb-{int(tmdb_id)}"
+        elif tvdb_id:
+            identity = f"tvdb-{int(tvdb_id)}"
+        else:
+            raise HTTPException(status_code=400, detail="Invalid cache path")
+        suffix = f"-s{int(season_number)}" if season_number is not None else ""
+        suffix += f"-e{int(episode_number)}" if episode_number is not None else ""
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid cache path") from None
     signature = {"config": config, "provider_override": provider}
     digest = hashlib.sha256(json.dumps(signature, sort_keys=True, default=str).encode()).hexdigest()[:12]
-    identity = f"tmdb-{tmdb_id}" if tmdb_id else f"tvdb-{tvdb_id}"
-    suffix = f"-s{season_number}" if season_number is not None else ""
-    suffix += f"-e{episode_number}" if episode_number is not None else ""
-    cache_root_path = Path(cache_root).resolve()
-    filename = f"{media_type}-{asset_type}-{identity}{suffix}-{digest}.jpg"
-    candidate = (cache_root_path / filename).resolve()
-    try:
-        candidate.relative_to(cache_root_path)
-    except ValueError:
+    cache_root_path = os.path.normpath(os.path.abspath(str(cache_root)))
+    filename = f"{safe_media_type}-{safe_asset_type}-{identity}{suffix}-{digest}.jpg"
+    candidate = os.path.normpath(os.path.join(cache_root_path, filename))
+    if not candidate.startswith(cache_root_path + os.sep):
         raise HTTPException(status_code=400, detail="Invalid cache path")
-    return candidate
+    return Path(candidate)
 
 
 def _api_config(config):

@@ -231,19 +231,20 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             raise HTTPException(status_code=404, detail="No matching asset found in the requested library")
         config = get_config() or {}
         provider_override = None if provider == "auto" else provider
-        cache_root = Path(get_cache_root()).resolve()
-        cached = poster_cache_path(cache_root, asset_type, media_type, tmdb_id, tvdb_id, season_number, episode_number, config, provider_override).resolve()
-        try:
-            cached.relative_to(cache_root)
-        except ValueError:
+        cache_root = os.path.normpath(os.path.abspath(str(get_cache_root())))
+        cached_path = os.path.normpath(str(poster_cache_path(
+            cache_root, asset_type, media_type, tmdb_id, tvdb_id,
+            season_number, episode_number, config, provider_override
+        )))
+        if not cached_path.startswith(cache_root + os.sep):
             raise HTTPException(status_code=400, detail="Invalid cache path")
-        if cached.is_file():
-            return FileResponse(cached, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
+        if os.path.isfile(cached_path):
+            return FileResponse(cached_path, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
         if not create:
             raise HTTPException(status_code=404, detail="No matching existing asset found")
         async with render_lock:
-            if cached.is_file():
-                return FileResponse(cached, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
+            if os.path.isfile(cached_path):
+                return FileResponse(cached_path, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
             content = await render_poster(media_type, tmdb_id, get_credentials(), config, get_script_path(), get_overlay_path(),
                                           get_cache_root(), asset_type=asset_type, tvdb_id=tvdb_id,
                                           season_number=season_number, episode_number=episode_number,
