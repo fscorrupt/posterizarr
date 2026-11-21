@@ -24,21 +24,43 @@ export function sanitizeUrl(rawUrl) {
   }
 }
 
+const BASIC_ENTITY_MAP = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&nbsp;": " ",
+};
+
 function decodeBasicEntities(text) {
-  return String(text || "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
+  return String(text || "").replace(
+    /&(?:amp|lt|gt|quot|#39|nbsp);/g,
+    (entity) => BASIC_ENTITY_MAP[entity] || entity
+  );
+}
+
+function stripBlockedTagContent(text) {
+  let current = String(text || "");
+  let previous;
+  do {
+    previous = current;
+    current = current.replace(BLOCKED_TAG_CONTENT_RE, "");
+  } while (current !== previous);
+  return current;
 }
 
 function stripUnsafeTags(text) {
-  return String(text || "")
-    .replace(BLOCKED_TAG_CONTENT_RE, "")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(ANY_HTML_TAG_RE, "");
+  let current = String(text || "");
+  let previous;
+  do {
+    previous = current;
+    current = current
+      .replace(BLOCKED_TAG_CONTENT_RE, "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(ANY_HTML_TAG_RE, "");
+  } while (current !== previous);
+  return current;
 }
 
 function extractHtmlAttribute(attrString, attrName) {
@@ -64,7 +86,7 @@ function pushTextToken(tokens, value) {
  */
 export function parseInlineTokens(input) {
   if (!input || typeof input !== "string") return [];
-  const cleaned = input.replace(BLOCKED_TAG_CONTENT_RE, "");
+  const cleaned = stripBlockedTagContent(input);
   const tokens = [];
   let i = 0;
 
@@ -348,7 +370,7 @@ function parseListBlock(lines, startIndex) {
 }
 
 function parseHtmlBlock(rawHtml) {
-  const cleaned = rawHtml.replace(BLOCKED_TAG_CONTENT_RE, "").trim();
+  const cleaned = stripBlockedTagContent(rawHtml).trim();
   const blocks = [];
 
   // Extract standalone <img> tags cleanly
