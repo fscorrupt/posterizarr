@@ -662,7 +662,7 @@ Generated AniMetaFill episode regexes include a numeric boundary so an episode s
 
 ## Web UI Features
 
-Navigate to **Builders $\to$ Dynamic Overlays** in the Posterizarr Web UI:
+Navigate to **Builders > Dynamic Overlays** in the Posterizarr Web UI:
 
 ### Sync & Maintenance Views
 The former **Sync & Cache** page is split into **Sync & Maintenance** views:
@@ -675,21 +675,21 @@ The former **Sync & Cache** page is split into **Sync & Maintenance** views:
 | **Ratings Cache** | Ratings cache, refresh controls, Local IMDb Dataset | `/dynamic-overlays?tab=ratings-cache` |
 
 The selected view is retained in the URL and local preference. The legacy
-`tab=cache` link opens Overlay Cache, and `tab=episode-titles` redirects to the standalone **Asset Management $\to$ Asset Title Review** view (`/asset-title-review`). Changing views does not stop running jobs.
+`tab=cache` link opens Overlay Cache, and `tab=episode-titles` redirects to the standalone **Asset Management > Asset Title Review** view (`/asset-title-review`). Changing views does not stop running jobs.
 
 ![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
 
 *The Synchronize view contains sync controls, automatic application to new
-media, and the sync log. These development-build screenshots use illustrative
-libraries and counts; no live artwork jobs were run to create them.*
+media, Targeted Reapply, and the sync log.*
 
 #### Background Change Detection & Dry Run
 
 ![Media Changes view showing background checks, interval, and Dry Run](images/44-overlay-media-changes.png)
 
 *Open **Sync & Maintenance > Media Changes** for Background Checking, its check
-interval, Automatic Overlay Resync, and Dry Run. The background-check description
-also covers optional artwork recreation when titles change.*
+interval, Automatic Overlay Resync, and Dry Run. Title-change monitoring has its
+own standalone page and settings under **Asset Management > Asset Title Review**
+(`/asset-title-review`).*
 
 - **Background Checking** controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.
 - **Automatic Overlay Resync** controls whether detected changes start the overlay render pipeline.
@@ -770,7 +770,7 @@ For replacements completed before this acknowledgment was available, **Compare
 titles** also reconciles the baseline when ImageChoices records the current
 title without truncation. A missing original download URL does not keep an
 already confirmed current title in the review. This confirms the local artwork;
-final media-server upload remains a separate overlay-sync step.
+when Dynamic Overlays is enabled, final media-server upload remains a separate overlay-sync step.
 The standalone **Dry Run** toggle on the Asset Title Review page must be off to open this replacement workflow from the review.
 Use **Permanently hide this review entry** on any blocked row (for example a
 media-server source or an image that already contains text) to dismiss it, or
@@ -893,9 +893,10 @@ Generic episode placeholders such as `Episode 2`, `Folge #2.2`, `TBA`, and
 `Untitled` (and `TBA`/`TBD`/`To Be Announced`/`Untitled` for movies, shows, and
 seasons) are not treated as finished replacement titles. Artwork that was never
 created still needs the ordinary generation workflow. Only the affected artwork
-item (movie poster, show poster, season poster, or episode titlecard) is rebuilt
-and passed to a targeted overlay sync. If the library has no dynamic-overlay
-rules, the rebuilt asset is sent directly to its exact media-server item. A
+item (movie poster, show poster, season poster, or episode titlecard) is rebuilt.
+When Dynamic Overlays is enabled and the library has overlay rules, it is
+passed to a targeted overlay sync; otherwise the rebuilt asset is sent directly
+to its exact media-server item. A
 failed generation or upload leaves the title change pending. Historical
 candidates remain manual-only across subsequent scans; only later title changes
 on otherwise reconciled items qualify for the optional automatic workflow. A
@@ -913,7 +914,7 @@ rendering uses the existing manual-run log and targeted overlays use
 *Open **Sync & Maintenance > Overlay Cache** to inspect cache statistics,
 **Browse Cache**, and recently updated artwork. Ratings use the separate
 **Ratings Cache** view shown in the [Local IMDb Dataset](#local-imdb-dataset)
-section. Counts and listed updates in these screenshots are illustrative.*
+section.*
 
 ### 0. Guided Onboarding Setup Wizard
 - **Zero Confusion Onboarding:** A friendly 4-step visual wizard guides new users through the engine's core concepts, eliminating manual reading.

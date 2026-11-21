@@ -125,6 +125,10 @@ commands.
 
 *Choose **Asset Management > Action Center** to filter flagged assets and resolve, replace, or delete their tracking entries.*
 
+![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)
+
+*Choose **Asset Management > Asset Title Review** (`/asset-title-review`) to compare existing text-enabled movies, shows, seasons, and titlecards against current media-server titles. Works standalone even when Dynamic Overlays is off, with its own check interval, Dry Run toggle, filters, bulk **Hide selected**, queued rebuilds, and confirmed Fast Normal Run actions.*
+
 The galleries, test output, and server export have different purposes: a gallery
 browses available artwork, Test Gallery shows Testing Mode results, and Media
 Server Export browses cached metadata records. Read the [Action Center guide](action_center.md)
@@ -188,17 +192,7 @@ and response formats are in the [API reference](endpoints.md).
 **Overlay Cache**, and **Ratings Cache** views. **Asset Title Review** lives as a
 standalone page under **Asset Management** (`/asset-title-review`) so it works
 independently even without Dynamic Overlays enabled (and legacy
-`/dynamic-overlays?tab=episode-titles` links redirect there). The
-screenshot shows Synchronize with Dry Run on and illustrative library counts.*
-
-![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)
-
-*Asset Title Review compares existing text-enabled movies, shows, seasons, and
-titlecards with current media-server titles and filters by eligibility, blocking
-reason, historical/future status, or media type (`All Types`, `Episodes`,
-`Seasons`, `Movies`, `Shows`). Supports bulk **Hide selected**, queued
-rebuilds, and confirmed Fast Normal Run actions without recreating artwork on
-the initial scan.*
+`/dynamic-overlays?tab=episode-titles` links redirect there).*
 
 ![AniMetaFill titlecard badge styling, 16:9 stage preview, and Anime Classification Database](images/ui-animetafill.png)
 

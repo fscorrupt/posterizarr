@@ -346,7 +346,7 @@
       "renderOnlyNoPush": "Render only · no server push",
       "serverPushAllowed": "Server push allowed",
       "backgroundChecking": "Background Checking",
-      "backgroundDescription": "Periodically checks media servers for new tracks, editions, and runtimes. When titlecard recreation is enabled, also checks episode titles and automatically recreates eligible titlecards when they change, unless Dry Run is on.",
+      "backgroundDescription": "Periodically checks media servers for new tracks, editions, and runtimes.",
       "settingsNotPersisted": "Could not save the setting permanently. Check that the configuration directory is writable.",
       "checkInterval": "Check interval:",
       "every15Minutes": "Every 15 minutes",
