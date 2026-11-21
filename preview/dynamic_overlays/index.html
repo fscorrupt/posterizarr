@@ -3100,11 +3100,6 @@ After updating, run a full overlay sync for the affected shows and seasons.</p>
 <td><code>/dynamic-overlays?tab=media-changes</code></td>
 </tr>
 <tr>
-<td><strong>Asset Title Review</strong></td>
-<td>Historical title comparison, optional title automation, recreation through the queue</td>
-<td><code>/dynamic-overlays?tab=episode-titles</code></td>
-</tr>
-<tr>
 <td><strong>Overlay Cache</strong></td>
 <td>Cache statistics, browser, cleanup, recently updated artwork</td>
 <td><code>/dynamic-overlays?tab=overlay-cache</code></td>
@@ -3117,7 +3112,7 @@ After updating, run a full overlay sync for the affected shows and seasons.</p>
 </tbody>
 </table>
 <p>The selected view is retained in the URL and local preference. The legacy
-<code>tab=cache</code> link opens Overlay Cache. Changing views does not stop running jobs.</p>
+<code>tab=cache</code> link opens Overlay Cache, and <code>tab=episode-titles</code> redirects to the standalone <strong>Asset Management $\to$ Asset Title Review</strong> view (<code>/asset-title-review</code>). Changing views does not stop running jobs.</p>
 <p><img alt="Dynamic Overlays Synchronize view with separate maintenance tabs" src="../images/22-overlay-sync-cache.png" /></p>
 <p><em>The Synchronize view contains sync controls, automatic application to new
 media, and the sync log. These development-build screenshots use illustrative
@@ -3135,14 +3130,17 @@ also covers optional artwork recreation when titles change.</em></p>
 <li>The <strong>Master Switch</strong> is the hard stop: when disabled, background detection and sync processing do not run. Switching it off also stops the detector and cancels active sync work before any subsequent upload.</li>
 </ul>
 <h4 id="recreate-artwork-when-titles-change-asset-title-review">Recreate Artwork When Titles Change (Asset Title Review)</h4>
-<p><strong>Sync &amp; Maintenance &gt; Asset Title Review &gt; Recreate artwork when titles change</strong> is
-optional and off by default. With the Master Switch and Background Checking on,
-it compares titles at the configured background-check interval. The default
-interval is 60 minutes, and the first check waits for that interval. Automatic
-recreation applies to later title changes; existing historical review candidates
-remain manual. It is independent of <strong>Automatic Overlay Resync</strong>. Keep <strong>Dry Run</strong>
-on to log eligible changes without recreating files or uploading artwork; turn it
-off to apply changes.</p>
+<p><strong>Asset Management &gt; Asset Title Review</strong> (<code>/asset-title-review</code>) is a standalone
+feature and works even when Dynamic Overlays is off and no overlay rules are
+configured. <strong>Recreate artwork when titles change</strong> is optional and off by default.
+When turned on, it checks titles automatically at its own configured interval
+(default <strong>60 minutes</strong>, with the first check waiting one interval), independent of
+the Dynamic Overlays Master Switch, Background Checking, and <strong>Automatic Overlay Resync</strong>.
+Turn on the page's standalone <strong>Dry Run</strong> switch to log eligible changes without
+recreating files or uploading artwork; keep it off to apply changes. When Dynamic
+Overlays is enabled and the library has overlay rules configured, recreated assets
+automatically run through targeted overlay sync before upload; otherwise they are
+uploaded directly to Plex, Jellyfin, or Emby.</p>
 <p>The monitor checks existing text-enabled artwork on Plex, Jellyfin, and Emby
 according to <code>config.json</code>: episode titlecards (when <code>TitleCards</code> and episode
 title/number text are enabled), season posters (when <code>SeasonPosters</code> and
@@ -3161,7 +3159,7 @@ compares the title recorded in ImageChoices with the current server title.
 Existing differences become historical review candidates, including when an
 older version already established a baseline. The scan itself never recreates
 historical artwork automatically.</p>
-<p>Open <strong>Sync &amp; Maintenance &gt; Asset Title Review</strong> and select <strong>Compare titles</strong>
+<p>Open <strong>Asset Management &gt; Asset Title Review</strong> (<code>/asset-title-review</code>) and select <strong>Compare titles</strong>
 for an initial, read-only artwork audit (scans can also run during an active
 overlay sync). The table shows the existing image, media item (<code>Media / Item</code>),
 previous title, current title, and eligibility across movies, shows, seasons,
@@ -3200,8 +3198,7 @@ titles</strong> also reconciles the baseline when ImageChoices records the curre
 title without truncation. A missing original download URL does not keep an
 already confirmed current title in the review. This confirms the local artwork;
 final media-server upload remains a separate overlay-sync step.
-The Master Switch must be on and Dry Run off to open this replacement
-workflow from the review.
+The standalone <strong>Dry Run</strong> toggle on the Asset Title Review page must be off to open this replacement workflow from the review.
 Use <strong>Permanently hide this review entry</strong> on any blocked row (for example a
 media-server source or an image that already contains text) to dismiss it, or
 select multiple rows and use <strong>Hide selected</strong> to dismiss them together and
@@ -3246,8 +3243,8 @@ select several entries with the checkboxes, or choose <strong>All eligible match
 The all action includes every eligible result of the current search and active
 filters, not just the current page. Each action requires confirmation (with
 media-specific titles and prompts for single-item rebuilds). Manual recreation
-does not require the automatic title option or Background Checking, but the
-Master Switch must be on and Dry Run off.</p>
+does not require the automatic title option, Background Checking, or the Dynamic
+Overlays Master Switch, as long as the Asset Title Review <strong>Dry Run</strong> toggle is off.</p>
 <p><strong>Recreate selected</strong> is only available while no other Posterizarr run is active. Use
 <strong>Add to queue</strong> instead to queue the selected items immediately, even while a
 run, overlay sync, or cleanup is active. The queued entries start automatically

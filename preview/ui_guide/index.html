@@ -1902,7 +1902,10 @@ and response formats are in the <a href="../endpoints/">API reference</a>.</p>
 <p><em>Choose <strong>Live Preview</strong> to inspect sample artwork and adjust badge placement. Previewing does not upload artwork.</em></p>
 <p><img alt="Dynamic Overlays Synchronize view with separate maintenance tabs" src="../images/22-overlay-sync-cache.png" /></p>
 <p><em>Choose <strong>Sync &amp; Maintenance</strong> for the separate <strong>Synchronize</strong>, <strong>Media Changes</strong>,
-<strong>Asset Title Review</strong>, <strong>Overlay Cache</strong>, and <strong>Ratings Cache</strong> views. The
+<strong>Overlay Cache</strong>, and <strong>Ratings Cache</strong> views. <strong>Asset Title Review</strong> lives as a
+standalone page under <strong>Asset Management</strong> (<code>/asset-title-review</code>) so it works
+independently even without Dynamic Overlays enabled (and legacy
+<code>/dynamic-overlays?tab=episode-titles</code> links redirect there). The
 screenshot shows Synchronize with Dry Run on and illustrative library counts.</em></p>
 <p><img alt="Asset Title Review comparing current media-server titles against existing artwork" src="../images/ui-asset-title-review.png" /></p>
 <p><em>Asset Title Review compares existing text-enabled movies, shows, seasons, and
