@@ -115,7 +115,12 @@ def load_overlay_font(font_path, font_size, candidate_dirs):
 def get_candidate_asset_dirs() -> List[Path]:
     """Return all valid candidate directories for overlay assets across Docker and project roots."""
     dirs: List[Path] = []
-    roots = [PROJECT_ROOT, Path("/config"), Path("/app")]
+    roots: List[Path] = [PROJECT_ROOT, Path("/config"), Path("/app")]
+    app_data = os.environ.get("APP_DATA")
+    if app_data:
+        app_data_path = Path(app_data)
+        if app_data_path not in roots:
+            roots.append(app_data_path)
     for r in roots:
         for sub in [
             r / "Overlayfiles" / "dynamic_overlays" / "assets",
@@ -133,6 +138,35 @@ def get_candidate_asset_dirs() -> List[Path]:
     if not dirs:
         dirs.append(PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
     return dirs
+
+
+def _resolve_in_allowed_dirs(raw_path: Union[str, Path], allowed_dirs: List[Path]) -> Optional[str]:
+    """Return normalized absolute path string if raw_path points to an existing file inside allowed_dirs."""
+    if not raw_path:
+        return None
+    raw_str = str(raw_path).strip()
+    if not raw_str or "\x00" in raw_str:
+        return None
+    norm_path = os.path.normpath(os.path.abspath(raw_str))
+    for allowed_dir in allowed_dirs:
+        base_norm = os.path.normpath(os.path.abspath(str(allowed_dir)))
+        if norm_path.startswith(base_norm + os.sep) and os.path.isfile(norm_path):
+            return norm_path
+    return None
+
+
+def _safe_join_within(base_dir: Path, rel_part: Union[str, Path]) -> Optional[str]:
+    """Join rel_part under base_dir and return the normalized path string only if contained within base_dir."""
+    if not rel_part:
+        return None
+    rel_str = str(rel_part).strip()
+    if not rel_str or "\x00" in rel_str:
+        return None
+    base_norm = os.path.normpath(os.path.abspath(str(base_dir)))
+    joined = os.path.normpath(os.path.join(base_norm, rel_str))
+    if not joined.startswith(base_norm + os.sep):
+        return None
+    return joined
 
 
 def get_candidate_font_dirs() -> List[Path]:
@@ -743,60 +777,63 @@ class DynamicOverlayCompositor:
                 resolved_ip = None
                 candidate_asset_dirs = get_candidate_asset_dirs()
                 if img_path:
-                    ip = Path(img_path)
-                    if ip.exists():
-                        resolved_ip = ip
-                    else:
+                    resolved_ip = _resolve_in_allowed_dirs(img_path, candidate_asset_dirs)
+                    if not resolved_ip:
+                        ip = Path(img_path)
                         ip_name = ip.name
                         streaming_parts = [index for index, part in enumerate(ip.parts) if part.lower() == "streaming"]
                         streaming_path = Path(*ip.parts[streaming_parts[-1]:]) if streaming_parts else None
                         for ad in candidate_asset_dirs:
-                            cand = ad / (streaming_path if streaming_path is not None else ip_name)
-                            if cand.exists():
-                                resolved_ip = cand
+                            cand_str = _safe_join_within(ad, streaming_path if streaming_path is not None else ip_name)
+                            if cand_str and os.path.isfile(cand_str):
+                                resolved_ip = cand_str
                                 break
                             if streaming_path is not None:
                                 continue
                             for sub in ["rating", "flag/square", "flags/square", "flag/round", "flags/round", "resolution", "commonsense", "ribbon"]:
-                                cand_sub = ad / sub / ip_name
-                                if cand_sub.exists():
-                                    resolved_ip = cand_sub
+                                cand_sub_str = _safe_join_within(ad, os.path.join(sub, ip_name))
+                                if cand_sub_str and os.path.isfile(cand_sub_str):
+                                    resolved_ip = cand_sub_str
                                     break
                             if resolved_ip:
                                 break
 
-                        if not resolved_ip or not resolved_ip.exists():
+                        if not resolved_ip or not os.path.isfile(resolved_ip):
                             # Attempt on-demand download from official Kometa raw repository
                             try:
-                                from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, KOMETA_IMAGES_RAW
+                                from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, safe_sync_get, KOMETA_IMAGES_RAW
                                 raw_target = str(ip).replace("\\", "/")
                                 raw_url = resolve_official_kometa_image_url(raw_target) or resolve_official_kometa_image_url(ip.name)
                                 if raw_url and is_safe_remote_url(raw_url):
                                     import httpx
-                                    with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
-                                        r_resp = h_client.get(raw_url)
+                                    with httpx.Client(timeout=10.0, follow_redirects=False) as h_client:
+                                        r_resp = safe_sync_get(h_client, raw_url)
                                         if r_resp.status_code == 200:
                                             save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
-                                            if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/"):
-                                                sub_p = raw_url[len(KOMETA_IMAGES_RAW) + 1:]
-                                                save_path = save_dir / sub_p
-                                            else:
-                                                save_path = save_dir / ip.name
-                                            save_path.parent.mkdir(parents=True, exist_ok=True)
-                                            with open(save_path, "wb") as f_out:
-                                                f_out.write(r_resp.content)
-                                            base_path = save_dir / ip.name
-                                            if save_path != base_path and not base_path.exists():
-                                                try:
-                                                    with open(base_path, "wb") as f_base:
-                                                        f_base.write(r_resp.content)
-                                                except Exception:
-                                                    pass
-                                            resolved_ip = save_path
+                                            save_base = os.path.normpath(os.path.abspath(str(save_dir)))
+                                            rel_sub = raw_url[len(KOMETA_IMAGES_RAW) + 1:] if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/") else ip.name
+                                            save_path_str = _safe_join_within(save_dir, rel_sub)
+                                            if save_path_str and save_path_str.startswith(save_base + os.sep):
+                                                os.makedirs(os.path.dirname(save_path_str), exist_ok=True)
+                                                with open(save_path_str, "wb") as f_out:
+                                                    f_out.write(r_resp.content)
+                                                base_path_str = _safe_join_within(save_dir, ip.name)
+                                                if (
+                                                    base_path_str
+                                                    and base_path_str.startswith(save_base + os.sep)
+                                                    and save_path_str != base_path_str
+                                                    and not os.path.exists(base_path_str)
+                                                ):
+                                                    try:
+                                                        with open(base_path_str, "wb") as f_base:
+                                                            f_base.write(r_resp.content)
+                                                    except Exception:
+                                                        pass
+                                                resolved_ip = save_path_str
                             except Exception as e_ondemand:
                                 logger.debug(f"[OverlayEngine] On-demand asset fetch error: {e_ondemand}")
 
-                if not resolved_ip or not resolved_ip.exists():
+                if not resolved_ip or not os.path.isfile(resolved_ip):
                     if abort_on_missing:
                         target_name = img_path or layer.get("name") or "image"
                         raise OverlayAssetMissingError(
@@ -924,63 +961,66 @@ class DynamicOverlayCompositor:
         badge_img_path = layer.get("image_path")
         resolved_bp = None
         if badge_img_path:
-            bp = Path(badge_img_path)
             candidate_asset_dirs = get_candidate_asset_dirs()
-            if bp.exists():
-                resolved_bp = bp
-            else:
+            resolved_bp = _resolve_in_allowed_dirs(badge_img_path, candidate_asset_dirs)
+            if not resolved_bp:
+                bp = Path(badge_img_path)
                 bp_name = bp.name
                 for ad in candidate_asset_dirs:
-                    cand = ad / bp_name
-                    if cand.exists():
-                        resolved_bp = cand
+                    cand_str = _safe_join_within(ad, bp_name)
+                    if cand_str and os.path.isfile(cand_str):
+                        resolved_bp = cand_str
                         break
                     for sub in ["rating", "flag/square", "flags/square", "flag/round", "flags/round", "resolution", "commonsense", "ribbon"]:
-                        cand_sub = ad / sub / bp_name
-                        if cand_sub.exists():
-                            resolved_bp = cand_sub
+                        cand_sub_str = _safe_join_within(ad, os.path.join(sub, bp_name))
+                        if cand_sub_str and os.path.isfile(cand_sub_str):
+                            resolved_bp = cand_sub_str
                             break
                     if resolved_bp:
                         break
 
                 if not resolved_bp:
                     try:
-                        from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, KOMETA_IMAGES_RAW
+                        from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, safe_sync_get, KOMETA_IMAGES_RAW
                         raw_target = str(bp).replace("\\", "/")
                         raw_url = resolve_official_kometa_image_url(raw_target) or resolve_official_kometa_image_url(bp.name)
                         if raw_url and is_safe_remote_url(raw_url):
                             import httpx
-                            with httpx.Client(timeout=10.0, follow_redirects=True) as h_client:
-                                r_resp = h_client.get(raw_url)
+                            with httpx.Client(timeout=10.0, follow_redirects=False) as h_client:
+                                r_resp = safe_sync_get(h_client, raw_url)
                                 if r_resp.status_code == 200:
                                     save_dir = candidate_asset_dirs[0] if candidate_asset_dirs else (PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
-                                    if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/"):
-                                        sub_p = raw_url[len(KOMETA_IMAGES_RAW) + 1:]
-                                        save_path = save_dir / sub_p
-                                    else:
-                                        save_path = save_dir / bp.name
-                                    save_path.parent.mkdir(parents=True, exist_ok=True)
-                                    with open(save_path, "wb") as f_out:
-                                        f_out.write(r_resp.content)
-                                    base_path = save_dir / bp.name
-                                    if save_path != base_path and not base_path.exists():
-                                        try:
-                                            with open(base_path, "wb") as f_base:
-                                                f_base.write(r_resp.content)
-                                        except Exception:
-                                            pass
-                                    resolved_bp = save_path
+                                    save_base = os.path.normpath(os.path.abspath(str(save_dir)))
+                                    rel_sub = raw_url[len(KOMETA_IMAGES_RAW) + 1:] if raw_url.startswith(f"{KOMETA_IMAGES_RAW}/") else bp.name
+                                    save_path_str = _safe_join_within(save_dir, rel_sub)
+                                    if save_path_str and save_path_str.startswith(save_base + os.sep):
+                                        os.makedirs(os.path.dirname(save_path_str), exist_ok=True)
+                                        with open(save_path_str, "wb") as f_out:
+                                            f_out.write(r_resp.content)
+                                        base_path_str = _safe_join_within(save_dir, bp.name)
+                                        if (
+                                            base_path_str
+                                            and base_path_str.startswith(save_base + os.sep)
+                                            and save_path_str != base_path_str
+                                            and not os.path.exists(base_path_str)
+                                        ):
+                                            try:
+                                                with open(base_path_str, "wb") as f_base:
+                                                    f_base.write(r_resp.content)
+                                            except Exception:
+                                                pass
+                                        resolved_bp = save_path_str
                     except Exception as e_ondemand_bp:
                         logger.debug(f"[Compositor] On-demand addon asset fetch error: {e_ondemand_bp}")
 
-            if not resolved_bp or not resolved_bp.exists():
+            if not resolved_bp or not os.path.isfile(resolved_bp):
                 if abort_on_missing:
                     raise OverlayAssetMissingError(
                         str(badge_img_path),
                         f"Required badge image '{badge_img_path}' could not be resolved or downloaded from Kometa defaults"
                     )
 
-        if resolved_bp and resolved_bp.exists():
+        if resolved_bp and os.path.isfile(resolved_bp):
             try:
                 with Image.open(resolved_bp) as b_img:
                     elem_img = b_img.convert("RGBA")

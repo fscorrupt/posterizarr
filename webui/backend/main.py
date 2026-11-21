@@ -3002,7 +3002,10 @@ async def update_config(data: ConfigUpdate):
         for key, new_value in data.config.items():
             old_value = current_flat.get(key)
             if old_value != new_value:
-                if any(sensitive in key.lower() for sensitive in ["password", "token", "key", "api"]):
+                if key.lower() == "discord" or any(
+                    sensitive in key.lower()
+                    for sensitive in ("password", "token", "key", "api", "secret", "webhook", "apprise", "uptimekuma")
+                ):
                     old_display = "***" if old_value else None
                     new_display = "***" if new_value else None
                 else:
@@ -3010,9 +3013,7 @@ async def update_config(data: ConfigUpdate):
                     new_display = new_value
 
                 changes_detected.append({"key": key, "old": old_display, "new": new_display})
-                logger.info(f"CONFIG CHANGE: {key}")
-                logger.info(f"  Old value: {old_display}")
-                logger.info(f"  New value: {new_display}")
+                logger.info("CONFIG CHANGE: %s (updated)", key)
 
         if changes_detected:
             logger.info(f"Total changes detected: {len(changes_detected)}")
@@ -20129,7 +20130,7 @@ async def upload_dynamic_overlay_asset(
                         if extracted:
                             save_dynamic_overlays_settings(extracted)
                             all_extracted_keys.update(extracted)
-                            logger.info(f"[Upload] Extracted API keys from {filename}: {list(extracted.keys())}")
+                            logger.info("[Upload] Extracted %d API key(s) from %s", len(extracted), filename)
                     except Exception as ee:
                         logger.warning(f"[Upload] Error extracting API keys from {filename}: {ee}")
 

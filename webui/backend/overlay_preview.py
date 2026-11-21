@@ -187,9 +187,9 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
     episode = template in ("episode_card", "titlecard")
     season = template == "season_poster"
     show = template == "show_poster" or season or episode
-    runtime = str(options.get("runtime") or "")
-    hours = re.search(r"(\d+)\s*h", runtime)
-    minutes = re.search(r"(\d+)\s*m", runtime)
+    runtime = str(options.get("runtime") or "").strip()[:64]
+    hours = re.search(r"(?<!\d)(\d{1,4})[ \t]{0,3}h", runtime, re.IGNORECASE)
+    minutes = re.search(r"(?<!\d)(\d{1,5})[ \t]{0,3}m", runtime, re.IGNORECASE)
     runtime_mins = (int(hours[1]) * 60 if hours else 0) + (int(minutes[1]) if minutes else 0)
     if not hours and not minutes and runtime.isdigit():
         runtime_mins = int(runtime)

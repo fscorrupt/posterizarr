@@ -261,6 +261,38 @@ def is_safe_remote_url(url: str) -> bool:
         return False
 
 
+def safe_sync_get(client: httpx.Client, url: str, max_redirects: int = 5) -> httpx.Response:
+    """Perform a synchronous GET validating every redirect target against SSRF."""
+    current_url = url
+    for _ in range(max_redirects + 1):
+        if not is_safe_remote_url(current_url):
+            raise ValueError(f"Blocked unsafe URL: {current_url}")
+        response = client.get(current_url)
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("location")
+            if location:
+                current_url = urllib.parse.urljoin(current_url, location)
+                continue
+        return response
+    raise ValueError(f"Too many redirects fetching: {url}")
+
+
+async def safe_async_get(client: httpx.AsyncClient, url: str, max_redirects: int = 5) -> httpx.Response:
+    """Perform an asynchronous GET validating every redirect target against SSRF."""
+    current_url = url
+    for _ in range(max_redirects + 1):
+        if not is_safe_remote_url(current_url):
+            raise ValueError(f"Blocked unsafe URL: {current_url}")
+        response = await client.get(current_url)
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("location")
+            if location:
+                current_url = urllib.parse.urljoin(current_url, location)
+                continue
+        return response
+    raise ValueError(f"Too many redirects fetching: {url}")
+
+
 def is_template_placeholder(val: Any) -> bool:
     """
     Check if a string represents an uninstantiated Kometa template variable expression,
@@ -1255,8 +1287,8 @@ class OverlayResolver:
             return {"success": False, "error": f"Invalid or unsafe download URL for {asset_name}: {download_url}"}
 
         try:
-            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-                res = await client.get(download_url)
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
+                res = await safe_async_get(client, download_url)
                 if res.status_code != 200:
                     return {"success": False, "error": f"Download failed with status {res.status_code} from {download_url}"}
 
@@ -1269,10 +1301,15 @@ class OverlayResolver:
                     fp.write(content)
 
                 # Also save copy in root of assets_dir if safe_dest was in a subfolder
-                base_dest = self.assets_dir / Path(asset_name).name
-                if safe_dest != base_dest and not base_dest.exists():
+                assets_base = os.path.normpath(os.path.abspath(str(self.assets_dir)))
+                base_dest_str = os.path.normpath(os.path.join(assets_base, Path(asset_name).name))
+                if (
+                    base_dest_str.startswith(assets_base + os.sep)
+                    and os.path.normpath(os.path.abspath(str(safe_dest))) != base_dest_str
+                    and not os.path.exists(base_dest_str)
+                ):
                     try:
-                        with open(base_dest, "wb") as fp_base:
+                        with open(base_dest_str, "wb") as fp_base:
                             fp_base.write(content)
                     except Exception:
                         pass
@@ -1528,7 +1565,7 @@ class OverlayResolver:
                 extracted = extract_kometa_api_keys(parsed)
                 if extracted:
                     save_dynamic_overlays_settings(extracted)
-                    logger.info(f"[OverlayResolver] Extracted API keys on saving {filename}: {list(extracted.keys())}")
+                    logger.info("[OverlayResolver] Extracted %d API key(s) on saving %s", len(extracted), filename)
             except Exception as ex:
                 logger.warning(f"[OverlayResolver] Failed extracting API keys on save: {ex}")
 
@@ -2455,9 +2492,12 @@ class OverlayConfigEngine:
 
         scoped_flag = re.search(r"(?:^|/)(flags?)/(round|square)/([^/]+)$", p_str.replace("\\", "/"), re.I)
         if scoped_flag:
-            requested = Path(p_str)
-            if requested.is_absolute() and requested.is_file():
-                return requested
+            if os.path.isabs(p_str):
+                req_norm = os.path.normpath(os.path.abspath(p_str))
+                for allowed_dir in [*self.candidate_asset_dirs, self.assets_dir]:
+                    base_norm = os.path.normpath(os.path.abspath(str(allowed_dir)))
+                    if req_norm.startswith(base_norm + os.sep) and os.path.isfile(req_norm):
+                        return Path(req_norm)
             flag_style = scoped_flag[2].lower()
             filenames = [scoped_flag[3]]
             if stem in flag_aliases:
