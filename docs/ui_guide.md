@@ -132,7 +132,8 @@ commands.
 The galleries, test output, and server export have different purposes: a gallery
 browses available artwork, Test Gallery shows Testing Mode results, and Media
 Server Export browses cached metadata records. Read the [Action Center guide](action_center.md)
-before bulk actions and the [Plex Image Cleanup guide](plex_image_cleanup.md)
+before bulk actions, the [Asset Title Review guide](asset_title_review.md) for
+renamed-title monitoring and rebuilds, and the [Plex Image Cleanup guide](plex_image_cleanup.md)
 before quarantining or removing files.
 
 ## Export Library Data
@@ -201,9 +202,11 @@ Mixed episode scanning, preview 16:9 titlecard badges live, toggle overlay
 categories, set per-show thresholds, and manage manual overrides in the Anime
 Classification Database.*
 
-Start with **Dry Run** and a narrow library/item scope. The [Dynamic Overlays guide](dynamic_overlays.md)
-documents rating sources, local IMDb datasets and episode mappings, bundles,
-cache refresh, retry behavior, and Kometa compatibility limits. Other builders
+Start with **Dry Run** and a narrow library/item scope. The
+[Dynamic Overlays guide](dynamic_overlays.md) covers everyday setup, while the
+[Dynamic Overlays Reference](dynamic_overlays_reference.md) documents rating
+sources, local IMDb datasets and episode mappings, bundles, cache refresh, retry
+behavior, and Kometa compatibility limits. Other builders
 are described in [Blueprints and recipes](blueprints.md), [Logo Builder and
 logo workflows](modes.md#logo-updater), and the [capabilities guide](capabilities.md).
 

@@ -3,6 +3,10 @@
 This guide is for someone opening Posterizarr for the first time. Follow it in
 order; you do not need to understand every setting before getting started.
 
+!!! tip "Want the fastest path to your first overlaid poster?"
+    Once Posterizarr is running, jump straight to the **[5-Minute Quickstart](quickstart.md)**
+    for a condensed 5-step walkthrough from fresh install to a live Dynamic Overlay.
+
 ![Posterizarr Dashboard and main navigation](images/01-dashboard-overview.png)
 
 *After opening the Web UI, start at **Dashboard** in the left sidebar. The sidebar remains the main route to configuration, runs, assets, builders, and automation.*

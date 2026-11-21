@@ -189,7 +189,7 @@ configurations are unaffected.
 
 ## Dynamic Overlays
 
-The `/api/dynamic-overlays/episode-title-changes*` endpoints power the standalone **Asset Title Review** page (`/asset-title-review`) across all configured text-enabled artwork types (`episode`, `season`, `movie`, and `show`). They work independently even when the Dynamic Overlays Master Switch (`enabled`) is off.
+The `/api/dynamic-overlays/episode-title-changes*` endpoints power the standalone **[Asset Title Review](asset_title_review.md)** page (`/asset-title-review`) across all configured text-enabled artwork types (`episode`, `season`, `movie`, and `show`). They work independently even when the Dynamic Overlays Master Switch (`enabled`) is off.
 
 | Endpoint | Purpose |
 |---|---|
@@ -220,7 +220,7 @@ bundle contains credential fields with blank/null/masked values. Invalid bundles
 so clients can translate the error. Preview responses also include
 `warning_codes` alongside the existing readable `warnings` list. An active
 sync/classification/import returns `409`. See the
-[bundle workflow and limits](dynamic_overlays.md#share-a-complete-overlay-bundle).
+[bundle workflow and limits](dynamic_overlays_reference.md#share-a-complete-overlay-bundle).
 
 `official_dependency_count` in the preview reports omitted downloadable defaults.
 Export returns `503` with code `officialCatalogUnavailable` if the official
