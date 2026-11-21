@@ -1867,7 +1867,7 @@ suggestions, not necessarily failed jobs.</p>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Missing Assets at Fav Provider</strong></td>
-<td style="text-align: left;">Items that were found, but not at your preferred provider (e.g., you prefer TMDB but it was only found on Fanart.tv).</td>
+<td style="text-align: left;">Items your media server has no ID for at your favorite provider (e.g., no TMDB ID), so they could not be looked up or linked there. Each item shows this as <code>Missing Link</code>; fix the item's match in your media server, then run again.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Non-Primary Lang</strong></td>
@@ -1885,10 +1885,10 @@ suggestions, not necessarily failed jobs.</p>
 </table>
 <hr />
 <h2 id="understanding-asset-tags">Understanding Asset Tags</h2>
-<p>Each asset in the list will have one or more tags explaining why it was flagged:</p>
+<p>Each asset in the list will have one or more tags explaining why it was flagged. Hover a tag or a summary card in the Web UI to see what it means and how to address it.</p>
 <ul>
 <li><code>Missing Asset</code>: No image source URL could be determined.</li>
-<li><code>Missing Link</code>: The favorite provider link is missing.</li>
+<li><code>Missing Link</code>: The media server has no ID for this item at your favorite provider (e.g., no TMDB ID), so no provider link could be built. Fix the item's match in your media server (Plex: Fix Match or Refresh Metadata; Jellyfin/Emby: Identify), then run again.</li>
 <li><code>Not Primary Provider</code>: The image comes from a provider lower in your search order.</li>
 <li><code>Logo: Not Primary Provider</code>: The logo (if applicable) is not from your preferred source.</li>
 <li><code>Logo: [LANG]</code>: The logo is in a specific language (e.g., Logo: DE).</li>
