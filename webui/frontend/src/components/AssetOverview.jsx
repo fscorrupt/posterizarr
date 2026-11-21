@@ -516,7 +516,8 @@ const AssetRow = React.memo(
                   {tags.map((tag, index) => (
                     <span
                       key={index}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${tag.color}`}
+                      title={tag.hint || undefined}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${tag.color}${tag.hint ? " cursor-help" : ""}`}
                     >
                       {tag.label}
                     </span>
@@ -1573,6 +1574,7 @@ const AssetOverview = () => {
       {
         key: "assets_with_issues",
         label: t("assetOverview.assetsWithIssues"),
+        hint: t("assetOverview.hints.assetsWithIssues"),
         count: data.categories.assets_with_issues?.count || 0,
         icon: AlertTriangle,
         color: "text-yellow-400",
@@ -1583,6 +1585,7 @@ const AssetOverview = () => {
       {
         key: "missing_assets",
         label: t("assetOverview.missingAssets"),
+        hint: t("assetOverview.hints.missingAssets"),
         count: data.categories.missing_assets?.count || 0,
         icon: FileQuestion,
         color: "text-red-400",
@@ -1593,6 +1596,7 @@ const AssetOverview = () => {
       {
         key: "missing_assets_fav_provider",
         label: t("assetOverview.missingAssetsAtFavProvider"),
+        hint: t("assetOverview.hints.missingAssetsAtFavProvider"),
         count: data.categories.missing_assets_fav_provider?.count || 0,
         icon: Star,
         color: "text-orange-400",
@@ -1603,6 +1607,7 @@ const AssetOverview = () => {
       {
         key: "non_primary_lang",
         label: t("assetOverview.nonPrimaryLang"),
+        hint: t("assetOverview.hints.nonPrimaryLang"),
         count: data.categories.non_primary_lang?.count || 0,
         icon: Globe,
         color: "text-sky-400",
@@ -1613,6 +1618,7 @@ const AssetOverview = () => {
       {
         key: "non_primary_provider",
         label: t("assetOverview.nonPrimaryProvider"),
+        hint: t("assetOverview.hints.nonPrimaryProvider"),
         count: data.categories.non_primary_provider?.count || 0,
         icon: Database,
         color: "text-emerald-400",
@@ -1623,6 +1629,7 @@ const AssetOverview = () => {
       {
         key: "truncated_text",
         label: t("assetOverview.truncatedTextCategory"),
+        hint: t("assetOverview.hints.truncatedTextCategory"),
         count: data.categories.truncated_text?.count || 0,
         icon: Type,
         color: "text-purple-400",
@@ -1657,6 +1664,7 @@ const AssetOverview = () => {
     if (!downloadSource || downloadSource === "false" || downloadSource === false) {
       tags.push({
         label: t("assetOverview.missingAsset"), // "Missing Asset"
+        hint: t("assetOverview.hints.missingAsset"),
         color: "bg-red-500/20 text-red-400 border-red-500/30",
       });
     }
@@ -1665,6 +1673,7 @@ const AssetOverview = () => {
     if (!providerLink || providerLink === "false" || providerLink === false) {
       tags.push({
         label: t("assetOverview.missingLink"), // "Missing Link"
+        hint: t("assetOverview.hints.missingLink"),
         color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
       });
     }
@@ -1688,6 +1697,7 @@ const AssetOverview = () => {
       if (!isFromPrimary) {
         tags.push({
           label: t("assetOverview.notPrimaryProvider"), // "Not Primary Provider"
+          hint: t("assetOverview.hints.notPrimaryProvider"),
           color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
         });
       }
@@ -1716,6 +1726,7 @@ const AssetOverview = () => {
       if (!isLogoFromPrimary) {
         tags.push({
           label: "Logo: Not Primary Provider",
+          hint: t("assetOverview.hints.logoNotPrimaryProvider"),
           color: "bg-pink-500/20 text-pink-400 border-pink-500/30",
         });
       }
@@ -1730,6 +1741,10 @@ const AssetOverview = () => {
         if (currentLogoLang !== primaryLogoLang) {
              tags.push({
                 label: `Logo: ${logoLanguage.toUpperCase()}`,
+                hint: t("assetOverview.hints.logoLanguage", {
+                  lang: logoLanguage.toUpperCase(),
+                  primary: primaryLogoLang === "xx" ? t("assetOverview.hints.textlessCode") : primaryLogoLang.toUpperCase(),
+                }),
                 color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
              });
         }
@@ -1739,6 +1754,7 @@ const AssetOverview = () => {
     if (logoTextFallback && (logoTextFallback === "true" || logoTextFallback === true)) {
         tags.push({
             label: "Logo: Text Fallback",
+            hint: t("assetOverview.hints.logoTextFallback"),
             color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
         });
     }
@@ -1771,6 +1787,7 @@ const AssetOverview = () => {
             if (downloadSource && downloadSource !== "false" && downloadSource !== false) {
                 tags.push({
                     label: "UNKNOWN LANG",
+                    hint: t("assetOverview.hints.unknownLanguage"),
                     color: "bg-purple-500/20 text-purple-400 border-purple-500/30",
                 });
             }
@@ -1783,6 +1800,10 @@ const AssetOverview = () => {
             if (!isPrimary) {
                  tags.push({
                     label: posterLang.toUpperCase(),
+                    hint: t("assetOverview.hints.notPrimaryLanguage", {
+                      lang: posterLang.toUpperCase(),
+                      primary: ["xx", "textless"].includes(primaryLangLower) ? t("assetOverview.hints.textlessCode") : primaryLang.toUpperCase(),
+                    }),
                     color: "bg-purple-500/20 text-purple-400 border-purple-500/30",
                  });
             }
@@ -1795,6 +1816,7 @@ const AssetOverview = () => {
     if (asset.TextTruncated === true || asset.TextTruncated === "true") {
       tags.push({
         label: t("runtimeStats.truncated"), // "Truncated"
+        hint: t("assetOverview.hints.truncated"),
         color: "bg-red-500/20 text-red-400 border-red-500/30",
       });
     }
@@ -1875,6 +1897,7 @@ const AssetOverview = () => {
             return (
               <button
                 key={card.key}
+                title={card.hint}
                 onClick={() =>
                   setSelectedCategory(isSelected ? "All Categories" : card.label)
                 }

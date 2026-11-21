@@ -22,7 +22,7 @@ At the top of the Action Center, you'll find summary cards that categorize the t
 | :--- | :--- |
 | **Assets with Issues** | The total number of items that are currently "Unresolved" and require your attention. |
 | **Missing Assets** | Items where no valid download source (URL) was found during the run. |
-| **Missing Assets at Fav Provider** | Items that were found, but not at your preferred provider (e.g., you prefer TMDB but it was only found on Fanart.tv). |
+| **Missing Assets at Fav Provider** | Items your media server has no ID for at your favorite provider (e.g., no TMDB ID), so they could not be looked up or linked there. Each item shows this as `Missing Link`; fix the item's match in your media server, then run again. |
 | **Non-Primary Lang** | Assets that are using a language other than your primary preferred language (e.g., an 'it' poster when you prefer 'en'). |
 | **Non-Primary Provider** | Assets sourced from a secondary provider instead of your top-tier choice. |
 | **Truncated Text** | Items where the applied text (overlays) might have been cut off or looks suboptimal. |
@@ -31,10 +31,10 @@ At the top of the Action Center, you'll find summary cards that categorize the t
 
 ## Understanding Asset Tags
 
-Each asset in the list will have one or more tags explaining why it was flagged:
+Each asset in the list will have one or more tags explaining why it was flagged. Hover a tag or a summary card in the Web UI to see what it means and how to address it.
 
 *   `Missing Asset`: No image source URL could be determined.
-*   `Missing Link`: The favorite provider link is missing.
+*   `Missing Link`: The media server has no ID for this item at your favorite provider (e.g., no TMDB ID), so no provider link could be built. Fix the item's match in your media server (Plex: Fix Match or Refresh Metadata; Jellyfin/Emby: Identify), then run again.
 *   `Not Primary Provider`: The image comes from a provider lower in your search order.
 *   `Logo: Not Primary Provider`: The logo (if applicable) is not from your preferred source.
 *   `Logo: [LANG]`: The logo is in a specific language (e.g., Logo: DE).
