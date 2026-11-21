@@ -29,13 +29,19 @@ const TestingModeModal = React.memo(({
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full shadow-2xl animate-in fade-in duration-200">
+    <div
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overscroll-contain"
+      onClick={onClose}
+    >
+      <div
+        className="bg-theme-card border border-theme-primary rounded-xl max-w-2xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl animate-in fade-in duration-200 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="bg-theme-primary px-6 py-4 rounded-t-xl flex items-center justify-between">
+        <div className="bg-theme-primary px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl flex items-center justify-between shrink-0">
           <div className="flex items-center">
-            <TestTube className="w-6 h-6 mr-3 text-white" />
-            <h3 className="text-xl font-bold text-white">
+            <TestTube className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3 text-white" />
+            <h3 className="text-lg sm:text-xl font-bold text-white">
               {t("runModes.testing.title", "Testing Mode")}
             </h3>
           </div>
@@ -44,12 +50,15 @@ const TestingModeModal = React.memo(({
             className="text-white/80 hover:text-white transition-all p-1 hover:bg-white/10 rounded"
             aria-label="Close"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4">
+        <div
+          className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0 overscroll-contain"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           {/* Main Info */}
           <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded">
             <p className="text-blue-200 font-medium mb-1">
@@ -210,7 +219,7 @@ const TestingModeModal = React.memo(({
         </div>
 
         {/* Footer */}
-        <div className="bg-theme-bg px-6 py-4 rounded-b-xl flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme">
+        <div className="bg-theme-bg px-4 sm:px-6 py-3 sm:py-4 rounded-b-xl flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme shrink-0">
           <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-theme-muted hover:text-theme-text transition-colors">
             <input
               type="checkbox"

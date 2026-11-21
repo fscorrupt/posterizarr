@@ -7,6 +7,16 @@ function UploadOtherMediaServerArtwork {
         [switch]$SkipExifCheck # Added optional parameter
     )
 
+    if ($global:DynamicOverlaysEnabled -eq $true -or $DynamicOverlaysEnabled -eq $true) {
+        Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct Jellyfin/Emby upload for item $itemId ($imageType). Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+        return
+    }
+
+    if ($UseSilo -eq 'true') {
+        Send-SiloArtwork -ItemId $itemId -ImageType $imageType -ImagePath $imagePath
+        return
+    }
+
     $userAssetType = $imageType
     if ($imageType -eq 'Backdrop') {
         $userAssetType = "Background"
@@ -97,7 +107,7 @@ function UploadOtherMediaServerArtwork {
 
         if ($imageType -eq "Backdrop") {
             $isExclusive = ($global:ReplaceThumbwithBackdrop -eq 'true' -and $global:ReplaceThumbwithBackdropExclusively -eq 'true')
-            
+
             if (-not $isExclusive) {
                 $deleteUrl = "$OtherMediaServerUrl/items/$itemId/images/$imageType/0"
                 # Make the API request to delete the backdrop image
@@ -147,7 +157,7 @@ function UploadOtherMediaServerArtwork {
                         Write-Entry -Subtext "Failed to upload Thumb image. Error: $_" -Path $global:configLogging -Color Red -log Error
                     }
                 }
-                
+
                 if ($isExclusive) {
                     Write-Entry -Subtext "Replace Thumb Exclusively is enabled. Skipping Backdrop upload." -Path $global:configLogging -Color Cyan -log Info
                     return
@@ -200,7 +210,7 @@ function Push-PlexAsset {
         Write-Entry -Subtext "Restoring $Type for $RatingKey from $AssetPath" -Path $global:configLogging -Color Cyan -log Info
         $uri = "$PlexUrl/library/metadata/$RatingKey/$Type"
         try {
-            Invoke-RestMethod -Uri $uri -Method Post -InFile $AssetPath -ContentType "image/jpeg" -Headers $PlexHeaders
+            Invoke-RestMethod -Uri $uri -Method Post -InFile ([Management.Automation.WildcardPattern]::Escape($AssetPath)) -ContentType "image/jpeg" -Headers $PlexHeaders
             Write-Entry -Subtext "$Type successfully restored for $RatingKey..." -Path $global:configLogging -Color Green -log Info
             return $true
         } catch {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Services;
@@ -16,6 +17,83 @@ namespace Posterizarr.Plugin.Api
     {
         public IRequest Request { get; set; } = null!;
 
+        private static string ResolveLinks(string path, HashSet<string> resolvingLinks)
+        {
+            var fullPath = Path.GetFullPath(path);
+            var pathRoot = Path.GetPathRoot(fullPath)!;
+            var currentPath = pathRoot;
+            var segments = fullPath.Substring(pathRoot.Length).Split(
+                new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var segment in segments)
+            {
+                var candidate = Path.Combine(currentPath, segment);
+                FileSystemInfo info = Directory.Exists(candidate)
+                    ? new DirectoryInfo(candidate)
+                    : new FileInfo(candidate);
+                var target = info.ResolveLinkTarget(false);
+                if (target == null)
+                {
+                    currentPath = candidate;
+                    continue;
+                }
+
+                var linkPath = Path.GetFullPath(candidate);
+                if (!resolvingLinks.Add(linkPath))
+                {
+                    throw new IOException("A symbolic link cycle was detected.");
+                }
+
+                try
+                {
+                    var targetPath = target.FullName;
+                    if (!Path.IsPathRooted(targetPath))
+                    {
+                        targetPath = Path.Combine(Path.GetDirectoryName(linkPath)!, targetPath);
+                    }
+                    currentPath = ResolveLinks(targetPath, resolvingLinks);
+                }
+                finally
+                {
+                    resolvingLinks.Remove(linkPath);
+                }
+            }
+
+            return Path.GetFullPath(currentPath);
+        }
+
+        private static bool TryResolveSafeAssetPath(string assetFolder, string path, out string resolvedPath)
+        {
+            resolvedPath = string.Empty;
+            try
+            {
+                var comparison = Path.DirectorySeparatorChar == '\\'
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+                var linkComparer = Path.DirectorySeparatorChar == '\\'
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal;
+                var resolvedRoot = ResolveLinks(assetFolder, new HashSet<string>(linkComparer));
+                var candidate = ResolveLinks(path, new HashSet<string>(linkComparer));
+                var rootPrefix = Path.EndsInDirectorySeparator(resolvedRoot)
+                    ? resolvedRoot
+                    : resolvedRoot + Path.DirectorySeparatorChar;
+
+                if (!candidate.StartsWith(rootPrefix, comparison) || !File.Exists(candidate))
+                {
+                    return false;
+                }
+
+                resolvedPath = candidate;
+                return true;
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                return false;
+            }
+        }
+
         public object Get(GetPosterizarrImage request)
         {
             var response = Request.Response;
@@ -28,18 +106,24 @@ namespace Posterizarr.Plugin.Api
                 return null!;
             }
 
-            var normalizedPath = System.IO.Path.GetFullPath(path);
-            var normalizedAssetFolder = System.IO.Path.GetFullPath(assetFolder)
-                .TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
-
-            if (!normalizedPath.StartsWith(normalizedAssetFolder, StringComparison.OrdinalIgnoreCase) ||
-                !File.Exists(normalizedPath))
+            string normalizedPath;
+            try
+            {
+                normalizedPath = Path.GetFullPath(path);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
             {
                 response.StatusCode = 404;
                 return null!;
             }
 
-            var ext = System.IO.Path.GetExtension(normalizedPath).ToLowerInvariant();
+            if (!TryResolveSafeAssetPath(assetFolder, normalizedPath, out var resolvedPath))
+            {
+                response.StatusCode = 404;
+                return null!;
+            }
+
+            var ext = Path.GetExtension(normalizedPath).ToLowerInvariant();
             response.ContentType = ext switch
             {
                 ".png" => "image/png",
@@ -48,7 +132,7 @@ namespace Posterizarr.Plugin.Api
                 _ => "image/jpeg"
             };
 
-            return new FileStream(normalizedPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
+            return new FileStream(resolvedPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
         }
     }
 }

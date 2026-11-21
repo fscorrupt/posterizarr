@@ -173,6 +173,8 @@ class RuntimeDatabase:
                 self._migrate_date_formats()
                 # END NEW
 
+            self._migrate_double_counted_posters()
+
             logger.info("=" * 60)
 
         except Exception as e:
@@ -299,6 +301,70 @@ class RuntimeDatabase:
             except Exception as e:
                 logger.error(f"Error during date format migration: {e}")
                 if 'conn' in locals():
+                    conn.rollback()
+                    conn.close()
+
+    def _migrate_double_counted_posters(self):
+        """
+        One-time migration to fix historical rows where tautulli/arr/backup wrote
+        the total image count into 'posters' before summation, and where 'collections'
+        was omitted from 'total_images'.
+        """
+        migration_key = "poster_double_count_v1_migrated"
+
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    "SELECT value FROM migration_info WHERE key = ?",
+                    (migration_key,),
+                )
+                if cursor.fetchone():
+                    logger.debug("Poster double-count migration (v1) already completed.")
+                    conn.close()
+                    return
+
+                logger.info("--- Starting Runtime Database Poster Double-Count Migration ---")
+
+                cursor.execute(
+                    """
+                    UPDATE runtime_stats
+                    SET
+                        posters = COALESCE(posters, 0) - (COALESCE(titlecards, 0) + COALESCE(seasons, 0) + COALESCE(backgrounds, 0)),
+                        total_images = COALESCE(posters, 0) + COALESCE(collections, 0)
+                    WHERE LOWER(COALESCE(mode, '')) IN ('tautulli', 'arr', 'backup')
+                      AND (COALESCE(titlecards, 0) + COALESCE(seasons, 0) + COALESCE(backgrounds, 0)) > 0
+                      AND COALESCE(posters, 0) >= (COALESCE(titlecards, 0) + COALESCE(seasons, 0) + COALESCE(backgrounds, 0))
+                      AND COALESCE(total_images, 0) = COALESCE(posters, 0) + COALESCE(titlecards, 0) + COALESCE(seasons, 0) + COALESCE(backgrounds, 0)
+                    """
+                )
+                double_count_fixed = cursor.rowcount
+
+                cursor.execute(
+                    """
+                    UPDATE runtime_stats
+                    SET total_images = COALESCE(posters, 0) + COALESCE(titlecards, 0) + COALESCE(seasons, 0) + COALESCE(backgrounds, 0) + COALESCE(collections, 0)
+                    WHERE COALESCE(collections, 0) > 0
+                      AND COALESCE(total_images, 0) = COALESCE(posters, 0) + COALESCE(titlecards, 0) + COALESCE(seasons, 0) + COALESCE(backgrounds, 0)
+                    """
+                )
+                collections_fixed = cursor.rowcount
+
+                cursor.execute(
+                    "INSERT OR REPLACE INTO migration_info (key, value, updated_at) VALUES (?, ?, ?)",
+                    (migration_key, "true", datetime.now().isoformat()),
+                )
+                conn.commit()
+                conn.close()
+                logger.info(
+                    f"Poster double-count migration finished: {double_count_fixed} double-counted rows fixed, "
+                    f"{collections_fixed} collection rows updated."
+                )
+            except Exception as e:
+                logger.error(f"Error during poster double-count migration: {e}")
+                if "conn" in locals():
                     conn.rollback()
                     conn.close()
 
@@ -595,33 +661,58 @@ class RuntimeDatabase:
                     conn.close()
                 return None
 
+    def get_runtime_by_id(self, run_id: int) -> Optional[Dict]:
+        """Get a specific runtime entry by ID"""
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT * FROM runtime_stats
+                    WHERE id = ?
+                    LIMIT 1
+                """,
+                    (run_id,),
+                )
+                row = cursor.fetchone()
+                conn.close()
+                if row:
+                    return dict(row)
+                return None
+            except Exception as e:
+                logger.error(f"Error getting runtime entry by id {run_id}: {e}")
+                if 'conn' in locals():
+                    conn.close()
+                return None
+
     def get_runtime_history(
-        self, limit: int = 50, offset: int = 0, mode: str = None
+        self, limit: int = 50, offset: int = 0, mode: str = None, days: Optional[int] = None
     ) -> List[Dict]:
         """Get runtime history with pagination"""
         with self.lock:
             try:
                 conn = self._get_connection()
                 cursor = conn.cursor()
+                where_clauses = []
+                params = []
                 if mode:
-                    cursor.execute(
-                        """
-                        SELECT * FROM runtime_stats
-                        WHERE mode = ?
-                        ORDER BY timestamp DESC
-                        LIMIT ? OFFSET ?
+                    where_clauses.append("mode = ?")
+                    params.append(mode)
+                if days is not None:
+                    cutoff_str = (datetime.now() - timedelta(days=days)).isoformat()
+                    where_clauses.append("timestamp >= ?")
+                    params.append(cutoff_str)
+                where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+                cursor.execute(
+                    f"""
+                    SELECT * FROM runtime_stats
+                    {where_sql}
+                    ORDER BY timestamp DESC
+                    LIMIT ? OFFSET ?
                     """,
-                        (mode, limit, offset),
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        SELECT * FROM runtime_stats
-                        ORDER BY timestamp DESC
-                        LIMIT ? OFFSET ?
-                    """,
-                        (limit, offset),
-                    )
+                    (*params, limit, offset),
+                )
                 rows = cursor.fetchall()
                 conn.close()
                 return [dict(row) for row in rows]
@@ -631,26 +722,29 @@ class RuntimeDatabase:
                     conn.close()
                 return []
 
-    def get_runtime_history_total_count(self, mode: str = None) -> int:
+    def get_runtime_history_total_count(self, mode: str = None, days: Optional[int] = None) -> int:
         """Get total count of runtime history entries"""
         with self.lock:
             try:
                 conn = self._get_connection()
                 cursor = conn.cursor()
+                where_clauses = []
+                params = []
                 if mode:
-                    cursor.execute(
-                        """
-                        SELECT COUNT(*) FROM runtime_stats
-                        WHERE mode = ?
+                    where_clauses.append("mode = ?")
+                    params.append(mode)
+                if days is not None:
+                    cutoff_str = (datetime.now() - timedelta(days=days)).isoformat()
+                    where_clauses.append("timestamp >= ?")
+                    params.append(cutoff_str)
+                where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*) FROM runtime_stats
+                    {where_sql}
                     """,
-                        (mode,),
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        SELECT COUNT(*) FROM runtime_stats
-                    """
-                    )
+                    tuple(params),
+                )
                 total = cursor.fetchone()[0]
                 conn.close()
                 return total

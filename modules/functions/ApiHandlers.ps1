@@ -8,8 +8,7 @@ function GetTMDBLogo {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/$Type/$($global:tmdbid)?append_to_response=images&language=$($global:LogoLanguageOrderTMDB[0])&include_image_language=$($global:LogoLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
         }
         if ($response) {
             if ($response.images.logos) {
@@ -42,7 +41,7 @@ function GetTMDBLogo {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
 
         }
     }
@@ -65,8 +64,7 @@ function GetTVDBLogo {
             }
         }
         catch {
-            Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
         }
         if ($response) {
             if ($response.data) {
@@ -104,7 +102,7 @@ function GetTVDBLogo {
             }
         }
         Else {
-            Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
         }
     }
     Else {
@@ -125,17 +123,14 @@ function GetFanartLogo {
         if (-not $id) { continue }
         try {
             if ($type -eq 'tv') {
-                $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue
             }
             Elseif ($type -eq 'movies') {
-                $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue
             }
         } catch {
-
-            Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
-
+            Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
             $entrytemp = $null
-
         }
         if (-not $entrytemp) { continue }
 
@@ -179,8 +174,7 @@ function GetTMDBMoviePoster {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/movie/$($global:tmdbid)?append_to_response=images&language=xx&include_image_language=$($global:PreferredLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
 
         }
@@ -313,7 +307,7 @@ function GetTMDBMoviePoster {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
         }
     }
@@ -322,8 +316,7 @@ function GetTMDBMoviePoster {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/movie/$($global:tmdbid)?append_to_response=images&language=$($PreferredLanguageOrder[0])&include_image_language=$($global:PreferredLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
 
         }
@@ -373,7 +366,7 @@ function GetTMDBMoviePoster {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/posters"
         }
     }
@@ -388,8 +381,7 @@ function GetTMDBMovieBackground {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/movie/$($global:tmdbid)?append_to_response=images&language=xx&include_image_language=$($global:PreferredBackgroundLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
 
         }
@@ -513,7 +505,7 @@ function GetTMDBMovieBackground {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
         }
     }
@@ -522,8 +514,7 @@ function GetTMDBMovieBackground {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/movie/$($global:tmdbid)?append_to_response=images&language=$($PreferredBackgroundLanguageOrder[0])&include_image_language=$($global:PreferredBackgroundLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
 
         }
@@ -592,7 +583,7 @@ function GetTMDBMovieBackground {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/movie/$($global:tmdbid)/images/backdrops"
         }
     }
@@ -609,8 +600,7 @@ function GetTMDBShowPoster {
                 $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/tv/$($global:tmdbid)?append_to_response=images&language=xx&include_image_language=$($global:PreferredLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
             }
             catch {
-                Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
 
             }
@@ -733,7 +723,7 @@ function GetTMDBShowPoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
                 $global:tmdbsearched = $true
             }
@@ -743,8 +733,7 @@ function GetTMDBShowPoster {
                 $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/tv/$($global:tmdbid)?append_to_response=images&language=$($PreferredLanguageOrder[0])&include_image_language=$($global:PreferredLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
             }
             catch {
-                Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
 
             }
@@ -795,7 +784,7 @@ function GetTMDBShowPoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/posters"
                 $global:tmdbsearched = $true
             }
@@ -813,8 +802,7 @@ function GetTMDBSeasonPoster {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/tv/$($global:tmdbid)/season/$global:SeasonNumber/images?append_to_response=images&language=xx&include_image_language=$($global:PreferredSeasonLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
 
         }
@@ -831,7 +819,10 @@ function GetTMDBSeasonPoster {
                     if (!$global:SeasonOnlyTextless) {
                         if ($global:WidthHeightFilter -eq 'true') {
                             if ($global:TMDBVoteSorting -eq 'primary') {
-                                $filteredPosters = $response.poster | Where-Object { $_.width -ge $global:PosterMinWidth -and $_.height -ge $global:PosterMinHeight }
+                                $filteredPosters = $response.posters | Where-Object {
+                                    $_.width -ge $global:PosterMinWidth -and
+                                    $_.height -ge $global:PosterMinHeight
+                                }
 
                                 if ($filteredPosters) {
                                     $posterpath = $filteredPosters[0].file_path
@@ -952,8 +943,7 @@ function GetTMDBSeasonPoster {
             }
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:SeasonNumber/images/posters"
 
         }
@@ -1074,8 +1064,7 @@ function GetTMDBShowBackground {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/tv/$($global:tmdbid)?append_to_response=images&language=xx&include_image_language=$($global:PreferredBackgroundLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
 
         }
@@ -1203,7 +1192,7 @@ function GetTMDBShowBackground {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
         }
     }
@@ -1212,8 +1201,7 @@ function GetTMDBShowBackground {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/tv/$($global:tmdbid)?append_to_response=images&language=$($PreferredBackgroundLanguageOrder[0])&include_image_language=$($global:PreferredBackgroundLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
 
         }
@@ -1277,11 +1265,41 @@ function GetTMDBShowBackground {
             }
         }
         Else {
-            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TMDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/images/backdrops"
         }
     }
 }
+function Write-AssetProviderRequestFailure {
+    param(
+        [Parameter(Mandatory)][string]$Provider,
+        [Parameter(Mandatory)]$ErrorRecord,
+        [switch]$WarningOnly,
+        [switch]$SuppressNotFoundWarning
+    )
+
+    $statusCode = $null
+    try {
+        $statusCode = [int]$ErrorRecord.Exception.Response.StatusCode
+    } catch {}
+
+    $notFound = $statusCode -eq 404 -or $ErrorRecord.Exception.Message -match '(?i)\b404\b|URI not found'
+    if ($notFound) {
+        if (-not $SuppressNotFoundWarning) {
+            Write-Entry -Subtext "No asset result found from $Provider (HTTP 404)." -Path $global:configLogging -Color Yellow -log Warning
+        }
+        return
+    }
+
+    $level = if ($WarningOnly) { 'Warning' } else { 'Error' }
+    $color = if ($WarningOnly) { 'Yellow' } else { 'Red' }
+    Write-Entry -Subtext "$Provider query failed, error message: $($ErrorRecord.Exception.Message)" -Path $global:configLogging -Color $color -log $level
+    if ($WarningOnly) { return }
+
+    $global:errorCount = Increment-GlobalStat 'errorCount'
+    Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $global:errorCount" -Path $global:configLogging -Color Red -log Error
+}
+
 function GetTMDBTitleCard {
     Write-Entry -Subtext "Searching on TMDB for: $global:show_name 'Season $global:season_number - Episode $global:episodenumber' Title Card - TMDBID: $global:tmdbid" -Path $global:configLogging -Color Cyan -log Info
     if (!$global:tmdbid) {
@@ -1292,8 +1310,7 @@ function GetTMDBTitleCard {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/tv/$($global:tmdbid)/season/$($global:season_number)/episode/$($global:episodenumber)/images?append_to_response=images&language=xx&include_image_language=$($global:PreferredTCLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_ -SuppressNotFoundWarning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:season_number/episode/$global:episodenumber/images/backdrops"
         }
         if ($response) {
@@ -1417,8 +1434,7 @@ function GetTMDBTitleCard {
             $response = (Invoke-WebRequest -Uri "https://api.themoviedb.org/3/tv/$($global:tmdbid)/season/$($global:season_number)/episode/$($global:episodenumber)/images?append_to_response=images&language=$($global:PreferredTCLanguageOrderTMDB[0])&include_image_language=$($global:PreferredTCLanguageOrderTMDB -join ',')" -Method GET -Headers $global:headers -ErrorAction SilentlyContinue -WarningAction SilentlyContinue).content | ConvertFrom-Json -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
         catch {
-            Write-Entry -Subtext "Could not query TMDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TMDB' -ErrorRecord $_ -SuppressNotFoundWarning
             $global:TMDBAssetChangeUrl = "https://www.themoviedb.org/tv/$($global:tmdbid)/season/$global:season_number/episode/$global:episodenumber/images/backdrops"
 
         }
@@ -1490,8 +1506,8 @@ function GetFanartMoviePoster {
 
         foreach ($id in $ids) {
             if ($id) {
-                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                    Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
                     $entrytemp = $null
                 }
                 if ($entrytemp -and $entrytemp.movieposter) {
@@ -1545,8 +1561,8 @@ function GetFanartMoviePoster {
 
         foreach ($id in $ids) {
             if ($id) {
-                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                    Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                    Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
                     $entrytemp = $null
                 }
                 if ($entrytemp -and $entrytemp.movieposter) {
@@ -1592,8 +1608,8 @@ function GetFanartMovieBackground {
 
     foreach ($id in $ids) {
         if ($id) {
-            try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvmovie -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
                 $entrytemp = $null
             }
             if ($entrytemp -and $entrytemp.moviebackground) {
@@ -1650,8 +1666,8 @@ function GetFanartShowPoster {
         $id = $global:tvdbid
         $entrytemp = $null
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
                 $entrytemp = $null
             }
             if ($entrytemp -and $entrytemp.tvposter) {
@@ -1713,8 +1729,8 @@ function GetFanartShowPoster {
         $entrytemp = $null
 
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
                 $entrytemp = $null
             }
             if ($entrytemp -and $entrytemp.tvposter) {
@@ -1761,8 +1777,8 @@ function GetFanartShowBackground {
     $entrytemp = $null
 
     if ($id) {
-        try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-            Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+        try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+            Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
             $entrytemp = $null
         }
         if ($entrytemp -and $entrytemp.showbackground) {
@@ -1817,8 +1833,8 @@ function GetFanartSeasonPoster {
     $entrytemp = $null
     if ($global:SeasonPreferTextless -eq $true) {
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
                 $entrytemp = $null
             }
             if ($entrytemp.seasonposter) {
@@ -1920,8 +1936,8 @@ function GetFanartSeasonPoster {
     }
     Else {
         if ($id) {
-            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } catch {
-                Write-Entry -Subtext "Fanart.tv error: $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+            try { $entrytemp = Get-FanartTvshow -id $id -ErrorAction Stop -WarningAction SilentlyContinue } catch {
+                Write-AssetProviderRequestFailure -Provider 'Fanart.tv' -ErrorRecord $_ -WarningOnly -SuppressNotFoundWarning
                 $entrytemp = $null
             }
             if ($entrytemp.seasonposter) {
@@ -1976,8 +1992,7 @@ function GetTVDBMoviePoster {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/movies/$($global:tvdbid)/extended" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2057,7 +2072,7 @@ function GetTVDBMoviePoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
             }
         }
@@ -2067,8 +2082,7 @@ function GetTVDBMoviePoster {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/movies/$($global:tvdbid)/extended" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2124,7 +2138,7 @@ function GetTVDBMoviePoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = "https://thetvdb.com/movies/$($response.data.slug)#artwork"
             }
         }
@@ -2141,8 +2155,7 @@ function GetTVDBMovieBackground {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/movies/$($global:tvdbid)/extended" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2230,7 +2243,7 @@ function GetTVDBMovieBackground {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
             }
         }
@@ -2240,8 +2253,7 @@ function GetTVDBMovieBackground {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/movies/$($global:tvdbid)/extended" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2299,7 +2311,7 @@ function GetTVDBMovieBackground {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/movie/$global:tvdbid" } Else { "false" }
             }
         }
@@ -2316,8 +2328,7 @@ function GetTVDBShowPoster {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/series/$($global:tvdbid)/artworks" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2366,7 +2377,7 @@ function GetTVDBShowPoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)#artwork"
             }
         }
@@ -2375,8 +2386,7 @@ function GetTVDBShowPoster {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/series/$($global:tvdbid)/artworks" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2432,7 +2442,7 @@ function GetTVDBShowPoster {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)#artwork"
             }
         }
@@ -2448,8 +2458,7 @@ function GetTVDBSeasonPoster {
             $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/series/$($global:tvdbid)/extended" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
         }
         catch {
-            Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-            $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+            Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
         }
         if ($response) {
@@ -2468,8 +2477,7 @@ function GetTVDBSeasonPoster {
                     $Seasonresponse = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/seasons/$($SeasonID.id)/extended" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
                 }
                 catch {
-                    Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                    $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                    Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
                 }
                 if ($Seasonresponse) {
@@ -2544,7 +2552,7 @@ function GetTVDBSeasonPoster {
             }
         }
         Else {
-            Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:TVDBAssetChangeUrl = if ($global:tvdbid) { "https://thetvdb.com/dereferrer/series/$global:tvdbid" } Else { "false" }
         }
     }
@@ -2561,8 +2569,7 @@ function GetTVDBShowBackground {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/series/$($global:tvdbid)/artworks" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2615,7 +2622,7 @@ function GetTVDBShowBackground {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/#artwork"
             }
         }
@@ -2624,8 +2631,7 @@ function GetTVDBShowBackground {
                 $response = (Invoke-WebRequest -Uri "https://api4.thetvdb.com/v4/series/$($global:tvdbid)/artworks" -Method GET -Headers $global:tvdbheader).content | ConvertFrom-Json
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
             }
             if ($response) {
@@ -2679,7 +2685,7 @@ function GetTVDBShowBackground {
                 }
             }
             Else {
-                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+                Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
                 $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/#artwork"
             }
         }
@@ -2707,8 +2713,7 @@ function GetTVDBTitleCard {
                 }
             }
             catch {
-                Write-Entry -Subtext "Could not query TVDB url, error message: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
-                $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
+                Write-AssetProviderRequestFailure -Provider 'TVDB' -ErrorRecord $_
 
                 break
             }
@@ -2741,7 +2746,7 @@ function GetTVDBTitleCard {
             }
         }
         Else {
-            Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Red -log Error
+            Write-Entry -Subtext "TVDB API response is null" -Path $global:configLogging -Color Yellow -log Warning
             $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
             $global:TVDBAssetChangeUrl = "https://thetvdb.com/series/$($response.data.slug)/#artwork"
 
@@ -2857,6 +2862,11 @@ function UploadOtherMediaServerArtwork {
         [switch]$SkipExifCheck # Added optional parameter
     )
 
+    if ($global:DynamicOverlaysEnabled -eq $true -or $DynamicOverlaysEnabled -eq $true) {
+        Write-Entry -Subtext "Dynamic Overlays enabled: Suppressing direct Jellyfin/Emby upload for item $itemId ($imageType). Finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+        return
+    }
+
     $userAssetType = $imageType
     if ($imageType -eq 'Backdrop') {
         $userAssetType = "Background"
@@ -2899,7 +2909,7 @@ function UploadOtherMediaServerArtwork {
                 $response = Invoke-WebRequest -Uri $ImageUrl -OutFile $tempFile -Headers $headers -ErrorAction Stop
 
                 $magickcommand = "& `"$magick`" identify -verbose `"$tempFile`""
-                try { $magickcommand | Out-File $magickLog -Append -ErrorAction Stop } catch {}
+                try { $magickcommand | Out-File $magickLog -Append -ErrorAction Stop } catch {}
                 $value = Invoke-Expression $magickcommand | Select-String -Pattern 'overlay|titlecard|created with ppm|created with posterizarr'
 
                 Remove-Item $tempFile -Force -ErrorAction SilentlyContinue | out-null

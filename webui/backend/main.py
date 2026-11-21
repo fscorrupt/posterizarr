@@ -17,10 +17,11 @@ except ImportError:
     from defaults import setup_default_images
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import json
+import yaml
 import subprocess
 import shlex
 import asyncio
@@ -70,6 +71,28 @@ except ImportError:
     pass
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+try:
+    from .config_password import preserve_masked_basic_auth_password
+except ImportError:
+    from config_password import preserve_masked_basic_auth_password
+
+try:
+    from .release_notes import (
+        evaluate_whats_new,
+        fetch_github_releases_cached,
+        normalize_version_tag,
+        parse_stable_semver,
+        resolve_next_seen_version,
+    )
+except ImportError:
+    from release_notes import (
+        evaluate_whats_new,
+        fetch_github_releases_cached,
+        normalize_version_tag,
+        parse_stable_semver,
+        resolve_next_seen_version,
+    )
 
 # Check if running in Docker
 IS_DOCKER = (
@@ -318,16 +341,6 @@ queue_manager = QueueManager(QUEUE_DB_PATH)
 # Global lock for process management
 process_lock = threading.RLock()
 
-# Clear UILogs on startup - remove all log files
-import glob
-
-for log_file in glob.glob(str(UI_LOGS_DIR / "*.log")):
-    try:
-        os.remove(log_file)
-        pass  # Silent - no console output
-    except Exception as e:
-        pass  # Silent - no console output
-
 # Determine log level from config file or environment variable or default to INFO
 LOG_LEVEL_MAP = {
     "DEBUG": logging.DEBUG,
@@ -341,6 +354,7 @@ WEBUI_SETTINGS_PATH = UI_LOGS_DIR / "webui_settings.json"
 
 # Global queue listener for thread-safe logging
 queue_listener = None
+backend_ui_file_handler = None
 
 
 def load_webui_settings():
@@ -349,6 +363,10 @@ def load_webui_settings():
         "log_level": "INFO",
         "theme": "dark",
         "auto_refresh_interval": 180,
+        "auto_queue_changes": False,
+        "auto_overlay_sync": False,
+        "auto_kometa_overlay_sync": False,
+        "last_seen_release_version": None,
     }
 
     try:
@@ -433,20 +451,18 @@ LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL_ENV, logging.INFO)
 logging.root.handlers.clear()
 
 # Create file handler for BackendServer.log
-file_handler = logging.FileHandler(
-    UI_LOGS_DIR / "BackendServer.log", mode="w", encoding="utf-8"
-)
+from log_rotation import configure_service_logging, create_continuous_log_handler, write_frontend_log
+
+file_handler = create_continuous_log_handler(UI_LOGS_DIR / "BackendServer.log")
 file_handler.setLevel(LOG_LEVEL)
-file_handler.setFormatter(
-    logging.Formatter(
-        "[%(asctime)s] [%(levelname)-8s] [%(name)s:%(funcName)s:%(lineno)d] - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-)
 
 # Configure root logger - ONLY file handler, no console
 logging.root.setLevel(LOG_LEVEL)
 logging.root.addHandler(file_handler)
+
+from ratings_refresh import configure_ratings_logging
+configure_ratings_logging(UI_LOGS_DIR)
+configure_service_logging(UI_LOGS_DIR)
 
 # Set httpx to WARNING to reduce noise, but keep our app at DEBUG
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -503,7 +519,7 @@ else:
 
 def setup_backend_ui_logger():
     """Setup backend logger to also write to FrontendUI.log"""
-    global queue_listener
+    global queue_listener, backend_ui_file_handler
     logger.info("Initializing backend UI logger")
     try:
         # Create UILogs directory if not exists
@@ -511,27 +527,12 @@ def setup_backend_ui_logger():
         logger.debug(f"UILogs directory: {UI_LOGS_DIR}")
         logger.debug(f"UILogs directory exists: {UI_LOGS_DIR.exists()}")
 
-        # CLEANUP: Delete old log files on startup
         backend_log_path = UI_LOGS_DIR / "FrontendUI.log"
-        if backend_log_path.exists():
-            logger.debug(f"Removing existing FrontendUI.log: {backend_log_path}")
-            backend_log_path.unlink()
-            logger.info(f"Cleared old FrontendUI.log")
-        else:
-            logger.debug("No existing FrontendUI.log to clear")
 
         # Create File Handler for FrontendUI.log with thread-safe queue
         logger.debug(f"Creating file handler for: {backend_log_path}")
-        backend_ui_file_handler = logging.FileHandler(
-            backend_log_path, encoding="utf-8", mode="w"
-        )
+        backend_ui_file_handler = create_continuous_log_handler(backend_log_path, frontend=True)
         backend_ui_file_handler.setLevel(LOG_LEVEL)  # Use configurable log level
-        backend_ui_file_handler.setFormatter(
-            logging.Formatter(
-                "[%(asctime)s] [%(levelname)-8s] [BACKEND:%(name)s:%(funcName)s:%(lineno)d] - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
         logger.debug("File handler formatter configured")
 
         # Use QueueHandler for thread-safe logging
@@ -1960,6 +1961,36 @@ def parse_image_choices_csv(csv_path: Path) -> list:
 
     return assets
 
+_REMOTE_TEXT_CACHE: Dict[str, tuple] = {}
+_REMOTE_TEXT_TTL_OK = 3600
+_REMOTE_TEXT_TTL_FAIL = 300
+
+
+async def fetch_remote_text_cached(url: str) -> Optional[str]:
+    """Fetch a small text file (e.g. Release.txt) with TTL caching; failures are cached briefly too."""
+    now = time.monotonic()
+    cached = _REMOTE_TEXT_CACHE.get(url)
+    if cached:
+        ts, value = cached
+        ttl = _REMOTE_TEXT_TTL_OK if value is not None else _REMOTE_TEXT_TTL_FAIL
+        if now - ts < ttl:
+            return value
+
+    value = None
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=5.0)
+            response.raise_for_status()
+            value = response.text.strip()
+    except httpx.RequestError as e:
+        logger.warning(f"Could not fetch {url}: {e}")
+    except Exception as e:
+        logger.error(f"Error fetching {url}: {e}")
+
+    _REMOTE_TEXT_CACHE[url] = (now, value)
+    return value
+
+
 async def fetch_version(local_filename: str, github_url: str, version_type: str):
     """
     A reusable function to get a local version from a file and fetch the remote
@@ -1978,22 +2009,7 @@ async def fetch_version(local_filename: str, github_url: str, version_type: str)
 
     # Get Remote Version (if in Docker)
     if IS_DOCKER:
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(github_url, timeout=10.0)
-                response.raise_for_status()
-                remote_version = response.text.strip()
-                logger.info(
-                    f"Successfully fetched remote {version_type} version: {remote_version}"
-                )
-        except httpx.RequestError as e:
-            logger.warning(
-                f"Could not fetch remote {version_type} version from GitHub: {e}"
-            )
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while fetching remote {version_type} version: {e}"
-            )
+        remote_version = await fetch_remote_text_cached(github_url)
 
     # Check if local version is greater than remote (development version)
     display_version = local_version
@@ -2049,19 +2065,9 @@ async def get_script_version():
 
     # Get Remote Version from GitHub Release.txt
     # Always fetch from GitHub (both Docker and local)
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://raw.githubusercontent.com/fscorrupt/posterizarr/refs/heads/main/Release.txt",
-                timeout=10.0,
-            )
-            response.raise_for_status()
-            remote_version = response.text.strip()
-            logger.info(f"Remote version from GitHub Release.txt: {remote_version}")
-    except httpx.RequestError as e:
-        logger.warning(f"Could not fetch remote version from GitHub: {e}")
-    except Exception as e:
-        logger.error(f"Error fetching remote version: {e}")
+    remote_version = await fetch_remote_text_cached(
+        "https://raw.githubusercontent.com/fscorrupt/posterizarr/refs/heads/main/Release.txt"
+    )
 
     # SEMANTIC VERSION COMPARISON
     is_update_available = False
@@ -2087,6 +2093,7 @@ async def get_script_version():
 
     return {
         "local": display_version,
+        "raw_local": local_version,
         "remote": remote_version,
         "is_update_available": is_update_available,  # Boolean for update availability
     }
@@ -2274,7 +2281,9 @@ async def lifespan(app: FastAPI):
                 broadcast_callback=broadcast_asset_event,
                 loop=asyncio.get_running_loop(),
                 assets_dir=ASSETS_DIR,
+                on_run_complete_callback=trigger_auto_overlay_sync,
             )
+            logs_watcher.title_regeneration_active_callback = lambda: bool(current_process and getattr(current_process, "posterizarr_title_regeneration", False))
             logs_watcher.start()
             logger.info(
                 "✓ Logs watcher started - monitoring for background process files"
@@ -2302,9 +2311,37 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Scheduler module not available, skipping scheduler initialization")
 
+    # Start Dynamic Overlays background change detector
+    try:
+        from asset_title_changes import configure_title_regenerator, configure_episode_title_queue
+        main_loop = asyncio.get_running_loop()
+
+        async def regenerate_on_main_loop(job, manual=False):
+            future = asyncio.run_coroutine_threadsafe(regenerate_asset_title(job, manual=manual), main_loop)
+            return await asyncio.wrap_future(future)
+
+        configure_title_regenerator(regenerate_on_main_loop)
+        configure_episode_title_queue(queue_manager, run_queue_processor)
+        from overlay_sync_service import start_overlay_change_detector_background
+        start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
+    except Exception as e:
+        logger.warning(f"Could not start dynamic overlays change detector: {e}")
+
+    from ratings_refresh import ratings_refresh_service
+
+    def cleanup_deleted_media_item(server_type, item_id):
+        if db is not None:
+            db.delete_skipped_items_for_media(server_type, item_id)
+        if dynamic_overlay_cache is not None:
+            dynamic_overlay_cache.prune_recipe_snapshots()
+
+    ratings_refresh_service.set_deleted_item_cleanup(cleanup_deleted_media_item)
+    ratings_refresh_service.start_periodic(CONFIG_PATH)
+
     yield
 
     # Shutdown
+    await ratings_refresh_service.stop()
 
     # Stop logs watcher
     if logs_watcher:
@@ -2324,6 +2361,13 @@ async def lifespan(app: FastAPI):
             logger.info("Queue listener stopped")
         except Exception as e:
             logger.error(f"Error stopping queue listener: {e}")
+
+    # Stop dynamic overlays change detector
+    try:
+        from overlay_sync_service import stop_overlay_change_detector_background
+        stop_overlay_change_detector_background()
+    except Exception as e:
+        logger.warning(f"Error stopping dynamic overlays change detector: {e}")
 
     # Stop background cache refresh
     stop_cache_refresh_background()
@@ -2353,6 +2397,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Posterizarr Web UI", lifespan=lifespan)
+
 
 # Add exception handler for validation errors
 from fastapi.exceptions import RequestValidationError
@@ -2396,6 +2441,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from external_provider import create_provider_router, log_ratings_api_errors
+app.middleware("http")(log_ratings_api_errors)
+
+def _external_provider_credentials():
+    config = config_db.export_to_json() if config_db else {}
+    return {"tmdb_token": config.get("tmdbtoken") or (config.get("ApiPart") or {}).get("tmdbtoken")}
+
+def _external_provider_settings():
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+    return get_dynamic_overlays_settings()
+
+app.include_router(create_provider_router(
+    lambda key: bool(config_db and config_db.validate_api_key(key)),
+    _external_provider_credentials,
+    _external_provider_settings,
+    lambda: db.get_all_choices() if db else [],
+    lambda: ASSETS_DIR,
+    lambda: config_db.export_to_json() if config_db else None,
+    lambda: SCRIPT_PATH,
+    lambda: BASE_DIR / "Overlayfiles",
+    lambda: DATABASE_DIR / "provider_posters",
+))
+
+@app.get("/api/onboarding/status")
+async def get_onboarding_status():
+    """Return whether onboarding has been completed without exposing configuration or secrets."""
+    onboarding_completed = False
+    if CONFIG_DATABASE_AVAILABLE and config_db:
+        val = config_db.get_value('_root', 'onboarding_completed')
+        if val is not None:
+            onboarding_completed = bool(val)
+    return {"success": True, "onboarding_completed": onboarding_completed}
+
+
 @app.post("/api/onboarding/complete")
 async def complete_onboarding():
     """Mark onboarding as completed."""
@@ -2403,6 +2482,17 @@ async def complete_onboarding():
         success = config_db.set_value('_root', 'onboarding_completed', True)
         if success:
             logger.info("Onboarding marked as completed by user.")
+            try:
+                settings = load_webui_settings()
+                if not settings.get("last_seen_release_version"):
+                    version_info = await get_script_version()
+                    if parse_stable_semver(version_info.get("local")) is not None:
+                        normalized = normalize_version_tag(version_info.get("raw_local"))
+                        if normalized:
+                            settings["last_seen_release_version"] = normalized
+                            save_webui_settings(settings)
+            except Exception as exc:
+                logger.debug(f"Could not record initial release version after onboarding: {exc}")
             return {"success": True, "message": "Onboarding completed"}
     return JSONResponse(
         status_code=500,
@@ -2489,6 +2579,10 @@ class PlexValidationRequest(BaseModel):
 class JellyfinValidationRequest(BaseModel):
     url: str
     api_key: str
+
+
+class SiloValidationRequest(JellyfinValidationRequest):
+    profile_id: Optional[str] = None
 
 
 class EmbyValidationRequest(BaseModel):
@@ -2696,6 +2790,11 @@ async def get_config(request: Request):
 
         if CONFIG_MAPPER_AVAILABLE:
             flat_config = flatten_config(grouped_config)
+            for key, default in {"UseSilo": "false", "SiloUrl": "", "SiloAPIKey": "", "SiloProfileId": "", "SiloLibstoExclude": []}.items():
+                flat_config.setdefault(key, default)
+            # Never expose basicAuthPassword hash in the returned config
+            if "basicAuthPassword" in flat_config:
+                flat_config["basicAuthPassword"] = ""
 
             display_names_dict = {}
             for key in flat_config.keys():
@@ -2711,6 +2810,8 @@ async def get_config(request: Request):
                 "using_flat_structure": True,
             }
         else:
+            if "WebUI" in grouped_config and isinstance(grouped_config["WebUI"], dict) and "basicAuthPassword" in grouped_config["WebUI"]:
+                grouped_config["WebUI"]["basicAuthPassword"] = ""
             return {
                 "success": True,
                 "config": grouped_config,  # Actual values returned
@@ -2845,14 +2946,13 @@ async def update_config(data: ConfigUpdate):
         else:
             current_flat = current_config
 
-        # Check if basicAuthPassword is being updated
-        if "basicAuthPassword" in data.config:
-            new_pass = data.config["basicAuthPassword"]
-            # Only hash if it's not already a hash (user entered a new plain password)
+        password_config = preserve_masked_basic_auth_password(data.config, current_config, current_flat)
+        if "basicAuthPassword" in password_config:
+            new_pass = str(password_config["basicAuthPassword"]).strip()
             if new_pass and not new_pass.startswith(("$2b$", "$2a$", "$2y$")):
                 logger.info("Hashing new password provided in config update...")
                 hashed = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                data.config["basicAuthPassword"] = hashed
+                password_config["basicAuthPassword"] = hashed
 
         # Normalize UptimeKumaUrl if full push query was pasted
         def _clean_kuma_url(v):
@@ -3448,23 +3548,22 @@ async def delete_overlay_file(filename: str):
 
 @app.get("/api/fonts")
 async def get_font_files():
-    """Get list of font files from Overlayfiles directory"""
+    """Get list of font files from Overlayfiles and dynamic_overlays/fonts directories"""
     try:
-        if not OVERLAYFILES_DIR.exists():
-            OVERLAYFILES_DIR.mkdir(exist_ok=True)
-            return {"success": True, "files": []}
-
-        # Get all font files (ttf, otf, woff, woff2)
         font_extensions = {".ttf", ".otf", ".woff", ".woff2"}
-        files = [
-            f.name
-            for f in OVERLAYFILES_DIR.iterdir()
-            if f.is_file() and f.suffix.lower() in font_extensions
+        found_files = set()
+        search_dirs = [
+            OVERLAYFILES_DIR,
+            OVERLAYFILES_DIR / "dynamic_overlays" / "fonts",
+            OVERLAYFILES_DIR / "fonts",
         ]
+        for sdir in search_dirs:
+            if sdir.exists() and sdir.is_dir():
+                for f in sdir.iterdir():
+                    if f.is_file() and f.suffix.lower() in font_extensions:
+                        found_files.add(f.name)
 
-        # Sort alphabetically
-        files.sort()
-
+        files = sorted(list(found_files))
         logger.info(f"Found {len(files)} font files")
         return {"success": True, "files": files}
 
@@ -3623,13 +3722,18 @@ async def download_font_file(filename: str):
         if not safe_filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
 
-        font_path = (OVERLAYFILES_DIR / safe_filename).resolve()
+        font_candidates = [
+            (OVERLAYFILES_DIR / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "dynamic_overlays" / "fonts" / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "fonts" / safe_filename).resolve(),
+        ]
+        font_path = None
+        for cand in font_candidates:
+            if cand.is_relative_to(OVERLAYFILES_DIR.resolve()) and cand.exists():
+                font_path = cand
+                break
 
-        # Guard against path traversal: resolved path must stay within OVERLAYFILES_DIR
-        if not font_path.is_relative_to(OVERLAYFILES_DIR.resolve()):
-            raise HTTPException(status_code=400, detail="Invalid filename")
-
-        if not font_path.exists():
+        if not font_path:
             raise HTTPException(status_code=404, detail="Font file not found")
 
         return FileResponse(font_path)
@@ -3651,13 +3755,18 @@ async def preview_font_file(filename: str, text: str = "Aa"):
         if not safe_filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
 
-        font_path = (OVERLAYFILES_DIR / safe_filename).resolve()
+        font_candidates = [
+            (OVERLAYFILES_DIR / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "dynamic_overlays" / "fonts" / safe_filename).resolve(),
+            (OVERLAYFILES_DIR / "fonts" / safe_filename).resolve(),
+        ]
+        font_path = None
+        for cand in font_candidates:
+            if cand.is_relative_to(OVERLAYFILES_DIR.resolve()) and cand.exists():
+                font_path = cand
+                break
 
-        # Guard against path traversal: resolved path must stay within OVERLAYFILES_DIR
-        if not font_path.is_relative_to(OVERLAYFILES_DIR.resolve()):
-            raise HTTPException(status_code=400, detail="Invalid filename")
-
-        if not font_path.exists():
+        if not font_path:
             raise HTTPException(status_code=404, detail="Font file not found")
 
         # Validate font extension
@@ -4902,11 +5011,11 @@ async def perform_jellyfin_emby_action(request: JellyfinEmbyActionRequest):
 
         if request.action == "refresh_item":
             # Full metadata refresh
-            params["MetadataRefreshMode"] = "Full"
+            params["MetadataRefreshMode"] = "FullRefresh"
 
         elif request.action == "refresh_images":
             # Image specific refresh (look for new images)
-            params["ImageRefreshMode"] = "Full"
+            params["ImageRefreshMode"] = "FullRefresh"
             params["MetadataRefreshMode"] = "Default"
 
         else:
@@ -4937,7 +5046,7 @@ async def perform_jellyfin_emby_action(request: JellyfinEmbyActionRequest):
 async def get_cached_libraries(server_type: str, refresh: bool = False):
     logger.info(f"Fetching cached libraries for {server_type} (refresh={refresh})")
 
-    if server_type not in ["plex", "jellyfin", "emby"]:
+    if server_type not in ["plex", "jellyfin", "emby", "silo"]:
         return {"success": False, "error": "Invalid server type"}
 
     if not SERVER_LIBRARIES_DB_AVAILABLE or server_libraries_db is None:
@@ -4958,7 +5067,15 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                         config = json.load(f)
                 except Exception:
                     pass
-            if server_type == "plex":
+            if server_type == "silo":
+                from silo_client import SiloClient, get_silo_credentials
+                creds = get_silo_credentials(config)
+                if creds["url"] and creds["api_key"] and is_safe_url(creds["url"], allow_private=True, allow_loopback=True):
+                    async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+                        libraries = await SiloClient(client, creds["url"], creds["api_key"], creds["profile_id"]).libraries()
+                    server_libraries_db.save_media_server_libraries("silo", libraries, None)
+                    result = server_libraries_db.get_media_server_libraries("silo")
+            elif server_type == "plex":
                 plex_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
                 plex_token = config.get("PlexToken") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("PlexToken")
                 if plex_url and is_safe_url(str(plex_url).rstrip('/'), allow_private=True, allow_loopback=True):
@@ -4983,7 +5100,11 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                         logger.warning(f"Could not refresh Plex libraries: {fe}")
             elif server_type == "jellyfin":
                 jf_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
-                jf_api = config.get("JellyfinApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("JellyfinApiKey")
+                jf_api = (
+                    (config.get("JellyfinAPIKey") or config.get("JellyfinApiKey"))
+                    if config.get("using_flat_structure")
+                    else (config.get("ApiPart", {}).get("JellyfinAPIKey") or config.get("ApiPart", {}).get("JellyfinApiKey"))
+                )
                 if jf_url and is_safe_url(str(jf_url).rstrip('/'), allow_private=True, allow_loopback=True):
                     try:
                         clean_url = str(jf_url).rstrip('/')
@@ -4993,7 +5114,7 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                             if resp.status_code == 200:
                                 data = resp.json()
                                 libraries = [
-                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId", "")}
+                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId") or lib.get("Id", "")}
                                     for lib in data if lib.get("Name")
                                 ]
                                 if libraries:
@@ -5003,17 +5124,24 @@ async def get_cached_libraries(server_type: str, refresh: bool = False):
                         logger.warning(f"Could not refresh Jellyfin libraries: {fe}")
             elif server_type == "emby":
                 emby_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
-                emby_api = config.get("EmbyApiKey") if config.get("using_flat_structure") else config.get("ApiPart", {}).get("EmbyApiKey")
+                emby_api = (
+                    (config.get("EmbyAPIKey") or config.get("EmbyApiKey"))
+                    if config.get("using_flat_structure")
+                    else (config.get("ApiPart", {}).get("EmbyAPIKey") or config.get("ApiPart", {}).get("EmbyApiKey"))
+                )
                 if emby_url and is_safe_url(str(emby_url).rstrip('/'), allow_private=True, allow_loopback=True):
                     try:
                         clean_url = str(emby_url).rstrip('/')
-                        headers = {"Authorization": f'MediaBrowser Token="{emby_api}"'} if emby_api else {}
+                        headers = {
+                            "X-Emby-Token": emby_api,
+                            "Authorization": f'MediaBrowser Token="{emby_api}"'
+                        } if emby_api else {}
                         async with httpx.AsyncClient(timeout=10.0) as client:
                             resp = await client.get(f"{clean_url}/Library/VirtualFolders", headers=headers)
                             if resp.status_code == 200:
                                 data = resp.json()
                                 libraries = [
-                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId", "")}
+                                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", "mixed"), "id": lib.get("ItemId") or lib.get("Id", "")}
                                     for lib in data if lib.get("Name")
                                 ]
                                 if libraries:
@@ -5041,7 +5169,7 @@ class LibraryExclusionUpdate(BaseModel):
 async def update_library_exclusions(server_type: str, request: LibraryExclusionUpdate):
     logger.info(f"Updating exclusions for {server_type}: {request.excluded_libraries}")
 
-    if server_type not in ["plex", "jellyfin", "emby"]:
+    if server_type not in ["plex", "jellyfin", "emby", "silo"]:
         return {"success": False, "error": "Invalid server type"}
 
     try:
@@ -5110,6 +5238,41 @@ async def get_plex_libraries(request: PlexValidationRequest):
     except Exception as e:
         logger.error(f"[ERROR] Error fetching Plex libraries: {str(e)}")
         return {"success": False, "error": str(e)}
+
+@app.post("/api/validate/silo")
+async def validate_silo(request: SiloValidationRequest):
+    from silo_client import SiloClient, SiloError
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
+        raise HTTPException(status_code=400, detail="Invalid Silo server URL")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+            silo = SiloClient(client, request.url, request.api_key, request.profile_id)
+            info = await silo.info()
+            libraries = await silo.libraries()
+            await silo.profile_headers()
+            await silo.catalog()
+        return {"valid": True, "server_version": info.get("server_version", ""), "library_count": len(libraries),
+            "message": f"Silo {info.get('server_version', '')}: {len(libraries)} libraries; catalog access verified. Experimental support; no episode artwork uploads."}
+    except SiloError as error:
+        return {"valid": False, "message": str(error), "message_key": "silo.httpError" if error.status else "silo.validationFailed",
+            "message_params": {"status": error.status} if error.status else {}}
+
+
+@app.post("/api/libraries/silo")
+async def get_silo_libraries(request: SiloValidationRequest):
+    from silo_client import SiloClient, SiloError
+    if not is_safe_url(request.url, allow_private=True, allow_loopback=True):
+        raise HTTPException(status_code=400, detail="Invalid Silo server URL")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+            libraries = await SiloClient(client, request.url, request.api_key, request.profile_id).libraries()
+        if SERVER_LIBRARIES_DB_AVAILABLE and server_libraries_db is not None:
+            server_libraries_db.save_media_server_libraries("silo", libraries, None)
+        return {"success": True, "libraries": libraries, "excluded": []}
+    except SiloError as error:
+        return {"success": False, "libraries": [], "error": str(error), "message_key": "silo.httpError" if error.status else "silo.validationFailed",
+            "message_params": {"status": error.status} if error.status else {}}
+
 
 @app.post("/api/libraries/jellyfin")
 async def get_jellyfin_libraries(request: JellyfinValidationRequest):
@@ -5466,24 +5629,7 @@ async def receive_ui_log(log_entry: UILogEntry):
     Format matches backend logs for consistent viewing
     """
     try:
-        ui_log_path = UI_LOGS_DIR / "FrontendUI.log"
-
-        # Use server timestamp to avoid client/server time differences
-        from datetime import datetime
-
-        server_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        level = log_entry.level.upper()
-        component = log_entry.component
-        message = log_entry.message
-
-        # Format: [TIMESTAMP] [LEVEL] [UI:Component] - MESSAGE
-        # This matches backend format but with UI: prefix
-        log_line = f"[{server_timestamp}] [{level:8}] [UI:{component}] - {message}\n"
-
-        # Write to FrontendUI.log
-        with open(ui_log_path, "a", encoding="utf-8") as f:
-            f.write(log_line)
+        write_frontend_log(backend_ui_file_handler, log_entry.level, log_entry.component, log_entry.message)
 
         return {"success": True}
 
@@ -5499,26 +5645,8 @@ async def receive_ui_logs_batch(batch: UILogBatch):
     Uses server timestamps to ensure chronological consistency
     """
     try:
-        ui_log_path = UI_LOGS_DIR / "FrontendUI.log"
-
-        from datetime import datetime
-
-        log_lines = []
         for log_entry in batch.logs:
-            # Use server timestamp for all logs
-            server_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            level = log_entry.level.upper()
-            component = log_entry.component
-            message = log_entry.message
-
-            log_line = (
-                f"[{server_timestamp}] [{level:8}] [UI:{component}] - {message}\n"
-            )
-            log_lines.append(log_line)
-
-        # Batch write for better performance
-        with open(ui_log_path, "a", encoding="utf-8") as f:
-            f.writelines(log_lines)
+            write_frontend_log(backend_ui_file_handler, log_entry.level, log_entry.component, log_entry.message)
 
         return {"success": True, "count": len(batch.logs)}
 
@@ -5527,8 +5655,31 @@ async def receive_ui_logs_batch(batch: UILogBatch):
         return {"success": False, "error": str(e)}
 
 
-@app.get("/api/system-info")
-async def get_system_info():
+def _probe_runtime_tool_version(commands: List[List[str]], pattern: Optional[str] = None) -> Optional[str]:
+    """Run a quick non-blocking version probe for an external runtime binary."""
+    import platform as _platform
+    kwargs: Dict[str, Any] = {"capture_output": True, "text": True, "timeout": 2}
+    if _platform.system() == "Windows" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    for cmd in commands:
+        try:
+            res = subprocess.run(cmd, **kwargs)
+            output = (res.stdout or res.stderr or "").strip()
+            if not output:
+                continue
+            first_line = output.splitlines()[0].strip()
+            if pattern:
+                match = re.search(pattern, first_line)
+                if match:
+                    return match.group(1) if match.groups() else match.group(0)
+            return first_line
+        except Exception:
+            continue
+    return None
+
+
+def _get_static_system_info():
     """Get system information (CPU, RAM, OS, Platform) - Optimized for Docker & Windows"""
     import platform
     import os
@@ -5542,11 +5693,18 @@ async def get_system_info():
         "os_version": "Unknown",
         "cpu_model": "Unknown",
         "cpu_cores": os.cpu_count() or 0,
-        "total_memory": "Unknown",
-        "used_memory": "Unknown",
-        "free_memory": "Unknown",
-        "memory_percent": 0,
-        "is_docker": Path("/.dockerenv").exists() or Path("/run/secrets/docker_secret").exists()
+        "is_docker": Path("/.dockerenv").exists() or Path("/run/secrets/docker_secret").exists(),
+        "data_directory": str(BASE_DIR),
+        "python_version": platform.python_version(),
+        "timezone": os.environ.get("TZ") or (time.tzname[0] if time.tzname else "UTC"),
+        "powershell_version": _probe_runtime_tool_version(
+            [["pwsh", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"]],
+            r"(\d+\.\d+(?:\.\d+)*)",
+        ),
+        "imagemagick_version": _probe_runtime_tool_version(
+            [["magick", "-version"]],
+            r"(ImageMagick\s+\S+)",
+        ),
     }
 
     try:
@@ -5643,7 +5801,23 @@ async def get_system_info():
         if not cpu_found:
             system_info["cpu_model"] = platform.processor() or "Unknown CPU"
 
+    except Exception:
+        pass
 
+    return system_info
+
+
+def _get_memory_info():
+    import platform
+
+    system_info = {
+        "total_memory": "Unknown",
+        "used_memory": "Unknown",
+        "free_memory": "Unknown",
+        "memory_percent": 0,
+    }
+
+    try:
         # =========================================================
         # MEMORY USAGE
         # =========================================================
@@ -5708,6 +5882,21 @@ async def get_system_info():
         pass
 
     return system_info
+
+
+_static_system_info_cache = None
+_static_system_info_lock = asyncio.Lock()
+
+
+@app.get("/api/system-info")
+async def get_system_info():
+    global _static_system_info_cache
+    async with _static_system_info_lock:
+        if _static_system_info_cache is None:
+            _static_system_info_cache = await asyncio.to_thread(_get_static_system_info)
+        static_info = _static_system_info_cache
+    memory_info = await asyncio.to_thread(_get_memory_info)
+    return {**static_info, **memory_info}
 
 # ============================================================================
 # LOG LEVEL MANAGEMENT ENDPOINTS
@@ -5895,6 +6084,68 @@ async def get_upload_diagnostics():
     return diagnostics
 
 
+def trigger_auto_overlay_sync(source: str = "auto", scope: str = "incremental", target_items: Optional[List[Dict[str, Any]]] = None):
+    """Auto-trigger Dynamic Overlays Sync in background when new media is created."""
+    from overlay_sync_service import logger
+
+    try:
+        # Check master Dynamic Overlays feature setting first
+        try:
+            from dynamic_overlays_service import is_dynamic_overlays_enabled
+            if not is_dynamic_overlays_enabled():
+                return
+        except Exception:
+            return
+
+        webui_cfg = load_webui_settings()
+        if not webui_cfg.get("auto_overlay_sync", webui_cfg.get("auto_kometa_overlay_sync", False)):
+            return
+
+        # If target_items was explicitly passed as empty list, no assets were produced; avoid unnecessary crawl
+        if target_items is not None and len(target_items) == 0:
+            logger.info(f"[OverlaySync] No newly created assets detected after {source}. Overlay sync not needed.")
+            return
+
+        # If target_items was not passed, check if logs_watcher buffered any pending image choices
+        if target_items is None and "logs_watcher" in globals() and logs_watcher and hasattr(logs_watcher, "pending_overlay_rows"):
+            try:
+                with logs_watcher.csv_broadcast_lock:
+                    if logs_watcher.pending_overlay_rows:
+                        target_items = list(logs_watcher.pending_overlay_rows)
+                        logs_watcher.pending_overlay_rows = []
+            except Exception:
+                pass
+
+        if not target_items:
+            logger.info("[OverlaySync] No pending asset targets after %s. Automatic library-wide sync skipped.", source)
+            return
+
+        try:
+            from overlay_sync_service import submit_overlay_sync_task
+        except ImportError:
+            return
+
+        item_count_str = f" for {len(target_items)} target item(s)" if target_items else ""
+        logger.info(f"[OverlaySync] Auto-triggering Dynamic Overlays Sync ({scope}{item_count_str}) after {source}...")
+
+        result = submit_overlay_sync_task(
+            target_server="all", scope=scope, library="all", base_dir=BASE_DIR,
+            config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+            target_items=target_items,
+        )
+        if result.get("queued"):
+            logger.info("[OverlaySync] Retained targets from %s in the pending sync queue.", source)
+        elif not result.get("success"):
+            logger.info("[OverlaySync] Auto-trigger not started: %s", result.get("error"))
+        return result
+    except Exception as e:
+        logger.error(f"[OverlaySync] Error auto-triggering overlay sync: {e}", exc_info=True)
+
+
+# Backward compatibility alias
+trigger_auto_kometa_overlay_sync = trigger_auto_overlay_sync
+
+
 @app.get("/api/status")
 async def get_status():
     """Get script status with last log lines from appropriate log file"""
@@ -5913,6 +6164,7 @@ async def get_status():
                 )
                 # Store mode before clearing for runtime tracking
                 finished_mode = current_mode
+                title_regeneration = getattr(current_process, "posterizarr_title_regeneration", False)
 
                 current_process = None
                 current_mode = None
@@ -5926,6 +6178,13 @@ async def get_status():
                     logger.info("Cache refresh started in background after script completion")
                 except Exception as e:
                     logger.error(f"Error refreshing cache after script completion: {e}")
+
+                # Auto-trigger Dynamic Overlays Sync
+                try:
+                    if not title_regeneration:
+                        trigger_auto_overlay_sync(source="script completion")
+                except Exception as k_err:
+                    logger.error(f"Error auto-triggering overlay sync: {k_err}")
 
                 # Save runtime statistics to database
                 if RUNTIME_DB_AVAILABLE and finished_mode:
@@ -5978,6 +6237,12 @@ async def get_status():
                         logger.error(
                             f"Error refreshing cache after scheduler completion: {e}"
                         )
+
+                    # Auto-trigger Dynamic Overlays Sync
+                    try:
+                        trigger_auto_overlay_sync(source="scheduler completion")
+                    except Exception as k_err:
+                        logger.error(f"Error auto-triggering overlay sync: {k_err}")
 
                     # Save runtime statistics to database for scheduler runs
                     if RUNTIME_DB_AVAILABLE:
@@ -6068,6 +6333,130 @@ async def get_status():
         elif is_running and (effective_mode == "webhook" or effective_mode == "tautulli" or effective_mode == "arr"):
             display_pid = "External"
 
+        # Check sub-service running states
+        image_cleanup_active = False
+        try:
+            from plex_image_cleanup import is_cleanup_running
+            image_cleanup_active = is_cleanup_running()
+        except Exception:
+            pass
+        overlay_sync_active = False
+        try:
+            from overlay_sync_service import is_overlay_sync_running
+            overlay_sync_active = is_overlay_sync_running()
+        except Exception:
+            pass
+
+        plex_sync_active = False
+        try:
+            from plex_push_service import is_plex_sync_running
+            plex_sync_active = is_plex_sync_running()
+        except Exception:
+            pass
+
+        animetafill_active = False
+        try:
+            from animetafill_service import is_animetafill_running
+            animetafill_active = is_animetafill_running()
+        except Exception:
+            pass
+
+        metadata_refresh_active = bool(globals().get("metadata_refresh_running", False))
+
+        ratings_refresh_active = False
+        try:
+            from ratings_refresh import ratings_refresh_service
+            task = ratings_refresh_service.task
+            ratings_refresh_active = task is not None and not task.done()
+        except Exception:
+            pass
+
+        import_images_active = False
+        try:
+            from overlay_resolver import is_images_import_running
+            import_images_active = is_images_import_running()
+        except Exception:
+            pass
+
+        active_tasks = []
+        if is_running:
+            active_tasks.append({
+                "id": "posterizarr",
+                "name": (effective_mode or "Posterizarr").capitalize(),
+                "label": (effective_mode or "Running").upper(),
+                "type": "posterizarr",
+                "stop_endpoint": "/api/stop",
+                "color": "green",
+            })
+        if import_images_active:
+            active_tasks.append({
+                "id": "import_images",
+                "name": "Image Download",
+                "label": "DOWNLOADING IMAGES",
+                "type": "import_images",
+                "stop_endpoint": None,
+                "color": "blue",
+            })
+        if image_cleanup_active:
+            active_tasks.append({
+                "id": "plex_image_cleanup",
+                "name": "Plex Image Cleanup",
+                "label": "IMAGE CLEANUP",
+                "type": "plex_image_cleanup",
+                "stop_endpoint": None,
+                "log_file": "PlexImageCleanup.log",
+                "color": "amber",
+            })
+        if overlay_sync_active:
+            active_tasks.append({
+                "id": "overlay_sync",
+                "name": "Overlay Sync",
+                "label": "OVERLAY SYNC",
+                "type": "overlay_sync",
+                "stop_endpoint": "/api/dynamic-overlays/sync/stop",
+                "color": "blue",
+            })
+        if plex_sync_active:
+            active_tasks.append({
+                "id": "plex_sync",
+                "name": "Plex Sync",
+                "label": "PLEX SYNC",
+                "type": "plex_sync",
+                "stop_endpoint": "/api/plex-sync/stop",
+                "color": "blue",
+            })
+        if animetafill_active:
+            active_tasks.append({
+                "id": "animetafill",
+                "name": "AniMetaFill",
+                "label": "ANIMETAFILL",
+                "type": "animetafill",
+                "stop_endpoint": "/api/animetafill/stop",
+                "color": "purple",
+            })
+        if metadata_refresh_active:
+            active_tasks.append({
+                "id": "metadata_refresh",
+                "name": "Metadata Refresh",
+                "label": "METADATA REFRESH",
+                "type": "metadata_refresh",
+                "stop_endpoint": "/api/assets/skipped/refresh/stop",
+                "color": "amber",
+            })
+
+        if ratings_refresh_active:
+            active_tasks.append({
+                "id": "ratings_refresh",
+                "name": "Ratings Refresh",
+                "label": "RATINGS REFRESH",
+                "type": "ratings_refresh",
+                "stop_endpoint": "/api/dynamic-overlays/ratings-cache/refresh/cancel",
+                "log_file": "RatingsRefresh.log",
+                "color": "amber",
+            })
+
+        any_running = bool(is_running or overlay_sync_active or plex_sync_active or animetafill_active or metadata_refresh_active or import_images_active or image_cleanup_active or ratings_refresh_active)
+
         return {
             "running": is_running,
             "manual_running": manual_is_running,
@@ -6082,6 +6471,14 @@ async def get_status():
             "already_running_detected": already_running,
             "running_file_exists": running_file_exists,
             "start_time": current_start_time if is_running else None,
+            "overlay_sync_running": overlay_sync_active,
+            "image_cleanup_running": image_cleanup_active,
+            "plex_sync_running": plex_sync_active,
+            "animetafill_running": animetafill_active,
+            "metadata_refresh_running": metadata_refresh_active,
+            "ratings_refresh_running": ratings_refresh_active,
+            "any_running": any_running,
+            "active_tasks": active_tasks,
         }
 
 @app.delete("/api/running-file")
@@ -6227,17 +6624,19 @@ async def get_runtime_stats():
 
 @app.get("/api/runtime-history")
 async def get_runtime_history(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=50000),
     offset: int = Query(0, ge=0),
     mode: Optional[str] = Query(None),
+    days: Optional[int] = Query(None, ge=1, le=9999),
 ):
     """
     Get runtime history with pagination
 
     Args:
-        limit: Maximum number of entries to return (1-500)
+        limit: Maximum number of entries to return (1-50000)
         offset: Number of entries to skip
         mode: Filter by mode (optional)
+        days: Filter entries from the last N days (optional)
     """
     try:
         if not RUNTIME_DB_AVAILABLE or not runtime_db:
@@ -6247,8 +6646,8 @@ async def get_runtime_history(
                 "history": [],
             }
 
-        history = runtime_db.get_runtime_history(limit=limit, offset=offset, mode=mode)
-        total = runtime_db.get_runtime_history_total_count(mode=mode)
+        history = runtime_db.get_runtime_history(limit=limit, offset=offset, mode=mode, days=days)
+        total = runtime_db.get_runtime_history_total_count(mode=mode, days=days)
 
         return {
             "success": True,
@@ -6258,11 +6657,165 @@ async def get_runtime_history(
             "limit": limit,
             "offset": offset,
             "mode_filter": mode,
+            "days": days,
         }
 
     except Exception as e:
         logger.error(f"Error getting runtime history: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def _parse_runtime_asset_date(val: Any) -> Optional[datetime]:
+    """Helper to robustly parse date strings in ISO, EU, or localized formats"""
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val
+    s = str(val).strip()
+    # DD.MM.YYYY, HH:MM:SS or DD.MM.YYYY HH:MM:SS
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", s)
+    if m:
+        return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)), int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0))
+    # YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+    m2 = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", s)
+    if m2:
+        return datetime(int(m2.group(1)), int(m2.group(2)), int(m2.group(3)), int(m2.group(4) or 0), int(m2.group(5) or 0), int(m2.group(6) or 0))
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
+@app.get("/api/runtime-history/{run_id}/assets")
+async def get_runtime_run_assets(run_id: int, wide: bool = Query(False)):
+    """
+    Get image choices/assets created during a specific runtime history execution
+    """
+    try:
+        if not RUNTIME_DB_AVAILABLE or not runtime_db:
+            return {"success": False, "assets": [], "message": "Runtime database not available"}
+
+        entry = runtime_db.get_runtime_by_id(run_id)
+        if not entry:
+            return {"success": False, "assets": [], "message": "Run entry not found"}
+
+        start_raw = entry.get("start_time") or entry.get("timestamp")
+        end_raw = entry.get("end_time") or entry.get("timestamp")
+        duration = entry.get("runtime_seconds") or 0
+
+        assets = []
+        dt_start = None
+        dt_end = None
+        utc_offset = timedelta(0)
+        if DATABASE_AVAILABLE and db and start_raw:
+            dt_start = _parse_runtime_asset_date(start_raw)
+            dt_end = _parse_runtime_asset_date(end_raw)
+
+            if dt_start:
+                if not dt_end or dt_end < dt_start:
+                    dt_end = dt_start + timedelta(seconds=max(duration, 30))
+                elif dt_end == dt_start and duration > 0:
+                    dt_end = dt_start + timedelta(seconds=duration)
+
+                # Primary query buffer: 90 seconds (or 60 min if wide=True)
+                buffer_sec = 3600 if wide else 90
+                dt_query_start = dt_start - timedelta(seconds=buffer_sec)
+                dt_query_end = dt_end + timedelta(seconds=buffer_sec)
+
+                s_iso = dt_query_start.strftime("%Y-%m-%d %H:%M:%S")
+                e_iso = dt_query_end.strftime("%Y-%m-%d %H:%M:%S")
+                s_eu = dt_query_start.strftime("%d.%m.%Y %H:%M:%S")
+                e_eu = dt_query_end.strftime("%d.%m.%Y %H:%M:%S")
+
+                # Handle timezone offset discrepancies (e.g. runtime recorded in local time vs imagechoices recorded in UTC)
+                utc_offset = datetime.now().astimezone().utcoffset() or timedelta(0)
+                additional_ranges = []
+
+                if utc_offset != timedelta(0):
+                    # Local -> UTC candidate range
+                    utc_q_start = dt_start - utc_offset - timedelta(seconds=buffer_sec)
+                    utc_q_end = dt_end - utc_offset + timedelta(seconds=buffer_sec)
+                    additional_ranges.append((
+                        utc_q_start.strftime("%Y-%m-%d %H:%M:%S"),
+                        utc_q_end.strftime("%Y-%m-%d %H:%M:%S")
+                    ))
+                    # UTC -> Local candidate range
+                    loc_q_start = dt_start + utc_offset - timedelta(seconds=buffer_sec)
+                    loc_q_end = dt_end + utc_offset + timedelta(seconds=buffer_sec)
+                    additional_ranges.append((
+                        loc_q_start.strftime("%Y-%m-%d %H:%M:%S"),
+                        loc_q_end.strftime("%Y-%m-%d %H:%M:%S")
+                    ))
+
+                raw_assets = db.get_assets_created_between(
+                    s_iso, e_iso, s_eu=s_eu, e_eu=e_eu, run_id=run_id, additional_ranges=additional_ranges
+                )
+                assets = [dict(row) for row in raw_assets]
+
+                # Fallback: if total_images > 0 and 0 assets found, try wider window (±60 min across local & UTC)
+                expected_images = entry.get("total_images") or 0
+                if not assets and expected_images > 0 and not wide:
+                    fallback_ranges = []
+                    dt_query_start_w = dt_start - timedelta(minutes=60)
+                    dt_query_end_w = dt_end + timedelta(minutes=60)
+                    s_iso_w = dt_query_start_w.strftime("%Y-%m-%d %H:%M:%S")
+                    e_iso_w = dt_query_end_w.strftime("%Y-%m-%d %H:%M:%S")
+                    s_eu_w = dt_query_start_w.strftime("%d.%m.%Y %H:%M:%S")
+                    e_eu_w = dt_query_end_w.strftime("%d.%m.%Y %H:%M:%S")
+
+                    if utc_offset != timedelta(0):
+                        utc_w_start = dt_start - utc_offset - timedelta(minutes=60)
+                        utc_w_end = dt_end - utc_offset + timedelta(minutes=60)
+                        fallback_ranges.append((
+                            utc_w_start.strftime("%Y-%m-%d %H:%M:%S"),
+                            utc_w_end.strftime("%Y-%m-%d %H:%M:%S")
+                        ))
+                    raw_assets_w = db.get_assets_created_between(
+                        s_iso_w, e_iso_w, s_eu=s_eu_w, e_eu=e_eu_w, run_id=run_id, additional_ranges=fallback_ranges
+                    )
+                    assets = [dict(row) for row in raw_assets_w]
+            else:
+                s = str(start_raw).replace("T", " ")[:19]
+                e = str(end_raw).replace("T", " ")[:19] if end_raw else s
+                if s > e:
+                    s, e = e, s
+                raw_assets = db.get_assets_created_between(s, e, run_id=run_id)
+                assets = [dict(row) for row in raw_assets]
+
+        if assets and dt_start and utc_offset != timedelta(0):
+            dt_end_eff = dt_end or dt_start
+            dt_mid = dt_start + (dt_end_eff - dt_start) / 2
+            local_win_start = dt_start - timedelta(seconds=90)
+            local_win_end = dt_end_eff + timedelta(seconds=90)
+            utc_win_start = dt_start - utc_offset - timedelta(seconds=90)
+            utc_win_end = dt_end_eff - utc_offset + timedelta(seconds=90)
+            for asset in assets:
+                raw_ts = asset.get("created_at") or asset.get("updated_at")
+                asset_dt = _parse_runtime_asset_date(raw_ts)
+                if not asset_dt:
+                    continue
+                in_local = local_win_start <= asset_dt <= local_win_end
+                in_utc = utc_win_start <= asset_dt <= utc_win_end
+                is_utc_row = (in_utc and not in_local) or (
+                    not in_local
+                    and abs((asset_dt - (dt_mid - utc_offset)).total_seconds())
+                    < abs((asset_dt - dt_mid).total_seconds())
+                )
+                asset["display_timestamp"] = (
+                    (asset_dt + utc_offset).strftime("%Y-%m-%d %H:%M:%S")
+                    if is_utc_row
+                    else raw_ts
+                )
+
+        return {
+            "success": True,
+            "run_id": run_id,
+            "assets": assets,
+            "count": len(assets)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching assets for run {run_id}: {e}")
+        return {"success": False, "assets": [], "error": str(e)}
 
 
 @app.get("/api/runtime-summary")
@@ -6502,7 +7055,7 @@ async def import_json_runtime_data():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/analytics/providers")
-async def get_provider_stats(days: int = Query(30, ge=7, le=365)):
+async def get_provider_stats(days: int = Query(30, ge=1, le=365)):
     """Get provider source statistics over time"""
     try:
         if not DATABASE_AVAILABLE or not db:
@@ -6571,7 +7124,9 @@ async def get_plex_export_runs():
 
 @app.get("/api/plex-export/library")
 async def get_plex_library_data(
-    run_timestamp: Optional[str] = None, limit: Optional[int] = None
+    run_timestamp: Optional[str] = None,
+    limit: Optional[int] = None,
+    rootfolder: Optional[str] = None,
 ):
     """
     Get Plex library export data
@@ -6579,6 +7134,7 @@ async def get_plex_library_data(
     Args:
         run_timestamp: Optional specific run to query (default: latest)
         limit: Optional limit on number of results
+        rootfolder: Optional filter on root folder name
     """
     try:
         if not MEDIA_EXPORT_DB_AVAILABLE or not media_export_db:
@@ -6587,7 +7143,9 @@ async def get_plex_library_data(
                 "message": "Plex export database not available",
             }
 
-        data = media_export_db.get_library_data(run_timestamp, limit)
+        data = await asyncio.to_thread(
+            media_export_db.get_library_data, run_timestamp, limit, rootfolder
+        )
 
         return {
             "success": True,
@@ -6703,7 +7261,9 @@ async def get_other_media_runs():
 
 @app.get("/api/other-media-export/library")
 async def get_other_media_library_data(
-    run_timestamp: Optional[str] = None, limit: Optional[int] = None
+    run_timestamp: Optional[str] = None,
+    limit: Optional[int] = None,
+    rootfolder: Optional[str] = None,
 ):
     """
     Get OtherMedia library export data
@@ -6711,6 +7271,7 @@ async def get_other_media_library_data(
     Args:
         run_timestamp: Optional specific run to query (default: latest)
         limit: Optional limit on number of results
+        rootfolder: Optional filter on root folder name
     """
     try:
         if not MEDIA_EXPORT_DB_AVAILABLE or not media_export_db:
@@ -6719,7 +7280,9 @@ async def get_other_media_library_data(
                 "message": "OtherMedia export database not available",
             }
 
-        data = media_export_db.get_other_library_data(run_timestamp)
+        data = await asyncio.to_thread(
+            media_export_db.get_other_library_data, run_timestamp, None, rootfolder
+        )
 
         if limit:
             data = data[:limit]
@@ -8131,6 +8694,7 @@ async def run_script(mode: str):
             "restore": [ps_command, "-File", str(SCRIPT_PATH), "-Restore"],
             "syncjelly": [ps_command, "-File", str(SCRIPT_PATH), "-SyncJelly"],
             "syncemby": [ps_command, "-File", str(SCRIPT_PATH), "-SyncEmby"],
+            "syncsilo": [ps_command, "-File", str(SCRIPT_PATH), "-SyncSilo"],
         }
 
         if mode not in commands:
@@ -8545,6 +9109,14 @@ KNOWN_LOG_FILES: Dict[str, Path] = {
     "BackendServer.log": UI_LOGS_DIR / "BackendServer.log",
     "FrontendUI.log": UI_LOGS_DIR / "FrontendUI.log",
     "PlexSync.log": UI_LOGS_DIR / "PlexSync.log",
+    "KometaDefaults.log": UI_LOGS_DIR / "KometaDefaults.log",
+    "OverlayDefaults.log": UI_LOGS_DIR / "OverlayDefaults.log",
+    "DynamicOverlaysSync.log": UI_LOGS_DIR / "DynamicOverlaysSync.log",
+    "RatingsRefresh.log": UI_LOGS_DIR / "RatingsRefresh.log",
+    "EpisodeTitleChanges.log": UI_LOGS_DIR / "EpisodeTitleChanges.log",
+    "Scheduler.log": UI_LOGS_DIR / "Scheduler.log",
+    "PlexImageCleanup.log": UI_LOGS_DIR / "PlexImageCleanup.log",
+    "AniMetaFill.log": UI_LOGS_DIR / "AniMetaFill.log",
 }
 
 
@@ -8594,9 +9166,15 @@ def get_safe_log_path(log_name: Optional[str]) -> Optional[Path]:
     if not LOG_FILENAME_RE.fullmatch(clean_name):
         return None
 
+    # Check known log targets first if present in KNOWN_LOG_FILES
+    if clean_name in KNOWN_LOG_FILES:
+        target_path = KNOWN_LOG_FILES[clean_name]
+        if target_path.exists():
+            return target_path.resolve(strict=False)
+
     # Build allowlist of existing log files from trusted directories
     allowed_logs: Dict[str, Path] = {}
-    for base_dir in (LOGS_DIR, UI_LOGS_DIR):
+    for base_dir in (UI_LOGS_DIR, LOGS_DIR):
         if not base_dir.exists():
             continue
         for candidate in base_dir.glob("*.log"):
@@ -9547,16 +10125,21 @@ def _get_categorized_assets(config: dict) -> dict:
         if lib_override:
             lib_preferred_langs = lib_override.get("PreferredLanguageOrder", [])
             lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
-            if lib_primary_lang:
-                if "background" in asset_type_lower:
-                    if lib_override.get("ApplyToBackground", True):
+            if "background" in asset_type_lower:
+                if lib_override.get("ApplyToBackground", True):
+                    bg_enabled = lib_override.get("EnableBackgroundLanguageOrderOverride")
+                    lib_bg_langs = lib_override.get("PreferredBackgroundLanguageOrder", [])
+                    use_custom_bg = (bg_enabled is True or (bg_enabled is None and len(lib_bg_langs) > 0)) and len(lib_bg_langs) > 0
+                    if use_custom_bg:
+                        target_primary_lang = lib_bg_langs[0]
+                    elif lib_primary_lang:
                         target_primary_lang = lib_primary_lang
-                elif "season" in asset_type_lower:
-                    if lib_override.get("ApplyToSeason", True):
-                        target_primary_lang = lib_primary_lang
-                elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
-                    if lib_override.get("ApplyToPoster", True):
-                        target_primary_lang = lib_primary_lang
+            elif "season" in asset_type_lower:
+                if lib_override.get("ApplyToSeason", True) and lib_primary_lang:
+                    target_primary_lang = lib_primary_lang
+            elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
+                if lib_override.get("ApplyToPoster", True) and lib_primary_lang:
+                    target_primary_lang = lib_primary_lang
 
         if language and target_primary_lang:
             lang_normalized = (
@@ -10174,7 +10757,7 @@ async def get_backup_assets_gallery():
         # Determine configured libraries from server_libraries_db
         configured_libraries = set()
         if SERVER_LIBRARIES_DB_AVAILABLE and server_libraries_db is not None:
-            for srv_type in ["plex", "jellyfin", "emby"]:
+            for srv_type in ["plex", "jellyfin", "emby", "silo"]:
                 try:
                     res = server_libraries_db.get_media_server_libraries(srv_type)
                     if res.get("success"):
@@ -10425,20 +11008,28 @@ async def get_folder_view_browse(path: Optional[str] = Query(None)):
         return {"success": False, "error": str(e), "items": []}
 
 @app.get("/api/recent-assets")
-async def get_recent_assets():
+async def get_recent_assets(
+    limit: int = Query(100, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    tab: str = Query("All", pattern="^(All|Posters|Collections|Backgrounds|Seasons|TitleCards)$"),
+):
     """
     Get recently created assets from the imagechoices database
     Returns the most recent assets with their poster images from assets folder
     USES FAST CACHE FOR IMAGE LOOKUPS
     """
+    tab_names = ("All", "Posters", "Collections", "Backgrounds", "Seasons", "TitleCards")
+    empty_result = {
+        "success": True,
+        "assets": [],
+        "total_count": 0,
+        "offset": 0,
+        "counts": dict.fromkeys(tab_names, 0),
+    }
     try:
         if not DATABASE_AVAILABLE or db is None:
             # Return empty list instead of crashing if DB isn't ready
-            return {
-                "success": True,
-                "assets": [],
-                "total_count": 0,
-            }
+            return empty_result
 
         # CSV import is handled by logs_watcher, no import needed here
         try:
@@ -10454,11 +11045,7 @@ async def get_recent_assets():
         # If no assets found, return early
         if not db_records:
             logger.warning(" No assets found in database")
-            return {
-                "success": True,
-                "assets": [],
-                "total_count": 0,
-            }
+            return empty_result
 
         # Create a fast lookup map from the asset cache
         # This scans the cache (memory) not the disk
@@ -10586,10 +11173,39 @@ async def get_recent_assets():
             f"Returning {len(recent_assets)} most recent assets with existing images from database"
         )
 
+        unique_assets = {}
+        for asset in recent_assets:
+            key = (asset["rootfolder"], asset["type"], asset["created"])
+            existing = unique_assets.get(key)
+            if existing is None or (
+                existing["title"].startswith("http") and not asset["title"].startswith("http")
+            ):
+                unique_assets[key] = asset
+
+        categories = {name: [] for name in tab_names}
+        for asset in unique_assets.values():
+            categories["All"].append(asset)
+            asset_type = (asset["type"] or "").lower()
+            if asset_type in ("movie", "poster", "show", "collection"):
+                categories["Posters"].append(asset)
+            if asset_type == "collection":
+                categories["Collections"].append(asset)
+            if "background" in asset_type:
+                categories["Backgrounds"].append(asset)
+            if asset_type == "season":
+                categories["Seasons"].append(asset)
+            if asset_type in ("episode", "titlecard", "title_card"):
+                categories["TitleCards"].append(asset)
+
+        filtered_assets = categories[tab]
+        total_count = len(filtered_assets)
+        page_offset = min(offset, max(0, ((total_count - 1) // limit) * limit))
         return {
             "success": True,
-            "assets": recent_assets,
-            "total_count": len(recent_assets),
+            "assets": filtered_assets[page_offset:page_offset + limit],
+            "total_count": total_count,
+            "offset": page_offset,
+            "counts": {name: len(items) for name, items in categories.items()},
         }
 
     except Exception as e:
@@ -10653,57 +11269,77 @@ async def get_version_ui():
 
 
 @app.get("/api/releases")
-async def get_github_releases():
+async def get_github_releases(refresh: bool = False):
     """
-    Fetches all releases from GitHub and returns them formatted
+    Fetches all releases from GitHub and returns them formatted (TTL cached)
     """
+    result = await fetch_github_releases_cached(force_refresh=refresh)
+    if result.get("success"):
+        return {"success": True, "releases": result.get("releases", [])}
+    return {
+        "success": False,
+        "error": result.get("error", "Could not fetch releases from GitHub"),
+        "releases": [],
+    }
+
+
+@app.get("/api/whats-new")
+async def get_whats_new():
+    """Evaluate whether the post-update What's New changelog should be displayed once."""
+    onboarding_completed = False
+    if CONFIG_DATABASE_AVAILABLE and config_db:
+        val = config_db.get_value('_root', 'onboarding_completed')
+        if val is not None:
+            onboarding_completed = bool(val)
+
+    settings = load_webui_settings()
+    last_seen = settings.get("last_seen_release_version")
+    version_info = await get_script_version()
+    releases_result = await fetch_github_releases_cached(force_refresh=False)
+    releases = releases_result.get("releases") or [] if releases_result.get("success") else []
+
+    evaluation = evaluate_whats_new(
+        raw_local_version=version_info.get("raw_local"),
+        display_local_version=version_info.get("local"),
+        last_seen_version=last_seen,
+        onboarding_completed=onboarding_completed,
+        releases=releases,
+    )
+    return {"success": True, **evaluation}
+
+
+@app.post("/api/whats-new/dismiss")
+async def dismiss_whats_new(request: Request):
+    """Persist the highest seen stable release version so What's New appears once per release."""
+    payload: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.github.com/repos/fscorrupt/posterizarr/releases",
-                headers={"Accept": "application/vnd.github.v3+json"},
-                timeout=10.0,
-            )
-            response.raise_for_status()
-            releases = response.json()
+        raw_body = await request.body()
+        if raw_body:
+            parsed = json.loads(raw_body)
+            if isinstance(parsed, dict):
+                payload = parsed
+    except Exception:
+        payload = {}
 
-            # Format the releases for frontend display
-            formatted_releases = []
-            for release in releases[:10]:  # Only last 10 releases
-                published_date = datetime.fromisoformat(
-                    release["published_at"].replace("Z", "+00:00")
-                )
-                days_ago = (datetime.now(published_date.tzinfo) - published_date).days
+    requested_version = payload.get("version")
+    if not requested_version:
+        version_info = await get_script_version()
+        requested_version = version_info.get("raw_local") or version_info.get("local")
 
-                formatted_releases.append(
-                    {
-                        "version": release["tag_name"],
-                        "name": release["name"],
-                        "published_at": release["published_at"],
-                        "days_ago": days_ago,
-                        "is_prerelease": release["prerelease"],
-                        "is_draft": release["draft"],
-                        "html_url": release["html_url"],
-                        "body": release["body"],  # Changelog-Text
-                    }
-                )
+    current_settings = load_webui_settings()
+    current_seen = current_settings.get("last_seen_release_version")
+    next_seen = resolve_next_seen_version(current_seen, requested_version)
 
-            return {"success": True, "releases": formatted_releases}
+    if next_seen and next_seen != normalize_version_tag(current_seen):
+        current_settings["last_seen_release_version"] = next_seen
+        if not save_webui_settings(current_settings):
+            raise HTTPException(status_code=500, detail="Failed to persist dismissed release version")
 
-    except httpx.RequestError as e:
-        logger.error(f"Could not fetch releases from GitHub: {e}")
-        return {
-            "success": False,
-            "error": "Could not fetch releases from GitHub",
-            "releases": [],
-        }
-    except Exception as e:
-        logger.error(f"Error fetching releases: {e}")
-        return {"success": False, "error": str(e), "releases": []}
+    return {"success": True, "last_seen_version": next_seen}
 
 
 @app.get("/api/dashboard/all")
-async def get_dashboard_all():
+async def get_dashboard_all(include_version: bool = True):
     """
     Combined endpoint for all dashboard data - reduces HTTP requests from 4 to 1
     Returns: status, version, scheduler_status, system_info
@@ -10729,13 +11365,14 @@ async def get_dashboard_all():
             "config_exists": False,
         }
 
-    # Fetch version (cached, so fast)
-    try:
-        version_response = await get_version()
-        result["version"] = version_response
-    except Exception as e:
-        logger.error(f"Error fetching version in dashboard/all: {e}")
-        result["version"] = {"local": None, "remote": None}
+    # Fetch version (remote part is TTL-cached)
+    if include_version:
+        try:
+            version_response = await get_version()
+            result["version"] = version_response
+        except Exception as e:
+            logger.error(f"Error fetching version in dashboard/all: {e}")
+            result["version"] = {"local": None, "remote": None}
 
     # Fetch scheduler status (if available)
     if SCHEDULER_AVAILABLE and scheduler:
@@ -10747,6 +11384,7 @@ async def get_dashboard_all():
                 "running": scheduler_status.get("running", False),
                 "is_executing": scheduler_status.get("is_executing", False),
                 "schedules": scheduler_status.get("schedules", []),
+                "active_jobs": scheduler_status.get("active_jobs", []),
                 "next_run": scheduler_status.get("next_run"),
                 "timezone": scheduler_status.get("timezone"),
             }
@@ -11040,6 +11678,10 @@ async def add_schedule(request: Request):
             raise HTTPException(status_code=400, detail="Time is required for non-interval schedules")
 
         # Pass all arguments to the updated scheduler logic
+        cleanup_options = {}
+        if mode.lower() == "pleximagecleanup":
+            from plex_image_cleanup import cleanup_schedule_options
+            cleanup_options = cleanup_schedule_options(data)
         success = scheduler.add_schedule(
             time_str=time_str,
             description=description,
@@ -11054,7 +11696,8 @@ async def add_schedule(request: Request):
             asset_types=data.get("asset_types"),
             force_replace=data.get("force_replace", False),
             exif_check=data.get("exif_check", False),
-            revert=data.get("revert", False)
+            revert=data.get("revert", False),
+            **cleanup_options
         )
 
         if success:
@@ -11062,6 +11705,10 @@ async def add_schedule(request: Request):
         else:
             raise HTTPException(status_code=400, detail="Schedule already exists or is invalid")
 
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except Exception as e:
         logger.error(f"Error adding schedule: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -11090,6 +11737,10 @@ async def update_schedule(index: int, request: Request):
         if frequency != "interval" and not time_str:
             raise HTTPException(status_code=400, detail="Time is required for non-interval schedules")
 
+        cleanup_options = {}
+        if mode.lower() == "pleximagecleanup":
+            from plex_image_cleanup import cleanup_schedule_options
+            cleanup_options = cleanup_schedule_options(data)
         success = scheduler.update_schedule(
             index=index,
             time_str=time_str,
@@ -11105,7 +11756,8 @@ async def update_schedule(index: int, request: Request):
             asset_types=data.get("asset_types"),
             force_replace=data.get("force_replace", False),
             exif_check=data.get("exif_check", False),
-            revert=data.get("revert", False)
+            revert=data.get("revert", False),
+            **cleanup_options
         )
 
         if success:
@@ -11115,6 +11767,8 @@ async def update_schedule(index: int, request: Request):
 
     except HTTPException:
         raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except Exception as e:
         logger.error(f"Error updating schedule at index {index}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -11225,19 +11879,38 @@ async def restart_scheduler():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/scheduler/run-now")
-async def run_scheduler_now():
+async def run_scheduler_now(request: Request):
     """Manually trigger a scheduled run immediately (non-blocking)"""
     if not SCHEDULER_AVAILABLE or not scheduler:
         raise HTTPException(status_code=503, detail="Scheduler not available")
 
     try:
-        # Use asyncio.create_task to run it asynchronously
-        asyncio.create_task(scheduler.run_script(force_run=True))
-        return {"success": True, "message": "Manual run triggered successfully"}
+        mode = "normal"
+        schedule_config = None
+        try:
+            body = await request.body()
+            if body:
+                data = json.loads(body.decode("utf-8"))
+                if isinstance(data, dict):
+                    mode = data.get("mode", "normal")
+                    schedule_config = data.get("schedule_config")
+        except Exception:
+            pass
+
+        if mode.lower() == "pleximagecleanup":
+            from plex_image_cleanup import cleanup_schedule_options
+            try:
+                schedule_config = {**(schedule_config or {}), **cleanup_schedule_options(schedule_config or {})}
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+        asyncio.create_task(scheduler.run_script(mode=mode, schedule_config=schedule_config, force_run=True))
+        return {"success": True, "message": f"Manual run triggered successfully for mode '{mode}'"}
     except RuntimeError as e:
         logger.warning(f"Cannot trigger run: {e}")
         raise HTTPException(status_code=400, detail="A script execution is already in progress or the scheduler is busy.")
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error triggering scheduled run: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -11679,13 +12352,10 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                 if not matched:
                     language_groups["other"].append(item)
 
-            # Build result list in order of preference, then add other languages
+            # Build result list in order of preference (only configured preferred languages)
             result = []
             for lang in normalized_preferred_languages:
                 result.extend(language_groups[lang])
-
-            # Add other languages at the end
-            #result.extend(language_groups["other"])
 
             return result
 
@@ -12031,6 +12701,33 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             }
                                         )
 
+                            # Also fetch show backdrops so user can crop season posters from backdrops
+                            try:
+                                show_img_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/images"
+                                show_resp = await client.get(show_img_url, headers=headers)
+                                if show_resp.status_code == 200:
+                                    show_data = show_resp.json()
+                                    for backdrop in show_data.get("backdrops", []):
+                                        original_url = f"https://image.tmdb.org/t/p/original{backdrop.get('file_path')}"
+                                        if original_url not in seen_urls:
+                                            seen_urls.add(original_url)
+                                            all_results.append(
+                                                {
+                                                    "url": f"https://image.tmdb.org/t/p/w500{backdrop.get('file_path')}",
+                                                    "original_url": original_url,
+                                                    "source": "TMDB",
+                                                    "source_type": source,
+                                                    "type": "backdrop",
+                                                    "sub_type": "background",
+                                                    "language": backdrop.get("iso_639_1") or "xx",
+                                                    "vote_average": backdrop.get("vote_average", 0),
+                                                    "width": backdrop.get("width", 0),
+                                                    "height": backdrop.get("height", 0),
+                                                }
+                                            )
+                            except Exception as show_err:
+                                logger.debug(f"Could not fetch show backdrops for season: {show_err}")
+
                         elif request.asset_type == "background":
                             # Backgrounds
                             url = f"https://api.themoviedb.org/3/{media_endpoint}/{tmdb_id}/images"
@@ -12129,6 +12826,28 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 ),
                                                 "width": poster.get("width", 0),
                                                 "height": poster.get("height", 0),
+                                            }
+                                        )
+
+                                # Also include backdrops so users can select and crop posters from backdrops
+                                for backdrop in data.get("backdrops", []):
+                                    original_url = f"https://image.tmdb.org/t/p/original{backdrop.get('file_path')}"
+                                    if original_url not in seen_urls:
+                                        seen_urls.add(original_url)
+                                        all_results.append(
+                                            {
+                                                "url": f"https://image.tmdb.org/t/p/w500{backdrop.get('file_path')}",
+                                                "original_url": original_url,
+                                                "source": "TMDB",
+                                                "source_type": source,
+                                                "type": "backdrop",
+                                                "sub_type": "background",
+                                                "language": backdrop.get("iso_639_1") or "xx",
+                                                "vote_average": backdrop.get(
+                                                    "vote_average", 0
+                                                ),
+                                                "width": backdrop.get("width", 0),
+                                                "height": backdrop.get("height", 0),
                                             }
                                         )
 
@@ -12356,10 +13075,14 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 sub_type_val = "clearart" if art_type in ['22', '24'] else "clearlogo"
 
                                         elif request.asset_type in ["poster", "standard"]:
-                                            # Series: 2, Movies: 14
+                                            # Series: 2, Movies: 14 (Posters)
+                                            # Series: 3, Movies: 15 (Backgrounds)
                                             if art_type in ['2', '14']:
                                                 is_match = True
                                                 sub_type_val = "poster" if request.asset_type == "texture" else None
+                                            elif art_type in ['3', '15']:
+                                                is_match = True
+                                                sub_type_val = "background"
 
                                         elif request.asset_type in ["background", "texture"]:
                                             # Series: 3, Movies: 15
@@ -12393,7 +13116,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                 "original_url": image_url,
                                                 "source": "TVDB",
                                                 "source_type": source,
-                                                "type": "logo" if request.asset_type in ["logo", "clearlogo", "clearart"] else request.asset_type,
+                                                "type": "backdrop" if sub_type_val == "background" else ("logo" if request.asset_type in ["logo", "clearlogo", "clearart"] else request.asset_type),
                                                 **({"sub_type": sub_type_val} if sub_type_val else {}),
                                                 "language": final_lang,
                                                 # Map 'score' to 'vote_average' to ensure they aren't sorted to the bottom
@@ -12462,7 +13185,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             "hdtvclearart", "hdtvlogo", "clearart", "clearlogo" # TV
                                         ]
                                     elif request.asset_type == "poster":
-                                        fanart_keys = ["movieposter"]
+                                        fanart_keys = ["movieposter", "moviebackground"]
                                     elif request.asset_type == "background":
                                         fanart_keys = ["moviebackground"]
                                     elif request.asset_type == "texture":
@@ -12475,9 +13198,13 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                             item_url = item.get("url")
                                             if item_url and item_url not in seen_urls:
                                                 seen_urls.add(item_url)
-                                                # Determine sub_type
+                                                # Determine sub_type and item_type
                                                 sub_type = None
-                                                if request.asset_type == "logo":
+                                                item_type = request.asset_type
+                                                if "background" in key:
+                                                    sub_type = "background"
+                                                    item_type = "backdrop"
+                                                elif request.asset_type == "logo":
                                                     sub_type = "clearart" if "art" in key else "clearlogo"
                                                 elif request.asset_type == "texture":
                                                     if "poster" in key:
@@ -12491,7 +13218,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                                         "original_url": item_url,
                                                         "source": "Fanart.tv",
                                                         "source_type": source,
-                                                        "type": request.asset_type,
+                                                        "type": item_type,
                                                         **({"sub_type": sub_type} if sub_type else {}),
                                                         "language": item.get("lang"),
                                                         "likes": item.get("likes", 0),
@@ -12515,7 +13242,7 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         "hdtvclearart", "hdtvlogo", "clearart", "clearlogo" # TV
                                     ]
                                 elif request.asset_type == "poster":
-                                    fanart_keys = ["movieposter"]
+                                    fanart_keys = ["movieposter", "moviebackground"]
                                 elif request.asset_type == "background":
                                     fanart_keys = ["moviebackground"]
                                 else:
@@ -12526,14 +13253,22 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         item_url = item.get("url")
                                         if item_url and item_url not in seen_urls:
                                             seen_urls.add(item_url)
+                                            sub_type = None
+                                            item_type = request.asset_type
+                                            if "background" in key:
+                                                sub_type = "background"
+                                                item_type = "backdrop"
+                                            elif request.asset_type == "logo":
+                                                sub_type = "clearart" if "art" in key else "clearlogo"
+
                                             all_results.append(
                                                 {
                                                     "url": item_url,
                                                     "original_url": item_url,
                                                     "source": "Fanart.tv",
                                                     "source_type": "imdb_id",
-                                                    "type": request.asset_type,
-                                                    **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
+                                                    "type": item_type,
+                                                    **({"sub_type": sub_type} if sub_type else {}),
                                                     "language": item.get("lang"),
                                                     "likes": item.get("likes", 0),
                                                 }
@@ -12563,12 +13298,11 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         "hdtvclearart", "hdtvlogo", "clearart", "clearlogo" # TV
                                     ]
                                 elif request.asset_type == "poster":
-                                    # Standard TV show posters
-                                    fanart_keys = ["tvposter"]
+                                    # Standard TV show posters and show backgrounds
+                                    fanart_keys = ["tvposter", "showbackground"]
                                 elif request.asset_type == "season":
-                                    # Season-specific posters
-                                    # Fanart.tv has seasonposter but requires season filtering
-                                    fanart_keys = ["seasonposter"]
+                                    # Season-specific posters and show backgrounds
+                                    fanart_keys = ["seasonposter", "showbackground"]
                                 elif request.asset_type == "background":
                                     fanart_keys = ["showbackground"]
                                 elif request.asset_type == "texture":
@@ -12614,14 +13348,22 @@ async def fetch_asset_replacements(request: AssetReplaceRequest):
                                         item_url = item.get("url")
                                         if item_url and item_url not in seen_urls:
                                             seen_urls.add(item_url)
+                                            sub_type = None
+                                            item_type = request.asset_type
+                                            if "background" in key:
+                                                sub_type = "background"
+                                                item_type = "backdrop"
+                                            elif request.asset_type == "logo":
+                                                sub_type = "clearart" if "art" in key else "clearlogo"
+
                                             all_results.append(
                                                 {
                                                     "url": item_url,
                                                     "original_url": item_url,
                                                     "source": "Fanart.tv",
                                                     "source_type": source,  # "provided_id" or "title_search"
-                                                    "type": request.asset_type,
-                                                    **({"sub_type": "clearart" if "art" in key else "clearlogo"} if request.asset_type == "logo" else {}),
+                                                    "type": item_type,
+                                                    **({"sub_type": sub_type} if sub_type else {}),
                                                     "language": item.get("lang"),
                                                     "likes": item.get("likes", 0),
                                                 }
@@ -13375,6 +14117,7 @@ async def upload_asset_replacement(
     asset_path: str = Query(...),
     process_with_overlays: bool = Query(False),
     add_to_queue: bool = Query(False),
+    start_when_idle: bool = Query(False),
     title_text: Optional[str] = Query(None),
     folder_name: Optional[str] = Query(None),
     library_name: Optional[str] = Query(None),
@@ -13521,6 +14264,8 @@ async def upload_asset_replacement(
                         poster_with_text=posterWithText,
                         blueprint_overrides=parsed_overrides
                     )
+                if start_when_idle:
+                    schedule_queue_when_idle([item_id])
 
                 return {
                     "success": True,
@@ -13871,11 +14616,14 @@ async def upload_asset_replacement(
                     )
 
                     # Background task to monitor process completion and broadcast event
-                    async def _monitor_manual_run_and_broadcast(proc, lib, fold, atype, relpath, snum, enum, ttext):
+                    async def _monitor_manual_run_and_broadcast(proc, lib, fold, atype, relpath, snum, enum, ttext, rendered_title):
                         try:
                             loop = asyncio.get_running_loop()
                             await loop.run_in_executor(None, proc.wait)
                             if proc.returncode == 0:
+                                if atype == "titlecard":
+                                    from asset_title_changes import acknowledge_titlecard_replacement
+                                    await acknowledge_titlecard_replacement(BASE_DIR, CONFIG_PATH, relpath, rendered_title, proc.returncode)
                                 logger.info(f"[WS-Events] Manual run completed successfully for {fold}. Broadcasting...")
                                 await broadcast_asset_event(
                                     library_name=lib,
@@ -13902,7 +14650,8 @@ async def upload_asset_replacement(
                         normalized_path,
                         season_number,
                         episode_number,
-                        final_title_text
+                        final_title_text,
+                        episode_title
                     ))
 
                     if uploaded_template_file:
@@ -14252,6 +15001,7 @@ async def replace_asset_from_url(
     image_url: str = Query(...),
     process_with_overlays: bool = Query(False),
     add_to_queue: bool = Query(False),
+    start_when_idle: bool = Query(False),
     title_text: Optional[str] = Query(None),
     folder_name: Optional[str] = Query(None),
     library_name: Optional[str] = Query(None),
@@ -14315,6 +15065,8 @@ async def replace_asset_from_url(
                     source_data=image_url,
                     overlay_params=overlay_params
                 )
+                if start_when_idle:
+                    schedule_queue_when_idle([item_id])
 
                 return {
                     "success": True,
@@ -14578,11 +15330,14 @@ async def replace_asset_from_url(
 
                     # Monitor completion of manual run to broadcast real-time update
                     if current_process:
-                        async def _monitor_url_manual_run(proc, lib, fold, atype, relpath, snum, enum, ttext):
+                        async def _monitor_url_manual_run(proc, lib, fold, atype, relpath, snum, enum, ttext, rendered_title):
                             try:
                                 loop = asyncio.get_running_loop()
                                 await loop.run_in_executor(None, proc.wait)
                                 if proc.returncode == 0:
+                                    if atype == "titlecard":
+                                        from asset_title_changes import acknowledge_titlecard_replacement
+                                        await acknowledge_titlecard_replacement(BASE_DIR, CONFIG_PATH, relpath, rendered_title, proc.returncode)
                                     logger.info(f"[WS-Events] Manual run from URL completed for {fold}. Broadcasting...")
                                     await broadcast_asset_event(
                                         library_name=lib,
@@ -14609,7 +15364,8 @@ async def replace_asset_from_url(
                             asset_path,
                             season_poster_name,
                             ep_number,
-                            final_title_text
+                            final_title_text,
+                            ep_title_name
                         ))
 
                     if url_template_file:
@@ -14658,12 +15414,20 @@ async def replace_asset_from_url(
         raise HTTPException(status_code=500, detail="An internal error occurred.")
 
 
-async def trigger_manual_run_internal(request: ManualModeRequest):
+async def trigger_manual_run_internal(request: ManualModeRequest, *, title_regeneration=False):
     """
     Internal function to trigger manual run without HTTP overhead
     This is called from replace_asset_from_url
     """
     global current_process, current_mode, current_start_time
+
+    if title_regeneration:
+        from asset_title_changes import logger as run_logger
+    else:
+        run_logger = logger
+
+    if title_regeneration and request.posterType not in ("titlecard", "season", "standard"):
+        raise ValueError(f"Automatic title regeneration does not support {request.posterType}")
 
     # Check if already running
     if current_process and current_process.poll() is None:
@@ -14681,7 +15445,7 @@ async def trigger_manual_run_internal(request: ManualModeRequest):
             subprocess.run([ps_command, "-v"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             ps_command = "powershell"
-            logger.info("pwsh not found, using powershell instead")
+            run_logger.info("pwsh not found, using powershell instead")
     else:
         ps_command = "pwsh"
 
@@ -14771,7 +15535,7 @@ async def trigger_manual_run_internal(request: ManualModeRequest):
         temp_override_path = generate_blueprint_override_config(request.blueprint_overrides)
         command.extend(["-ConfigOverride", temp_override_path])
 
-    logger.info(f"Starting Manual Run: {' '.join(command)}")
+    run_logger.info(f"Starting Manual Run: {' '.join(command)}")
 
     # Start the process in background
     # IMPORTANT: Do NOT redirect stdout/stderr to PIPE if we're not reading them!
@@ -14782,11 +15546,141 @@ async def trigger_manual_run_internal(request: ManualModeRequest):
         stdout=None,  # Let output go to console/log
         stderr=None,  # Let output go to console/log
         text=True,
+        env={**os.environ, "POSTERIZARR_TITLE_REGENERATION": "1"} if title_regeneration else None,
     )
+    current_process.posterizarr_title_regeneration = title_regeneration
     current_mode = "manual"
     current_start_time = datetime.now().isoformat()
 
-    logger.info(f"Manual Run process started (PID: {current_process.pid})")
+    run_logger.info(f"Manual Run process started (PID: {current_process.pid})")
+
+async def regenerate_asset_title(job, manual=False):
+    media_type = job.get("media_type", "episode")
+    poster_type = job.get("poster_type", "titlecard")
+    if media_type not in ("episode", "season", "show", "movie"):
+        return False
+    from asset_title_changes import download_media_server_original, is_media_server_source, logger, title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+    from overlay_sync_service import get_server_credentials, is_overlay_sync_running, run_overlay_sync_task, _confirm_plex_titlecard
+    from plex_image_cleanup import is_cleanup_running
+
+    settings = get_dynamic_overlays_settings()
+    if not title_regeneration_allowed(settings, manual=manual):
+        return False
+    credentials = get_server_credentials(CONFIG_PATH).get(job["server_type"], {})
+    if not credentials.get("enabled") or str(credentials.get("url") or "").rstrip("/") != job["server_url"]:
+        return False
+    if RUNNING_FILE.exists() or (current_process and current_process.poll() is None) or is_overlay_sync_running() or is_cleanup_running():
+        return False
+    target = Path(job["asset_path"]).resolve()
+    if not target.is_relative_to(ASSETS_DIR.resolve()) or not target.is_file():
+        return False
+    source = job["source"]
+    downloaded_source = None
+    if is_media_server_source(source, [credentials["url"]]):
+        if not (manual and job.get("force_media_server_source")):
+            logger.warning("[TitleChanges] Cannot recreate %s: source was taken from a media server; use force recreate or a provider original.", Path(job["asset_path"]).name)
+            return False
+        downloaded_source = await download_media_server_original(job, credentials, BASE_DIR / "temp", CONFIG_PATH)
+        if downloaded_source is None:
+            return False
+        source = str(downloaded_source)
+    elif not is_safe_url(source, allow_private=False, allow_loopback=False):
+        logger.warning("[TitleChanges] Skipping unsafe source for %s", Path(job["asset_path"]).name)
+        return False
+    previous_stat = target.stat()
+    try:
+        if media_type == "episode":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job["title"],
+                folderName=job["folder"], libraryName=job["library"], posterType="titlecard",
+                mediaType="episode", seasonPosterName=str(job.get("season") if job.get("season") is not None else ""),
+                epTitleName=job["title"], episodeNumber=str(job.get("episode") if job.get("episode") is not None else ""),
+            )
+        elif media_type == "season":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job.get("title") or job.get("parent_title"),
+                folderName=job["folder"], libraryName=job["library"], posterType="season",
+                mediaType="tv", seasonPosterName=str(job.get("season") if job.get("season") is not None else ""),
+            )
+        elif media_type == "show":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job["title"],
+                folderName=job["folder"], libraryName=job["library"], posterType="standard",
+                mediaType="show",
+            )
+        elif media_type == "movie":
+            request = ManualModeRequest(
+                picturePath=source, titletext=job["title"],
+                folderName=job["folder"], libraryName=job["library"], posterType="standard",
+                mediaType="movie",
+            )
+        else:
+            return False
+
+        with process_lock:
+            if RUNNING_FILE.exists() or (current_process and current_process.poll() is None):
+                return False
+            await trigger_manual_run_internal(request, title_regeneration=True)
+            process = current_process
+        exit_code = await asyncio.to_thread(process.wait)
+    finally:
+        if downloaded_source is not None:
+            downloaded_source.unlink(missing_ok=True)
+    if exit_code != 0 or not target.is_file() or target.stat().st_mtime_ns == previous_stat.st_mtime_ns:
+        logger.warning("[TitleChanges] Asset was not successfully regenerated: %s", target.name)
+        return False
+    settings = get_dynamic_overlays_settings()
+    if not title_regeneration_allowed(settings, manual=manual):
+        return False
+    credentials = get_server_credentials(CONFIG_PATH).get(job["server_type"], {})
+    if not credentials.get("enabled") or str(credentials.get("url") or "").rstrip("/") != job["server_url"]:
+        return False
+
+    target_media_type = "movie" if media_type == "movie" else "show"
+    target_asset_type = "titlecard" if media_type == "episode" else ("season" if media_type == "season" else "poster")
+    target_item = {
+        "id": job["parent_id"] if media_type == "episode" else job["item_id"],
+        "server_type": job["server_type"],
+        "library_name": job["library"],
+        "media_type": target_media_type,
+        "asset_type": target_asset_type,
+        "season_number": job.get("season"),
+        "episode_number": job.get("episode"),
+        "force_reapply": False,
+    }
+    result = await run_overlay_sync_task(
+        target_server=job["server_type"], scope="incremental", library=job["library"],
+        base_dir=BASE_DIR, config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+        target_items=[target_item],
+    )
+    if not result.get("success") or result.get("stopped") or result.get("total_failed", 0):
+        return False
+    if result.get("total_synced", 0) + result.get("total_skipped", 0):
+        return True
+    from overlay_sync_service import resolve_library_rules
+    rules_path = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "configs" / "config.yml"
+    if not rules_path.is_file():
+        rules_path = BASE_DIR / "Overlayfiles" / "kometa" / "configs" / "config.yml"
+    if rules_path.is_file():
+        with open(rules_path, encoding="utf-8-sig") as rules_file:
+            libraries = (yaml.safe_load(rules_file) or {}).get("libraries") or {}
+        library_rules = {str(name).lower(): data.get("overlay_files") or data.get("overlays") or [] for name, data in libraries.items() if isinstance(data, dict)}
+        if resolve_library_rules(job["library"], target_media_type, library_rules)[1]:
+            logger.warning("[TitleChanges] Configured overlay target was not processed: %s", target.name)
+            return False
+    content = target.read_bytes()
+    async with httpx.AsyncClient(timeout=30, verify=False) as client:
+        if job["server_type"] == "plex":
+            response = await client.post(f"{credentials['url']}/library/metadata/{quote(job['item_id'], safe='')}/posters",
+                                         headers={"X-Plex-Token": credentials["token"], "Content-Type": "image/jpeg"}, content=content)
+            response.raise_for_status()
+            await _confirm_plex_titlecard(client, credentials["url"], job["item_id"], credentials["token"], content, artwork_type=target_asset_type)
+        else:
+            response = await client.post(f"{credentials['url']}/Items/{quote(job['item_id'], safe='')}/Images/Primary",
+                                         headers={"X-Emby-Token": credentials["api_key"], "Content-Type": "image/jpeg"}, content=content)
+            response.raise_for_status()
+    return True
 
 async def _find_and_delete_asset(record_id: int) -> Dict[str, any]:
     """
@@ -15411,10 +16305,26 @@ async def get_proxy_poster(server_type: str, item_id: str):
         raise HTTPException(status_code=503, detail="Database not available")
 
     import re
-    if not re.match(r"^[a-zA-Z0-9\-]+$", item_id):
+    if server_type.lower() == "silo":
+        valid_item_id = bool(item_id) and len(item_id) <= 512 and all(ord(character) >= 32 for character in item_id)
+    else:
+        valid_item_id = bool(re.match(r"^[a-zA-Z0-9\-]+$", item_id))
+    if not valid_item_id:
         raise HTTPException(status_code=400, detail="Invalid item_id format")
 
     try:
+        if server_type.lower() == "silo":
+            from silo_client import SiloClient, SiloError, get_silo_credentials
+            with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
+                credentials = get_silo_credentials(json.load(config_file))
+            if not credentials["url"] or not credentials["api_key"] or not is_safe_url(credentials["url"], allow_private=True, allow_loopback=True):
+                raise HTTPException(status_code=400, detail="Silo credentials missing or invalid")
+            try:
+                async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+                    content, media_type = await SiloClient(client, credentials["url"], credentials["api_key"], credentials["profile_id"]).poster(item_id)
+                return StreamingResponse(iter([content]), media_type=media_type)
+            except SiloError as error:
+                raise HTTPException(status_code=502, detail=str(error)) from None
         if server_type.lower() == "plex":
             active_server = "plex"
             server_url, server_token = _get_media_server_credentials("plex")
@@ -15464,14 +16374,30 @@ async def get_proxy_poster(server_type: str, item_id: str):
 
 from fastapi import BackgroundTasks
 
+metadata_refresh_running: bool = False
+metadata_refresh_stop_requested: bool = False
+
+def is_metadata_refresh_running() -> bool:
+    global metadata_refresh_running
+    return bool(metadata_refresh_running)
+
+def stop_metadata_refresh() -> bool:
+    global metadata_refresh_stop_requested, metadata_refresh_running
+    metadata_refresh_stop_requested = True
+    metadata_refresh_running = False
+    return True
+
 class RefreshSkippedRequest(BaseModel):
     ids: List[str] = [] # If empty, refresh all
 
 async def refresh_skipped_metadata_background(ids: List[str]):
     """Background task to fetch and update metadata for skipped items"""
+    global metadata_refresh_running, metadata_refresh_stop_requested
     if not DATABASE_AVAILABLE or db is None:
         return
 
+    metadata_refresh_running = True
+    metadata_refresh_stop_requested = False
     try:
         # Get active server credentials
         plex_url, plex_token = _get_media_server_credentials("plex")
@@ -15483,6 +16409,9 @@ async def refresh_skipped_metadata_background(ids: List[str]):
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for item in rows_data:
+                if metadata_refresh_stop_requested:
+                    logger.info("Metadata refresh stopped by user request.")
+                    break
 
                 # Check if we should process this item
                 str_id = str(item['id'])
@@ -15581,6 +16510,8 @@ async def refresh_skipped_metadata_background(ids: List[str]):
 
     except Exception as e:
         logger.error(f"Error in background metadata refresh task: {e}")
+    finally:
+        metadata_refresh_running = False
 
 @app.post("/api/assets/skipped/refresh")
 async def refresh_skipped_metadata(request: RefreshSkippedRequest, background_tasks: BackgroundTasks):
@@ -15590,6 +16521,32 @@ async def refresh_skipped_metadata(request: RefreshSkippedRequest, background_ta
 
     background_tasks.add_task(refresh_skipped_metadata_background, request.ids)
     return {"success": True, "message": "Metadata refresh started in the background"}
+
+@app.post("/api/assets/skipped/refresh/stop")
+async def stop_skipped_metadata_refresh():
+    """Cancel and stop the background skipped items metadata refresh."""
+    stop_metadata_refresh()
+    return {"success": True, "message": "Metadata refresh stopped.", "is_running": False}
+
+@app.post("/api/animetafill/stop")
+async def stop_animetafill_endpoint():
+    """Cancel and stop the currently running AniMetaFill sync task."""
+    try:
+        from animetafill_service import stop_animetafill_sync
+        stop_animetafill_sync()
+        return {"success": True, "message": "AniMetaFill sync stopped.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/plex-sync/stop")
+async def stop_plex_sync_endpoint():
+    """Cancel and stop the currently running Plex sync task."""
+    try:
+        from plex_push_service import stop_plex_sync
+        stop_plex_sync()
+        return {"success": True, "message": "Plex sync stopped.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 from typing import Optional, Union
 
@@ -15824,8 +16781,7 @@ def _get_effective_provider(library_name: str, asset_type: str, api_part: dict) 
 
     return str(api_part.get("FavProvider", "")).lower()
 
-@app.get("/api/assets/overview")
-async def get_assets_overview():
+def _build_assets_overview(counts_only=False):
     """
     Get asset overview with categorized issues.
     Categories: Missing Assets, Non-Primary Lang, Non-Primary Provider, Truncated Text, Total with Issues, Resolved
@@ -16029,16 +16985,21 @@ async def get_assets_overview():
                 lib_preferred_langs = lib_override.get("PreferredLanguageOrder", [])
                 lib_primary_lang = lib_preferred_langs[0] if lib_preferred_langs else None
 
-                if lib_primary_lang:
-                    if "background" in asset_type_lower:
-                        if lib_override.get("ApplyToBackground", True):
+                if "background" in asset_type_lower:
+                    if lib_override.get("ApplyToBackground", True):
+                        bg_enabled = lib_override.get("EnableBackgroundLanguageOrderOverride")
+                        lib_bg_langs = lib_override.get("PreferredBackgroundLanguageOrder", [])
+                        use_custom_bg = (bg_enabled is True or (bg_enabled is None and len(lib_bg_langs) > 0)) and len(lib_bg_langs) > 0
+                        if use_custom_bg:
+                            target_primary_lang = lib_bg_langs[0]
+                        elif lib_primary_lang:
                             target_primary_lang = lib_primary_lang
-                    elif "season" in asset_type_lower:
-                        if lib_override.get("ApplyToSeason", True):
-                            target_primary_lang = lib_primary_lang
-                    elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
-                        if lib_override.get("ApplyToPoster", True):
-                            target_primary_lang = lib_primary_lang
+                elif "season" in asset_type_lower:
+                    if lib_override.get("ApplyToSeason", True) and lib_primary_lang:
+                        target_primary_lang = lib_primary_lang
+                elif "titlecard" not in asset_type_lower and "episode" not in asset_type_lower:
+                    if lib_override.get("ApplyToPoster", True) and lib_primary_lang:
+                        target_primary_lang = lib_primary_lang
 
             if language and target_primary_lang:
                 # Normalize: "Textless" = "xx"
@@ -16096,6 +17057,9 @@ async def get_assets_overview():
             if has_issue:
                 assets_with_issues.append(record_dict)
 
+        if counts_only:
+            return len(assets_with_issues)
+
         return {
             "categories": {
                 "missing_assets": {"count": len(missing_assets), "assets": missing_assets},
@@ -16121,14 +17085,103 @@ async def get_assets_overview():
         logger.error(f"Error fetching assets overview: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
+@app.get("/api/assets/overview")
+async def get_assets_overview():
+    return await asyncio.to_thread(_build_assets_overview)
+
+
+def _paginate_asset_overview(overview, limit=25, offset=0, category="", status="Unresolved", search="", asset_type="", library="", all_matches=False):
+    categories = overview.get("categories", {})
+    unique_assets = {}
+    for group in categories.values():
+        for asset in group.get("assets", []):
+            unique_assets.setdefault(asset["id"], asset)
+
+    def matches_status(asset):
+        resolved = asset.get("Manual") in ("Yes", "true", True)
+        return status == "All" or (resolved if status == "Resolved" else not resolved)
+
+    status_assets = [asset for asset in unique_assets.values() if matches_status(asset)]
+    candidates = categories.get(category, {}).get("assets", []) if category else status_assets
+    query = search.strip().lower()
+    assets = [
+        asset for asset in candidates
+        if matches_status(asset)
+        and (not query or query in (asset.get("Title") or "").lower() or query in (asset.get("Rootfolder") or "").lower())
+        and (not asset_type or asset.get("Type") == asset_type)
+        and (not library or asset.get("LibraryName") == library)
+    ]
+    total_count = len(assets)
+    page_offset = 0 if all_matches else min(offset, max(0, ((total_count - 1) // limit) * limit))
+    return {
+        "assets": assets if all_matches else assets[page_offset:page_offset + limit],
+        "total_count": total_count,
+        "offset": page_offset,
+        "categories": {name: {"count": group.get("count", len(group.get("assets", [])))} for name, group in categories.items()},
+        "types": sorted({asset["Type"] for asset in status_assets if asset.get("Type")}),
+        "libraries": sorted({asset["LibraryName"] for asset in status_assets if asset.get("LibraryName")}),
+        "config": overview.get("config", {}),
+    }
+
+
+@app.get("/api/assets/overview/page")
+async def get_assets_overview_page(
+    limit: int = Query(25, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    tab: str = Query("active", pattern="^(active|skipped)$"),
+    category: str = "",
+    status: str = Query("Unresolved", pattern="^(All|Resolved|Unresolved)$"),
+    search: str = "",
+    asset_type: str = "",
+    library: str = "",
+    all_matches: bool = False,
+):
+    if tab == "skipped":
+        assets = await get_skipped_assets()
+        overview = {"categories": {"skipped": {"count": len(assets), "assets": assets}}}
+    else:
+        overview = await asyncio.to_thread(_build_assets_overview)
+    return await asyncio.to_thread(
+        _paginate_asset_overview, overview, limit, offset, category, status, search, asset_type, library, all_matches
+    )
+
+
+def _build_sidebar_counts():
+    issue_count = _build_assets_overview(counts_only=True)
+    cache = get_fresh_assets()
+    return {
+        "success": True,
+        "assets_with_issues": issue_count,
+        "manual_assets": cache.get("manual_gallery", {}).get("total_assets", 0),
+    }
+
+
+_sidebar_counts_cache = {"data": None, "expires_at": 0}
+_sidebar_counts_lock = asyncio.Lock()
+
+
+@app.get("/api/sidebar/counts")
+async def get_sidebar_counts(refresh: bool = False):
+    async with _sidebar_counts_lock:
+        if not refresh and _sidebar_counts_cache["data"] is not None and time.monotonic() < _sidebar_counts_cache["expires_at"]:
+            return _sidebar_counts_cache["data"]
+        data = await asyncio.to_thread(_build_sidebar_counts)
+        _sidebar_counts_cache.update(data=data, expires_at=time.monotonic() + 60)
+        return data
+
+
 @app.get("/api/imagechoices")
-async def get_all_imagechoices():
-    """Get all image choice records"""
+async def get_all_imagechoices(rootfolder: Optional[str] = None):
+    """Get all image choice records (optionally filtered by Rootfolder)"""
     if not DATABASE_AVAILABLE or db is None:
         raise HTTPException(status_code=503, detail="Database not available")
 
     try:
-        records = db.get_all_choices()
+        if rootfolder:
+            records = await asyncio.to_thread(db.get_choices_by_rootfolder, rootfolder)
+        else:
+            records = await asyncio.to_thread(db.get_all_choices)
         # Convert sqlite3.Row to dict
         return [dict(record) for record in records]
     except Exception as e:
@@ -16539,97 +17592,15 @@ def _sanitize_text_file(file_path: Path):
         logger.error(f"[SupportZip] Failed to sanitize text file {file_path}: {e}", exc_info=True)
 
 def _create_support_zip_blocking(staging_dir_path: Path, zip_file_path: Path) -> bool:
-    """
-    Internal blocking function to create the support zip in a background thread.
-    This function performs all file I/O operations.
-    """
-    try:
-        # 1. Define Paths (uses globals from main.py)
-        db_staging_dir = staging_dir_path / "database"
-        db_staging_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"[SupportZip] Staging directory: {staging_dir_path}")
+    """Build a sanitized support archive without importing application startup tasks."""
+    from support_bundle import create_support_bundle
 
-        # 2. Copy Log Folders
-        # Define ignore patterns
-        ignore_patterns_default = shutil.ignore_patterns('*.pyc', '__pycache__', '.DS_Store')
-        # For LOGS_DIR and ROTATED_LOGS_DIR, also ignore .json files
-        ignore_patterns_logs = shutil.ignore_patterns('*.pyc', '__pycache__', '.DS_Store', '*.json')
-
-        if 'LOGS_DIR' in globals() and LOGS_DIR.exists():
-            shutil.copytree(
-                LOGS_DIR,
-                staging_dir_path / "Logs",
-                dirs_exist_ok=True,
-                ignore=ignore_patterns_logs  # Use ignore pattern with '*.json'
-            )
-            logger.info("[SupportZip] Copied Logs directory (excluding .json files)")
-
-        if 'ROTATED_LOGS_DIR' in globals() and ROTATED_LOGS_DIR.exists():
-            shutil.copytree(
-                ROTATED_LOGS_DIR,
-                staging_dir_path / "RotatedLogs",
-                dirs_exist_ok=True,
-                ignore=ignore_patterns_logs  # Same ignore rules as Logs
-            )
-            logger.info("[SupportZip] Copied RotatedLogs directory (excluding .json files)")
-
-        if 'UI_LOGS_DIR' in globals() and UI_LOGS_DIR.exists():
-            shutil.copytree(
-                UI_LOGS_DIR,
-                staging_dir_path / "UILogs",
-                dirs_exist_ok=True,
-                ignore=ignore_patterns_default # Use default ignore pattern
-            )
-            logger.info("[SupportZip] Copied UILogs directory")
-
-        # 3. Copy Databases
-        for db_name in [
-            "media_export.db",
-            "runtime_stats.db",
-            "server_libraries.db",
-            "imagechoices.db"
-        ]:
-            src_db = DATABASE_DIR / db_name
-            if src_db.exists():
-                shutil.copy2(src_db, db_staging_dir / db_name)
-                logger.debug(f"[SupportZip] Copied DB: {db_name}")
-
-        # 3b. Sanitize all copied logs and databases recursively
-        logger.info("[SupportZip] Sanitizing all staged support files...")
-        for root, dirs, files in os.walk(staging_dir_path):
-            for file in files:
-                file_path = Path(root) / file
-                # Skip the zip file itself if it is already in the staging directory
-                if file_path == zip_file_path:
-                    continue
-
-                suffix = file_path.suffix.lower()
-                if suffix == '.db':
-                    logger.debug(f"[SupportZip] Sanitizing database file: {file_path.name}")
-                    _sanitize_db_file(file_path)
-                elif suffix in ['.log', '.txt', '.json'] or (suffix == '.csv' and file_path.name.lower() == 'imagechoices.csv'):
-                    logger.debug(f"[SupportZip] Sanitizing text file: {file_path.name}")
-                    _sanitize_text_file(file_path)
-
-        # 4. Create ZIP file
-        logger.debug(f"[SupportZip] Creating ZIP file at: {zip_file_path}")
-        with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(staging_dir_path):
-                if Path(root) == zip_file_path.parent and zip_file_path.name in files:
-                    files.remove(zip_file_path.name)
-
-                for file in files:
-                    file_path = Path(root) / file
-                    arcname = file_path.relative_to(staging_dir_path)
-                    zipf.write(file_path, arcname)
-
-        logger.info(f"[SupportZip] Support ZIP created successfully: {zip_file_path}")
-        return True
-
-    except Exception as e:
-        logger.error(f"[SupportZip] Failed to create support zip: {e}")
-        logger.exception("Full traceback for zip creation:")
-        return False
+    return create_support_bundle(
+        staging_dir_path, zip_file_path,
+        base_dir=BASE_DIR, database_dir=DATABASE_DIR,
+        logs_dir=LOGS_DIR, rotated_logs_dir=ROTATED_LOGS_DIR, ui_logs_dir=UI_LOGS_DIR,
+        project_root=APP_DIR,
+    )
 
 def _cleanup_support_files(staging_dir: Path):
     """
@@ -16691,6 +17662,7 @@ async def get_support_zip(background_tasks: BackgroundTasks):
 
     except Exception as e:
         logger.error(f"Failed to create support ZIP: {e}", exc_info=True)
+        _cleanup_support_files(staging_dir)
         logger.info("=" * 60)
         raise HTTPException(status_code=500, detail="Internal error while creating support package")
 
@@ -17180,6 +18152,9 @@ async def finalize_asset_replacement(
                     logger.info(f"Queue Processor: Waiting for Manual Run (PID {proc.pid}) to finish...")
                     while proc.poll() is None:
                         await asyncio.sleep(1)
+                    if poster_type == "titlecard":
+                        from asset_title_changes import acknowledge_titlecard_replacement
+                        await acknowledge_titlecard_replacement(BASE_DIR, CONFIG_PATH, asset_path, ep_title_name, proc.returncode)
                 finally:
                     if current_process == proc:
                         current_process = None
@@ -17225,7 +18200,22 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                     total = int(container.get("totalSize", container.get("size", 0)))
                     for item in root.findall(".//*[@title]"):
                         rating_key = item.get("ratingKey", "")
-                        has_logo = True # Assume true, let frontend onError handle 404s
+                        images = item.findall("./Image")
+                        logo_elem = item.find("./Image[@type='clearLogo']")
+                        updated_at = item.get("updatedAt", "")
+
+                        if logo_elem is not None and logo_elem.get("url"):
+                            raw_logo_url = logo_elem.get("url")
+                            logo_path = raw_logo_url if raw_logo_url.startswith("/") else f"/{raw_logo_url}"
+                            has_logo = True
+                            logo_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}{logo_path}')}"
+                        elif images:
+                            has_logo = False
+                            logo_url = None
+                        else:
+                            has_logo = True
+                            logo_path = f"/library/metadata/{rating_key}/clearLogo?t={updated_at}" if updated_at else f"/library/metadata/{rating_key}/clearLogo"
+                            logo_url = f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}{logo_path}')}"
 
                         items.append({
                             "title": item.get("title", ""),
@@ -17233,8 +18223,26 @@ async def get_media_server_items(request: MediaServerItemsRequest):
                             "type": item.get("type", ""),
                             "ratingKey": rating_key,
                             "hasLogo": has_logo,
-                            "logoUrl": f"/api/media-server/image?server_type=plex&url={urllib.parse.quote(f'{url}/library/metadata/{rating_key}/clearLogo')}"
+                            "logoUrl": logo_url
                         })
+
+            elif request.server_type == "silo":
+                from silo_client import SiloClient, get_silo_credentials
+
+                config = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+                credentials = get_silo_credentials(config)
+                if url != credentials["url"].rstrip("/"):
+                    raise ValueError("Silo URL does not match configured server")
+                silo = SiloClient(client, url, credentials["api_key"], credentials["profile_id"])
+                catalog = [row for row in await silo.catalog(request.library_id) if row.get("type") in ("movie", "series")]
+                total = len(catalog)
+                for row in catalog[max(0, request.start):max(0, request.start) + max(1, request.limit)]:
+                    detail = await silo.item(row["content_id"])
+                    reference = detail.get("logo_url")
+                    logo_url = url + reference if reference and reference.startswith("/api/v2/") else urllib.parse.urljoin(url + "/", reference or "")
+                    items.append({"title": row.get("title", ""), "year": row.get("year"),
+                                  "type": "show" if row["type"] == "series" else "movie", "ratingKey": str(row["content_id"]),
+                                  "hasLogo": bool(reference), "logoUrl": f"/api/media-server/image?server_type=silo&url={urllib.parse.quote(logo_url)}" if reference else None})
 
             elif request.server_type in ["jellyfin", "emby"]:
                 auth_header = "Authorization"
@@ -17353,13 +18361,14 @@ def invalidate_media_server_thumb_cache(rating_key: Optional[str] = None):
 async def proxy_media_server_image(
     server_type: str,
     url: str,
+    request: Request,
     t: Optional[str] = None,
     _cb: Optional[str] = None,
     force: bool = False
 ):
     """Proxies images from the media server with local disk caching to prevent polling on every reload"""
     server_type = server_type.lower().strip()
-    if server_type not in ["plex", "jellyfin", "emby"]:
+    if server_type not in ["plex", "jellyfin", "emby", "silo"]:
         raise HTTPException(status_code=400, detail="Invalid server_type")
 
     # Guard against URL-based traversal and SSRF
@@ -17380,6 +18389,9 @@ async def proxy_media_server_image(
         base_server_url = config.get("JellyfinUrl") if config.get("using_flat_structure") else config.get("JellyfinPart", {}).get("JellyfinUrl")
     elif server_type == "emby":
         base_server_url = config.get("EmbyUrl") if config.get("using_flat_structure") else config.get("EmbyPart", {}).get("EmbyUrl")
+    elif server_type == "silo":
+        from silo_client import get_silo_credentials
+        base_server_url = get_silo_credentials(config)["url"]
 
     if not base_server_url:
         raise HTTPException(status_code=400, detail="Requested media server is not configured")
@@ -17400,7 +18412,8 @@ async def proxy_media_server_image(
     allowed_prefixes = {
         "plex": ("/library/metadata/", "/photo/", "/thumb/"),
         "jellyfin": ("/Items/", "/Images/"),
-        "emby": ("/Items/", "/Images/")
+        "emby": ("/Items/", "/Images/"),
+        "silo": (parsed_base.path.rstrip("/") + "/api/v2/artwork/",)
     }
     valid_prefixes = allowed_prefixes.get(server_type, ())
     if not any(target_path.startswith(prefix) for prefix in valid_prefixes):
@@ -17427,8 +18440,14 @@ async def proxy_media_server_image(
     if not cached_img_path.is_relative_to(THUMB_CACHE_DIR.resolve()) or not cached_meta_path.is_relative_to(THUMB_CACHE_DIR.resolve()):
         raise HTTPException(status_code=400, detail="Invalid cache path")
 
+    # Check if client requested cache bypass (e.g. via force, _cb, t, or Ctrl+Shift+R Cache-Control header)
+    cache_control = request.headers.get("cache-control", "").lower()
+    pragma = request.headers.get("pragma", "").lower()
+    hard_reload = "no-cache" in cache_control or "no-cache" in pragma
+    bypass_cache = force or bool(_cb) or bool(t) or hard_reload
+
     # Fast path: serve directly from disk cache if exists and not forced
-    if not force and not _cb and cached_img_path.is_file() and cached_img_path.stat().st_size > 0:
+    if not bypass_cache and cached_img_path.is_file() and cached_img_path.stat().st_size > 0:
         content_type = "image/jpeg"
         if cached_meta_path.is_file():
             try:
@@ -17483,7 +18502,7 @@ async def proxy_media_server_image(
                 media_type=content_type,
                 headers={
                     "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
-                    "X-Posterizarr-Cache": "MISS"
+                    "X-Posterizarr-Cache": "BYPASS" if bypass_cache else "MISS"
                 }
             )
     except HTTPException:
@@ -17506,12 +18525,20 @@ ALLOWED_IMAGE_DOMAINS = {
     "wikimedia.org",
     "wikipedia.org",
     "githubusercontent.com",
+    "theposterdb.com",
+    "posterspy.com",
+    "imgur.com",
+    "redd.it",
+    "redditmedia.com",
+    "discordapp.com",
+    "discordapp.net",
+    "fbcdn.net",
 }
 
 
 @app.get("/api/proxy-image")
 async def proxy_image(url: str):
-    """Proxy external images (like TMDB/Fanart) to avoid CORS issues on frontend canvas."""
+    """Proxy external images (like TMDB/Fanart/Custom URLs) to avoid CORS issues on frontend canvas."""
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ["http", "https"] or not parsed.hostname:
         raise HTTPException(status_code=400, detail="Invalid URL")
@@ -17541,9 +18568,6 @@ async def proxy_image(url: str):
             is_allowed = True
             allow_private = True
 
-    if not is_allowed:
-        raise HTTPException(status_code=403, detail="Domain not permitted for image proxy")
-
     safe_url = urllib.parse.urlunsplit((
         parsed.scheme,
         parsed.netloc,
@@ -17552,20 +18576,24 @@ async def proxy_image(url: str):
         ""
     ))
 
+    # If still not explicitly in whitelist, allow if it's a safe public internet URL (not private IP, not loopback, not cloud metadata)
+    if not is_allowed:
+        if is_safe_url(safe_url, allow_private=False, allow_loopback=False):
+            is_allowed = True
+
+    if not is_allowed:
+        raise HTTPException(status_code=403, detail="Domain not permitted for image proxy")
+
     # Block localhost, private IPs, and cloud metadata unless configured media server
     if not is_safe_url(safe_url, allow_private=allow_private, allow_loopback=allow_private):
         raise HTTPException(status_code=403, detail="Forbidden URL target")
 
-    async def stream_image():
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("GET", safe_url) as resp:
-                if resp.status_code != 200:
-                    yield b""
-                    return
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
-
-    return StreamingResponse(stream_image(), media_type="image/jpeg")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(safe_url)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail="Failed to fetch image")
+        content_type = resp.headers.get("content-type", "image/jpeg")
+        return Response(content=resp.content, media_type=content_type)
 
 
 
@@ -17583,6 +18611,7 @@ async def upload_media_server_logo(request: UploadLogoRequest):
     import subprocess
     import shutil
 
+    temp_logo = None
     try:
         url = request.url.rstrip('/')
 
@@ -17602,6 +18631,13 @@ async def upload_media_server_logo(request: UploadLogoRequest):
                 config.get("EmbyPart", {}).get("EmbyUrl")
             ]
         valid_urls = [u for u in valid_urls if u]
+        from silo_client import get_silo_credentials
+        silo_credentials = get_silo_credentials(config)
+        if silo_credentials["url"]:
+            valid_urls.append(silo_credentials["url"])
+
+        if request.server_type == "silo" and url != silo_credentials["url"].rstrip("/"):
+            return {"success": False, "error": "Target URL is not the configured Silo server."}
 
         if not any(url.startswith(v.rstrip('/')) for v in valid_urls):
             return {"success": False, "error": "Target URL is not a configured media server."}
@@ -17674,7 +18710,17 @@ async def upload_media_server_logo(request: UploadLogoRequest):
         # Upload Logo
         async with httpx.AsyncClient(timeout=30.0) as client:
             safe_item_id = "".join(c for c in str(request.item_id) if c.isalnum() or c in "-_")
-            if request.server_type == "plex":
+            if request.server_type == "silo":
+                from silo_client import SiloClient
+                silo = SiloClient(client, url, silo_credentials["api_key"], silo_credentials["profile_id"])
+                catalog = await silo.catalog(item_id=request.item_id)
+                native_item = next((row for row in catalog if str(row.get("content_id")) == request.item_id), {})
+                if native_item.get("type") not in ("movie", "series"):
+                    raise ValueError("Silo logo upload requires a movie or series")
+                await silo.upload(request.item_id, Path(temp_logo).read_bytes(), "logo", native_item["type"])
+                Path(temp_logo).unlink(missing_ok=True)
+                return {"success": True}
+            elif request.server_type == "plex":
                 upload_url = f"{url}/library/metadata/{safe_item_id}/clearLogos"
                 headers = {"X-Plex-Token": request.token, "Content-Type": "image/jpeg"}
                 with open(temp_logo, "rb") as f:
@@ -17694,12 +18740,16 @@ async def upload_media_server_logo(request: UploadLogoRequest):
         os.unlink(temp_logo)
 
         if upload_resp.status_code in [200, 201, 204]:
+            invalidate_media_server_thumb_cache(safe_item_id)
             return {"success": True}
         return {"success": False, "error": f"Failed to upload to media server. Code: {upload_resp.status_code}"}
 
     except Exception as e:
         logger.error(f"Error uploading logo: {e}", exc_info=True)
         return {"success": False, "error": "Failed to upload logo. Check server logs."}
+    finally:
+        if temp_logo:
+            Path(temp_logo).unlink(missing_ok=True)
 
 
 
@@ -17719,13 +18769,91 @@ class RunQueueRequest(BaseModel):
 class DeleteQueueRequest(BaseModel):
     item_ids: List[int]
 
-async def run_queue_processor(item_ids: Optional[List[int]] = None):
+async def process_queued_episode_title(item):
+    from asset_title_changes import create_title_monitor, queued_episode_title_is_current
+
+    monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+    candidate_id = item.get("overlay_params", {}).get("episode_title_candidate_id")
+    force_unknown_text = item.get("overlay_params", {}).get("force_unknown_text") is True
+    job = await asyncio.to_thread(monitor.candidate_job, candidate_id, force_unknown_text=force_unknown_text)
+    if job is None:
+        raise ValueError("episode_title_candidate_unavailable")
+    try:
+        if not await queued_episode_title_is_current(job, CONFIG_PATH):
+            raise RuntimeError("episode_title_changed_rescan_required")
+        if not await regenerate_asset_title(job, manual=True):
+            raise RuntimeError("episode_title_not_completed")
+        await asyncio.to_thread(monitor.acknowledge, job)
+    except Exception:
+        await asyncio.to_thread(monitor.record_failure, job, "not_completed")
+        raise
+
+
+queue_processing_lock = threading.Lock()
+
+
+async def run_queue_processor(item_ids: Optional[List[int]] = None, *, should_stop=None, on_item_finished=None):
+    if not queue_processing_lock.acquire(blocking=False):
+        raise RuntimeError("busy")
+    try:
+        await _run_queue_processor(item_ids, should_stop=should_stop, on_item_finished=on_item_finished)
+    finally:
+        queue_processing_lock.release()
+
+
+idle_queue_item_ids = set()
+idle_queue_task = None
+
+
+def _queue_runner_idle():
+    from overlay_sync_service import is_overlay_sync_running
+    from plex_image_cleanup import is_cleanup_running
+
+    return not (RUNNING_FILE.exists() or (current_process and current_process.poll() is None)
+                or queue_processing_lock.locked() or is_overlay_sync_running() or is_cleanup_running())
+
+
+async def _process_queue_when_idle():
+    global idle_queue_task
+    try:
+        while idle_queue_item_ids:
+            if not _queue_runner_idle():
+                await asyncio.sleep(5)
+                continue
+            requested = sorted(idle_queue_item_ids)
+            try:
+                await run_queue_processor(requested)
+            except RuntimeError:
+                await asyncio.sleep(5)
+                continue
+            pending = {item["id"] for item in queue_manager.get_items_by_ids(requested) if item["status"] == "pending"}
+            idle_queue_item_ids.difference_update(set(requested) - pending)
+            if pending:
+                await asyncio.sleep(5)
+    except Exception:
+        logger.exception("Queue idle runner failed")
+    finally:
+        idle_queue_task = None
+
+
+def schedule_queue_when_idle(item_ids):
+    """Process the given queue items as soon as no run, sync, cleanup or queue batch is active."""
+    global idle_queue_task
+    idle_queue_item_ids.update(int(item_id) for item_id in item_ids if item_id is not None)
+    if idle_queue_item_ids and (idle_queue_task is None or idle_queue_task.done()):
+        idle_queue_task = asyncio.create_task(_process_queue_when_idle())
+    return sorted(idle_queue_item_ids)
+
+
+async def _run_queue_processor(item_ids: Optional[List[int]] = None, *, should_stop=None, on_item_finished=None):
     """
     Background task to process the queue sequentially.
     """
     logger.info("Starting Queue Processor")
 
     while True:
+        if should_stop and should_stop():
+            break
         # helper check
         if RUNNING_FILE.exists():
             logger.warning("Posterizarr is running. Aborting queue start.")
@@ -17743,6 +18871,8 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
         logger.info(f"Queue Processor: Found {len(items)} pending items.")
 
         for item in items:
+            if should_stop and should_stop():
+                break
             # Check running file before each item to be safe/responsive to external stops
             if RUNNING_FILE.exists():
                  logger.warning("Queue Processor: execution paused/stopped because RUNNING_FILE appeared.")
@@ -17752,8 +18882,13 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
             logger.info(f"Queue Processor: Processing item #{item_id} ({item['asset_path']})")
 
             queue_manager.update_status(item_id, "processing")
+            item_status = "completed"
 
             try:
+                if item["source_type"] == "episode_title":
+                    await process_queued_episode_title(item)
+                    queue_manager.update_status(item_id, "completed")
+                    continue
                 content = b""
                 if item["source_type"] == "url":
                     if not is_safe_url(item["source_data"], allow_private=True):
@@ -17795,8 +18930,12 @@ async def run_queue_processor(item_ids: Optional[List[int]] = None):
                         pass
 
             except Exception as e:
+                item_status = "failed"
                 logger.error(f"Queue Processor: Failed item #{item_id}: {e}")
                 queue_manager.update_status(item_id, "failed", str(e))
+            finally:
+                if on_item_finished:
+                    await on_item_finished(item, item_status)
 
         if item_ids:
             break
@@ -17826,7 +18965,7 @@ async def clear_queue():
 
 @app.post("/api/queue/run")
 async def run_queue(background_tasks: BackgroundTasks, request: Optional[RunQueueRequest] = None):
-    if RUNNING_FILE.exists():
+    if RUNNING_FILE.exists() or queue_processing_lock.locked():
         raise HTTPException(status_code=409, detail="Posterizarr is already running")
 
     item_ids = request.item_ids if request else None
@@ -17840,7 +18979,7 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
     """Fetch collections from media server"""
     try:
         server_type = request.server_type.lower().strip()
-        if server_type not in ["plex", "jellyfin", "emby"]:
+        if server_type not in ["plex", "jellyfin", "emby", "silo"]:
             raise HTTPException(status_code=400, detail="Invalid server_type")
 
         clean_lib_id = "".join(c for c in str(request.library_id) if c.isalnum() or c in "-_").strip()
@@ -17856,6 +18995,29 @@ async def get_media_server_collections(request: MediaServerItemsRequest):
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
+
+        if server_type == "silo":
+            from silo_client import SiloClient, get_silo_credentials
+            credentials = get_silo_credentials(config)
+            if url != credentials["url"].rstrip("/"):
+                raise HTTPException(status_code=403, detail="Silo URL does not match configured server")
+            if request.library_id in (credentials["excluded"] or []):
+                return {"success": True, "items": [], "total": 0}
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                silo = SiloClient(client, url, credentials["api_key"], credentials["profile_id"])
+                libraries = await silo.libraries()
+                included = {library["id"] for library in libraries if library["name"] not in (credentials["excluded"] or [])}
+                rows = [row for row in await silo.collections(request.library_id)
+                        if included.intersection(str(identifier) for identifier in [row.get("library_id"), *(row.get("library_ids") or [])])]
+            entries = []
+            for row in rows[max(0, request.start):max(0, request.start) + max(1, request.limit)]:
+                reference = row.get("poster_url")
+                poster_url = url + reference if reference and reference.startswith("/api/v2/") else urllib.parse.urljoin(url + "/", reference or "")
+                entries.append({"title": row.get("title", ""), "ratingKey": str(row["id"]), "type": "collection",
+                                "summary": row.get("description", ""), "childCount": row.get("item_count", 0), "itemCount": row.get("item_count", 0),
+                                "hasPoster": bool(reference), "posterUrl": f"/api/media-server/image?server_type=silo&url={urllib.parse.quote(poster_url)}" if reference else None,
+                                "hasLocalAsset": False, "syncStatus": "missing_local"})
+            return {"success": True, "items": entries, "total": len(rows)}
 
         expected_url = None
         if server_type == "plex":
@@ -18192,7 +19354,7 @@ async def api_get_studio_logo_image(filename: str):
 
     base_dir = (IMAGES_DIR / "studio_logos").resolve()
     file_path = (base_dir / clean_filename).resolve()
-    if not str(file_path).startswith(str(base_dir)):
+    if not _is_within_root(file_path, base_dir):
         raise HTTPException(status_code=403, detail="Path traversal detected")
 
     if not file_path.is_file():
@@ -18246,6 +19408,23 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
 
+        if request.server_type == "silo":
+            from silo_client import SiloClient, get_silo_credentials
+            credentials = get_silo_credentials(config)
+            if server_url != credentials["url"].rstrip("/"):
+                raise HTTPException(status_code=403, detail="Silo URL does not match configured server")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                silo = SiloClient(client, server_url, credentials["api_key"], credentials["profile_id"])
+                collection = next((row for row in await silo.collections() if str(row.get("id")) == request.rating_key), None)
+                if collection is None:
+                    return {"success": False, "error": "Silo collection not found"}
+                libraries = await silo.libraries()
+                included = {library["id"] for library in libraries if library["name"] not in (credentials["excluded"] or [])}
+                if not included.intersection(str(identifier) for identifier in [collection.get("library_id"), *(collection.get("library_ids") or [])]):
+                    return {"success": False, "error": "Silo collection is not in an included library"}
+                await silo.upload_collection(request.rating_key, data)
+            return {"success": True}
+
         expected_url = None
         if request.server_type == "plex":
             expected_url = config.get("PlexUrl") if config.get("using_flat_structure") else config.get("PlexPart", {}).get("PlexUrl")
@@ -18274,6 +19453,33 @@ async def api_upload_collection_to_server(request: UploadToServerRequest):
                 response = await client.post(url, headers=headers, content=data)
                 if response.status_code not in [200, 201]:
                     return {"success": False, "error": f"Plex returned status {response.status_code}"}
+
+                # Select and lock poster in Plex so it becomes active and stays locked
+                try:
+                    expected_hash = hashlib.sha1(data).hexdigest()
+                    gallery_resp = await client.get(
+                        f"{server_url}/library/metadata/{safe_rating_key}/posters",
+                        headers={"X-Plex-Token": request.server_token, "Accept": "application/xml"}
+                    )
+                    if gallery_resp.status_code == 200:
+                        from xml.etree.ElementTree import fromstring
+                        g_root = fromstring(gallery_resp.content)
+                        uploaded = next((node for node in g_root
+                                         if str(node.get("ratingKey", "")).startswith("upload://")
+                                         and str(node.get("ratingKey", "")).endswith("/" + expected_hash)), None)
+                        if uploaded is not None:
+                            await client.put(
+                                f"{server_url}/library/metadata/{safe_rating_key}/poster",
+                                headers={"X-Plex-Token": request.server_token},
+                                params={"url": uploaded.get("ratingKey")}
+                            )
+                    from plex_push_service import set_plex_field_lock
+                    await set_plex_field_lock(
+                        client, server_url, safe_rating_key, request.server_token,
+                        field_name="thumb.locked", lock_val="1"
+                    )
+                except Exception as sel_err:
+                    logger.warning(f"Could not select/lock poster for {safe_rating_key}: {sel_err}")
 
                 # Update persistent cache so Collection Explorer recognizes it as in sync immediately
                 try:
@@ -18650,6 +19856,2395 @@ async def api_search_media_logos(request: TMDBCollectionSearchRequest):
     except Exception as e:
         logger.error(f"Error searching media logos: {e}")
         return {"success": False, "error": "Failed to search media logos."}
+
+
+# ==============================================================================
+# DYNAMIC OVERLAYS ENDPOINTS (KOMETA MIGRATION & RUNTIME CACHE)
+# ==============================================================================
+
+try:
+    from overlay_cache import OverlayCache
+    from overlay_resolver import (
+        OverlayResolver, safe_resolve_overlay_path,
+        ALLOWED_ALL_EXTS, ALLOWED_FONT_EXTS, ALLOWED_IMAGE_EXTS, ALLOWED_CONFIG_EXTS
+    )
+    from overlay_engine import DynamicOverlayCompositor, draw_backdrop_and_text, PORTRAIT_DIM, LANDSCAPE_DIM
+    dynamic_overlay_cache = OverlayCache(DATABASE_DIR / "overlay_cache.db")
+    overlay_resolver = OverlayResolver(BASE_DIR)
+    # Backward compatibility aliases
+    kometa_resolver = overlay_resolver
+    safe_resolve_kometa_path = safe_resolve_overlay_path
+    KometaResolver = OverlayResolver
+except Exception as _init_err:
+    logger.error(f"Failed initializing Dynamic Overlays services: {_init_err}", exc_info=True)
+    dynamic_overlay_cache = None
+    overlay_resolver = None
+    kometa_resolver = None
+
+
+class DynamicOverlayFetchRequest(BaseModel):
+    asset_name: str
+    category: str = "image"
+    custom_url: Optional[str] = None
+
+
+class DynamicOverlayImportDefaultsRequest(BaseModel):
+    overwrite: bool = False
+
+
+@app.get("/api/dynamic-overlays/status")
+async def get_dynamic_overlays_status():
+    """Return status, directory information, and cache summary for dynamic overlays."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        yaml_files = kometa_resolver.get_configured_yaml_files()
+        defaults_files = kometa_resolver.get_available_defaults()
+        inventory = kometa_resolver.get_storage_inventory()
+        stats = dynamic_overlay_cache.get_stats() if dynamic_overlay_cache else {}
+        return {
+            "success": True,
+            "kometa_dir": str(kometa_resolver.kometa_dir),
+            "configs_dir": str(kometa_resolver.configs_dir),
+            "assets_dir": str(kometa_resolver.assets_dir),
+            "defaults_dir": str(kometa_resolver.defaults_dir),
+            "fonts_dir": str(kometa_resolver.fonts_dir),
+            "has_configs": len(yaml_files) > 0,
+            "yaml_files": yaml_files,
+            "defaults_files": defaults_files,
+            "inventory": inventory,
+            "cache_stats": stats
+        }
+    except Exception as e:
+        logger.error(f"Error fetching dynamic overlays status: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/scan")
+async def scan_dynamic_overlays():
+    """Scan Overlayfiles/kometa/configs/ and return library mappings and asset readiness checklist."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        report = kometa_resolver.scan_and_analyze_rules()
+        yaml_files = kometa_resolver.get_configured_yaml_files()
+        return {
+            "success": True,
+            "yaml_files": yaml_files,
+            **report
+        }
+    except Exception as e:
+        logger.error(f"Error scanning dynamic overlays: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/assets")
+async def list_dynamic_overlay_assets(category: str = Query("all")):
+    """List local image assets using relative paths for the per-variant asset picker."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        assets = await asyncio.to_thread(kometa_resolver.list_available_image_assets, category)
+        return {"success": True, "assets": assets}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        logger.error("Error listing dynamic overlay assets: %s", error, exc_info=True)
+        return {"success": False, "error": "Could not list overlay image assets."}
+
+
+@app.post("/api/dynamic-overlays/import-defaults")
+@app.post("/api/dynamic-overlays/import")
+async def import_dynamic_overlays_defaults(req: Optional[DynamicOverlayImportDefaultsRequest] = None):
+    """Import official Kometa default overlay templates from GitHub directly into Overlayfiles/kometa/defaults/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        overwrite = req.overwrite if req else False
+        result = await kometa_resolver.import_defaults_from_github(overwrite=overwrite)
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {
+            "success": True,
+            "import_result": result,
+            "scan": fresh_scan
+        }
+    except Exception as e:
+        logger.error(f"Error importing Kometa defaults from GitHub: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/import-images/progress")
+async def get_dynamic_overlays_images_progress():
+    """Returns real-time download and extraction progress of official Kometa images."""
+    try:
+        from overlay_resolver import get_images_import_progress
+        return {"success": True, "progress": get_images_import_progress()}
+    except Exception as e:
+        return {"success": False, "error": str(e), "progress": {}}
+
+
+@app.post("/api/dynamic-overlays/import-images")
+async def import_dynamic_overlays_images(req: Optional[DynamicOverlayImportDefaultsRequest] = None):
+    """Import official Kometa default overlay images (flags, resolution, ratings, ribbons, etc.) directly into Overlayfiles/dynamic_overlays/assets/ and defaults/images/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        from overlay_resolver import is_images_import_running, get_images_import_progress
+        if is_images_import_running():
+            return {
+                "success": True,
+                "message": "Image import is already in progress.",
+                "is_running": True,
+                "progress": get_images_import_progress()
+            }
+
+        overwrite = req.overwrite if req else False
+
+        async def _run_import():
+            try:
+                await kometa_resolver.import_default_images_from_github(overwrite=overwrite)
+                kometa_resolver.scan_and_analyze_rules()
+            except Exception as e_run:
+                logger.error(f"[OverlayResolver] Background image import error: {e_run}", exc_info=True)
+                try:
+                    from overlay_resolver import _images_import_progress
+                    _images_import_progress.update({
+                        "is_running": False,
+                        "phase": "error",
+                        "error": str(e_run),
+                        "message": f"Import failed: {e_run}"
+                    })
+                except Exception:
+                    pass
+
+        asyncio.create_task(_run_import())
+        return {
+            "success": True,
+            "message": "Official Kometa image import initiated.",
+            "is_running": True,
+            "progress": get_images_import_progress()
+        }
+    except Exception as e:
+        logger.error(f"Error initiating Kometa default images download: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/fetch-asset")
+async def fetch_dynamic_overlay_asset(req: DynamicOverlayFetchRequest):
+    """Fetch a single missing asset safely from official repository or custom URL."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        res = await kometa_resolver.fetch_asset(
+            asset_name=req.asset_name,
+            category=req.category,
+            custom_url=req.custom_url
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Error fetching asset {req.asset_name}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/fetch-all-missing")
+async def fetch_all_missing_dynamic_overlay_assets():
+    """Fetch all fetchable assets in batch."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        res = await kometa_resolver.fetch_all_missing()
+        return {"success": True, **res}
+    except Exception as e:
+        logger.error(f"Error batch fetching missing assets: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/upload-asset")
+async def upload_dynamic_overlay_asset(
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
+    category: Optional[str] = Form(None)
+):
+    """Upload custom assets (images, fonts, or YAML configs) directly to Overlayfiles/kometa/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        upload_list = []
+        if files:
+            upload_list.extend(files)
+        if file:
+            upload_list.append(file)
+
+        if not upload_list:
+            raise HTTPException(status_code=400, detail="No files provided for upload.")
+
+        saved_files = []
+        errors = []
+        all_extracted_keys = {}
+
+        for f in upload_list:
+            filename = f.filename or ""
+            ext = Path(filename).suffix.lower()
+
+            # Auto-detect category from file extension, falling back to provided category
+            if ext in ALLOWED_CONFIG_EXTS or category in ("config", "configs", "yaml", "yml", "template"):
+                target_dir = kometa_resolver.configs_dir
+                allowed = ALLOWED_CONFIG_EXTS
+                cat_name = "config"
+            elif ext in ALLOWED_FONT_EXTS or category in ("font", "fonts"):
+                target_dir = kometa_resolver.fonts_dir
+                allowed = ALLOWED_FONT_EXTS
+                cat_name = "font"
+            elif ext in ALLOWED_IMAGE_EXTS or category in ("image", "assets", "asset", "images"):
+                target_dir = kometa_resolver.assets_dir
+                allowed = ALLOWED_IMAGE_EXTS
+                cat_name = "image"
+            else:
+                errors.append(f"{filename}: Unsupported file type '{ext}'. Allowed extensions: {sorted(list(ALLOWED_ALL_EXTS))}")
+                continue
+
+            safe_path = safe_resolve_kometa_path(target_dir, filename, allowed)
+            if not safe_path:
+                errors.append(f"{filename}: Disallowed or invalid filename.")
+                continue
+
+            content = await f.read()
+            if len(content) > 15 * 1024 * 1024:
+                errors.append(f"{filename}: File size exceeds maximum 15MB limit.")
+                continue
+
+            parsed_yaml = None
+            # If it's a YAML config, also validate YAML syntax so corrupt files aren't saved
+            if cat_name == "config":
+                try:
+                    parsed_yaml = yaml.safe_load(content.decode("utf-8-sig"))
+                except Exception as ye:
+                    errors.append(f"{filename}: Invalid YAML syntax: {ye}")
+                    continue
+
+                if isinstance(parsed_yaml, dict):
+                    try:
+                        from dynamic_overlays_service import extract_kometa_api_keys, save_dynamic_overlays_settings
+                        extracted = extract_kometa_api_keys(parsed_yaml)
+                        if extracted:
+                            save_dynamic_overlays_settings(extracted)
+                            all_extracted_keys.update(extracted)
+                            logger.info(f"[Upload] Extracted API keys from {filename}: {list(extracted.keys())}")
+                    except Exception as ee:
+                        logger.warning(f"[Upload] Error extracting API keys from {filename}: {ee}")
+
+            # If the target file already exists, create a backup first
+            if safe_path.exists():
+                backup_path = safe_path.with_suffix(f"{safe_path.suffix}.bak")
+                shutil.copy2(safe_path, backup_path)
+
+            with open(safe_path, "wb") as f_out:
+                f_out.write(content)
+
+            # Auto-translate uploaded config.yml / config.yaml to visual config
+            if cat_name == "config" and (filename.lower() in ("config.yml", "config.yaml") or (isinstance(parsed_yaml, dict) and "libraries" in parsed_yaml)):
+                try:
+                    from dynamic_overlays_service import parse_config_yml_to_visual, save_visual_config
+                    fresh_vis = parse_config_yml_to_visual(safe_path)
+                    if fresh_vis and fresh_vis.get("libraries"):
+                        save_visual_config(fresh_vis)
+                        logger.info(f"[Upload] Auto-translated {filename} into visual configuration.")
+                except Exception as ve:
+                    logger.warning(f"[Upload] Auto-translation to visual configuration failed: {ve}")
+
+            saved_files.append({
+                "filename": filename,
+                "category": cat_name,
+                "path": str(safe_path),
+                "size_bytes": len(content)
+            })
+
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        yaml_files = kometa_resolver.get_configured_yaml_files()
+
+        if not saved_files and errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
+
+        return {
+            "success": len(saved_files) > 0,
+            "saved_files": saved_files,
+            "errors": errors,
+            "count": len(saved_files),
+            "filename": saved_files[0]["filename"] if saved_files else None,
+            "category": saved_files[0]["category"] if saved_files else None,
+            "path": saved_files[0]["path"] if saved_files else None,
+            "yaml_files": yaml_files,
+            "readiness": fresh_scan.get("readiness", {}),
+            "scan": fresh_scan,
+            "extracted_keys": list(all_extracted_keys.keys()) if all_extracted_keys else []
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading asset: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.delete("/api/dynamic-overlays/config-file")
+async def delete_dynamic_overlay_config_file(filename: str = Query(...)):
+    """Safely delete a configuration or overlay YAML file from Overlayfiles/kometa/configs/."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        res = kometa_resolver.delete_config_file(filename)
+        if res.get("success"):
+            fresh_scan = kometa_resolver.scan_and_analyze_rules()
+            yaml_files = kometa_resolver.get_configured_yaml_files()
+            return {**res, "scan": fresh_scan, "yaml_files": yaml_files}
+        return res
+    except Exception as e:
+        logger.error(f"Error deleting config file {filename}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/preview")
+def preview_dynamic_overlay(
+    template_type: str = Query("movie_poster"),
+    output: str = Query("image"),
+    library_name: Optional[str] = Query(None),
+    rating: Optional[str] = Query("8.4"),
+    runtime: Optional[str] = Query("1h 58m"),
+    runtime_prefix: Optional[str] = Query(None),
+    runtime_format: Optional[str] = Query(None),
+    language_labels: Optional[bool] = Query(None),
+    subtitle_labels: Optional[bool] = Query(None),
+    language_style: Optional[str] = Query(None, pattern="^(round|square|half)$"),
+    subtitle_style: Optional[str] = Query(None, pattern="^(round|square|half)$"),
+    status_label: Optional[str] = Query(""),
+    status_color: Optional[str] = Query("#FFA500"),
+    resolution: Optional[str] = Query("4K"),
+    languages: Optional[str] = Query("de,en"),
+    language_limit: int = Query(5, ge=1, le=5),
+    subtitle_languages: Optional[str] = Query(None),
+    aspect_ratio: Optional[float] = Query(None, gt=0, lt=10),
+    studio: Optional[str] = Query(None),
+    supplemental_layout: Optional[str] = Query(None),
+    streaming: Optional[str] = Query(None),
+    streaming_options: Optional[str] = Query(None),
+    anime_tag: Optional[str] = Query(None),
+    network: Optional[str] = Query(None),
+    multi_ratings: Optional[str] = Query(None),
+    rating_sources: Optional[str] = Query(None),
+    rating_orientation: Optional[str] = Query("horizontal"),
+    rating_contrast_box: Optional[bool] = Query(True),
+    rating_spacing: Optional[int] = Query(15),
+    rating_options: Optional[str] = Query(None),
+    rating_mode: Optional[str] = Query(None),
+    # Optional layout offsets
+    rating_x: Optional[int] = Query(None),
+    rating_y: Optional[int] = Query(None),
+    rating_align: Optional[str] = Query(None),
+    rating_valign: Optional[str] = Query(None),
+    runtime_x: Optional[int] = Query(None),
+    runtime_y: Optional[int] = Query(None),
+    runtime_align: Optional[str] = Query(None),
+    runtime_valign: Optional[str] = Query(None),
+    status_x: Optional[int] = Query(None),
+    status_y: Optional[int] = Query(None),
+    status_align: Optional[str] = Query(None),
+    status_valign: Optional[str] = Query(None),
+    res_x: Optional[int] = Query(None),
+    res_y: Optional[int] = Query(None),
+    res_align: Optional[str] = Query(None),
+    res_valign: Optional[str] = Query(None),
+    anime_x: Optional[int] = Query(None),
+    anime_y: Optional[int] = Query(None),
+    anime_align: Optional[str] = Query(None),
+    anime_valign: Optional[str] = Query(None),
+    lang_x: Optional[int] = Query(None),
+    lang_y: Optional[int] = Query(None),
+    lang_align: Optional[str] = Query(None),
+    lang_valign: Optional[str] = Query(None),
+    network_x: Optional[int] = Query(None),
+    network_y: Optional[int] = Query(None),
+    network_align: Optional[str] = Query(None),
+    network_valign: Optional[str] = Query(None),
+    age_rating: Optional[str] = Query(None),
+    age_rating_x: Optional[int] = Query(None),
+    age_rating_y: Optional[int] = Query(None),
+    age_rating_align: Optional[str] = Query(None),
+    age_rating_valign: Optional[str] = Query(None),
+    age_rating_source: Optional[str] = Query("commonsense"),
+    audio_codec: Optional[str] = Query(None),
+    audio_codec_style: Optional[str] = Query("compact"),
+    audio_codec_x: Optional[int] = Query(None),
+    audio_codec_y: Optional[int] = Query(None),
+    audio_codec_align: Optional[str] = Query(None),
+    audio_codec_valign: Optional[str] = Query(None),
+    video_format: Optional[str] = Query(None),
+    video_format_x: Optional[int] = Query(None),
+    video_format_y: Optional[int] = Query(None),
+    video_format_align: Optional[str] = Query(None),
+    video_format_valign: Optional[str] = Query(None),
+    custom_image_id: Optional[str] = Query(None),
+    asset_overlay: bool = Query(False),
+    media_type: Optional[str] = Query(None),
+    resolution_mode: Optional[str] = Query(None),
+    resolution_back_color: Optional[str] = Query(None),
+    resolution_back_radius: Optional[int] = Query(None),
+    resolution_back_width: Optional[int] = Query(None),
+    resolution_back_height: Optional[int] = Query(None),
+    runtime_font_size: Optional[int] = Query(None),
+    runtime_font: Optional[str] = Query(None),
+    rating_font_size: Optional[int] = Query(None),
+    rating_font: Optional[str] = Query(None),
+    age_rating_font_size: Optional[int] = Query(None),
+    age_rating_font: Optional[str] = Query(None),
+    status_font_size: Optional[int] = Query(None),
+    status_font: Optional[str] = Query(None),
+    languages_font_size: Optional[int] = Query(None),
+    languages_font: Optional[str] = Query(None)
+):
+    """Generate in-memory live preview composite showing active dynamic overlays."""
+    try:
+        import base64
+
+        def _clean_str(v, max_len=64):
+            if v is None:
+                return None
+            if not isinstance(v, (str, int, float)):
+                return None
+            s = str(v).strip()
+            if s.lower() in ("none", "off", "false", "", "null"):
+                return None
+            # Multi-pass decode to neutralize double-encoded traversal
+            for _ in range(3):
+                dec = urllib.parse.unquote(s)
+                if dec == s:
+                    break
+                s = dec
+            # Strip path separators, directory traversal tokens, and control characters
+            s = re.sub(r'[\x00-\x1f\x7f/\\:\*\?"<>|~]', '', s)
+            if ".." in s:
+                return None
+            return s[:max_len]
+
+        def _clean_int(v):
+            if v is None:
+                return None
+            try:
+                return int(v)
+            except (ValueError, TypeError):
+                return None
+
+        rating = _clean_str(rating)
+        runtime = _clean_str(runtime)
+        if runtime_prefix is not None:
+            runtime_prefix = re.sub(r"[\x00-\x1f\x7f]", "", runtime_prefix)[:64]
+        if runtime_format not in (None, "<<runtimeH>>h <<runtimeM>>m", "<<runtime>> min"):
+            raise ValueError("Invalid runtime display format")
+        status_label = _clean_str(status_label)
+        status_color = _clean_str(status_color)
+        resolution = _clean_str(resolution)
+        languages = _clean_str(languages)
+        subtitle_languages = _clean_str(subtitle_languages)
+        studio = _clean_str(studio)
+        streaming = _clean_str(streaming)
+        anime_tag = _clean_str(anime_tag)
+        network = _clean_str(network)
+        multi_ratings = _clean_str(multi_ratings)
+        rating_sources = _clean_str(rating_sources)
+        age_rating = _clean_str(age_rating)
+        age_rating_source = _clean_str(age_rating_source) or "commonsense"
+        audio_codec = _clean_str(audio_codec)
+        audio_codec_style = _clean_str(audio_codec_style) or "compact"
+        video_format = _clean_str(video_format)
+        resolution_mode = _clean_str(resolution_mode)
+        resolution_back_color = _clean_str(resolution_back_color)
+        resolution_back_radius = _clean_int(resolution_back_radius)
+        resolution_back_width = _clean_int(resolution_back_width)
+        resolution_back_height = _clean_int(resolution_back_height)
+
+        runtime_font = _clean_str(runtime_font)
+        runtime_font_size = _clean_int(runtime_font_size)
+        rating_font = _clean_str(rating_font)
+        rating_font_size = _clean_int(rating_font_size)
+        age_rating_font = _clean_str(age_rating_font)
+        age_rating_font_size = _clean_int(age_rating_font_size)
+        status_font = _clean_str(status_font)
+        status_font_size = _clean_int(status_font_size)
+        languages_font = _clean_str(languages_font)
+        languages_font_size = _clean_int(languages_font_size)
+
+        rating_x = _clean_int(rating_x)
+        rating_y = _clean_int(rating_y)
+        runtime_x = _clean_int(runtime_x)
+        runtime_y = _clean_int(runtime_y)
+        status_x = _clean_int(status_x)
+        status_y = _clean_int(status_y)
+        res_x = _clean_int(res_x)
+        res_y = _clean_int(res_y)
+        anime_x = _clean_int(anime_x)
+        anime_y = _clean_int(anime_y)
+        lang_x = _clean_int(lang_x)
+        lang_y = _clean_int(lang_y)
+        network_x = _clean_int(network_x)
+        network_y = _clean_int(network_y)
+        age_rating_x = _clean_int(age_rating_x)
+        age_rating_y = _clean_int(age_rating_y)
+        audio_codec_x = _clean_int(audio_codec_x)
+        audio_codec_y = _clean_int(audio_codec_y)
+        video_format_x = _clean_int(video_format_x)
+        video_format_y = _clean_int(video_format_y)
+
+        is_landscape = (template_type in ("episode_card", "backdrop", "background", "titlecard"))
+        dim = LANDSCAPE_DIM if is_landscape else PORTRAIT_DIM
+
+        from overlay_preview import build_preview_layers
+        from overlay_sync_service import build_overlay_layers_for_item
+        from dynamic_overlays_service import get_config_yml_path, get_overlays_dir
+        from animetafill_service import get_animetafill_config
+
+        placements = {}
+        controls = [
+            ("rating", rating, rating_x, rating_y, rating_align, rating_valign, rating_font_size),
+            ("status", status_label, status_x, status_y, status_align, status_valign, status_font_size),
+            ("runtime", runtime, runtime_x, runtime_y, runtime_align, runtime_valign, runtime_font_size),
+            ("resolution", resolution, res_x, res_y, res_align, res_valign, None),
+            ("languages", languages, lang_x, lang_y, lang_align, lang_valign, languages_font_size),
+            ("network", network, network_x, network_y, network_align, network_valign, None),
+            ("anime", anime_tag, anime_x, anime_y, anime_align, anime_valign, None),
+            ("age_rating", age_rating, age_rating_x, age_rating_y, age_rating_align, age_rating_valign, age_rating_font_size),
+            ("audio_codec", audio_codec, audio_codec_x, audio_codec_y, audio_codec_align, audio_codec_valign, None),
+            ("video_format", video_format, video_format_x, video_format_y, video_format_align, video_format_valign, None),
+        ]
+        for key, value, offset_x, offset_y, align, valign, font_size in controls:
+            if value:
+                placements[key] = {"x": offset_x or 0, "y": offset_y or 0,
+                                   "align": align or "left", "valign": valign or "top", "font_size": font_size}
+        extra_layout = json.loads(supplemental_layout or "{}")
+        for key, value in (("subtitle_languages", subtitle_languages), ("aspect", aspect_ratio), ("studio", studio), ("streaming", streaming)):
+            if value:
+                position = extra_layout.get(key) or {}
+                placements[key] = {
+                    "x": _clean_int(position.get("x")) or 0,
+                    "y": _clean_int(position.get("y")) or 0,
+                    "align": position.get("align") if position.get("align") in ("left", "center", "right") else "center",
+                    "valign": position.get("valign") if position.get("valign") in ("top", "center", "bottom") else "bottom",
+                }
+        for key, font_name in (("rating", rating_font), ("status", status_font), ("runtime", runtime_font),
+                               ("languages", languages_font), ("age_rating", age_rating_font)):
+            if key in placements and font_name:
+                placements[key]["font"] = os.path.basename(font_name)
+        library_rules = None
+        if library_name:
+            import yaml
+            config_path = get_config_yml_path()
+            if not config_path.exists():
+                raise ValueError("The selected library's overlay configuration is missing")
+            if config_path.exists():
+                with config_path.open(encoding="utf-8") as config_file:
+                    preview_config = yaml.safe_load(config_file) or {}
+                library_config = (preview_config.get("libraries") or {}).get(library_name)
+                if library_config is None:
+                    raise ValueError("Selected preview library is not configured")
+                library_rules = library_config.get("overlay_files") or library_config.get("overlays") or []
+        layers = build_preview_layers({
+            "template_type": template_type, "rating": rating, "runtime": runtime,
+            "runtime_prefix": runtime_prefix, "runtime_format": runtime_format,
+            "language_labels": language_labels, "subtitle_labels": subtitle_labels,
+            "language_style": language_style, "subtitle_style": subtitle_style,
+            "status_label": status_label, "status_color": status_color, "resolution": resolution, "languages": languages,
+            "subtitle_languages": subtitle_languages, "aspect_ratio": aspect_ratio, "studio": studio,
+            "network": network, "age_rating": age_rating, "age_rating_source": age_rating_source,
+            "language_limit": language_limit,
+            "audio_codec": audio_codec, "video_format": video_format, "anime_tag": anime_tag,
+            "library_name": library_name, "media_type": media_type,
+            "rating_options": json.loads(rating_options or "{}"),
+            "rating_mode": rating_mode, "resolution_mode": resolution_mode,
+            "resolution_back_color": resolution_back_color, "resolution_back_radius": resolution_back_radius,
+            "resolution_back_width": resolution_back_width, "resolution_back_height": resolution_back_height,
+            "audio_codec_style": audio_codec_style,
+            "streaming": streaming, "streaming_options": json.loads(streaming_options or "{}"),
+        }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item,
+            animetafill_config=get_animetafill_config())
+
+        if output == "sprites":
+            sprites = DynamicOverlayCompositor.render_preview_groups(layers, "landscape" if is_landscape else "portrait")
+            for sprite in sprites:
+                sprite["src"] = "data:image/png;base64," + base64.b64encode(sprite.pop("image_bytes")).decode("ascii")
+                for part in sprite["parts"]:
+                    part["src"] = "data:image/png;base64," + base64.b64encode(part.pop("image_bytes")).decode("ascii")
+                sprite["placement"] = placements.get(sprite["key"], {"x": 0, "y": 0, "align": "left", "valign": "top"})
+            return {"template_type": template_type, "width": dim[0], "height": dim[1], "sprites": sprites}
+
+        base = None
+        custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+        if custom_image_id:
+            safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(custom_image_id).strip())
+            for ext in (".png", ".jpg", ".jpeg", ".webp"):
+                candidate = custom_previews_dir / f"{safe_id}{ext}"
+                if candidate.exists():
+                    try:
+                        base = Image.open(candidate).convert("RGBA")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed opening custom preview image {candidate}: {e}")
+
+        if base is None:
+            try:
+                try:
+                    from .defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+                except ImportError:
+                    from defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+
+                default_poster_path = BASE_DIR / "Overlayfiles" / "default_poster.jpg"
+                default_bg_path = BASE_DIR / "Overlayfiles" / "default_background.jpg"
+
+                if is_landscape:
+                    if default_bg_path.exists():
+                        base = Image.open(default_bg_path).convert("RGBA")
+                    elif DEFAULT_BACKGROUND_B64:
+                        raw_bg = base64.b64decode(DEFAULT_BACKGROUND_B64.strip())
+                        base = Image.open(BytesIO(raw_bg)).convert("RGBA")
+                else:
+                    if default_poster_path.exists():
+                        base = Image.open(default_poster_path).convert("RGBA")
+                    elif DEFAULT_POSTER_B64:
+                        raw_p = base64.b64decode(DEFAULT_POSTER_B64.strip())
+                        base = Image.open(BytesIO(raw_p)).convert("RGBA")
+            except Exception as img_err:
+                logger.warning(f"Failed to load sample image for dynamic overlay preview: {img_err}")
+                base = None
+
+        if not base:
+            base = Image.new("RGBA", dim, (24, 28, 36, 255))
+            draw = ImageDraw.Draw(base)
+            center_text = "SAMPLE TITLE CARD (1920x1080)" if is_landscape else "SAMPLE MOVIE POSTER (1000x1500)"
+            draw.text(
+                (dim[0] // 2, dim[1] // 2),
+                center_text,
+                anchor="mm",
+                fill=(255, 255, 255, 90)
+            )
+        base = _render_preview_base(base, template_type, resolution, media_type, asset_overlay)
+
+        base_buf = BytesIO()
+        base.save(base_buf, format="PNG")
+        base_bytes = base_buf.getvalue()
+
+        rendered_bytes = DynamicOverlayCompositor.composite_overlays(
+            base_image_bytes=base_bytes,
+            layers=layers,
+            canvas_type="landscape" if is_landscape else "portrait",
+            abort_on_missing_asset=True
+        )
+
+        return Response(
+            content=rendered_bytes,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
+    except Exception as e:
+        logger.error(f"Error generating preview: {e}", exc_info=True)
+        return Response(content=b"", status_code=500)
+
+
+def _render_preview_base(image, template_type, resolution, media_type, asset_overlay):
+    from overlay_preview import apply_asset_creation_overlay
+    asset_config = {}
+    if asset_overlay:
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
+                asset_config = json.load(config_file)
+        except (OSError, ValueError) as config_err:
+            logger.warning(f"Could not read asset overlay settings for preview: {config_err}")
+    return apply_asset_creation_overlay(image, template_type, asset_config, OVERLAYFILES_DIR, resolution, media_type)
+
+
+@app.get("/api/dynamic-overlays/sample-image")
+def get_dynamic_overlays_sample_image(
+    template_type: str = Query("movie_poster"),
+    custom_image_id: Optional[str] = Query(None),
+    asset_overlay: bool = Query(False),
+    resolution: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None)
+):
+    """Serve base sample movie poster or landscape episode card image for canvas preview backdrop."""
+    import base64
+    is_landscape = (template_type in ("episode_card", "backdrop", "background", "titlecard"))
+    dim = LANDSCAPE_DIM if is_landscape else PORTRAIT_DIM
+
+    def _respond(source):
+        if not asset_overlay:
+            if isinstance(source, Path):
+                ext = source.suffix.lower()
+                return FileResponse(source, media_type=f"image/{'png' if ext == '.png' else ('webp' if ext == '.webp' else 'jpeg')}")
+            return Response(content=source, media_type="image/jpeg")
+        with Image.open(source if isinstance(source, Path) else BytesIO(source)) as image:
+            rendered = _render_preview_base(image, template_type, resolution, media_type, True)
+        buf = BytesIO()
+        rendered.convert("RGB").save(buf, format="JPEG", quality=92)
+        return Response(content=buf.getvalue(), media_type="image/jpeg",
+                        headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+    custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+    if custom_image_id:
+        safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(custom_image_id).strip())
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            cand = custom_previews_dir / f"{safe_id}{ext}"
+            if cand.exists():
+                return _respond(cand)
+
+    try:
+        try:
+            from .defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+        except ImportError:
+            from defaults import DEFAULT_POSTER_B64, DEFAULT_BACKGROUND_B64
+
+        default_poster_path = BASE_DIR / "Overlayfiles" / "default_poster.jpg"
+        default_bg_path = BASE_DIR / "Overlayfiles" / "default_background.jpg"
+
+        if is_landscape:
+            if default_bg_path.exists():
+                return _respond(default_bg_path)
+            elif DEFAULT_BACKGROUND_B64:
+                return _respond(base64.b64decode(DEFAULT_BACKGROUND_B64.strip()))
+        else:
+            if default_poster_path.exists():
+                return _respond(default_poster_path)
+            elif DEFAULT_POSTER_B64:
+                return _respond(base64.b64decode(DEFAULT_POSTER_B64.strip()))
+    except Exception as e:
+        logger.error(f"Error serving sample image: {e}")
+
+    blank = Image.new("RGBA", dim, (24, 28, 36, 255))
+    buf = BytesIO()
+    blank.convert("RGB").save(buf, format="JPEG")
+    return _respond(buf.getvalue())
+
+
+@app.post("/api/dynamic-overlays/upload-preview-image")
+async def upload_dynamic_overlay_preview_image(
+    file: UploadFile = File(...),
+    template_type: str = Form("movie_poster")
+):
+    """Save an uploaded custom poster, season card, or titlecard image to test overlays on."""
+    try:
+        if not file.filename:
+            return {"success": False, "error": "No file selected."}
+
+        safe_type = re.sub(r'[^a-zA-Z0-9_\-]', '', str(template_type).strip()) or "movie_poster"
+        ext = Path(file.filename).suffix.lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+            return {"success": False, "error": f"Unsupported image format '{ext}'. Please upload PNG, JPG, or WebP."}
+
+        contents = await file.read()
+        if len(contents) > 30 * 1024 * 1024:
+            return {"success": False, "error": "Image file too large (max 30MB)."}
+
+        try:
+            img = Image.open(BytesIO(contents))
+            orig_w, orig_h = img.size
+        except Exception as img_err:
+            return {"success": False, "error": f"Invalid or corrupted image: {img_err}"}
+
+        custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+        custom_previews_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_path = custom_previews_dir / f"{safe_type}.png"
+        if not _is_within_root(dest_path.resolve(), custom_previews_dir.resolve()):
+            return {"success": False, "error": "Invalid destination path."}
+        img.convert("RGBA").save(dest_path, format="PNG")
+
+        import time
+        t = int(time.time())
+        return {
+            "success": True,
+            "preview_image_id": safe_type,
+            "filename": file.filename,
+            "width": orig_w,
+            "height": orig_h,
+            "url": f"/api/dynamic-overlays/custom-preview-image/{safe_type}?t={t}"
+        }
+    except Exception as e:
+        logger.error(f"Error uploading preview image: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/custom-preview-image/{image_id}")
+async def get_custom_preview_image(image_id: str):
+    """Retrieve saved custom preview image."""
+    safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(image_id).strip())
+    if not safe_id:
+        raise HTTPException(status_code=400, detail="Invalid image id")
+    custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+    path = custom_previews_dir / f"{safe_id}.png"
+    if not _is_within_root(path.resolve(), custom_previews_dir.resolve()):
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+    if path.exists():
+        return FileResponse(path, media_type="image/png")
+    raise HTTPException(status_code=404, detail="Custom preview image not found")
+
+
+@app.delete("/api/dynamic-overlays/custom-preview-image/{image_id}")
+async def delete_custom_preview_image(image_id: str):
+    """Delete a custom preview image to revert to default sample."""
+    safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', str(image_id).strip())
+    if not safe_id:
+        raise HTTPException(status_code=400, detail="Invalid image id")
+    custom_previews_dir = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "cache" / "custom_previews"
+    path = custom_previews_dir / f"{safe_id}.png"
+    if not _is_within_root(path.resolve(), custom_previews_dir.resolve()):
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+    if path.exists():
+        try:
+            path.unlink()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    return {"success": True}
+
+
+class QuarantineDeletionRequest(BaseModel):
+    confirmation: str
+
+
+@app.get("/api/plex-image-cleanup/availability")
+async def get_plex_quarantine_availability():
+    from plex_image_cleanup import quarantine_availability
+    return {"success": True, **await asyncio.to_thread(quarantine_availability, BASE_DIR, CONFIG_PATH)}
+
+
+@app.get("/api/plex-image-cleanup/quarantine")
+async def get_plex_image_quarantine():
+    from plex_image_cleanup import list_quarantine_runs, quarantine_availability
+    try:
+        availability = await asyncio.to_thread(quarantine_availability, BASE_DIR, CONFIG_PATH)
+        if not availability["visible"]:
+            raise HTTPException(status_code=403, detail="Plex quarantine requires enabled Plex and a cleanup schedule or cleanup history")
+        return {"success": True, **await asyncio.to_thread(list_quarantine_runs, BASE_DIR)}
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.delete("/api/plex-image-cleanup/quarantine/{run_id}")
+async def delete_plex_image_quarantine(run_id: str, request: QuarantineDeletionRequest):
+    from plex_image_cleanup import delete_quarantine_run, quarantine_availability
+    try:
+        availability = await asyncio.to_thread(quarantine_availability, BASE_DIR, CONFIG_PATH)
+        if not availability["visible"]:
+            raise HTTPException(status_code=403, detail="Plex quarantine requires enabled Plex and a cleanup schedule or cleanup history")
+        return await asyncio.to_thread(delete_quarantine_run, BASE_DIR, run_id, request.confirmation)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+class SaveLayoutRequest(BaseModel):
+    library_name: str
+    layout: Dict[str, Optional[Dict[str, Any]]]
+    filename: str = "config.yml"
+    target_format: Optional[str] = None
+    media_type: Optional[str] = None
+
+
+@app.post("/api/dynamic-overlays/save-layout")
+async def save_dynamic_overlay_layout(req: SaveLayoutRequest):
+    """Save drag-and-drop layout coordinates directly to a library's overlay rules."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.save_library_layout(
+        req.library_name,
+        req.layout,
+        req.filename,
+        target_format=req.target_format,
+        media_type=req.media_type
+    )
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        fresh_vis = {}
+        try:
+            from dynamic_overlays_service import parse_config_yml_to_visual
+            fresh_vis = parse_config_yml_to_visual()
+        except Exception as ve:
+            logger.warning(f"Failed parsing fresh visual config: {ve}")
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
+    return res
+
+
+@app.get("/api/dynamic-overlays/cache")
+async def get_dynamic_overlays_cache():
+    """Return cache statistics and recent synced items."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        stats = dynamic_overlay_cache.get_stats()
+        recent = dynamic_overlay_cache.get_recent_entries(limit=40)
+        return {"success": True, "stats": stats, "recent": recent}
+    except Exception as e:
+        logger.error(f"Error fetching cache: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/cache/clear")
+async def clear_dynamic_overlays_cache(server_type: Optional[str] = Query(None)):
+    """Clear cached overlay records."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        deleted = dynamic_overlay_cache.clear_cache(server_type)
+        return {"success": True, "deleted_count": deleted}
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/cache/entries")
+async def get_dynamic_overlays_cache_entries(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    server_type: Optional[str] = Query(None),
+    asset_type: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    sort_by: str = Query("last_pushed_at"),
+    sort_desc: bool = Query(True)
+):
+    """Return paginated entries from the dynamic overlay push cache."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        data = dynamic_overlay_cache.get_entries(
+            page=page,
+            limit=limit,
+            search=search,
+            server_type=server_type,
+            asset_type=asset_type,
+            media_type=media_type,
+            status=status,
+            sort_by=sort_by,
+            sort_desc=sort_desc
+        )
+        return {"success": True, **data}
+    except Exception as e:
+        logger.error(f"Error querying overlay cache entries: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "entries": [], "total": 0}
+
+
+@app.delete("/api/dynamic-overlays/cache/entry/{entry_id}")
+async def delete_dynamic_overlay_cache_entry(entry_id: int):
+    """Delete a single entry from dynamic overlay push cache."""
+    if not dynamic_overlay_cache:
+        return {"success": False, "error": "Overlay cache uninitialized."}
+    try:
+        deleted = dynamic_overlay_cache.delete_entry_by_id(entry_id)
+        if deleted:
+            return {"success": True, "message": "Cache entry deleted."}
+        return {"success": False, "error": "Entry not found or already deleted."}
+    except Exception as e:
+        logger.error(f"Error deleting cache entry {entry_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+
+class SaveConfigContentRequest(BaseModel):
+    filename: str = "config.yml"
+    content: str
+
+
+class RemoveOverlayRuleRequest(BaseModel):
+    library_name: str
+    overlay_index: int
+    filename: str = "config.yml"
+
+
+class AddOverlayRuleRequest(BaseModel):
+    library_name: str
+    overlay_type: str = "default"
+    overlay_name: str
+    template_variables: Optional[Dict[str, Any]] = None
+    filename: str = "config.yml"
+
+
+class UpdateOverlayVariablesRequest(BaseModel):
+    library_name: str
+    overlay_index: int
+    template_variables: Dict[str, Any]
+    filename: str = "config.yml"
+
+
+@app.get("/api/dynamic-overlays/config-content")
+async def get_dynamic_overlays_config_content(filename: str = Query("config.yml")):
+    """Read raw YAML content of config.yml for in-UI editing."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    return kometa_resolver.get_config_content(filename)
+
+
+@app.post("/api/dynamic-overlays/config-content")
+async def save_dynamic_overlays_config_content(req: SaveConfigContentRequest):
+    """Save raw YAML content with syntax validation and automatic backup."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.save_config_content(req.filename, req.content)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/rules/remove")
+async def remove_dynamic_overlay_rule(req: RemoveOverlayRuleRequest):
+    """Remove a specific overlay rule from a library in config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.remove_library_overlay(req.library_name, req.overlay_index, req.filename)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/rules/add")
+async def add_dynamic_overlay_rule(req: AddOverlayRuleRequest):
+    """Add a new overlay rule (default or file) to a library in config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.add_library_overlay(
+        req.library_name, req.overlay_type, req.overlay_name, req.template_variables, req.filename
+    )
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/rules/update")
+async def update_dynamic_overlay_variables(req: UpdateOverlayVariablesRequest):
+    """Update template variables for an overlay rule in a library."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.update_library_overlay(
+        req.library_name, req.overlay_index, req.template_variables, req.filename
+    )
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+class AddLibraryRequest(BaseModel):
+    library_name: str
+    filename: str = "config.yml"
+
+
+class RemoveLibraryRequest(BaseModel):
+    library_name: Optional[str] = None
+    library_names: Optional[List[str]] = None
+    filename: str = "config.yml"
+
+
+@app.post("/api/dynamic-overlays/libraries/add")
+async def add_dynamic_overlay_library(req: AddLibraryRequest):
+    """Add a new library entry to config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    res = kometa_resolver.add_library(req.library_name, req.filename)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+@app.post("/api/dynamic-overlays/libraries/remove")
+async def remove_dynamic_overlay_library(req: RemoveLibraryRequest):
+    """Remove one or more library entries from config.yml."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+
+    target_names = []
+    if req.library_names:
+        target_names.extend([str(n).strip() for n in req.library_names if str(n).strip()])
+    elif req.library_name:
+        target_names.append(req.library_name.strip())
+
+    if not target_names:
+        return {"success": False, "error": "No library name specified for removal."}
+
+    res = kometa_resolver.remove_libraries(target_names, req.filename)
+    if res.get("success"):
+        fresh_scan = kometa_resolver.scan_and_analyze_rules()
+        return {**res, "scan": fresh_scan}
+    return res
+
+
+# ==============================================================================
+# DYNAMIC OVERLAYS SYNC ENDPOINTS
+# ==============================================================================
+
+@app.get("/api/dynamic-overlays/sync/items")
+async def get_dynamic_overlay_sync_items(
+    query: str = Query(..., min_length=2, max_length=150),
+    target_server: str = Query("all", pattern="^(all|plex|jellyfin|emby)$"),
+    library: str = Query("all", max_length=300),
+):
+    if not kometa_resolver:
+        raise HTTPException(status_code=503, detail="Dynamic overlays service is uninitialized")
+    from overlay_sync_service import get_server_credentials, search_overlay_sync_items
+    from overlay_resolver import load_cached_yaml_file
+    credentials = await asyncio.to_thread(get_server_credentials, CONFIG_PATH)
+    config = await asyncio.to_thread(load_cached_yaml_file, Path(kometa_resolver.configs_dir) / "config.yml")
+    rules = {name.lower(): data.get("overlay_files") or data.get("overlays") or []
+             for name, data in (config.get("libraries") or {}).items() if isinstance(data, dict)}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        result = await search_overlay_sync_items(client, credentials, rules, query, target_server, library)
+    return {"success": True, **result}
+
+
+class DynamicOverlaysSyncRequest(BaseModel):
+    target_server: str = "all"  # "all", "plex", "jellyfin", "emby"
+    scope: str = "incremental"   # "incremental" (changes only) or "all" (all assets)
+    library: str = "all"        # "all" or specific library name
+    target_items: Optional[List[Dict[str, Any]]] = None
+    asset_type: Optional[str] = Field(default=None, pattern="^(poster|background|season|titlecard)$")
+    force_reapply: bool = False
+
+
+@app.post("/api/dynamic-overlays/sync")
+async def trigger_dynamic_overlays_sync(req: DynamicOverlaysSyncRequest):
+    """
+    Triggers an on-demand Dynamic Overlays Sync task.
+    - scope="incremental": Detects changes (skips unmodified via overlay_cache.db).
+    - scope="all": Full sync (re-evaluates and pushes all assets).
+    """
+    if req.target_items is not None and not req.target_items:
+        return {"success": True, "message": "No target items supplied. Overlay sync skipped."}
+    try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled. Enable it in the Master Switch before syncing.",
+                "is_enabled": False
+            }
+    except Exception as e:
+        logger.error("[OverlaySync] Could not verify master switch; refusing sync: %s", e)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
+    try:
+        from overlay_sync_service import submit_overlay_sync_task
+    except ImportError as e:
+        return {"success": False, "error": f"Overlay sync service not available: {e}"}
+
+    result = submit_overlay_sync_task(
+        target_server=req.target_server, scope=req.scope, library=req.library,
+        base_dir=BASE_DIR, config_path=CONFIG_PATH,
+        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log", target_items=req.target_items,
+        asset_type=req.asset_type, force_reapply=req.force_reapply,
+    )
+    return {
+        **result,
+        "target_server": req.target_server,
+        "scope": req.scope,
+        "library": req.library
+    }
+
+
+@app.get("/api/dynamic-overlays/sync/status")
+async def get_dynamic_overlays_sync_status():
+    """Return status of background dynamic overlays sync task and recent logs."""
+    try:
+        from overlay_sync_service import (
+            is_overlay_sync_running,
+            get_last_sync_result
+        )
+        running = is_overlay_sync_running()
+        last_res = get_last_sync_result()
+    except Exception:
+        running = False
+        last_res = None
+
+    log_path = UI_LOGS_DIR / "DynamicOverlaysSync.log"
+    recent_logs = []
+    if log_path.exists():
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="ignore") as lf:
+                lines = lf.readlines()
+                recent_logs = [l.strip() for l in lines[-60:]]
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "is_running": running,
+        "last_result": last_res,
+        "recent_logs": recent_logs,
+        "log_file": "DynamicOverlaysSync.log"
+    }
+
+
+@app.post("/api/dynamic-overlays/sync/stop")
+async def stop_dynamic_overlays_sync():
+    """Cancel and stop the currently running dynamic overlays sync task."""
+    try:
+        from overlay_sync_service import stop_overlay_sync
+        stopped = stop_overlay_sync()
+        return {"success": True, "message": "Dynamic overlay sync stopped.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/dynamic-overlays/sync/reset")
+async def reset_dynamic_overlays_sync_state():
+    """Force reset the overlay sync lock state in case it got stuck."""
+    try:
+        from overlay_sync_service import reset_overlay_sync_state
+        reset_overlay_sync_state()
+        return {"success": True, "message": "Overlay sync state lock reset.", "is_running": False}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+class EpisodeTitleRebuildRequest(BaseModel):
+    candidate_ids: List[str] = Field(default_factory=list, max_length=10000)
+    all_eligible: bool = False
+    search: str = Field(default="", max_length=200)
+    status_filter: Literal["all", "eligible", "blocked"] = "all"
+    reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = "all"
+    review_type: Literal["all", "historical", "future"] = "all"
+    media_type_filter: Literal["all", "episode", "season", "movie", "show"] = "all"
+    confirmed: bool = False
+    force_unknown_text: bool = False
+
+
+class EpisodeTitleDismissRequest(BaseModel):
+    candidate_id: str = Field(..., min_length=1, max_length=128)
+
+
+class EpisodeTitleFastRunRequest(BaseModel):
+    candidate_ids: List[str] = Field(default_factory=list, max_length=10000)
+    all_eligible: bool = False
+    search: str = Field(default="", max_length=200)
+    status_filter: Literal["all", "eligible", "blocked"] = "all"
+    reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = "all"
+    review_type: Literal["all", "historical", "future"] = "all"
+    media_type_filter: Literal["all", "episode", "season", "movie", "show"] = "all"
+    confirmed: bool = False
+    force_unknown_text: bool = False
+
+
+def ensure_episode_title_review_idle(allow_sync: bool = False):
+    from overlay_sync_service import is_overlay_sync_running
+    from plex_image_cleanup import is_cleanup_running
+
+    if RUNNING_FILE.exists() or (current_process and current_process.poll() is None):
+        raise HTTPException(status_code=409, detail="script_running")
+    if not allow_sync:
+        if is_overlay_sync_running():
+            raise HTTPException(status_code=409, detail="overlay_sync_running")
+        if queue_processing_lock.locked():
+            raise HTTPException(status_code=409, detail="queue_busy")
+        if is_cleanup_running():
+            raise HTTPException(status_code=409, detail="cleanup_running")
+
+
+@app.get("/api/dynamic-overlays/episode-title-changes")
+async def get_episode_title_changes(
+    search: str = Query("", max_length=200),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    status_filter: Literal["all", "eligible", "blocked"] = Query("all"),
+    reason_filter: Literal["all", "none", "media_server_source", "missing_source", "source_has_text", "unknown_text", "placeholder"] = Query("all"),
+    review_type: Literal["all", "historical", "future"] = Query("all"),
+    media_type_filter: Literal["all", "episode", "season", "movie", "show"] = Query("all"),
+):
+    from asset_title_changes import create_title_monitor, episode_title_review, title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+
+    settings = get_dynamic_overlays_settings()
+    try:
+        monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+        result = await asyncio.to_thread(monitor.candidates, search, limit, offset,
+                         status_filter, reason_filter, review_type, media_type_filter)
+    except (ValueError, FileNotFoundError):
+        result = {"entries": [], "total": 0, "eligible": 0}
+    return {"success": True, **result, "job": episode_title_review.status(),
+            "can_scan": bool(settings.get("enabled")),
+            "can_rebuild": title_regeneration_allowed(settings, manual=True)}
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/scan")
+async def scan_episode_title_changes():
+    from asset_title_changes import episode_title_review
+
+    ensure_episode_title_review_idle(allow_sync=True)
+    try:
+        job = await episode_title_review.start_scan(BASE_DIR, CONFIG_PATH)
+        return {"success": True, "job": job}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/rebuild")
+async def rebuild_episode_title_changes(request: EpisodeTitleRebuildRequest):
+    from asset_title_changes import episode_title_review
+
+    if not request.confirmed:
+        raise HTTPException(status_code=400, detail="confirmation_required")
+    ensure_episode_title_review_idle()
+    try:
+        job = await episode_title_review.start_rebuild(
+            BASE_DIR, CONFIG_PATH, candidate_ids=request.candidate_ids,
+            all_eligible=request.all_eligible, search=request.search,
+            force_unknown_text=request.force_unknown_text,
+            status_filter=request.status_filter, reason_filter=request.reason_filter,
+            review_type=request.review_type,
+            media_type_filter=request.media_type_filter,
+        )
+        return {"success": True, "job": job}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/queue")
+async def queue_episode_title_changes(request: EpisodeTitleRebuildRequest):
+    """Queue selected titlecards without waiting for the current run; they start automatically once idle."""
+    from asset_title_changes import create_title_monitor, title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+
+    if not request.confirmed:
+        raise HTTPException(status_code=400, detail="confirmation_required")
+    if bool(request.candidate_ids) == bool(request.all_eligible):
+        raise HTTPException(status_code=400, detail="invalid_selection")
+    settings = get_dynamic_overlays_settings()
+    if not settings.get("enabled"):
+        raise HTTPException(status_code=400, detail="master_off")
+    if not title_regeneration_allowed(settings, manual=True):
+        raise HTTPException(status_code=400, detail="rebuild_disabled")
+    monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+    jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
+                                   request.all_eligible, request.force_unknown_text, request.status_filter,
+                                   request.reason_filter, request.review_type, request.media_type_filter)
+    if not jobs:
+        raise HTTPException(status_code=400, detail="nothing_selected")
+    queue_ids = await asyncio.to_thread(queue_manager.add_episode_title_items, jobs)
+    schedule_queue_when_idle(queue_ids)
+    return {"success": True, "queued": len(queue_ids), "queue_ids": queue_ids}
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/dismiss")
+async def dismiss_episode_title_change(request: EpisodeTitleDismissRequest):
+    from asset_title_changes import create_title_monitor, episode_title_review
+
+    if not episode_title_review.operation_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="busy")
+    try:
+        monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+        dismissed = await asyncio.to_thread(monitor.dismiss_candidate, request.candidate_id)
+        if not dismissed:
+            raise HTTPException(status_code=404, detail="candidate_not_found")
+        return {"success": True, "job": episode_title_review.status()}
+    finally:
+        episode_title_review.operation_lock.release()
+
+
+async def _finish_episode_title_normal_run(monitor, backup_dir, entries, process):
+    from asset_title_changes import episode_title_review, logger
+
+    try:
+        return_code = await asyncio.to_thread(process.wait)
+        episode_title_review._update(phase="finalizing_fast_run")
+        completed = await asyncio.to_thread(monitor.finish_detached_candidate_assets,
+                                             backup_dir, entries, return_code == 0)
+        total = len(entries)
+        episode_title_review._update(running=False, phase="complete", processed=total,
+                                      succeeded=completed, failed=total - completed,
+                                      restored=total - completed, run_exit_code=return_code,
+                                      current_title="", finished_at=datetime.now().isoformat())
+        logger.info("[TitleChanges] Normal run finished with %s; %s/%s local titlecards recreated.",
+                    return_code, completed, len(entries))
+    except Exception:
+        logger.exception("[TitleChanges] Could not finalize fast titlecard normal run; restoring local assets.")
+        await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review._update(running=False, phase="failed", error="fast_run_failed",
+                                      failed=len(entries), restored=len(entries), current_title="",
+                                      finished_at=datetime.now().isoformat())
+    finally:
+        episode_title_review.task = None
+        episode_title_review.operation_lock.release()
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/fast-normal-run")
+async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequest):
+    from asset_title_changes import create_title_monitor, episode_title_review, logger, title_regeneration_allowed
+    from dynamic_overlays_service import get_dynamic_overlays_settings
+
+    if not request.confirmed:
+        raise HTTPException(status_code=400, detail="confirmation_required")
+    if bool(request.candidate_ids) == bool(request.all_eligible):
+        raise HTTPException(status_code=400, detail="invalid_selection")
+    settings = get_dynamic_overlays_settings()
+    if not settings.get("enabled"):
+        raise HTTPException(status_code=400, detail="master_off")
+    if not title_regeneration_allowed(settings, manual=True):
+        raise HTTPException(status_code=400, detail="rebuild_disabled")
+    if not episode_title_review.operation_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="busy")
+
+    monitor = None
+    backup_dir = None
+    entries = []
+    try:
+        ensure_episode_title_review_idle()
+        started_at = datetime.now().isoformat()
+        episode_title_review._update(running=True, phase="preparing_fast_run", fast_run=True,
+                                     total=0, processed=0, succeeded=0, failed=0, skipped=0,
+                                     restored=0, error=None, scan_errors=[], cancel_requested=False,
+                                     current_title="", started_at=started_at)
+        monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
+        jobs = await asyncio.to_thread(monitor.candidate_jobs, request.candidate_ids, request.search,
+                                      request.all_eligible, request.force_unknown_text, request.status_filter,
+                                      request.reason_filter, request.review_type, request.media_type_filter)
+        if not jobs:
+            raise HTTPException(status_code=400, detail="nothing_selected")
+        episode_title_review._update(total=len(jobs))
+        backup_dir, entries = await asyncio.to_thread(monitor.detach_candidate_assets, jobs)
+        episode_title_review._update(phase="normal_run")
+        result = await run_script("normal")
+        episode_title_review.task = asyncio.create_task(_finish_episode_title_normal_run(monitor, backup_dir, entries, current_process))
+        return {"success": True, "message": "normal_run_started", "pid": result["pid"],
+                "count": len(entries), "job": episode_title_review.status()}
+    except HTTPException:
+        if backup_dir and monitor:
+            await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review._update(running=False, phase="failed", error="fast_run_failed",
+                                     failed=len(entries), restored=len(entries), current_title="",
+                                     finished_at=datetime.now().isoformat())
+        episode_title_review.operation_lock.release()
+        raise
+    except Exception as error:
+        if backup_dir and monitor:
+            await asyncio.to_thread(monitor.finish_detached_candidate_assets, backup_dir, entries, False)
+        episode_title_review._update(running=False, phase="failed", error="fast_run_failed",
+                                     failed=len(entries), restored=len(entries), current_title="",
+                                     finished_at=datetime.now().isoformat())
+        episode_title_review.operation_lock.release()
+        logger.exception("[TitleChanges] Could not start fast normal run")
+        raise HTTPException(status_code=500, detail="normal_run_failed") from error
+
+
+@app.post("/api/dynamic-overlays/episode-title-changes/cancel")
+async def cancel_episode_title_changes():
+    from asset_title_changes import episode_title_review
+
+    return {"success": True, "job": episode_title_review.cancel()}
+
+
+@app.get("/api/dynamic-overlays/detect-changes")
+async def detect_dynamic_overlays_changes_endpoint(
+    target_server: str = Query("all"),
+    library: str = Query("all")
+):
+    """
+    Lightning-fast bulk autodetection for media updates across Plex, Jellyfin, and Emby.
+    """
+    try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled. Enable it in the Master Switch first.",
+                "is_enabled": False,
+                "total_scanned": 0,
+                "changed_count": 0,
+                "changes": [],
+                "summary": {}
+            }
+    except Exception as e:
+        logger.error("[DetectChanges] Could not verify master switch; refusing scan: %s", e)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False, "total_scanned": 0, "changed_count": 0, "changes": [], "summary": {}}
+    try:
+        from overlay_sync_service import detect_media_changes
+        from dynamic_overlays_service import save_dynamic_overlays_settings
+        report = await detect_media_changes(
+            target_server=target_server,
+            library=library,
+            base_dir=BASE_DIR,
+            config_path=CONFIG_PATH
+        )
+        save_dynamic_overlays_settings({
+            "last_change_detection_at": datetime.now().isoformat(),
+            "last_change_detection_summary": report.get("summary")
+        })
+        return report
+    except Exception as e:
+        logger.error(f"[DetectChanges] Error running change detection: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/dynamic-overlays/last-detection-report")
+async def get_last_dynamic_overlays_detection_report():
+    """
+    Returns the most recent media change autodetection report (including full list of changed items),
+    enabling persistent browsing without triggering a new scan.
+    """
+    try:
+        from overlay_sync_service import get_last_detection_report
+        return get_last_detection_report(base_dir=BASE_DIR)
+    except Exception as e:
+        logger.error(f"[DetectChanges] Error fetching last detection report: {e}")
+        return {"success": False, "error": str(e), "changes": [], "summary": {}}
+
+
+@app.post("/api/dynamic-overlays/sync-changed")
+async def sync_changed_dynamic_overlays_endpoint(req: DynamicOverlaysSyncRequest):
+    """
+    Triggers an on-demand Dynamic Overlays Sync for ONLY media items with detected updates.
+    """
+    try:
+        from dynamic_overlays_service import is_dynamic_overlays_enabled
+        if not is_dynamic_overlays_enabled():
+            return {
+                "success": False,
+                "error": "Dynamic Overlays is disabled. Enable it in the Master Switch before syncing.",
+                "is_enabled": False
+            }
+    except Exception as e:
+        logger.error("[OverlaySync] Could not verify master switch; refusing changed-items sync: %s", e)
+        return {"success": False, "error": "Could not verify Dynamic Overlays master switch.", "is_enabled": False}
+    try:
+        from overlay_sync_service import run_overlay_sync_task, is_overlay_sync_running
+        if is_overlay_sync_running():
+            return {
+                "success": False,
+                "error": "A dynamic overlay sync task is already running.",
+                "is_running": True
+            }
+
+        def _run_changed_bg():
+            try:
+                asyncio.run(
+                    run_overlay_sync_task(
+                        target_server=req.target_server,
+                        scope="changed",
+                        library=req.library,
+                        base_dir=BASE_DIR,
+                        config_path=CONFIG_PATH,
+                        log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log"
+                    )
+                )
+            except Exception as bg_err:
+                logger.error(f"[OverlaySync] Error in changed items sync: {bg_err}", exc_info=True)
+
+        threading.Thread(target=_run_changed_bg, daemon=True).start()
+        return {
+            "success": True,
+            "message": f"Dynamic overlay sync started for modified items ({req.target_server.upper()}).",
+            "target_server": req.target_server,
+            "scope": "changed",
+            "library": req.library
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ==============================================================================
+# ANIMETAFILL ANIME CLASSIFICATION ENDPOINTS
+# ==============================================================================
+
+class SonarrTestRequest(BaseModel):
+    url: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class AniMetaFillConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+    media_server: Optional[str] = "plex"
+    target_libraries: Optional[List[str]] = None
+    plex_url: Optional[str] = None
+    plex_token: Optional[str] = None
+    plex_libraries: Optional[List[str]] = None
+    sonarr_url: Optional[str] = None
+    sonarr_api_key: Optional[str] = None
+    simkl_client_id: Optional[str] = None
+    overlay_categories: Optional[List[Literal["canon", "filler", "mixed"]]] = None
+    overlay_threshold_mode: Optional[Literal["none", "total_episodes", "filler_episodes", "non_canon_percent"]] = None
+    overlay_threshold_value: Optional[float] = None
+    labels: Optional[Dict[str, str]] = None
+    colors: Optional[Dict[str, str]] = None
+    aesthetic: Optional[Dict[str, Any]] = None
+    mal_enabled: Optional[bool] = None
+
+
+@app.post("/api/animetafill/test-sonarr")
+async def test_sonarr_endpoint(req: Optional[SonarrTestRequest] = None):
+    """Test connection to Sonarr using passed parameters or credentials stored in config.json."""
+    try:
+        from animetafill_service import test_sonarr_connection
+        u = req.url if req else None
+        k = req.api_key if req else None
+        res = test_sonarr_connection(url=u, api_key=k)
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e), "message": f"Sonarr test error: {e}"}
+
+
+@app.get("/api/animetafill/status")
+async def get_animetafill_status_endpoint():
+    """Return status of AniMetaFill anime classifier, counts, and logs."""
+    try:
+        from animetafill_service import get_animetafill_status
+        return {"success": True, **get_animetafill_status()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/animetafill/config")
+async def get_animetafill_config_endpoint():
+    """Return AniMetaFill configuration settings."""
+    try:
+        from animetafill_service import get_animetafill_config
+        return {"success": True, "config": get_animetafill_config()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/animetafill/config")
+async def save_animetafill_config_endpoint(req: AniMetaFillConfigRequest):
+    """Save AniMetaFill configuration including the master toggle switch."""
+    try:
+        from animetafill_service import save_animetafill_config
+        update_dict = {k: v for k, v in req.model_dump().items() if v is not None}
+        saved = save_animetafill_config(update_dict)
+        return {"success": True, "config": saved, "message": "AniMetaFill configuration saved."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/animetafill/run")
+async def run_animetafill_endpoint(force: bool = False, req: Optional[Dict[str, Any]] = None):
+    """Trigger an immediate background synchronization of AniMetaFill."""
+    try:
+        from animetafill_service import run_animetafill_sync_task, is_animetafill_running
+        if is_animetafill_running():
+            return {"success": False, "error": "AniMetaFill sync is already in progress.", "is_running": True}
+        res = run_animetafill_sync_task(force=force, runtime_overrides=req)
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+class AnimeUpsertRequest(BaseModel):
+    anime_title: str
+    episode_range: str
+    category: str = "canon"
+    episode_title: Optional[str] = None
+
+class AnimeEpisodeUpdateRequest(BaseModel):
+    anime_title: str
+    episode_number: int
+    category: str
+
+
+@app.get("/api/animetafill/shows")
+async def get_animetafill_shows_endpoint(query: Optional[str] = None, category: Optional[str] = None, page: int = 1, page_size: int = 30):
+    """Retrieve paginated anime classification items from local SQLite database."""
+    try:
+        from animetafill_service import get_anime_shows
+        data = get_anime_shows(query=query, category=category, page=page, page_size=page_size)
+        return {"success": True, **data}
+    except Exception as e:
+        return {"success": False, "error": str(e), "shows": [], "total_shows": 0}
+
+
+@app.get("/api/animetafill/shows/{anime_title}/episodes")
+async def get_animetafill_show_episodes_endpoint(anime_title: str):
+    """Retrieve mapped episodes for a specific anime series."""
+    try:
+        from animetafill_service import get_anime_episodes
+        episodes = get_anime_episodes(anime_title)
+        return {"success": True, "episodes": episodes, "anime_title": anime_title}
+    except Exception as e:
+        return {"success": False, "error": str(e), "episodes": []}
+
+
+@app.post("/api/animetafill/items/upsert")
+async def upsert_animetafill_item_endpoint(req: AnimeUpsertRequest):
+    """Manually add or override episode classification for an anime series."""
+    try:
+        from animetafill_service import upsert_anime_item
+        res = upsert_anime_item(
+            anime_title=req.anime_title,
+            episode_range=req.episode_range,
+            category=req.category,
+            episode_title=req.episode_title
+        )
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/animetafill/episodes/update")
+async def update_animetafill_episode_endpoint(req: AnimeEpisodeUpdateRequest):
+    """Update classification of a single episode."""
+    try:
+        from animetafill_service import update_single_episode
+        res = update_single_episode(
+            anime_title=req.anime_title,
+            episode_number=req.episode_number,
+            category=req.category
+        )
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.delete("/api/animetafill/shows/{anime_title}")
+async def delete_animetafill_show_endpoint(anime_title: str):
+    """Delete an anime show from classification database and remove its overlay block."""
+    try:
+        from animetafill_service import delete_anime_show
+        res = delete_anime_show(anime_title)
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ==============================================================================
+# DYNAMIC OVERLAYS MASTER SETTINGS & VISUAL TRANSLATOR ENDPOINTS
+# ==============================================================================
+
+class DynamicOverlaysSettingsRequest(BaseModel):
+    enabled: Optional[bool] = None
+    auto_sync_on_startup: Optional[bool] = None
+    sync_mode: Optional[str] = None
+    backdrop_overlays_enabled: Optional[bool] = None
+    rating_sources: Optional[List[str]] = None
+    rating_slots: Optional[Dict[str, str]] = None
+    rating_alignment: Optional[str] = None
+    rating_position: Optional[str] = None
+    rating_contrast_box: Optional[bool] = None
+    mdblist_api_key: Optional[str] = None
+    omdb_api_key: Optional[str] = None
+    simkl_client_id: Optional[str] = None
+    season_rating_libraries: Optional[List[str]] = None
+    rating_cache_ttl_days: Optional[int] = None
+    ratings_auto_refresh_enabled: Optional[bool] = None
+    ratings_auto_refresh_interval_hours: Optional[int] = Field(default=None, ge=1, le=8760)
+    change_detection_enabled: Optional[bool] = None
+    change_detection_interval_minutes: Optional[int] = None
+    auto_resync_on_change: Optional[bool] = None
+    regenerate_assets_on_title_change: Optional[bool] = None
+    change_detection_dry_run: Optional[bool] = None
+    fast_bulk_query_enabled: Optional[bool] = None
+    debug_logging: Optional[bool] = None
+    concurrency: Optional[int] = None
+    wizard_dismissed: Optional[bool] = None
+
+class DynamicOverlaysVisualConfigRequest(BaseModel):
+    config: Dict[str, Any]
+
+class DynamicOverlaysImportYamlRequest(BaseModel):
+    yaml_text: str
+
+async def _overlay_bundle_context(resolve_libraries=False):
+    from dynamic_overlays_service import get_config_dir, get_overlays_dir, get_dynamic_overlays_settings, load_visual_config
+    from animetafill_service import get_animetafill_config
+    anime = await asyncio.to_thread(get_animetafill_config)
+    server = str(anime.get("media_server") or "plex").lower()
+    libraries = []
+    if resolve_libraries:
+        response = await get_cached_libraries(server, refresh=False)
+        for library in response.get("libraries") or []:
+            name = library.get("name") or library.get("title")
+            kind = str(library.get("type") or "").lower()
+            kind = "show" if kind in ("show", "shows", "tv", "tvshows", "series") else "movie" if kind in ("movie", "movies") else kind
+            if name and kind in ("movie", "show"):
+                libraries.append({"name": str(name), "type": kind})
+    return {
+        "root": get_config_dir(), "overlays": get_overlays_dir(),
+        "settings": await asyncio.to_thread(get_dynamic_overlays_settings),
+        "visual": await asyncio.to_thread(load_visual_config), "anime": anime,
+        "libraries": libraries, "server": server,
+    }
+
+
+@app.get("/api/dynamic-overlays/bundle/export")
+async def export_dynamic_overlay_bundle():
+    from overlay_bundle import BundleError, export_profile, read_document
+    try:
+        context = await _overlay_bundle_context()
+        from ratings_service import imdb_dataset
+        private_config = await asyncio.to_thread(read_document, CONFIG_PATH)
+        payload = await asyncio.to_thread(
+            export_profile, context["root"], context["overlays"], context["settings"], context["visual"],
+            context["anime"], imdb_enabled=imdb_dataset.status().get("enabled", False), private_config=private_config,
+        )
+        return Response(payload, media_type="application/zip", headers={
+            "Content-Disposition": 'attachment; filename="posterizarr-overlays.zip"', "Cache-Control": "no-store",
+        })
+    except BundleError as error:
+        raise HTTPException(status_code=503 if error.code == "officialCatalogUnavailable" else 400,
+                            detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Overlay bundle export failed")
+        raise HTTPException(status_code=500, detail="Could not export the overlay bundle.")
+
+
+@app.post("/api/dynamic-overlays/bundle/preview")
+async def preview_dynamic_overlay_bundle(file: UploadFile = File(...)):
+    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES, inspect_profile
+    try:
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        context = await _overlay_bundle_context(resolve_libraries=True)
+        summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
+        warnings = []
+        warning_codes = []
+        if summary.get("official_dependency_count"):
+            warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
+            warning_codes.append("officialDependencies")
+        if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
+            warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
+            warning_codes.append("simklRequired")
+        if summary["features"]["imdb_dataset"]:
+            warnings.append("The local IMDb dataset must be downloaded separately; its index is not included.")
+            warning_codes.append("imdbDownload")
+        if not context["libraries"]:
+            warnings.append("No destination libraries are available. Refresh the libraries for your configured media server first.")
+            warning_codes.append("noLibraries")
+        return {"success": True, **summary, "destination_server": context["server"], "warnings": warnings, "warning_codes": warning_codes}
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Overlay bundle preview failed")
+        raise HTTPException(status_code=500, detail="Could not inspect the overlay bundle.")
+
+
+@app.post("/api/dynamic-overlays/bundle/import")
+async def import_dynamic_overlay_bundle(
+    file: UploadFile = File(...), mapping: str = Form(...),
+    anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
+    import_settings: bool = Form(True), replace_files: bool = Form(False),
+):
+    from overlay_bundle import BundleError, IMPORT_LOCK, MAX_BUNDLE_BYTES, commit_import, prepare_import
+    from overlay_sync_service import is_overlay_sync_running, stop_overlay_change_detector_background, start_overlay_change_detector_background
+    from animetafill_service import is_animetafill_running, _write_to_config_db
+    if not IMPORT_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="An overlay bundle import is already running.")
+    try:
+        if is_overlay_sync_running() or is_animetafill_running():
+            raise HTTPException(status_code=409, detail="Wait for the current overlay or AniMetaFill run to finish before importing.")
+        try:
+            library_mapping = json.loads(mapping)
+            anime_targets = json.loads(anime_libraries)
+            season_targets = json.loads(season_libraries)
+        except ValueError:
+            raise BundleError("Invalid library mapping JSON.")
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        context = await _overlay_bundle_context(resolve_libraries=True)
+        plan = await asyncio.to_thread(
+            prepare_import, payload, context["overlays"], context["libraries"], library_mapping,
+            anime_targets, season_targets, import_settings, replace_files,
+        )
+        stopped = await asyncio.to_thread(stop_overlay_change_detector_background, wait=True)
+        if not stopped:
+            raise HTTPException(status_code=409, detail="The overlay background scan is still stopping. Please retry after it finishes.")
+        if is_overlay_sync_running() or is_animetafill_running():
+            raise HTTPException(status_code=409, detail="An overlay job started during import preparation. Please retry after it finishes.")
+        result = await asyncio.to_thread(commit_import, plan, context["root"])
+        if plan["animetafill"]:
+            await asyncio.to_thread(_write_to_config_db, plan["animetafill"], section="AniMetaFill")
+        if plan["imdb_dataset"] is not None:
+            from ratings_service import imdb_dataset
+            await asyncio.to_thread(imdb_dataset.configure, plan["imdb_dataset"])
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        saved = await asyncio.to_thread(get_dynamic_overlays_settings)
+        if saved.get("enabled") and saved.get("change_detection_enabled", True):
+            start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
+        return {"success": True, **result, "message": "Overlay bundle imported in Dry Run. No artwork was uploaded."}
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Overlay bundle import failed")
+        raise HTTPException(status_code=500, detail="Could not import the overlay bundle. Check the local log and bundle backups.")
+    finally:
+        IMPORT_LOCK.release()
+
+
+@app.get("/api/dynamic-overlays/settings")
+async def get_dynamic_overlays_settings_endpoint():
+    """Return master settings for Dynamic Overlays (Disabled by default)."""
+    try:
+        from dynamic_overlays_service import get_dynamic_overlays_settings
+        return {"success": True, "settings": get_dynamic_overlays_settings()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/settings")
+async def save_dynamic_overlays_settings_endpoint(req: DynamicOverlaysSettingsRequest):
+    """Update master settings (e.g. enable/disable, backdrops, rating sources, wizard dismissal)."""
+    try:
+        from dynamic_overlays_service import get_dynamic_overlays_settings, save_dynamic_overlays_settings
+        update_dict = {k: v for k, v in req.model_dump().items() if v is not None}
+        save_dynamic_overlays_settings(update_dict)
+        saved = get_dynamic_overlays_settings()
+        if any(saved.get(key) != value for key, value in update_dict.items()):
+            logger.error("Dynamic overlay settings did not persist for one or more requested fields.")
+            return {"success": False, "error": "settings_not_persisted"}
+        from overlay_sync_service import stop_overlay_change_detector_background
+        if saved.get("enabled", False) and saved.get("change_detection_enabled", True):
+            from overlay_sync_service import start_overlay_change_detector_background
+            start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
+        else:
+            stop_overlay_change_detector_background()
+        if not saved.get("enabled", False):
+            from overlay_sync_service import stop_overlay_sync
+            stop_overlay_sync()
+        elif update_dict.get("change_detection_dry_run") is True:
+            from overlay_sync_service import stop_overlay_sync
+            stop_overlay_sync()
+        return {"success": True, "settings": saved, "message": "Settings saved."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/wizard-dismiss")
+async def dismiss_dynamic_overlays_wizard_endpoint():
+    """Persist wizard dismissal state directly in SQLite database."""
+    try:
+        if CONFIG_DATABASE_AVAILABLE and config_db:
+            config_db.set_value("DynamicOverlays", "wizard_dismissed", True)
+        from dynamic_overlays_service import save_dynamic_overlays_settings
+        saved = save_dynamic_overlays_settings({"wizard_dismissed": True})
+        return {"success": True, "wizard_dismissed": True, "settings": saved}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/dynamic-overlays/ratings-cache")
+async def get_dynamic_overlays_ratings_cache_endpoint():
+    """Return ratings cache statistics and status."""
+    try:
+        from ratings_service import ratings_cache
+        stats = ratings_cache.get_stats()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/dynamic-overlays/database-stats")
+async def get_dynamic_overlays_database_stats_endpoint():
+    try:
+        from overlay_cache import get_overlay_database_stats
+        from animetafill_service import DEFAULT_DB_PATH
+        stats = await asyncio.to_thread(get_overlay_database_stats, BASE_DIR / "database", DEFAULT_DB_PATH)
+        return {"success": True, **stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/dynamic-overlays/database-entries")
+async def get_dynamic_overlays_database_entries_endpoint(
+    database: str = Query("overlay_cache.db"),
+    table: str = Query("dynamic_overlay_cache"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    search: str = Query("", max_length=300),
+    sort_by: Optional[str] = Query(None),
+    descending: bool = Query(True),
+):
+    try:
+        from overlay_cache import get_overlay_database_entries
+        from animetafill_service import DEFAULT_DB_PATH
+        data = await asyncio.to_thread(
+            get_overlay_database_entries, BASE_DIR / "database", database, table,
+            page, limit, search, sort_by, descending, DEFAULT_DB_PATH,
+        )
+        return {"success": True, **data}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except TimeoutError as error:
+        return {"success": False, "error": str(error)}
+    except Exception as error:
+        logger.error(f"Error browsing overlay database: {error}")
+        return {"success": False, "error": "Could not read database records."}
+
+@app.post("/api/dynamic-overlays/ratings-cache/clear")
+async def clear_dynamic_overlays_ratings_cache_endpoint():
+    """Clear media ratings cache to force fresh ratings on next sync."""
+    try:
+        from ratings_service import ratings_cache
+        ratings_cache.clear_all()
+        return {"success": True, "message": "Ratings cache cleared."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/dynamic-overlays/ratings-cache/entries")
+async def get_dynamic_overlays_ratings_cache_entries(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    server_type: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    show_status: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    missing_only: bool = Query(False),
+    score: Optional[str] = Query(None, pattern=r"^(imdb|tmdb|rt_critic|rt_audience|trakt|metacritic|letterboxd|mdblist_episode|simkl|mal|missing)$"),
+    sort_by: str = Query("cached_at"),
+    sort_desc: bool = Query(True)
+):
+    """Return paginated entries from the media ratings cache with score breakdown and show status."""
+    try:
+        from ratings_service import ratings_cache
+        data = ratings_cache.get_entries(
+            page=page,
+            limit=limit,
+            search=search,
+            server_type=server_type,
+            media_type=media_type,
+            status=status,
+            show_status=show_status,
+            sort_by=sort_by,
+            sort_desc=sort_desc,
+            source=source,
+            missing_only=missing_only,
+            score=score,
+        )
+        return {"success": True, **data}
+    except Exception as e:
+        logger.error(f"Error querying ratings cache entries: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "entries": [], "total": 0}
+
+class ImdbDatasetRequest(BaseModel):
+    enabled: bool
+
+
+class EpisodeImdbMappingRequest(BaseModel):
+    imdb_id: Optional[str] = Field(default=None, pattern=r"^tt\d{7,12}$")
+    scope: str = Field(default="episode", pattern=r"^(episode|season)$")
+    target_season: int = Field(default=1, ge=0)
+    episode_offset: int = 0
+    continue_seasons: bool = False
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/imdb-dataset")
+def get_imdb_dataset_status():
+    from ratings_service import imdb_dataset
+    return {"success": True, **imdb_dataset.status()}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/imdb-dataset")
+def configure_imdb_dataset(req: ImdbDatasetRequest):
+    from ratings_service import imdb_dataset
+    return {"success": True, **imdb_dataset.configure(req.enabled)}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/imdb-dataset/import")
+def import_imdb_dataset():
+    from ratings_service import imdb_dataset
+    if not imdb_dataset.status()["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable the IMDb dataset first")
+    return {"success": True, **imdb_dataset.start_import()}
+
+
+def _get_episode_imdb_entry(entry_id):
+    from ratings_refresh import ratings_refresh_service
+    items = ratings_refresh_service.candidates(entry_id)
+    if not items or items[0].get("media_type") != "episode":
+        raise HTTPException(status_code=404, detail="Episode rating entry not found")
+    return items[0]
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/episode/{entry_id}/imdb")
+def get_episode_imdb_mapping(entry_id: int, query: str = Query("", max_length=250), series_id: str = Query("", max_length=14)):
+    from ratings_service import imdb_dataset
+    item = _get_episode_imdb_entry(entry_id)
+    context = {"episode_title": item.get("title"), "file_path": (item.get("_overlay") or {}).get("media_file_path")}
+    saved_context = imdb_dataset.context(item["server_type"], item["item_id"])
+    context.update(saved_context)
+    match = imdb_dataset.resolve(item["server_type"], item["item_id"], item.get("imdb_id"), context=context)
+    candidates = imdb_dataset.search(query) if query.strip() else match.get("candidates", [])
+    if match.get("status") == "matched":
+        current = imdb_dataset.search(match["imdb_id"])
+        if not query.strip():
+            candidates = current
+    season_mapping = imdb_dataset.season_mapping(item["server_type"], context)
+    return {"success": True, "mapping": match, "context": context, "candidates": candidates,
+            "season_mapping": season_mapping,
+            "season_lengths": imdb_dataset.season_lengths(series_id or (season_mapping or {}).get("imdb_id"))}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/episode/{entry_id}/imdb")
+def save_episode_imdb_mapping(entry_id: int, req: EpisodeImdbMappingRequest):
+    from ratings_service import imdb_dataset, ratings_cache
+    from ratings_refresh import ratings_refresh_service
+    from overlay_sync_service import is_overlay_sync_running
+    if is_overlay_sync_running() or (ratings_refresh_service.task is not None and not ratings_refresh_service.task.done()):
+        raise HTTPException(status_code=409, detail="Wait for the active sync or ratings refresh to finish")
+    if not imdb_dataset.status()["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable the IMDb dataset first")
+    item = _get_episode_imdb_entry(entry_id)
+    try:
+        if req.scope == "season":
+            context = imdb_dataset.context(item["server_type"], item["item_id"])
+            imdb_dataset.save_season_mapping(item["server_type"], context, req.imdb_id, req.target_season, req.episode_offset, req.continue_seasons)
+            updated = ratings_cache.apply_imdb_season_mapping(imdb_dataset, item["server_type"], context)
+            return {"success": True, "updated": updated,
+                    "mapping": imdb_dataset.resolve(item["server_type"], item["item_id"])}
+        imdb_dataset.save_mapping(item["server_type"], item["item_id"], req.imdb_id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    match = imdb_dataset.resolve(item["server_type"], item["item_id"])
+    ratings_cache.apply_imdb_mapping(entry_id, match.get("imdb_id") if match.get("status") == "matched" else None, match.get("rating"))
+    return {"success": True, "mapping": match}
+
+
+class SeasonRatingMappingRequest(BaseModel):
+    simkl_id: Optional[int] = Field(default=None, ge=1)
+
+
+def _get_season_rating_entry(entry_id):
+    from ratings_refresh import ratings_refresh_service
+    entries = ratings_refresh_service.candidates(entry_id)
+    if not entries or entries[0].get("media_type") != "season":
+        raise HTTPException(status_code=404, detail="Season rating entry not found")
+    return entries[0]
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/season/{entry_id}")
+async def get_season_rating_mapping(entry_id: int):
+    from ratings_service import ratings_cache
+    item = await asyncio.to_thread(_get_season_rating_entry, entry_id)
+    mapping = await asyncio.to_thread(ratings_cache.get_season_mapping, item["server_type"], item["item_id"])
+    return {"success": True, "mapping": mapping or {"mode": "auto", "status": "unmapped", "candidates": []}}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/season/{entry_id}")
+async def save_season_rating_mapping(entry_id: int, req: SeasonRatingMappingRequest):
+    from ratings_service import ratings_cache
+    from ratings_refresh import ratings_refresh_service
+    from overlay_sync_service import get_server_credentials, is_overlay_sync_running
+    from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
+    if is_overlay_sync_running() or (ratings_refresh_service.task is not None and not ratings_refresh_service.task.done()):
+        raise HTTPException(status_code=409, detail="Wait for the active sync or ratings refresh to finish")
+    item = await asyncio.to_thread(_get_season_rating_entry, entry_id)
+    settings = await asyncio.to_thread(get_dynamic_overlays_settings)
+    if not settings.get("simkl_client_id"):
+        raise HTTPException(status_code=400, detail="Configure the SIMKL Client ID in provider settings first")
+    if not season_ratings_enabled_for_library(settings, item.get("library_name")):
+        raise HTTPException(status_code=403, detail="Enable this library for anime season ratings in provider settings first")
+    mapping = await asyncio.to_thread(ratings_cache.get_season_mapping, item["server_type"], item["item_id"]) or {}
+    mapping.update(mode="manual" if req.simkl_id is not None else "auto", simkl_id=req.simkl_id,
+                   mal_id=None, source_title=None, status="pending")
+    await asyncio.to_thread(ratings_cache.save_season_mapping, item["server_type"], item["item_id"], mapping, True)
+    credentials = await asyncio.to_thread(get_server_credentials, CONFIG_PATH)
+    refresh = await ratings_refresh_service.start(credentials, settings, entry_id=entry_id)
+    return {"success": True, "mapping": mapping, "refresh": refresh}
+
+
+class RatingsRefreshRequest(BaseModel):
+    entry_id: Optional[int] = Field(default=None, ge=1)
+
+
+@app.get("/api/dynamic-overlays/ratings-cache/refresh/status")
+async def get_ratings_refresh_status():
+    from ratings_refresh import ratings_refresh_service
+    return {"success": True, "job": await asyncio.to_thread(ratings_refresh_service.status)}
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/refresh")
+async def start_ratings_refresh(req: RatingsRefreshRequest):
+    from ratings_refresh import ratings_refresh_service
+    from overlay_sync_service import get_server_credentials
+    from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
+    if req.entry_id is not None and not await asyncio.to_thread(ratings_refresh_service.candidates, req.entry_id):
+        raise HTTPException(status_code=404, detail="Rating entry not found")
+    credentials = await asyncio.to_thread(get_server_credentials, CONFIG_PATH)
+    settings = await asyncio.to_thread(get_dynamic_overlays_settings)
+    if req.entry_id is not None:
+        items = await asyncio.to_thread(ratings_refresh_service.candidates, req.entry_id)
+        if items and items[0].get("media_type") == "season" and not season_ratings_enabled_for_library(settings, items[0].get("library_name")):
+            raise HTTPException(status_code=403, detail="Enable this library for anime season ratings in provider settings first")
+    return await ratings_refresh_service.start(credentials, settings, entry_id=req.entry_id)
+
+
+@app.post("/api/dynamic-overlays/ratings-cache/refresh/cancel")
+async def cancel_ratings_refresh():
+    from ratings_refresh import ratings_refresh_service
+    task = ratings_refresh_service.task
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    return {"success": True, "job": await asyncio.to_thread(ratings_refresh_service.status)}
+
+
+@app.delete("/api/dynamic-overlays/ratings-cache/entry/{entry_id}")
+async def delete_dynamic_overlays_ratings_cache_entry(entry_id: int):
+    """Reset one item's ratings and overlay metadata cache."""
+    try:
+        from ratings_service import ratings_cache
+        item = ratings_cache.reset_entry(entry_id)
+        if item:
+            if item.get("tmdb_id"):
+                from overlay_sync_service import invalidate_tmdb_show_cache
+                invalidate_tmdb_show_cache(item["tmdb_id"])
+            return {"success": True, "message": "Item cache reset."}
+        return {"success": False, "error": "Entry not found or already deleted."}
+    except Exception as e:
+        logger.error(f"Error deleting rating entry {entry_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/ratings-cache/expire/{entry_id}")
+async def expire_dynamic_overlays_ratings_cache_entry(entry_id: int):
+    """Mark a cached rating record as expired so it will be refreshed on next sync."""
+    try:
+        from ratings_service import ratings_cache
+        expired = ratings_cache.expire_entry(entry_id)
+        if expired:
+            return {"success": True, "message": "Rating marked as expired. Eligible for automatic or manual ratings refresh."}
+        return {"success": False, "error": "Entry not found."}
+    except Exception as e:
+        logger.error(f"Error expiring rating entry {entry_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+class DynamicOverlaysTestApiKeyRequest(BaseModel):
+    provider: str
+    api_key: str
+
+@app.post("/api/dynamic-overlays/test-api-key")
+async def test_dynamic_overlays_api_key_endpoint(req: DynamicOverlaysTestApiKeyRequest):
+    """Test an external ratings service against a benchmark title."""
+    provider = req.provider.lower().strip()
+    api_key = req.api_key.strip()
+    if not api_key:
+        return {"success": False, "error": "API key cannot be empty."}
+
+    import httpx
+    import urllib.parse
+    clean_key = urllib.parse.quote(api_key)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if provider == "mdblist":
+                url = f"https://mdblist.com/api/?apikey={clean_key}&i=tt0111161"
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, dict) and data.get("error"):
+                        return {"success": False, "valid": False, "error": f"MDBList: {data['error']}"}
+                    ratings_list = data.get("ratings", []) if isinstance(data, dict) else []
+                    if ratings_list:
+                        sample = ", ".join(f"{r.get('source', '').upper()}: {r.get('value') or r.get('score')}" for r in ratings_list[:4])
+                        return {"success": True, "valid": True, "message": f"Verified! MDBList returned scores ({sample})"}
+                    return {"success": True, "valid": True, "message": "Key is valid and connected to MDBList."}
+                elif resp.status_code in [401, 403]:
+                    return {"success": False, "valid": False, "error": "Invalid or expired MDBList API key."}
+                elif resp.status_code == 503:
+                    return {"success": False, "valid": False, "error": "MDBList rejected request (Service temporarily unavailable or key unrecognized)."}
+                else:
+                    return {"success": False, "valid": False, "error": f"MDBList returned status {resp.status_code}"}
+
+            elif provider == "omdb":
+                url = f"https://www.omdbapi.com/?apikey={clean_key}&i=tt0111161"
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("Response") == "True":
+                        imdb_rating = data.get("imdbRating", "N/A")
+                        rt_rating = next((r.get("Value") for r in data.get("Ratings", []) if r.get("Source") == "Rotten Tomatoes"), None)
+                        summary = f"IMDb: {imdb_rating}" + (f", RT: {rt_rating}" if rt_rating else "")
+                        return {"success": True, "valid": True, "message": f"Verified! OMDb returned scores ({summary})"}
+                    else:
+                        return {"success": False, "valid": False, "error": data.get("Error", "Invalid OMDb API key.")}
+                elif resp.status_code in [401, 403]:
+                    return {"success": False, "valid": False, "error": "Invalid or unauthorized OMDb API key."}
+                else:
+                    return {"success": False, "valid": False, "error": f"OMDb returned status {resp.status_code}"}
+            elif provider == "simkl":
+                from ratings_service import fetch_simkl_ratings
+                outcomes = {}
+                ratings = await fetch_simkl_ratings("tt1375666", None, api_key, client, outcomes=outcomes)
+                if ratings:
+                    return {"success": True, "valid": True, "message": "SIMKL Client ID verified; catalog ratings are available."}
+                return {"success": False, "valid": False, "error": (outcomes.get("simkl") or {}).get("message", "No catalog ratings returned by SIMKL.")}
+            else:
+                return {"success": False, "error": f"Unsupported provider: {provider}"}
+    except Exception as e:
+        return {"success": False, "valid": False, "error": f"API request error: {str(e)}"}
+
+@app.get("/api/dynamic-overlays/visual-config")
+async def get_dynamic_overlays_visual_config_endpoint():
+    """
+    Translates config.yml into a high-level visual JSON configuration for the UI.
+    Eliminates raw YAML editing for users.
+    """
+    try:
+        from dynamic_overlays_service import parse_config_yml_to_visual
+        vis = parse_config_yml_to_visual(auto_seed=False)
+        return {"success": True, "config": vis}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/visual-config")
+async def save_dynamic_overlays_visual_config_endpoint(req: DynamicOverlaysVisualConfigRequest):
+    """
+    Saves visual UI configuration, automatically translating and compiling it into config.yml.
+    """
+    try:
+        from dynamic_overlays_service import compile_visual_to_config_yml
+        ok = compile_visual_to_config_yml(req.config)
+        if ok:
+            return {"success": True, "message": "Visual configuration saved and compiled into overlay templates."}
+        return {"success": False, "error": "Failed to compile visual configuration."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/import-yaml")
+async def import_dynamic_overlays_yaml_endpoint(req: DynamicOverlaysImportYamlRequest):
+    """
+    Imports existing YAML text once, translating it into visual UI controls.
+    Extracts external API keys (MDBList, OMDb) if present.
+    """
+    try:
+        from dynamic_overlays_service import import_yaml_to_visual, get_dynamic_overlays_settings
+        vis = import_yaml_to_visual(req.yaml_text)
+        fresh_settings = get_dynamic_overlays_settings()
+        extracted_keys = vis.get("extracted_keys", []) if isinstance(vis, dict) else []
+        return {
+            "success": True,
+            "config": vis,
+            "settings": fresh_settings,
+            "extracted_keys": extracted_keys,
+            "message": "YAML successfully translated into visual configuration."
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/dynamic-overlays/quick-start")
+async def quick_start_dynamic_overlays_endpoint():
+    """
+    Turnkey one-click setup for users with no existing Kometa config.
+    Auto-detects active media server libraries or seeds clean Movies & TV Shows with
+    standard overlays enabled (Resolution, Audio Codecs, Languages, Ratings, Status).
+    """
+    try:
+        from dynamic_overlays_service import generate_starter_visual_config, save_visual_config, compile_visual_to_config_yml
+        starter = generate_starter_visual_config()
+        save_visual_config(starter)
+        compile_visual_to_config_yml(starter)
+        return {
+            "success": True,
+            "config": starter,
+            "message": f"Successfully initialized starter configuration for {len(starter.get('libraries', {}))} libraries with standard presets enabled."
+        }
+    except Exception as e:
+        logger.error(f"Error in quick-start dynamic overlays: {e}")
+        return {"success": False, "error": str(e)}
 
 
 if FRONTEND_DIR.exists():

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import WorkspaceHeader from "./WorkspaceHeader";
 import {
   LayoutGrid,
   FolderTree,
@@ -134,10 +135,11 @@ function GalleryHub() {
   ].includes(activeTab);
 
   return (
-    <div className="space-y-4">
+    <div className="workspace-page space-y-6">
+      <WorkspaceHeader icon={LayoutGrid} title={({ posters: "Poster Gallery", backgrounds: "Background Gallery", seasons: "Season Gallery", titlecards: "Titlecard Gallery", backupAssets: "Asset Backups", manualAssets: "Manual Assets", testGallery: "Test Gallery", assetOverview: "Asset Overview" })[activeTab] || "Gallery"} />
       {/* View Mode Toggle - Only show for relevant tabs */}
       {showViewModeToggle && (
-        <div className="bg-theme-card border border-theme-border rounded-lg p-3 sm:p-4">
+        <div className="workspace-toolbar">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
             <div className="flex-1 min-w-0">
               <h3 className="text-base sm:text-lg font-semibold text-theme-text mb-1">
@@ -601,11 +603,11 @@ function TestGalleryTab() {
       {/* Image Modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          className="app-dialog-backdrop fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setSelectedImage(null)}
         >
           <div
-            className="relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden"
+            className="app-dialog-panel relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -1150,11 +1152,11 @@ function OverlayFilesView() {
       {/* Preview Modal */}
       {previewFile && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="app-dialog-backdrop fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           onClick={() => setPreviewFile(null)}
         >
           <div
-            className="relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden shadow-2xl"
+            className="app-dialog-panel relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Floating Close Button */}
@@ -1318,11 +1320,11 @@ function OverlayFilesView() {
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          className="app-dialog-backdrop fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
           onClick={() => setDeleteConfirm(null)}
         >
           <div
-            className="bg-theme-card border border-theme rounded-lg max-w-md w-full p-4 sm:p-6"
+            className="app-dialog-panel bg-theme-card border border-theme rounded-lg max-w-md w-full p-4 sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-4 mb-4">

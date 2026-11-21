@@ -176,7 +176,7 @@ function Push-ObjectToDiscord {
 }
 function Send-PosterizarrTelemetry {
     # Immediately return/exit if the config's telemetry toggle is set to false.
-    if ($config.PrerequisitePart.telemetry -eq $false -or $config.PrerequisitePart.telemetry -eq 'false') {
+    if ("$($config.PrerequisitePart.telemetry)".Trim() -eq 'false') {
         return
     }
 
@@ -202,28 +202,81 @@ function Send-PosterizarrTelemetry {
         $instanceId = [guid]::NewGuid().ToString()
     }
 
-    $cachedVersion = $null
-    if ($cache -and $cache.AppVersion) {
-        $cachedVersion = $cache.AppVersion
+    $osName = [string]$Platform
+    $isDocker = $env:POWERSHELL_DISTRIBUTION_CHANNEL -like 'PSDocker*' -or
+        (Test-Path -LiteralPath '/.dockerenv')
+    if ($isDocker) {
+        $osName = 'Docker'
+    }
+    elseif ($osName -notin @('Windows', 'Linux', 'macOS')) {
+        if ($IsWindows) {
+            $osName = 'Windows'
+        }
+        elseif ($IsLinux) {
+            $osName = 'Linux'
+        }
+        elseif ($IsMacOS) {
+            $osName = 'macOS'
+        }
+        else {
+            $osName = 'Unknown'
+        }
     }
 
-    if ($cachedVersion -eq $CurrentScriptVersion) {
+    $distribution = 'NotApplicable'
+    if ($osName -in @('Linux', 'Docker')) {
+        $distribution = 'Unknown'
+        try {
+            if (Test-Path -LiteralPath '/etc/os-release') {
+                $osRelease = Get-Content -LiteralPath '/etc/os-release' -Raw -ErrorAction Stop
+                $distributionMatch = [regex]::Match($osRelease, '(?m)^ID=(.+)$')
+                if ($distributionMatch.Success) {
+                    $distribution = $distributionMatch.Groups[1].Value.Trim().Trim('"').Trim("'").ToLowerInvariant()
+                }
+            }
+        }
+        catch {}
+    }
+
+    $architecture = 'Unknown'
+    try {
+        $architecture = ([string][System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture).ToLowerInvariant()
+    }
+    catch {
+        if ($env:PROCESSOR_ARCHITECTURE) {
+            $architecture = $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()
+        }
+    }
+
+    $serverOptions = @(
+        [pscustomobject]@{ Name = 'Plex'; Enabled = $config.PlexPart.UsePlex },
+        [pscustomobject]@{ Name = 'Jellyfin'; Enabled = $config.JellyfinPart.UseJellyfin },
+        [pscustomobject]@{ Name = 'Emby'; Enabled = $config.EmbyPart.UseEmby },
+        [pscustomobject]@{ Name = 'Silo'; Enabled = $config.SiloPart.UseSilo }
+    )
+    $target = 'NotConfigured'
+    foreach ($serverOption in $serverOptions) {
+        $enabledValue = "$($serverOption.Enabled)".Trim().ToLowerInvariant()
+        if ($enabledValue -in @('true', '1')) {
+            $target = $serverOption.Name
+            break
+        }
+    }
+
+    $cachedVersion = if ($cache) { [string]$cache.AppVersion } else { '' }
+    $cachedOS = if ($cache) { [string]$cache.OS } else { '' }
+    $cachedDistribution = if ($cache) { [string]$cache.Distribution } else { '' }
+    $cachedArchitecture = if ($cache) { [string]$cache.Architecture } else { '' }
+    $cachedTarget = if ($cache) { [string]$cache.Target } else { '' }
+    if ($cachedVersion -eq $CurrentScriptVersion -and $cachedOS -eq $osName -and $cachedDistribution -eq $distribution -and $cachedArchitecture -eq $architecture -and $cachedTarget -eq $target) {
         return
-    }
-
-    $osName = $Platform
-
-    if ($config.PlexPart.UsePlex -eq 'true' -or $config.PlexPart.UsePlex -eq $true) {
-        $target = "Plex"
-    } elseif ($config.JellyfinPart.UseJellyfin -eq 'true' -or $config.JellyfinPart.UseJellyfin -eq $true) {
-        $target = "Jellyfin"
-    } elseif ($config.EmbyPart.UseEmby -eq 'true' -or $config.EmbyPart.UseEmby -eq $true) {
-        $target = "Emby"
     }
 
     $payload = @{
         InstanceId = $instanceId
         os         = $osName
+        distribution = $distribution
+        architecture = $architecture
         target     = $target
         appVersion = $CurrentScriptVersion
     }
@@ -234,6 +287,10 @@ function Send-PosterizarrTelemetry {
         $newCache = @{
             InstanceId = $instanceId
             AppVersion = $CurrentScriptVersion
+            OS         = $osName
+            Distribution = $distribution
+            Architecture = $architecture
+            Target     = $target
         }
         $newCache | ConvertTo-Json -Compress | Set-Content $cacheFile -Force
     }

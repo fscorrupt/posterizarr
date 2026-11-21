@@ -9,12 +9,23 @@
 
 ### Primary Capabilities:
 1. **Multi-Provider Artwork Scraping**: Queries metadata providers (**TMDB**, **TVDB**, **Fanart.tv**, and local media servers, with IMDb fallback) using configurable language sequences and priority strategies.
-2. **Dynamic Overlay & Badge Compositing**: Uses **ImageMagick 7** to dynamically composite overlays (borders, inner glow, gradient fades, resolution banners like 4K/1080p, HDR/Dolby Vision flags, audio codec badges, source watermarks, and custom typography) onto posters, season posters, backgrounds, and title cards.
+2. **Artwork Generation and Native Dynamic Overlays**: The **ImageMagick 7** asset-generation pipeline creates clean/styled artwork with typography, borders, and configured static overlays. The separate **Python/Pillow Dynamic Overlays** engine renders supported metadata-driven badges in memory and uploads directly to Plex, Jellyfin, or Emby without modifying clean source files. It does not require an external Kometa runtime.
 3. **Textless Detection & ClearLogo Compositing**: Automatically detects textless artwork, scrapes transparent clearlogos/clearart from TVDB, TMDB, or Fanart, converts colors if requested (monochrome silhouettes), and falls back gracefully to formatted typography.
 4. **Direct Media Server Synchronization**: Uploads processed artwork directly to Plex, Jellyfin, or Emby via REST APIs. Embeds EXIF metadata/hashes to prevent redundant reprocessing.
 5. **Interactive Live Collection Designer**: Offers a real-time canvas editor in the Web UI for designing collection posters with customizable linear/radial gradients, vignettes, matte masks, film grain textures, typography alignments, drop shadows, and preset thumbnail capture.
 6. **Web UI & Management Dashboard**: Modern single-page React application with real-time dashboards, asset overview tables, manual image choice pickers (Asset Replacer), clearlogo browsers, logs viewer (WebSocket streaming), and background queue runners.
-7. **Arr & Companion Integrations**: Webhook handlers and trigger scripts for Radarr, Sonarr, and Tautulli, automated callbacks for **Agregarr**, Kometa (Plex Meta Manager) folder alignment, native C# media server plugins, Uptime Kuma monitoring, and Discord rich embeds.
+7. **Arr & Companion Integrations**: Webhook handlers and trigger scripts for Radarr, Sonarr, and Tautulli, automated callbacks for **Agregarr**, native C# media server plugins, Uptime Kuma monitoring, and Discord rich embeds. Asset-folder compatibility with external consumers is optional, not part of the native overlay runtime.
+
+### Media Server Discovery Invariant
+
+Jellyfin/Emby `/Items` requests enumerating movies must explicitly set
+`CollapseBoxSetItems=false`; otherwise box-set members can disappear before local
+filtering. Preserve this existing PowerShell behavior in Python discovery,
+targeted searches/fallbacks, item pickers, and change detection. A larger `Limit`
+does not fix collapsed results. Dynamic Overlays uses structured query parameters
+without changing pagination. Silo instead uses its native
+`/api/v2/admin/catalog/items` cursor-paginated catalog and separate collections;
+do not send it the Jellyfin/Emby parameter.
 
 ---
 
@@ -26,7 +37,8 @@
 | **Web UI Backend** | Python 3.13 + FastAPI + Uvicorn | `webui/backend/` | Serves REST API and WebSockets, manages SQLite DBs, coordinates background runs, enforces SSRF protections, handles image proxies. |
 | **Web UI Frontend** | React 18 + Vite + Tailwind CSS | `webui/frontend/` | Single-page application: Dashboard, Asset Overview, Live Collection Editor, Settings Editor, Logs, Queue Manager, Onboarding Wizard. |
 | **Image Processing** | ImageMagick 7 (`magick`) + Pillow | Alpine packages / `Overlayfiles/` | Compositing overlays, badge positioning, typography rendering, color extraction, textless detection, and UI preview rendering. |
-| **Databases** | SQLite3 | `database/*.db` | Six specialized databases: `imagechoices.db`, `config.db`, `queue.db`, `server_libraries.db`, `media_export.db`, `runtime_history.db`. |
+| **Native Dynamic Overlays** | Python + Pillow + SQLite | `overlay_engine.py`, `overlay_resolver.py`, `overlay_preview.py`, `overlay_sync_service.py`, `overlay_cache.py` | Per-library rules, live preview, in-memory composition, metadata/rating caches, and direct artwork uploads. Supported YAML compatibility does not embed Kometa. |
+| **Databases** | SQLite3 | `database/*.db` | Multi-database storage: `config.db`, `imagechoices.db`, `queue.db`, `server_libraries.db`, `media_export.db`, `runtime_stats.db`, `overlay_cache.db`, `animetafill.db`, `plex_push_cache.db`, and optional `imdb_dataset.db`. |
 | **Containerization** | Docker (Alpine 3.24) | `Dockerfile`, `Start.ps1`, `start.sh` | Multi-stage build with multi-process orchestration (`uvicorn` backend daemon + `pwsh Start.ps1` scheduler/worker). |
 | **Media Server Plugins** | C# (.NET 8/9/10) | `modules/Posterizarr.Plugin*/` | Native plugins for Jellyfin (10.11.x on .NET 9, 12.0.x on .NET 10) and Emby (on .NET 8) providing automated event notifications and metadata sync. |
 
@@ -95,15 +107,19 @@ PosterizarrUI_dev/
 │   │   ├── scheduler.py       # Cron / interval scheduling engine for automated Posterizarr runs
 │   │   ├── server_libraries_database.py # Caching layer for media server library structures
 │   │   ├── studio_logos.py    # Scraper, local cache, and delivery engine for production company logos
-│   │   └── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
+│   │   ├── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
+│   │   ├── release_notes.py       # Cached GitHub Releases fetcher & post-update "What's New" evaluator
+│   │   ├── support_bundle.py      # Diagnostic support ZIP builder with credential & IP redaction
+│   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
+│   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
 │   └── frontend/              # Vite + React 18 single-page application
 │       ├── src/
 │       │   ├── App.jsx        # Root routing table, theme provider, and top-level modals
 │       │   ├── index.css      # Tailwind CSS directives and custom UI animations
 │       │   ├── components/    # 50+ React components (Dashboard, AssetOverview, CollectionLiveEditor, etc.)
 │       │   ├── context/       # AuthContext, ThemeContext, SidebarContext, ToastContext, DashboardLoadingContext
-│       │   ├── locales/       # Translation dictionaries (en, de, fr, es, etc.)
-│       │   └── utils/         # fetchInterceptor.js (auth & headers), uiLogger.js
+│       │   ├── locales/       # Translation dictionaries (en, de, fr, it, pt)
+│       │   └── utils/         # fetchInterceptor.js (auth & headers), markdownParser.js, uiLogger.js
 │       └── package.json
 │
 └── docs/                      # Complete MkDocs documentation suite
@@ -117,7 +133,7 @@ PosterizarrUI_dev/
 In Docker (`IS_DOCKER = True`), paths and permissions follow a strict container layout:
 - `/config` (`$env:APP_DATA`): Writable volume containing `config.json`, `Logs/`, `RotatedLogs/`, `database/`, and cached assets.
 - `/app` (`$env:APP_ROOT`): Read-only application root containing PowerShell modules, FastAPI backend, and precompiled frontend.
-- `/assets`: Output directory where processed artwork is written (structured for Kometa compatibility).
+- `/assets`: Local clean/generated artwork in a predictable library/title structure, consumed by Posterizarr's native workflows and optional external tools.
 - `/manualassets`: Custom images placed by users to override automated scrapers.
 - `/assetsbackup`: Original unmodified artwork downloaded during backup runs.
 - `/posterizarr/watcher`: Monitored directory for `.posterizarr` trigger files created by `ArrTrigger.sh`.
@@ -216,16 +232,20 @@ pwsh ./Posterizarr.ps1 [-ModeSwitch] [Parameters]
 
 ## 6. Database Architecture & Schema Specifications
 
-Posterizarr maintains six dedicated SQLite3 databases located in `database/` (`/config/database/` in Docker):
+Posterizarr maintains specialized SQLite3 databases located in `database/` (`/config/database/` in Docker). All non-secret databases are inspectable via the read-only **System Database Browser** in **Insights** (`config.db` is strictly excluded):
 
 ```text
 database/
-├── config.db              # Web UI settings, authentication, scheduler state, and onboarding
+├── config.db              # Web UI settings, authentication, scheduler state, and onboarding (excluded from DB Browser)
 ├── imagechoices.db        # Artwork metadata, chosen provider URLs, fallback tags, Action Center items
 ├── queue.db               # Background job execution queue and task statuses
-├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby section IDs)
+├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby/Silo section IDs)
 ├── media_export.db        # Media library exports and item metadata
-└── runtime_history.db     # Historical run metrics, processing durations, and asset counts
+├── runtime_stats.db       # Historical run metrics, processing durations, and asset counts
+├── overlay_cache.db       # Dynamic Overlays state, ratings cache, layer snapshots, and title-change baselines
+├── animetafill.db         # Anime episode Canon/Filler/Mixed classifications and manual overrides
+├── plex_push_cache.db     # Plex Collection Explorer & Plex Sync push state and hashes
+└── imdb_dataset.db        # Optional local IMDb title/episode/ratings index and manual episode mappings
 ```
 
 ### Key Schema Responsibilities:
@@ -236,11 +256,13 @@ database/
    - Manages asynchronous background runs (`Pending`, `Running`, `Completed`, `Failed`).
    - Prevents concurrent script conflicts by staging execution requests and tracking PID and execution timestamps.
 3. **`config.db`**:
-   - Stores WebUI persistent state, basic auth hashes, scheduler cron expressions, and the `onboarding_completed` flag.
+   - Stores WebUI persistent state, basic auth hashes, scheduler cron expressions, `last_seen_release_version`, and the `onboarding_completed` flag.
 4. **`server_libraries.db`**:
-   - Caches library names, types (`movie`, `show`), server UUIDs, and section keys from Plex, Jellyfin, and Emby to minimize external API roundtrips.
-5. **`runtime_history.db`**:
+   - Caches library names, types (`movie`, `show`), server UUIDs, and section keys from Plex, Jellyfin, Emby, and Silo to minimize external API roundtrips.
+5. **`runtime_stats.db`**:
    - Records execution history, run modes, worker counts, total assets created, processing durations, and error logs for display in `RuntimeHistory.jsx`.
+6. **`overlay_cache.db` & `animetafill.db` & `plex_push_cache.db` & `imdb_dataset.db`**:
+   - Store Dynamic Overlays sync fingerprints, multi-provider ratings cache (`media_ratings_cache`), deduplicated `overlay_layer_snapshots`, Asset Title Review baselines, AniMetaFill episode classifications, Plex collection/asset push diffs, and optional local IMDb datasets.
 
 ---
 
@@ -315,7 +337,7 @@ The frontend is a React 18 single-page application built with Vite and Tailwind 
 - `/logs`: Real-Time WebSocket Log Streamer (`LogViewer.jsx`)
 - `/how-it-works`: System Concept & Guide (`HowItWorks.jsx`)
 - `/auto-triggers`: Webhook & Automation Settings (`AutoTriggers.jsx`)
-- `/about`: System Info & Dependencies (`About.jsx`)
+- `/about`: About, Runtime Environment & Release Changelogs (`About.jsx`, `ReleasesSection.jsx`, `WhatsNewModal.jsx`, `MarkdownRenderer.jsx`)
 
 ### React Context Providers:
 - **`AuthProvider`**: Manages session state, basic authentication credentials, and API tokens.
@@ -339,9 +361,12 @@ The backend (`webui/backend/main.py`) provides over 170 REST and WebSocket endpo
 ### Key API Endpoint Groups:
 1. **System & Health**:
    - `GET /api`: Health check.
-   - `GET /api/system-info`: Hardware, memory, CPU, and Docker status.
+   - `GET /api/system-info`: Hardware, memory, CPU, runtime stack, and Docker status.
    - `GET /api/version`: Local vs remote version comparison.
-   - `GET /api/releases`: GitHub changelog notes.
+   - `GET /api/releases`: Cached GitHub release metadata and Markdown changelogs (`?refresh=true` bypasses cache).
+   - `GET /api/whats-new` & `POST /api/whats-new/dismiss`: Post-update release notes eligibility and dismissal state.
+   - `GET /api/dynamic-overlays/database-stats` & `GET /api/dynamic-overlays/database-entries`: Read-only System Database Browser (`config.db` excluded).
+   - `GET /api/provider/v1/asset/{media_type}/{item_id}` & `GET /api/provider/v1/ratings/{media_type}/{item_id}`: Opt-in API-key-protected External Provider APIs.
 2. **Configuration**:
    - `GET /api/config`: Fetches complete configuration (supports categorized and flat views).
    - `POST /api/config`: Saves updated configuration after validation.
@@ -391,9 +416,13 @@ The backend (`webui/backend/main.py`) provides over 170 REST and WebSocket endpo
 - **Native Webhook**: Webhook pointed to `http://POSTERIZARR:8000/api/webhook/tautulli?api_key=KEY` triggering on `Recently Added`.
 - **Custom Script**: `trigger.py` configured under Tautulli Notification Agents.
 
-### 4. Kometa (Plex Meta Manager) Integration
-- Posterizarr outputs artwork into the standard Kometa directory hierarchy: `AssetPath/LibraryName/MediaTitle (Year)/poster.ext`.
-- Pointing Kometa's `asset_directory` directly to Posterizarr's `/assets` folder enables seamless overlay layering without file moves.
+<a id="4-kometa-plex-meta-manager-integration"></a>
+### 4. Native Dynamic Overlays and Optional Asset Compatibility
+- **Primary workflow:** Posterizarr creates artwork, renders supported Dynamic Overlays in memory, and uploads directly to Plex, Jellyfin, or Emby. The Web UI provides per-library rules, format-specific previews, asset readiness, targeted sync, and cache inspection. Start in Dry Run.
+- **Local assets:** the common library-folder layout is `AssetPath/LibraryName/MediaTitle (Year)/poster.ext`. Media from different NAS mounts can share a library asset root; ambiguous title/edition folders still require distinct naming.
+- **Optional interoperability:** existing Kometa installations can consume the local assets and supported Kometa-style YAML can be imported. Kometa is not installed or executed by the native engine, and compatibility is not full Kometa feature parity.
+- **Ownership:** avoid multiple uploaders managing the same server/library/artwork type. A clean local-artwork sync can replace overlaid artwork, regardless of which tool produced it.
+- **References:** [Native Dynamic Overlays](dynamic_overlays.md), [optional Kometa compatibility](kometaintegration.md). Existing inbound links to the old Kometa section are retained by the anchor above.
 
 ### 5. Media Server C# Plugins
 - **`modules/Posterizarr.Plugin`**: In-tree C# plugin for Jellyfin.
@@ -417,7 +446,7 @@ The configuration file `config.json` (modeled by `config.example.json`) contains
 - `basicAuthPassword` (str): Admin password (default: `"posterizarr"`).
 
 ### 2. `ApiPart`
-- `tvdbapi` (str): TVDB API key (supports `APIKEY#PIN` format for subscribers).
+- `tvdbapi` (str): TVDB API key (supports `APIKEY#PIN` format for subscribers; optional if TMDb is provided).
 - `tmdbtoken` (str): TMDB Read Access Bearer Token.
 - `FanartTvAPIKey` (str): Fanart.tv personal API key.
 - `PlexToken` (str): Plex authentication token.
@@ -492,9 +521,9 @@ The configuration file `config.json` (modeled by `config.example.json`) contains
 - `font` / `collectionfont` / `RTLfont` / `backgroundfont` / `titlecardfont` (str): Font filenames in `Overlayfiles/`.
 - `overlayfile` / `showoverlayfile` / `seasonoverlayfile` / `collectionoverlayfile` / `backgroundoverlayfile` / `titlecardoverlayfile` (str): Overlay PNG files.
 - `poster4k` / `Poster1080p` / `Background4k` / `Background1080p` / `TC4k` / `TC1080p` (str): Resolution badge overlays.
-- `4KDoVi` / `4KHDR10` / `4KDoViHDR10` (str): HDR badge overlays for posters.
-- `4KDoViBackground` / `4KHDR10Background` / `4KDoViHDR10Background` (str): HDR badges for backgrounds.
-- `4KDoViTC` / `4KHDR10TC` / `4KDoViHDR10TC` (str): HDR badges for title cards.
+- `4KDoVi` / `4KHDR10` / `4KDoViHDR10` (str): HDR badge overlays for posters (supports HDR10 and HDR10+).
+- `4KDoViBackground` / `4KHDR10Background` / `4KDoViHDR10Background` (str): HDR badges for backgrounds (supports HDR10 and HDR10+).
+- `4KDoViTC` / `4KHDR10TC` / `4KDoViHDR10TC` (str): HDR badges for title cards (supports HDR10 and HDR10+).
 - `UsePosterResolutionOverlays` / `UseBackgroundResolutionOverlays` / `UseTCResolutionOverlays` (bool): Apply resolution-specific overlays.
 - `LibraryFolders` (bool): Structure output by library folders (Kometa style).
 - `Posters` / `SeasonPosters` / `BackgroundPosters` / `TitleCards` (bool): Enable generation per asset category.

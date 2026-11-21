@@ -13,7 +13,7 @@ function Get-AssetHashtable {
 
     try {
         if ($FollowSymlink -eq 'true' -or $FollowSymlink -eq $true) {
-            Get-ChildItem -Path $TargetPath -Recurse -FollowSymlink | Where-Object {
+            Get-ChildItem -LiteralPath $TargetPath -Recurse -FollowSymlink -File | Where-Object {
                 $_.FullName -ne $excludePath -and $_.FullName -notlike "$excludePath/*" -and $_.FullName -notlike "$excludePath\*"
             } | ForEach-Object {
                 if ($allowedExtensions -contains $_.Extension.ToLower()) {
@@ -28,23 +28,50 @@ function Get-AssetHashtable {
                 }
             }
         } else {
-            # Optimized .NET Enumeration
-            $dirInfo = [System.IO.DirectoryInfo]::new($TargetPath)
-            foreach ($fileInfo in $dirInfo.EnumerateFiles('*', [System.IO.SearchOption]::AllDirectories)) {
-                # Ensure we properly exclude the Collections directory
-                if ($fileInfo.FullName -eq $excludePath -or $fileInfo.FullName -like "$excludePath/*" -or $fileInfo.FullName -like "$excludePath\*") {
-                    continue
-                }
-                
-                if ($allowedExtensions -contains $fileInfo.Extension.ToLower()) {
-                    $directory = $fileInfo.DirectoryName
-                    $basename = $fileInfo.BaseName
-                    if ($Platform -eq "Docker" -or $Platform -eq "Linux" -or $Platform -eq 'macOS') {
-                        $directoryHashtable["$directory/$basename"] = $true
-                    } Else {
-                        $directoryHashtable["$directory\$basename"] = $true
+            $rootDir = [System.IO.DirectoryInfo]::new($TargetPath)
+
+            $pending = [System.Collections.Generic.Stack[
+                System.IO.DirectoryInfo
+            ]]::new()
+
+            $pending.Push($rootDir)
+
+            while ($pending.Count -gt 0) {
+                $currentDir = $pending.Pop()
+
+                foreach ($fileInfo in $currentDir.EnumerateFiles()) {
+
+                    if ($allowedExtensions -notcontains $fileInfo.Extension.ToLowerInvariant()) {
+                        continue
                     }
+
+                    $key = Join-Path `
+                        -Path $currentDir.FullName `
+                        -ChildPath $fileInfo.BaseName
+
+                    $directoryHashtable[$key] = $true
                     $global:totalSize += $fileInfo.Length
+                }
+
+                foreach ($childDir in $currentDir.EnumerateDirectories()) {
+
+                    # Exclude the Collections subtree entirely.
+                    if (
+                        $currentDir.FullName -eq $rootDir.FullName -and
+                        $childDir.Name -eq 'Collections'
+                    ) {
+                        continue
+                    }
+
+                    # Do not traverse directory symlinks in this branch.
+                    if (
+                        ($childDir.Attributes -band
+                            [System.IO.FileAttributes]::ReparsePoint) -ne 0
+                    ) {
+                        continue
+                    }
+
+                    $pending.Push($childDir)
                 }
             }
         }

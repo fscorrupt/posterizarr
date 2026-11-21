@@ -1,3 +1,12 @@
+# Manual PowerShell Walkthrough
+
+This detailed guide covers script-first installation and command-line workflows
+on Windows and Linux. For Docker, use the complete
+[Docker Compose installation](installation.md#docker-compose); for Unraid, use
+the [Community Apps installation](installation.md#unraid). Then follow the
+[first-time setup guide](getting_started.md). Installing the Web UI from source
+is a separate path; see [Run the Web UI from source](uiinstallation.md).
+
 ## Getting Started
 
 !!! tip
@@ -17,7 +26,7 @@
     - **Plex Token:** [Optain Plex Token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
 
 ### Docker/ARM
-- For Docker please start here: [Docker](#docker)
+- For Docker, follow the [complete Docker Compose installation](installation.md#docker-compose), including `docker compose up -d` and the Web UI address.
 
 - For Linux/ARM please start here: [ARM](#arm-prerequisites)
 
@@ -111,10 +120,10 @@
         ```
 1. Rename the `config.example.json` to `config.json` and adjust the settings.
 
-    - Enter all the api keys and tokens from **Getting Started - Step 1** under the `ApiPart` [Detailed Config Description](configuration.md)
-        - tvdbapi
-        - tmdbtoken
-        - FanartTvAPIKey
+    - Enter your API keys and tokens under `ApiPart` ([Detailed Config Description](configuration.md)):
+        - tmdbtoken (Recommended; free & instant to generate)
+        - tvdbapi (Optional if using TMDb; Project Key or Subscriber PIN `Key#PIN`)
+        - FanartTvAPIKey (Optional supplementary provider)
         - PlexToken
 
     - If you are happy with the default values, you should still ensure that the AssetPath value is set properly.
@@ -271,10 +280,10 @@
     - Now it should download everything and start up your container.
 4. On first run the container will download the required files and also create the folder structure for you.
 5. Adjust the settings of your `config.json` either in file or via Web UI http://localhost:8000.
-    - Enter all the api keys and tokens from **Getting Started - Step 1** under the `ApiPart` [Detailed Config Description](configuration.md)
-        - tvdbapi
-        - tmdbtoken
-        - FanartTvAPIKey
+    - Enter your API keys and tokens under `ApiPart` ([Detailed Config Description](configuration.md)):
+        - tmdbtoken (Recommended; free & instant to generate)
+        - tvdbapi (Optional if using TMDb; Project Key or Subscriber PIN `Key#PIN`)
+        - FanartTvAPIKey (Optional supplementary provider)
         - PlexToken
     - If you are happy with the default values, you should still ensure that the AssetPath value is set properly.
         - On Linux, like this: `/PathToAsset/Dir`

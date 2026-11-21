@@ -36,6 +36,7 @@ import AutoTriggers from "./components/AutoTriggers";
 import SchedulerSettings from "./components/SchedulerSettings";
 import RunModes from "./components/RunModes";
 import AssetOverview from "./components/AssetOverview";
+import ImageQuarantine from "./components/ImageQuarantine";
 import RuntimeHistory from "./components/RuntimeHistory";
 import PlexExport from "./components/PlexExport";
 import JellyfinEmbyExport from "./components/JellyfinEmbyExport";
@@ -49,6 +50,8 @@ import TestGallery from "./components/TestGallery";
 import QueueView from "./components/QueueView";
 import Blueprints from "./components/Blueprints";
 import OnboardingModal from "./components/OnboardingModal";
+import DynamicOverlays from "./components/DynamicOverlays";
+import WhatsNewModal from "./components/WhatsNewModal";
 
 function AppContent() {
   const { isCollapsed } = useSidebar();
@@ -59,7 +62,10 @@ function AppContent() {
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [whatsNewData, setWhatsNewData] = useState(null);
   const hasShownStartupScreen = React.useRef(false);
+  const hasCheckedWhatsNew = React.useRef(false);
   const isDashboardRoute =
     location.pathname === "/" || location.pathname === "/dashboard";
 
@@ -158,20 +164,89 @@ function AppContent() {
 
   // Check onboarding status when authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      fetch("/api/config")
-        .then(res => res.json())
-        .then(data => {
-          // If onboarding_completed is explicitly false or doesn't exist but we seeded it, 
-          // check if we need to show the onboarding modal.
-          // In config_database.py we seeded it in _root if it was empty.
-          if (data && data._root && data._root.onboarding_completed === false) {
-            setShowOnboarding(true);
-          }
-        })
-        .catch(err => console.error("Error fetching config for onboarding:", err));
+    if (!isAuthenticated) {
+      setOnboardingChecked(false);
+      return undefined;
     }
+
+    let cancelled = false;
+    fetch("/api/config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data && data._root && data._root.onboarding_completed === false) {
+          setShowOnboarding(true);
+        }
+      })
+      .catch((err) => console.error("Error fetching config for onboarding:", err))
+      .finally(() => {
+        if (!cancelled) setOnboardingChecked(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isAuthenticated]);
+
+  // Check once per session if an updated stable release should display the post-update What's New modal
+  useEffect(() => {
+    if (
+      !isAuthenticated ||
+      loading ||
+      !onboardingChecked ||
+      showOnboarding ||
+      showLoadingScreen ||
+      hasCheckedWhatsNew.current
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    fetch("/api/whats-new")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        hasCheckedWhatsNew.current = true;
+        if (!data || !data.success || !data.should_show || !data.release) return;
+
+        let localSeen = null;
+        try {
+          localSeen = localStorage.getItem("posterizarr_last_seen_release");
+        } catch {
+          localSeen = null;
+        }
+        if (localSeen && localSeen === data.installed_version) return;
+
+        setWhatsNewData({
+          installed_version: data.installed_version,
+          release: data.release,
+        });
+      })
+      .catch((err) => console.error("Error checking release notes:", err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, loading, onboardingChecked, showOnboarding, showLoadingScreen]);
+
+  const handleDismissWhatsNew = (navigateToAbout = false) => {
+    const versionToDismiss = whatsNewData?.installed_version;
+    setWhatsNewData(null);
+    if (versionToDismiss) {
+      try {
+        localStorage.setItem("posterizarr_last_seen_release", versionToDismiss);
+      } catch {
+        // Ignore storage restrictions
+      }
+      fetch("/api/whats-new/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: versionToDismiss }),
+      }).catch((err) => console.error("Error dismissing What's New modal:", err));
+    }
+    if (navigateToAbout) {
+      navigate("/about");
+    }
+  };
 
   // Hide loading screen when dashboard is fully loaded (only on dashboard route)
   // OR immediately hide if we're on a non-dashboard route
@@ -233,7 +308,21 @@ function AppContent() {
   return (
     <>
       {/* Onboarding Modal - highest priority */}
-      {showOnboarding && <OnboardingModal onComplete={() => { setShowOnboarding(false); navigate("/how-it-works"); }} />}
+      {showOnboarding && <OnboardingModal onComplete={(openDynamicOverlaysSetup) => {
+        setShowOnboarding(false);
+        navigate(openDynamicOverlaysSetup ? "/dynamic-overlays?setupWizard=1" : "/how-it-works");
+      }} />}
+
+      {/* Post-update Release Notes Modal */}
+      {!showOnboarding && !showLoadingScreen && whatsNewData && (
+        <WhatsNewModal
+          isOpen={true}
+          release={whatsNewData.release}
+          installedVersion={whatsNewData.installed_version}
+          onClose={() => handleDismissWhatsNew(false)}
+          onViewAllReleases={() => handleDismissWhatsNew(true)}
+        />
+      )}
 
       {/* Loading Screen Overlay - shown over the UI during login transition */}
       {showLoadingScreen && (
@@ -243,12 +332,12 @@ function AppContent() {
       )}
 
       {/* Main App - rendered in background while loading screen is shown */}
-      <div className="min-h-screen bg-gradient-to-br from-theme-dark via-theme-darker to-theme-dark text-theme-text">
+      <div className="app-shell min-h-screen text-theme-text">
         <TopNavbar />
         <Sidebar />
 
         <main
-          className={`pt-16 transition-all duration-300 ${isCollapsed ? "md:ml-20" : "md:ml-80"
+          className={`app-content pt-16 transition-all duration-300 ${isCollapsed ? "md:ml-20" : "md:ml-64"
             }`}
         >
           {/* Extra padding on mobile for sidebar menu */}
@@ -263,6 +352,7 @@ function AppContent() {
                 <Route path="/manual-assets" element={<ManualAssets />} />
                 {/* Route for Backup Assets - pointing to GalleryHub which handles the rendering */}
                 <Route path="/asset-backups" element={<GalleryHub />} />
+                <Route path="/image-quarantine" element={<ImageQuarantine />} />
                 <Route path="/asset-overview" element={<AssetOverview />} />
                 <Route path="/runtime-history" element={<RuntimeHistory />} />
                 <Route
@@ -291,6 +381,7 @@ function AppContent() {
 
                 <Route path="/test-gallery" element={<TestGallery />} />
                 <Route path="/blueprints" element={<Blueprints />} />
+                <Route path="/dynamic-overlays" element={<DynamicOverlays />} />
 
                 <Route
                   path="/config"

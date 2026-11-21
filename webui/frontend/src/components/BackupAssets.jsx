@@ -39,6 +39,13 @@ import RestoreModeModal from "./modals/RestoreModeModal";
 
 const API_URL = "/api";
 
+const sortLabelKeys = {
+  name_asc: "common.sorting.nameAsc",
+  name_desc: "common.sorting.nameDesc",
+  date_newest: "common.sorting.dateNewest",
+  date_oldest: "common.sorting.dateOldest",
+};
+
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // ++ PAGINATION COMPONENT
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -135,7 +142,7 @@ function BackupAssets() {
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [assetToRestore, setAssetToRestore] = useState(null);
-  
+
   const [advancedRestoreOpen, setAdvancedRestoreOpen] = useState(false);
   const [initialRestoreLibrary, setInitialRestoreLibrary] = useState("");
   const [initialRestoreItem, setInitialRestoreItem] = useState("");
@@ -295,7 +302,7 @@ function BackupAssets() {
     let library = null;
     let item = null;
     let type = null;
-    
+
     const parts = assetPath.split(/[\/\\]/);
     if (parts.length >= 3) {
       library = parts[0];
@@ -303,7 +310,7 @@ function BackupAssets() {
     } else if (parts.length === 2) {
       item = parts[0];
     }
-    
+
     if (assetName.toLowerCase().includes('poster')) type = 'poster';
     if (assetName.toLowerCase().includes('background')) type = 'background';
     if (assetName.toLowerCase().includes('season')) type = 'season';
@@ -528,7 +535,7 @@ function BackupAssets() {
   return (
     <div className="space-y-6">
       <ScrollToButtons />
-      
+
       {/* Restore Modal */}
       <RestoreModeModal
         isOpen={advancedRestoreOpen}
@@ -540,8 +547,8 @@ function BackupAssets() {
 
       {/* Restore Confirmation Modal */}
       {restoreModalOpen && assetToRestore && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="app-dialog-panel bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
                 <UploadCloud className="w-8 h-8 text-yellow-500" />
@@ -585,8 +592,8 @@ function BackupAssets() {
 
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && assetToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="app-dialog-panel bg-theme-bg border border-theme-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Trash2 className="w-8 h-8 text-red-500" />
@@ -733,7 +740,7 @@ function BackupAssets() {
                             : "text-theme-text hover:bg-theme-hover"
                         }`}
                       >
-                        {t(`common.sorting.${opt.replace("_", "")}`) || opt}
+                        {t(sortLabelKeys[opt])}
                       </button>
                     ))}
                   </div>
@@ -1075,7 +1082,7 @@ function BackupAssets() {
                             : "text-theme-text hover:bg-theme-hover"
                         }`}
                       >
-                        {t(`common.sorting.${opt.replace("_", "")}`) || opt}
+                        {t(sortLabelKeys[opt])}
                       </button>
                     ))}
                   </div>
@@ -1330,11 +1337,11 @@ function BackupAssets() {
       {/* 4. IMAGE PREVIEW MODAL */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="app-dialog-backdrop fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setSelectedImage(null)}
         >
           <div
-            className="relative max-w-7xl w-full max-h-[90vh] bg-theme-card rounded-lg flex flex-col md:flex-row overflow-hidden shadow-2xl"
+            className="app-dialog-panel relative max-w-7xl w-full max-h-[90vh] bg-theme-card rounded-lg flex flex-col md:flex-row overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Image Area */}
@@ -1440,7 +1447,7 @@ function BackupAssets() {
           </div>
         </div>
       )}
-      
+
       {/* Restore Mode Modal */}
       <RestoreModeModal
         show={advancedRestoreOpen}

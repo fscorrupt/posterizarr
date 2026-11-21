@@ -1,0 +1,327 @@
+import copy
+import yaml
+import os
+import sys
+import re
+import shutil
+import glob
+from typing import Dict, List, Optional
+from animetafill_core.logger import logger
+
+class OverlayYamlGenerator:
+    """
+    Generates YAML files containing surgical episode-level overlays.
+    Uses 'filepath.regex' to target episodes without bloating Plex metadata.
+    """
+    def get_existing_raw_overlays(self, filename: str = "anime_overlays.yml") -> Dict[str, dict]:
+        """
+        Loads the raw 'overlays' mapping from an existing YAML file so individual
+        show blocks can be preserved if a transient API error prevents regeneration.
+        """
+        file_path = os.path.join(self.output_dir, filename)
+        if not os.path.exists(file_path):
+            return {}
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            if isinstance(data, dict) and isinstance(data.get('overlays'), dict):
+                return data['overlays']
+        except Exception as e:
+            logger.warning(f"Could not read existing YAML overlays from '{file_path}': {e}")
+        return {}
+
+    def get_existing_overlays(self, filename: str = "anime_overlays.yml") -> List[dict]:
+        """
+        Parses the existing YAML file back into a list of raw show info.
+        Returns: List of {"title": str, "category": str, "episodes": List[str]}
+        """
+        file_path = os.path.join(self.output_dir, filename)
+        if not os.path.exists(file_path):
+            return []
+
+        results = []
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if not data or 'overlays' not in data:
+                    return []
+
+                # Inverse label mapping to find category from text
+                inv_labels = {v.lower(): k for k, v in self.labels.items()}
+
+                for overlay_name, details in data['overlays'].items():
+                    filters = details.get('filters', {})
+                    show_title = filters.get('show_title')
+                    regex = filters.get('filepath.regex')
+                    label = details.get('template', {}).get('label', '').lower()
+
+                    if show_title and regex:
+                        # Extract SxxExx from (?i)(S01E01|S01E02)
+                        # We look for anything matching S\d+E\d+
+                        episodes = re.findall(r'S\d+E\d+', regex, re.IGNORECASE)
+                        category = inv_labels.get(label, 'filler') # default to filler if unknown
+
+                        results.append({
+                            "title": show_title,
+                            "category": category,
+                            "episodes": [ep.upper() for ep in episodes]
+                        })
+        except Exception as e:
+            logger.warning(f"Could not parse existing YAML: {e}")
+
+        return results
+
+    def __init__(self, output_dir: str, overlay_config: dict = None, kometa_config: dict = None):
+        self.output_dir = output_dir
+        self.config = overlay_config or kometa_config or {}
+
+        # Load sub-configs with defaults
+        self.labels = self.config.get('labels', {
+            "canon": "Canon", "filler": "Filler", "mixed": "Mixed"
+        })
+        self.colors = self.config.get('colors', {
+            "canon": "#27C24CB3", "filler": "#FF0000B3", "mixed": "#FFA500B3"
+        })
+        self.aesthetic = self.config.get('aesthetic', {
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "horizontal_offset": 0,
+            "vertical_offset": 15,
+            "back_color": "#000000BF",
+            "back_width": 300,
+            "back_height": 100,
+            "font_size": 70,
+            "font": "Colus-Regular.ttf",
+            "uppercase": False
+        })
+        font_choice = self.aesthetic.get('font') or self.config.get('font_path', 'config/fonts/Colus-Regular.ttf')
+        if font_choice:
+            f_name = os.path.basename(str(font_choice).replace('\\', '/'))
+            self.font_path = f"config/fonts/{f_name}"
+        else:
+            self.font_path = 'config/fonts/Colus-Regular.ttf'
+        self.overlays: Dict[str, dict] = {}
+
+        try:
+            os.makedirs(self.output_dir, exist_ok=True)
+        except PermissionError:
+            logger.error(f"No permission to create or write to the overlay output directory: '{self.output_dir}'")
+            raise PermissionError(f"No permission to create or write to the overlay output directory: '{self.output_dir}'")
+
+    def _get_templates(self) -> dict:
+        """Defines the highly-configurable Premium Aesthetic templates."""
+        return {
+            "AnimeBar": {
+                "overlay": {
+                    "name": "text(<<label>>)",
+                    "horizontal_align": self.aesthetic.get("horizontal_align", "left"),
+                    "vertical_align": self.aesthetic.get("vertical_align", "top"),
+                    "horizontal_offset": self.aesthetic.get("horizontal_offset", 0),
+                    "vertical_offset": self.aesthetic.get("vertical_offset", 15),
+                    "back_color": self.aesthetic.get("back_color", "#000000BF"),
+                    "font_color": "<<color>>",
+                    "back_width": self.aesthetic.get("back_width", 300),
+                    "back_height": self.aesthetic.get("back_height", 100),
+                    "font": self.font_path,
+                    "font_size": self.aesthetic.get("font_size", 70)
+                }
+            }
+        }
+
+    def migrate_legacy_files(self, master_filename: str = "anime_overlays.yml"):
+        """Scans the output directory and merges legacy overlay files."""
+        backup_dir = os.path.join(self.output_dir, ".backup")
+        legacy_files = glob.glob(os.path.join(self.output_dir, "*_overlays.yml"))
+        for file_path in legacy_files:
+            filename = os.path.basename(file_path)
+            if filename == master_filename: continue
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                    if data and 'overlays' in data:
+                        self.overlays.update(data['overlays'])
+                os.makedirs(backup_dir, exist_ok=True)
+                shutil.move(file_path, os.path.join(backup_dir, filename))
+            except Exception: pass
+
+    def _normalize_title(self, title: str) -> str:
+        """Strips punctuation/spaces for title-based matching."""
+        if not title: return ""
+        return re.sub(r'[^a-z0-9]', '', title.lower())
+
+    def _detect_block_category(self, overlay_name: str, details: dict) -> Optional[str]:
+        """Resolve an overlay block's AniMetaFill category from its template label or key."""
+        inv_labels = {str(v).strip().lower(): k for k, v in self.labels.items()}
+        tmpl = details.get("template")
+        raw_label = str(tmpl.get("label", "")).strip().lower() if isinstance(tmpl, dict) else ""
+        if raw_label in inv_labels:
+            return inv_labels[raw_label]
+        lower_key = str(overlay_name).lower()
+        for cat in ("canon", "filler", "mixed"):
+            if cat in raw_label or cat in lower_key:
+                return cat
+        return None
+
+    def _extract_block_show_title(self, details: dict) -> str:
+        """Extract the show title targeted by an existing overlay block."""
+        filters = details.get("filters")
+        if isinstance(filters, dict) and filters.get("show_title"):
+            return str(filters["show_title"]).strip()
+        plex_search = details.get("plex_search")
+        if isinstance(plex_search, dict) and plex_search.get("title.is"):
+            return str(plex_search["title.is"]).strip()
+        return ""
+
+    def _preserve_matching_blocks(
+        self,
+        existing_raw_overlays: Dict[str, dict],
+        predicate,
+        selected_categories: Optional[List[str]] = None,
+    ) -> int:
+        if not isinstance(existing_raw_overlays, dict) or not existing_raw_overlays:
+            return 0
+        allowed_cats = set(selected_categories) if selected_categories is not None else None
+        preserved = 0
+        for block_key, details in existing_raw_overlays.items():
+            if block_key in self.overlays or not isinstance(details, dict):
+                continue
+            show_title = self._extract_block_show_title(details)
+            if not predicate(show_title):
+                continue
+            if allowed_cats is not None:
+                cat = self._detect_block_category(block_key, details)
+                if cat is not None and cat not in allowed_cats:
+                    continue
+            self.overlays[block_key] = copy.deepcopy(details)
+            preserved += 1
+        return preserved
+
+    def preserve_show_overlays(
+        self,
+        anime_title: str,
+        existing_raw_overlays: Dict[str, dict],
+        selected_categories: Optional[List[str]] = None,
+    ) -> int:
+        """Copy existing YAML overlay blocks for a show when a transient error prevents rebuilding them."""
+        target = (anime_title or "").strip().lower()
+        if not target:
+            return 0
+        return self._preserve_matching_blocks(
+            existing_raw_overlays,
+            lambda show_title: show_title.lower() == target,
+            selected_categories=selected_categories,
+        )
+
+    def preserve_unscanned_overlays(
+        self,
+        scanned_shows: List[str],
+        existing_raw_overlays: Dict[str, dict],
+        selected_categories: Optional[List[str]] = None,
+    ) -> int:
+        """Copy existing YAML overlay blocks for shows absent from a partially failed library scan."""
+        scanned_norm = {(s or "").strip().lower() for s in scanned_shows}
+        return self._preserve_matching_blocks(
+            existing_raw_overlays,
+            lambda show_title: show_title.lower() not in scanned_norm,
+            selected_categories=selected_categories,
+        )
+
+    def add_show_overlays(
+        self,
+        anime_title: str,
+        episode_mapping: Dict[str, List[tuple]],
+        sonarr_map: Dict[int, str],
+        title_map: Dict[str, str] = None,
+        selected_categories: List[str] = None,
+        threshold_mode: str = "none",
+        threshold_value: float = 0,
+        total_episode_count: int = 0,
+    ):
+        """
+        Creates localized regex-based overlay blocks using a 2-tier matching strategy:
+        1. Numerical check via sonarr_map (Absolute Number)
+        2. Surgical Text check via title_map (Normalized Title) - handles Specials/Shifts
+        """
+        title_map = title_map or {}
+        selected_categories = set(selected_categories) if selected_categories is not None else {"canon", "filler", "mixed"}
+        filler_count = len(episode_mapping.get("filler", []))
+        mixed_count = len(episode_mapping.get("mixed", []))
+
+        try:
+            threshold_value = float(threshold_value)
+        except (TypeError, ValueError):
+            threshold_value = 0
+
+        if threshold_mode == "total_episodes" and total_episode_count < threshold_value:
+            return
+        if threshold_mode == "filler_episodes" and filler_count < threshold_value:
+            return
+        if threshold_mode == "non_canon_percent":
+            non_canon_percent = ((filler_count + mixed_count) / total_episode_count * 100) if total_episode_count else 0
+            if non_canon_percent < threshold_value:
+                return
+
+        is_uppercase = bool(self.aesthetic.get("uppercase", False))
+        for category, episodes_data in episode_mapping.items():
+            if not episodes_data or category not in selected_categories: continue
+
+            # Use configured labels and colors
+            label_text = self.labels.get(category, category.title())
+            if is_uppercase:
+                label_text = label_text.upper()
+            hex_color = self.colors.get(category, "#262626B3")
+
+            episode_list = []
+            for abs_num, ep_title in episodes_data:
+                # Priority 1: Absolute Number Match
+                s_e = sonarr_map.get(abs_num)
+
+                # Priority 2: Title Fallback Match (Crucial for Specials and Season Shifts)
+                if not s_e and ep_title:
+                    norm_title = self._normalize_title(ep_title)
+                    s_e = title_map.get(norm_title)
+
+                if s_e:
+                    episode_list.append(s_e)
+
+            if episode_list:
+                overlay_block_title = f"{anime_title} - {label_text}"
+                regex_pattern = f"(?i)({'|'.join(episode_list)})(?!\\d)"
+
+                self.overlays[overlay_block_title] = {
+                    "template": {
+                        "name": "AnimeBar",
+                        "label": label_text,
+                        "color": hex_color
+                    },
+                    "builder_level": "episode",
+                    "plex_search": {
+                        "title.is": anime_title
+                    },
+                    "filters": {
+                        "show_title": anime_title,
+                        "filepath.regex": regex_pattern
+                    }
+                }
+
+    def save_unified_file(self, filename: str = "anime_overlays.yml", allow_empty: bool = False):
+        """
+        Saves the finalized unified overlay file atomically using a temporary file
+        and os.replace. This prevents external tools from reading a partially-written
+        file during active runs.
+        """
+        if not self.overlays and not allow_empty: return None
+        file_path = os.path.join(self.output_dir, filename)
+        tmp_path = f"{file_path}.tmp"
+        try:
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                yaml.dump({"templates": self._get_templates(), "overlays": self.overlays}, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            os.replace(tmp_path, file_path)
+            return file_path
+        except Exception:
+            if os.path.exists(tmp_path): os.remove(tmp_path)
+            return None
+
+
+# Backward compatibility alias
+KometaYamlGenerator = OverlayYamlGenerator

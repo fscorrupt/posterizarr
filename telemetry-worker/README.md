@@ -41,9 +41,19 @@ If you do not want to use the CLI, you can set this up entirely from your browse
    - KV namespace: Select the `POSTERIZARR_TELEMETRY` namespace you created in step 1.
    - Click **Deploy**.
 
-5. **Update Posterizarr:**
-   - Grab your Worker's URL (e.g., `https://posterizarr-telemetry.YOUR_SUBDOMAIN.workers.dev`).
-   - Replace the `REPLACE_ME_WITH_CLOUDFLARE_URL` placeholder in `Posterizarr.ps1` with your actual Cloudflare Worker URL.
+5. **Protect the dashboard:**
+    - In the Worker's **Settings** tab, open **Variables** -> **Secrets**.
+    - Add a non-empty secret named `DASHBOARD_PASSWORD` and deploy the change.
+    - Dashboard requests are disabled until this secret is set. Open the Worker URL
+       with `?pass=YOUR_PASSWORD` to view the dashboard. Avoid sharing or bookmarking
+       the password-bearing URL.
+
+6. **Configure the telemetry endpoint:**
+    - Posterizarr currently posts telemetry to
+       `https://telemetry.posterizarr-stats.workers.dev/` from
+       `modules/functions/Notifications.ps1`.
+    - If you deploy your own Worker, change that endpoint in your Posterizarr fork
+       to the deployed Worker URL. Do not put the dashboard password in this URL.
 
 ---
 
@@ -64,5 +74,7 @@ If you prefer using the command line:
    binding = "TELEMETRY_KV"
    id = "YOUR_KV_NAMESPACE_ID"
    ```
-5. Deploy: `wrangler deploy`
-6. Put the deployed URL into `Posterizarr.ps1`.
+5. Add a non-empty `DASHBOARD_PASSWORD` secret: `wrangler secret put DASHBOARD_PASSWORD`.
+6. Deploy: `wrangler deploy`
+7. If using this Worker with your own Posterizarr fork, update the POST endpoint
+   in `modules/functions/Notifications.ps1` to the deployed Worker URL.

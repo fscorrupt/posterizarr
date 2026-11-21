@@ -1,38 +1,72 @@
-# Posterizarr Telemetry
+# Telemetry & Privacy
 
-Posterizarr includes an anonymous, opt-out telemetry system to help understand the usage and deployment environments of the script.
+<div class="pz-telemetry-hero">
+  <p class="pz-kicker">OPTIONAL · AGGREGATED · OPT-OUT</p>
+  <h2>Small signals, no media details.</h2>
+  <p>Telemetry helps guide development across operating systems and media servers. It is not required for Posterizarr to work, and you can turn it off at any time.</p>
+</div>
 
-The developer instructions for deploying the telemetry server itself can be found in the [telemetry README](https://github.com/fscorrupt/posterizarr/blob/main/telemetry-worker/README.md) file located alongside the worker script. This page explains what data Posterizarr collects and how you can disable it.
+## What Posterizarr sends
 
-## Why do we collect telemetry?
-We use this data to understand how many unique active installations exist, what operating systems Posterizarr is running on, and which media servers (Plex, Jellyfin, Emby) are most popular.
+When telemetry is enabled, Posterizarr sends a small JSON request containing:
 
-Because Posterizarr is open-source and downloaded manually, it can be difficult to know if the script is actually being used. This high-level data helps guide development priorities and keeps motivation high by showing the real-world impact of the project!
+| Field | Example | Why it is used |
+|---|---|---|
+| Installation ID | Random UUID | Counts one installation once and updates its latest record. Stored locally in `Cache/telemetry.cache.json`. |
+| App version | `4.0.0` | Shows which versions are in use. |
+| Operating system | `Windows`, `Linux`, `macOS`, or `Docker` | Identifies the operating system or container runtime. |
+| Linux distribution | `debian`, `ubuntu`, or `NotApplicable` | Helps prioritize Linux distribution support. In a container, this is the container image distribution. |
+| Architecture | `x64`, `arm64`, or another runtime architecture label | Helps identify CPU architecture support, including ARM devices. |
+| Media-server target | `Plex`, `Jellyfin`, `Emby`, or `Silo` | Shows which integration is enabled. If none is configured, the value is `NotConfigured`. |
 
-## What is collected?
-When Posterizarr runs, it generates a random unique identifier (UUID) that is stored locally in your `.cache` folder. A very small JSON payload is sent during execution:
+The Worker derives a two-letter country code from Cloudflare request metadata;
+the client does not send a country, IP address, or location. For each random
+installation ID, Cloudflare KV stores the latest version, OS, Linux
+distribution, architecture, target, country code, and a `lastSeen` timestamp.
+Repeated pings update that same record rather than adding another installation.
 
-- **Instance ID**: A randomly generated UUID used to deduplicate installation counts.
-- **App Version**: The version of Posterizarr you are currently running.
-- **OS Platform**: Your operating system (e.g., Windows, Linux).
-- **Target Server**: Which media server you have enabled.
-- **Country**: Cloudflare automatically determines the 2-letter country code of the request origin.
+The installation ID is pseudonymous, not a credential: it does not encode your
+identity, but it does let the Worker recognize the same installation between
+updates.
 
-### What is NOT collected:
-- Your IP Address
-- Your filenames, library names, or media data
-- Your API keys, domains, or server addresses
-- Any PII (Personally Identifiable Information)
+## What is not stored by the Worker
 
-## How to Disable Telemetry
-Telemetry is completely optional, and we respect your privacy. If you do not wish to participate, you can easily disable it in your configuration file.
+- IP addresses, filenames, library names, titles, artwork, or playback history.
+- Media-server URLs, hostnames, tokens, API keys, or notification settings.
+- User accounts or personal profiles.
 
-Open your `config.json` file and locate the `PrerequisitePart` block:
+Cloudflare processes the network request and provides the country code to the
+Worker. The Worker stores the country code, not the raw IP address.
+
+## When it runs
+
+Telemetry is enabled by default. Posterizarr sends a ping when its version
+changes or when the locally cached OS, Linux distribution, architecture, or
+server target changes.
+It does not send a ping for each artwork item or every scheduled run. Failed
+requests are ignored and do not stop artwork generation.
+
+## Turn telemetry off
+
+In the Web UI, open **Configuration > System > System Settings**, turn off
+**Telemetry**, and save. If editing `config.json` directly, set:
 
 ```json
+{
   "PrerequisitePart": {
     "telemetry": "false"
   }
+}
 ```
 
-Set the `telemetry` value to `false`. Posterizarr will immediately stop sending any telemetry data.
+Disabling telemetry stops future pings. It does not automatically delete the
+installation's existing aggregate record from the Worker KV store.
+
+## Private analytics dashboard
+
+The Worker dashboard aggregates unique installations by version, operating
+system, platform profile, media server, and country. Configure a non-empty
+`DASHBOARD_PASSWORD` Worker secret before exposing the dashboard. The password
+is supplied as a `?pass=` query parameter, so do not share or bookmark a URL
+containing it. Deployment and KV setup are documented in the
+[telemetry Worker README](https://github.com/fscorrupt/posterizarr/blob/main/telemetry-worker/README.md).

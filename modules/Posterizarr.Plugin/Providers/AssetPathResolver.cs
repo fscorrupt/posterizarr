@@ -464,7 +464,7 @@ public class AssetPathResolver
                     if (match != null) return match;
                 }
 
-                if (checkedDirs.Add(resolvedLibDir))
+                if (!config.EnablePlexSync && checkedDirs.Add(resolvedLibDir))
                 {
                     var match = FindInDirectory(resolvedLibDir, candidateNames, supportedExtensions, type);
                     if (match != null) return match;
@@ -483,15 +483,15 @@ public class AssetPathResolver
                 if (match != null) return match;
             }
 
-            if (checkedDirs.Add(rootDir))
+            if (!config.EnablePlexSync && checkedDirs.Add(rootDir))
             {
                 var match = FindInDirectory(rootDir, candidateNames, supportedExtensions, type);
                 if (match != null) return match;
             }
         }
 
-        // 4. Check root asset folder itself
-        if (checkedDirs.Add(assetRoot))
+        // 4. Check root asset folder itself (only if Plex Direct Sync is not restricting search to collection paths)
+        if (!config.EnablePlexSync && checkedDirs.Add(assetRoot))
         {
             var match = FindInDirectory(assetRoot, candidateNames, supportedExtensions, type);
             if (match != null) return match;
@@ -748,7 +748,7 @@ public class AssetPathResolver
     public static string NormalizeCollectionName(string s)
     {
         if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-        var stripped = System.Text.RegularExpressions.Regex.Replace(s, @"[\[\(\{][^\]\)\}]*[\]\)\}]", "");
+        var stripped = System.Text.RegularExpressions.Regex.Replace(s, @"\s*[\[\(\{]boxset[\]\)\}]\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         stripped = stripped.Replace("&", "and");
         var cleaned = System.Text.RegularExpressions.Regex.Replace(stripped, @"[^a-zA-Z0-9]", "");
         return cleaned.ToLowerInvariant();

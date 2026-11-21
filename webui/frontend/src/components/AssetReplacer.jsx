@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   X,
@@ -11,15 +11,23 @@ import {
   Image as ImageIcon,
   AlertCircle,
   Search,
+  Crop,
+  Link,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
+import ImageCropModal from "./ImageCropModal";
 import { BLUEPRINTS } from "./Blueprints";
 
 const API_URL = "/api";
 
-function AssetReplacer({ asset, onClose, onSuccess }) {
+function getSeasonPosterName(seasonNumber, overrideEnabled, seasonText, specialText) {
+  if (seasonNumber === 0) return overrideEnabled ? specialText : "Specials";
+  return `${overrideEnabled ? seasonText : "Season"} ${seasonNumber}`;
+}
+
+function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initialMetadata = null, autoFetchProviders = false }) {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
   const navigate = useNavigate();
@@ -35,18 +43,75 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     season: [],
   });
 
-  const [activeTab, setActiveTab] = useState("upload");
+  const [activeTab, setActiveTab] = useState(initialTab === "previews" ? "previews" : "upload");
   const [processWithOverlays, setProcessWithOverlays] = useState(true);
   const [addToQueue, setAddToQueue] = useState(false);
+  const queueUntilIdle = isPosterizarrRunning && !addToQueue;
+  const [autoQueueChanges, setAutoQueueChanges] = useState(false);
+  const [queueSettingsLoaded, setQueueSettingsLoaded] = useState(false);
+  const [savingQueueSettings, setSavingQueueSettings] = useState(false);
+  const queueSubmissionRef = useRef(false);
+  const uploadChoiceRef = useRef(null);
+  const autoQueuedFileRef = useRef(null);
   const [uploadedImage, setUploadedImage] = useState(null);
+  const [rawUploadedImage, setRawUploadedImage] = useState(null);
+  const [rawUploadedFile, setRawUploadedFile] = useState(null);
+  const [showCropModal, setShowCropModal] = useState(false);
   const [blueprintId, setBlueprintId] = useState("none");
   const [customBlueprints, setCustomBlueprints] = useState([]);
   const [uploadedFile, setUploadedFile] = useState(null); // Store the actual file
   const [uploadHasText, setUploadHasText] = useState(false); // Track if uploaded asset has text
   const [imageDimensions, setImageDimensions] = useState(null); // Store {width, height}
   const [isDimensionValid, setIsDimensionValid] = useState(false); // Track if dimensions are valid
+  const contentScrollRef = useRef(null);
+  const autoProviderFetchRef = useRef(null);
   const [activeProviderTab, setActiveProviderTab] = useState("tmdb"); // Provider tabs: tmdb, tvdb, fanart
   const [languageFilter, setLanguageFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("poster"); // Default to posters only
+  const [customImageUrl, setCustomImageUrl] = useState("");
+  const [loadingUrl, setLoadingUrl] = useState(false);
+
+  // Always reset scroll to top when tab, provider, type, language, or previews change so first asset is visible
+  useEffect(() => {
+    if (contentScrollRef.current) {
+      contentScrollRef.current.scrollTop = 0;
+    }
+  }, [activeTab, activeProviderTab, typeFilter, languageFilter, previews]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/webui-settings").then(async response => {
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error("Could not load queue settings");
+      if (active) {
+        const enabled = data.settings?.auto_queue_changes === true;
+        setAutoQueueChanges(enabled);
+        setAddToQueue(enabled);
+      }
+    }).catch(() => {
+      if (active) showError(t("assetReplacer.autoQueueLoadError"));
+    }).finally(() => { if (active) setQueueSettingsLoaded(true); });
+    return () => { active = false; };
+  }, []);
+
+  const handleToggleAutoQueue = async (enabled) => {
+    setSavingQueueSettings(true);
+    try {
+      const response = await fetch("/api/webui-settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { auto_queue_changes: enabled } }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.detail || "Could not save Auto-Queue setting");
+      setAutoQueueChanges(enabled);
+      setAddToQueue(enabled);
+      window.dispatchEvent(new CustomEvent("assetAutoQueueChanged", { detail: { enabled } }));
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setSavingQueueSettings(false);
+    }
+  };
 
   // Logo selection mode
   const [logoSelectionMode, setLogoSelectionMode] = useState(false);
@@ -78,6 +143,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     seasonNumber: "", // For searching seasons
     episodeNumber: "", // For searching episodes
   });
+  const [manualSearch, setManualSearch] = useState(false);
+  const [searchTitle, setSearchTitle] = useState("");
+  const [searchYear, setSearchYear] = useState("");
 
   // Extract metadata from asset
   const extractMetadata = () => {
@@ -438,6 +506,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       asset_type: assetType,
       season_number: seasonNumber,
       episode_number: episodeNumber,
+      ...initialMetadata,
     };
 
     console.log("=== Extracted Metadata ===");
@@ -459,14 +528,27 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Determine if we should use horizontal layout (backgrounds and titlecards)
   // Use useMemo to recalculate metadata only when asset or dbData changes
-  const metadata = React.useMemo(() => extractMetadata(), [asset, dbData]);
+  const metadata = React.useMemo(() => extractMetadata(), [asset, dbData, initialMetadata]);
   const useHorizontalLayout =
     metadata.asset_type === "background" || metadata.asset_type === "titlecard";
 
-  // Manual search state - initialize with detected metadata
-  const [manualSearch, setManualSearch] = useState(false);
-  const [searchTitle, setSearchTitle] = useState("");
-  const [searchYear, setSearchYear] = useState("");
+  const isPosterType =
+    metadata.asset_type === "poster" ||
+    metadata.asset_type === "season" ||
+    metadata.asset_type === "collection";
+  const isTitlecard = metadata.asset_type === "titlecard";
+  const titlecardCoordinates = isTitlecard && metadata.season_number !== null && metadata.season_number !== undefined
+    && metadata.episode_number !== null && metadata.episode_number !== undefined
+    ? `S${String(metadata.season_number).padStart(2, "0")}E${String(metadata.episode_number).padStart(2, "0")}`
+    : null;
+  const targetRatio = isPosterType ? 2 / 3 : 16 / 9;
+  const targetWidth = isPosterType ? 2000 : (isTitlecard ? 1920 : 3840);
+  const targetHeight = isPosterType ? 3000 : (isTitlecard ? 1080 : 2160);
+
+  // Sync default type filter with current asset type
+  useEffect(() => {
+    setTypeFilter(metadata.asset_type === "titlecard" ? "all" : metadata.asset_type === "background" ? "backdrop" : "poster");
+  }, [metadata.asset_type]);
 
   // Check if Posterizarr is running on component mount
   useEffect(() => {
@@ -496,7 +578,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Update search fields when metadata changes (when switching assets)
   useEffect(() => {
-    setSearchTitle(metadata.title || "");
+    setSearchTitle(
+      (metadata.asset_type === "season" || metadata.asset_type === "titlecard")
+        ? (metadata.show_title || metadata.title || "")
+        : (metadata.title || "")
+    );
     setSearchYear(metadata.year ? String(metadata.year) : "");
     // Reset previews when switching to a new asset
     setPreviews({ tmdb: [], tvdb: [], fanart: [] });
@@ -622,6 +708,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         if (totalResults > 0) {
           setActiveProviderTab(activeProvider);
           setActiveTab("previews");
+        if (contentScrollRef.current) {
+          contentScrollRef.current.scrollTop = 0;
+        }
         } else {
           // If 0 results, check if it was due to strict filtering
           if (languageOrderList.length > 0) {
@@ -759,6 +848,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
   // Fetch database data if not provided (e.g., when opened from FolderView)
   useEffect(() => {
+    const controller = new AbortController();
     // Determine what kind of asset we are dealing with based on the path
     const assetPathLower = asset?.path?.toLowerCase() || "";
     const isTitleCard = assetPathLower.includes("titlecard") || /s\d+e\d+/i.test(assetPathLower);
@@ -870,6 +960,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       if (!pathParts || pathParts.length < 2) return;
       const libraryName = pathParts[0];
       const rootfolder = pathParts[1];
+      const lookupQuery = new URLSearchParams({ rootfolder }).toString();
       // --- End Parse Path ---
 
       try {
@@ -878,9 +969,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         // Only check Plex Export if we don't already have dbData
         if (!dbData) {
           console.log("Checking Plex Export DB (/api/plex-export/library)...");
-          response = await fetch(`${API_URL}/plex-export/library`);
+          response = await fetch(`${API_URL}/plex-export/library?${lookupQuery}`, { signal: controller.signal });
           if (response.ok) {
             const plexData = await response.json();
+            if (controller.signal.aborted) return;
             if (plexData.success && plexData.data) {
               const matchingRecord = findMatch(plexData.data, libraryName, rootfolder);
               if (matchingRecord) {
@@ -894,9 +986,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         // Only check Other Media Export (Jellyfin/Emby) if we don't already have dbData
         if (!dbData) {
           console.log("Checking Other Media Export DB (/api/other-media-export/library)...");
-          response = await fetch(`${API_URL}/other-media-export/library`);
+          response = await fetch(`${API_URL}/other-media-export/library?${lookupQuery}`, { signal: controller.signal });
           if (response.ok) {
             const otherData = await response.json();
+            if (controller.signal.aborted) return;
             if (otherData.success && otherData.data) {
               const matchingRecord = findMatch(otherData.data, libraryName, rootfolder);
               if (matchingRecord) {
@@ -909,9 +1002,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         // --- Try ImageChoices (Posterizarr DB) ---
         console.log("Checking ImageChoices DB for Asset specific info...");
-        response = await fetch(`${API_URL}/imagechoices`);
+        response = await fetch(`${API_URL}/imagechoices?${lookupQuery}`, { signal: controller.signal });
         if (response.ok) {
           const allRecords = await response.json();
+          if (controller.signal.aborted) return;
           const matchingRecord = findMatch(allRecords, libraryName, rootfolder);
 
           if (matchingRecord) {
@@ -931,11 +1025,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         }
 
       } catch (error) {
-        console.error("Error fetching database data:", error);
+        if (error.name !== "AbortError") console.error("Error fetching database data:", error);
       }
     };
 
     fetchDatabaseData();
+    return () => controller.abort();
   }, [asset.path, dbData]);
 
   // Load custom blueprints
@@ -955,12 +1050,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     // Check if season_number exists (including 0 for specials)
     if (metadata.season_number !== null && metadata.season_number !== undefined) {
       if (metadata.asset_type === "season") {
-        // Always format as standard "Season X" or "Specials" for folder/file structure
-        const standardSeasonNum = metadata.season_number === 0 ? "Specials" : `Season ${metadata.season_number}`;
+        const seasonName = getSeasonPosterName(metadata.season_number, overrideSeasonName, seasonOverrideText, specialSeasonOverrideText);
 
         setManualForm((prev) => ({
           ...prev,
-          seasonPosterName: standardSeasonNum,
+          seasonPosterName: seasonName,
         }));
         setManualSearchForm((prev) => ({
           ...prev,
@@ -978,7 +1072,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         }));
       }
     }
-  }, [metadata.season_number, metadata.asset_type]);
+  }, [metadata.season_number, metadata.asset_type, overrideSeasonName, seasonOverrideText, specialSeasonOverrideText]);
 
   // Initialize episode data from metadata (for titlecards)
   useEffect(() => {
@@ -1018,13 +1112,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   useEffect(() => {
     if (metadata.title) {
       let finalTitle = metadata.title;
-      if (metadata.asset_type === "season" && overrideSeasonName) {
+      if (metadata.asset_type === "season" && overrideSeasonName && !initialMetadata?.title && (!metadata.title || metadata.title.match(/^(Season|Staffel)\s*\d+$/i))) {
         if (metadata.season_number !== null && metadata.season_number !== undefined) {
-          if (metadata.season_number === 0) {
-            finalTitle = specialSeasonOverrideText;
-          } else {
-            finalTitle = `${seasonOverrideText} ${metadata.season_number}`;
-          }
+          finalTitle = getSeasonPosterName(metadata.season_number, overrideSeasonName, seasonOverrideText, specialSeasonOverrideText);
         }
       }
       setManualForm((prev) => ({
@@ -1080,18 +1170,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     setShowFetchConfirm(true);
   };
 
-  const fetchPreviews = async () => {
+  const fetchProviderPreviews = async (searchMetadata, isManualSearch = false) => {
     console.log("=== AssetReplacer: Fetching Previews ===");
     setShowFetchConfirm(false);
-
-    if (!pendingFetchParams) {
-      console.error("No pending fetch params found!");
-      return;
-    }
-
-    const { metadata, manualSearch: isManualSearch } = pendingFetchParams;
-    console.log("Fetch params:", { metadata, isManualSearch });
-
+    console.log("Fetch params:", { metadata: searchMetadata, isManualSearch });
     setLoading(true);
     showError(null);
 
@@ -1104,7 +1186,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         body: JSON.stringify({
           asset_path: asset.path,
           is_manual_search: isManualSearch,
-          ...metadata,
+          ...searchMetadata,
         }),
       });
 
@@ -1131,6 +1213,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         else if (results.fanart.length > 0) setActiveProviderTab("fanart");
 
         setActiveTab("previews");
+        if (contentScrollRef.current) {
+          contentScrollRef.current.scrollTop = 0;
+        }
       } else {
         console.error("API returned error:", data.error || "Unknown error");
         showError(t("assetReplacer.fetchPreviewsError"));
@@ -1145,8 +1230,24 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     }
   };
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+  const fetchPreviews = async () => {
+    if (!pendingFetchParams) {
+      console.error("No pending fetch params found!");
+      return;
+    }
+    const { metadata: searchMetadata, manualSearch: isManualSearch } = pendingFetchParams;
+    await fetchProviderPreviews(searchMetadata, isManualSearch);
+  };
+
+  useEffect(() => {
+    if (!autoFetchProviders || !titlecardCoordinates) return;
+    const fetchKey = `${asset.path}|${titlecardCoordinates}|${metadata.tmdb_id}|${metadata.tvdb_id}`;
+    if (autoProviderFetchRef.current === fetchKey) return;
+    autoProviderFetchRef.current = fetchKey;
+    fetchProviderPreviews(metadata, false);
+  }, [autoFetchProviders, asset.path, metadata, titlecardCoordinates]);
+
+  const processSelectedFile = (file) => {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -1154,14 +1255,20 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       return;
     }
 
-    setUploadedFile(file);
+    uploadChoiceRef.current = file;
+    setRawUploadedFile(file);
+    setIsDimensionValid(false);
+    setImageDimensions(null);
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      setUploadedImage(reader.result);
+      if (uploadChoiceRef.current !== file) return;
+      const dataUrl = reader.result;
+      setRawUploadedImage(dataUrl);
 
       const img = new Image();
       img.onload = () => {
+        if (uploadChoiceRef.current !== file) return;
         const width = img.width;
         const height = img.height;
         setImageDimensions({ width, height });
@@ -1172,9 +1279,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
 
         if (height === 0) {
           setIsDimensionValid(false);
-          showError(
-            t("assetReplacer.imageHeightZero", "Image height cannot be zero.")
-          );
+          showError(t("assetReplacer.imageHeightZero"));
           return;
         }
 
@@ -1183,10 +1288,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         let expectedRatio = 0;
         let expectedRatioString = "";
 
-        if (
-          metadata.asset_type === "poster" ||
-          metadata.asset_type === "season"
-        ) {
+        if (isPosterType) {
           expectedRatio = POSTER_RATIO;
           expectedRatioString = "2:3";
           isValid = Math.abs(imageRatio - POSTER_RATIO) <= TOLERANCE;
@@ -1196,37 +1298,91 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
           isValid = Math.abs(imageRatio - BACKGROUND_RATIO) <= TOLERANCE;
         }
 
-        setIsDimensionValid(isValid);
+        setUploadedImage(dataUrl);
+        setUploadedFile(file);
 
         if (!isValid) {
-          showError(
-            t("assetReplacer.invalidImageRatio", {
-              width,
-              height,
-              ratio: imageRatio.toFixed(3),
-              expectedRatioString: expectedRatioString,
-              expectedRatio: expectedRatio.toFixed(3),
-            })
-          );
+          setIsDimensionValid(false);
+          // Automatically open crop modal so user can immediately frame and crop
+          setShowCropModal(true);
         } else {
+          setIsDimensionValid(true);
           showSuccess(
             t("assetReplacer.imageDimensionsValid", { width, height })
           );
         }
       };
-      img.src = reader.result;
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      processSelectedFile(file);
+    }
+    event.target.value = "";
+  };
+
+  const handleCropComplete = ({ file, dataUrl, width, height }) => {
+    uploadChoiceRef.current = file;
+    setUploadedFile(file);
+    setUploadedImage(dataUrl);
+    setRawUploadedImage(dataUrl);
+    setRawUploadedFile(file);
+    setImageDimensions({ width, height });
+    setIsDimensionValid(true);
+    showSuccess(
+      t("assetReplacer.cropSuccess", "Image cropped to {{width}}x{{height}}px!", { width, height })
+    );
+    setActiveTab("upload");
+  };
+
+  const handleLoadFromUrl = async () => {
+    const rawUrl = customImageUrl.trim();
+    if (!rawUrl) return;
+
+    setLoadingUrl(true);
+    showError(null);
+
+    try {
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(rawUrl)}`;
+      let res;
+      try {
+        res = await fetch(proxyUrl);
+        if (!res.ok) throw new Error(`Proxy error ${res.status}`);
+      } catch (proxyErr) {
+        res = await fetch(rawUrl);
+      }
+
+      if (!res.ok) {
+        throw new Error(`Failed to load image: ${res.statusText}`);
+      }
+
+      const blob = await res.blob();
+      if (!blob.type.startsWith("image/")) {
+        throw new Error("URL did not return an image.");
+      }
+
+      const rawFilename = rawUrl.split("/").pop()?.split("?")[0] || "downloaded_image.jpg";
+      const filename = rawFilename.includes(".") ? rawFilename : `${rawFilename}.jpg`;
+      const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+
+      processSelectedFile(file);
+      setCustomImageUrl("");
+    } catch (err) {
+      console.error("Error loading image from URL:", err);
+      showError(t("assetReplacer.invalidImageUrl", "Invalid image URL or failed to load image."));
+    } finally {
+      setLoadingUrl(false);
+    }
+  };
+
   const handleUploadClick = () => {
+    if (!queueSettingsLoaded || savingQueueSettings || uploading || queueSubmissionRef.current) return;
     if (!uploadedFile || !isDimensionValid) {
       showError(t("assetReplacer.selectValidImage"));
-      return;
-    }
-
-    if (isPosterizarrRunning && !addToQueue) {
-      showError(t("assetReplacer.posterizarrRunningError"));
       return;
     }
 
@@ -1234,6 +1390,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   };
 
   const handleConfirmUpload = async () => {
+    if (queueSubmissionRef.current || !uploadedFile || !isDimensionValid) return;
+    queueSubmissionRef.current = true;
     setShowUploadConfirm(false);
     setUploading(true);
     showError(null);
@@ -1241,7 +1399,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     try {
       let url = `${API_URL}/assets/upload-replacement?asset_path=${encodeURIComponent(
         asset.path || ""
-      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
+      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue || queueUntilIdle}&start_when_idle=${queueUntilIdle}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
       if (processWithOverlays && blueprintId && blueprintId !== "none") {
         const bp = [...BLUEPRINTS, ...customBlueprints].find(b => b.id === blueprintId);
@@ -1326,6 +1484,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       const data = await response.json();
 
       if (data.success) {
+        if (data.queued) {
+          showSuccess(t(queueUntilIdle ? "assetReplacer.queuedUntilIdle" : "assetReplacer.addedToQueue"));
+          onClose();
+          return;
+        }
         if (data.manual_run_triggered) {
           showSuccess(t("assetReplacer.replacedAndQueued"));
           if (!addToQueue) {
@@ -1349,28 +1512,43 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     } catch (err) {
       showError(t("assetReplacer.errorUploadingFile", { error: err.message }));
     } finally {
+      queueSubmissionRef.current = false;
       setUploading(false);
     }
   };
 
   const handlePreviewClick = (preview) => {
+    if (!queueSettingsLoaded || savingQueueSettings || uploading || queueSubmissionRef.current) return;
     if (logoSelectionMode) {
       handleLogoSelect(preview);
       return;
     }
 
-    if (isPosterizarrRunning && !addToQueue) {
-      showError(t("assetReplacer.posterizarrRunningError"));
+    const isBackdrop = preview.type === "backdrop" || preview.type === "background" || preview.sub_type === "background";
+    const isTargetPoster = metadata.asset_type === "poster" || metadata.asset_type === "season" || metadata.asset_type === "collection";
+
+    // If selecting a backdrop when target is a poster/season, open ImageCropModal directly
+    if (isBackdrop && isTargetPoster) {
+      const rawUrl = preview.original_url || preview.url;
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(rawUrl)}`;
+      setRawUploadedImage(proxyUrl);
+      setRawUploadedFile(new File([], "backdrop.jpg", { type: "image/jpeg" }));
+      setShowCropModal(true);
       return;
     }
 
-    setPendingPreview(preview);
-    setShowPreviewConfirm(true);
+    if (autoQueueChanges && addToQueue) {
+      handleSelectPreview(preview);
+    } else {
+      setPendingPreview(preview);
+      setShowPreviewConfirm(true);
+    }
   };
 
-  const handleSelectPreview = async () => {
+  const handleSelectPreview = async (selected = null) => {
+    if (queueSubmissionRef.current) return;
     setShowPreviewConfirm(false);
-    const preview = pendingPreview;
+    const preview = selected || pendingPreview;
 
     if (!preview) return;
 
@@ -1467,12 +1645,13 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       }
     }
 
+    queueSubmissionRef.current = true;
     try {
       let url = `${API_URL}/assets/replace-from-url?asset_path=${encodeURIComponent(
         asset.path || ""
       )}&image_url=${encodeURIComponent(
         preview.original_url
-      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
+      )}&process_with_overlays=${processWithOverlays}&add_to_queue=${addToQueue || queueUntilIdle}&start_when_idle=${queueUntilIdle}&asset_type=${encodeURIComponent(metadata.asset_type)}&mediaType=${encodeURIComponent(metadata.mediaType)}`;
 
       if (processWithOverlays && metadata.asset_type !== "titlecard") {
         const titleText = manualForm?.titletext ?? metadata.title;
@@ -1521,6 +1700,11 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
       const data = await response.json();
 
       if (data.success) {
+        if (data.queued) {
+          showSuccess(t(queueUntilIdle ? "assetReplacer.queuedUntilIdle" : "assetReplacer.addedToQueue"));
+          onClose();
+          return;
+        }
         if (data.manual_run_triggered) {
           showSuccess(t("assetReplacer.replacedAndQueued"));
           if (!addToQueue) {
@@ -1544,23 +1728,59 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
     } catch (err) {
       showError(t("assetReplacer.errorReplacingAsset", { error: err.message }));
     } finally {
+      queueSubmissionRef.current = false;
       setUploading(false);
     }
   };
 
+  useEffect(() => {
+    if (!autoQueueChanges || !addToQueue || !queueSettingsLoaded || savingQueueSettings || logoSelectionMode || uploading || !uploadedFile || !isDimensionValid) return;
+    if (autoQueuedFileRef.current === uploadedFile) return;
+    autoQueuedFileRef.current = uploadedFile;
+    handleConfirmUpload();
+  }, [autoQueueChanges, addToQueue, queueSettingsLoaded, savingQueueSettings, logoSelectionMode, uploading, uploadedFile, isDimensionValid]);
+
   const totalPreviews = Object.values(previews).flat().length;
 
   const currentProviderPreviews = previews[activeProviderTab] || [];
-  const availableLanguages = ["all", ...new Set(currentProviderPreviews.map(p => (p.language || "xx").toLowerCase()))];
+  const hasPosters = currentProviderPreviews.some(p => p.type === "poster" || p.type === "season" || p.type === "season_poster");
+  const hasBackdrops = currentProviderPreviews.some(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background");
+
+  const effectiveTypeFilter = (typeFilter === "poster" && !hasPosters && hasBackdrops)
+    ? "backdrop"
+    : (typeFilter === "backdrop" && !hasBackdrops && hasPosters)
+      ? "poster"
+      : typeFilter;
+
+  const typeFilteredPreviews = effectiveTypeFilter === "all"
+    ? currentProviderPreviews
+    : effectiveTypeFilter === "poster"
+      ? currentProviderPreviews.filter(p => p.type === "poster" || p.type === "season" || p.type === "season_poster")
+      : currentProviderPreviews.filter(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background");
+
+  const configuredOrder = (
+    languageOrder[metadata.asset_type] ||
+    languageOrder.poster ||
+    []
+  ).map(l => (l || "").trim().toLowerCase()).filter(Boolean);
+
+  const rawAvailable = [...new Set(typeFilteredPreviews.map(p => (p.language || "xx").toLowerCase()))];
+  const allowedLanguages = configuredOrder.length > 0
+    ? rawAvailable.filter(l => configuredOrder.includes(l))
+    : rawAvailable;
+
+  const availableLanguages = ["all", ...allowedLanguages];
   const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
 
-  const filteredPreviews = effectiveLanguageFilter === "all" 
-    ? currentProviderPreviews 
-    : currentProviderPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
+  const filteredPreviews = effectiveLanguageFilter === "all"
+    ? (configuredOrder.length > 0
+        ? typeFilteredPreviews.filter(p => configuredOrder.includes((p.language || "xx").toLowerCase()))
+        : typeFilteredPreviews)
+    : typeFilteredPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-theme-card rounded-none sm:rounded-xl border-0 sm:border border-theme max-w-6xl w-full h-full sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="app-dialog-backdrop fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
+      <div className="app-dialog-panel bg-theme-card rounded-none sm:rounded-xl border-0 sm:border border-theme max-w-6xl w-full h-full sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col">
         {/* Posterizarr Running Warning */}
         {isPosterizarrRunning && (
           <div className="bg-orange-900/30 border-b-4 border-orange-500 p-4">
@@ -1571,7 +1791,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   Posterizarr is Currently Running
                 </p>
                 <p className="text-sm text-orange-300/80">
-                  Asset replacement is disabled while Posterizarr is processing.
+                  {t("assetReplacer.runningQueueHint")}
                 </p>
               </div>
             </div>
@@ -1593,6 +1813,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
               <p className="text-sm sm:text-lg font-bold text-theme-text mt-0.5 sm:mt-1 break-words">
                 {(asset.path || "").split(/[\\/]/).slice(-2, -1)[0] || "Unknown"}
               </p>
+              {titlecardCoordinates && <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-theme-muted">
+                <span className="rounded border border-theme-primary/50 bg-theme-primary/10 px-2 py-1 font-mono font-semibold text-theme-primary">{titlecardCoordinates}</span>
+                <span>{t("assetReplacer.seasonEpisodeCoordinates", {season: metadata.season_number, episode: metadata.episode_number})}</span>
+              </p>}
               <p className="text-xs text-theme-muted break-all mt-1">
                 {asset.path || "Unknown path"}
               </p>
@@ -1620,7 +1844,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
               <span className="hidden sm:inline">
                 {t("assetReplacer.uploadCustom")}
               </span>
-              <span className="sm:hidden">Upload</span>
+              <span className="sm:hidden">{t("assetReplacer.uploadTab")}</span>
             </button>
             <button
               onClick={() => setActiveTab("previews")}
@@ -1633,7 +1857,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
               <span className="hidden sm:inline">
                 {t("assetReplacer.servicePreviews")}
               </span>
-              <span className="sm:hidden">Previews</span>
+              <span className="sm:hidden">{t("assetReplacer.previewsTab")}</span>
               {totalPreviews > 0 && (
                 <span className="ml-1.5 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-theme-primary/20 text-theme-primary rounded-full text-xs">
                   {totalPreviews}
@@ -1644,7 +1868,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+        <div ref={contentScrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4">
           {activeTab === "upload" && (
             <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
               {/* Process with Overlays Toggle */}
@@ -1657,12 +1881,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                     <div className="flex items-start sm:items-center justify-between gap-3 mb-2">
                       <div className="flex-1 min-w-0">
                         <h4 className="text-xs sm:text-sm font-medium text-theme-text break-words">
-                          Process with overlays after replace
+                          {t("assetReplacer.processWithOverlays")}
                         </h4>
                         <p className="text-xs text-theme-muted mt-0.5 leading-relaxed">
                           {processWithOverlays
-                            ? "Applies borders, overlays & text to the replaced asset based on overlay settings. Asset will be saved to assets/ folder."
-                            : "Direct replacement without overlay processing. Asset will be saved to manualassets/ folder for manual use."}
+                            ? t("assetReplacer.processWithOverlaysOn")
+                            : t("assetReplacer.processWithOverlaysOff")}
                         </p>
                       </div>
                       <button
@@ -1685,16 +1909,22 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                     <div className="flex items-start sm:items-center justify-between gap-3 mb-2 pt-3 border-t border-theme/30">
                       <div className="flex-1 min-w-0">
                         <h4 className="text-xs sm:text-sm font-medium text-theme-text break-words">
-                          Add to Queue
+                          {t("assetReplacer.addToQueue")}
                         </h4>
                         <p className="text-xs text-theme-muted mt-0.5 leading-relaxed">
                           {addToQueue
-                            ? "Asset replacement will be queued and executed later."
-                            : "Asset will be replaced immediately."}
+                            ? t("assetReplacer.queueDescriptionOn")
+                            : t("assetReplacer.queueDescriptionOff")}
                         </p>
                       </div>
                       <button
+                        type="button"
+                        role="switch"
+                        aria-label={t("assetReplacer.addToQueue")}
+                        aria-checked={addToQueue}
                         onClick={() => setAddToQueue(!addToQueue)}
+                        disabled={autoQueueChanges || !queueSettingsLoaded || savingQueueSettings}
+                        title={autoQueueChanges ? t("assetReplacer.autoQueueControlled") : t("assetReplacer.queueThisAsset")}
                         className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-theme-primary focus:ring-offset-2 focus:ring-offset-theme-bg ${addToQueue ? "bg-theme-primary" : "bg-gray-600"
                           }`}
                       >
@@ -1704,6 +1934,16 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         />
                       </button>
                     </div>
+                    {addToQueue && !logoSelectionMode && (
+                      <label className="flex items-center gap-2 mt-2 mb-3 text-xs sm:text-sm text-theme-text">
+                        <input type="checkbox" checked={autoQueueChanges}
+                          disabled={!queueSettingsLoaded || savingQueueSettings || uploading}
+                          onChange={(event) => handleToggleAutoQueue(event.target.checked)}
+                          title={t("assetReplacer.autoQueueDescription")}
+                          className="w-4 h-4 shrink-0 rounded border-theme text-theme-primary" />
+                        <span>{t("assetReplacer.autoQueueChanges")}</span>
+                      </label>
+                    )}
 
                     {/* Parameter Inputs */}
                     {processWithOverlays && (
@@ -1713,7 +1953,9 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {metadata.asset_type !== "titlecard" && (
                           <div>
                             <label className="block text-xs font-medium text-theme-text mb-1">
-                              Title Text
+                              {metadata.asset_type === "season"
+                                ? t("assetReplacer.seasonTitleLabel")
+                                : t("assetReplacer.titleText")}
                             </label>
                             <div className="flex gap-2">
                               <input
@@ -1725,14 +1967,18 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     titletext: e.target.value,
                                   })
                                 }
-                                placeholder="Enter text or Browse for Logo..."
+                                placeholder={
+                                  metadata.asset_type === "season"
+                                    ? t("assetReplacer.seasonTitlePlaceholder")
+                                    : t("assetReplacer.titleOrBrowsePlaceholder")
+                                }
                                 className="flex-1 px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                               <button
                                 type="button"
                                 onClick={handleFetchLogos}
                                 disabled={loading}
-                                title="Browse for Logos/ClearArt"
+                                title={t("assetReplacer.browseLogosTooltip")}
                                 className="px-3 py-1.5 bg-theme-card hover:bg-theme-hover border border-theme rounded text-theme-text transition-colors flex items-center gap-2 whitespace-nowrap"
                               >
                                 {loading && logoSelectionMode ? (
@@ -1744,8 +1990,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                               </button>
                             </div>
                             {manualForm?.titletext?.startsWith("http") && (
-                              <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
-                                <Check className="w-3 h-3" /> Logo URL detected.
+                                <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
+                                <Check className="w-3 h-3" /> {t("assetReplacer.logoUrlDetected")}
                               </p>
                             )}
                           </div>
@@ -1755,7 +2001,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {metadata.asset_type !== "collection" && (
                           <div>
                             <label className="block text-xs font-medium text-theme-text mb-1">
-                              Folder Name *
+                              {t("assetReplacer.folderNameRequired")}
                             </label>
                             <input
                               type="text"
@@ -1766,7 +2012,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                   foldername: e.target.value,
                                 })
                               }
-                              placeholder="e.g., Movie Name (2019) {tmdb-123}"
+                              placeholder={t("assetReplacer.folderNamePlaceholder")}
                               className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                             />
                           </div>
@@ -1775,7 +2021,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {/* Blueprint Selection */}
                         <div className="pt-3 border-t border-theme/30 mt-3">
                           <label className="block text-xs font-medium text-theme-text mb-1">
-                            Blueprint Selection
+                            {t("assetReplacer.blueprintSelection")}
                           </label>
                           <select
                             value={blueprintId}
@@ -1783,7 +2029,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary transition-colors"
                             disabled={uploading}
                           >
-                            <option value="none">{t("assetReplacer.defaultGlobalConfig", "Default (Global Config)")}</option>
+                            <option value="none">{t("assetReplacer.defaultGlobalConfig")}</option>
                             {[...BLUEPRINTS, ...customBlueprints].map((bp) => (
                               <option key={bp.id} value={bp.id}>
                                 {bp.id.startsWith('custom_') ? (bp.titleKey || bp.customTitle) : t(bp.titleKey)}
@@ -1791,14 +2037,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                             ))}
                           </select>
                           <p className="text-[10px] sm:text-xs text-theme-muted mt-1">
-                            Optionally override global settings with a specific blueprint.
+                            {t("assetReplacer.blueprintOverrideHint")}
                           </p>
                         </div>
 
                         {/* Library Name */}
                         <div>
                           <label className="block text-xs font-medium text-theme-text mb-1">
-                            Library Name *
+                            {t("assetReplacer.libraryNameRequired")}
                           </label>
                           <input
                             type="text"
@@ -1809,7 +2055,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                 libraryname: e.target.value,
                               })
                             }
-                            placeholder="e.g., 4K"
+                            placeholder={t("assetReplacer.libraryNamePlaceholder")}
                             className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                           />
                         </div>
@@ -1818,7 +2064,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                         {metadata.asset_type === "season" && (
                           <div>
                             <label className="block text-xs font-medium text-theme-text mb-1">
-                              Season Poster Name *
+                                {t("assetReplacer.seasonPosterNameRequired")}
                             </label>
                             <input
                               type="text"
@@ -1829,7 +2075,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                   seasonPosterName: e.target.value,
                                 })
                               }
-                              placeholder="Season 01 or Season 00 (Specials)"
+                              placeholder={t("assetReplacer.seasonPosterNamePlaceholder")}
                               className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                             />
                           </div>
@@ -1840,7 +2086,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           <>
                             <div>
                               <label className="block text-xs font-medium text-theme-text mb-1">
-                                Episode Title *
+                                {t("assetReplacer.episodeTitleRequired")}
                               </label>
                               <input
                                 type="text"
@@ -1851,14 +2097,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     episodeTitleName: e.target.value,
                                   })
                                 }
-                                placeholder="e.g., Pilot"
+                                placeholder={t("assetReplacer.episodeTitlePlaceholder")}
                                 className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                             </div>
 
                             <div>
                               <label className="block text-xs font-medium text-theme-text mb-1">
-                                Season Number *
+                                {t("assetReplacer.seasonNumberRequired")}
                               </label>
                               <input
                                 type="text"
@@ -1869,14 +2115,14 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     seasonPosterName: e.target.value,
                                   })
                                 }
-                                placeholder="e.g., 01"
+                                placeholder={t("assetReplacer.seasonNumberPlaceholder")}
                                 className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                             </div>
 
                             <div>
                               <label className="block text-xs font-medium text-theme-text mb-1">
-                                Episode Number *
+                                {t("assetReplacer.episodeNumberRequired")}
                               </label>
                               <input
                                 type="text"
@@ -1887,7 +2133,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                                     episodeNumber: e.target.value,
                                   })
                                 }
-                                placeholder="e.g., 01"
+                                placeholder={t("assetReplacer.episodeNumberPlaceholder")}
                                 className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                               />
                             </div>
@@ -1906,7 +2152,7 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                       {t("assetReplacer.manualSearchByTitle")}
                     </h4>
                     <p className="text-xs text-theme-muted mt-0.5 leading-relaxed">
-                      Search for assets instead of using detected metadata
+                      {t("assetReplacer.manualSearchDescription")}
                     </p>
                   </div>
                   <button
@@ -1926,19 +2172,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   <div className="mt-4 pt-4 border-t border-theme space-y-3">
                     <div>
                       <label className="block text-xs font-medium text-theme-text mb-1">
-                        Title *
+                        {t("assetReplacer.searchTitleRequired")}
                       </label>
                       <input
                         type="text"
                         value={searchTitle}
                         onChange={(e) => setSearchTitle(e.target.value)}
-                        placeholder="Enter movie/show title..."
+                        placeholder={t("assetReplacer.searchTitlePlaceholder")}
                         className="w-full px-2 py-1.5 text-sm bg-theme-bg border border-theme rounded text-theme-text placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-primary"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-theme-text mb-1">
-                        Year (optional)
+                        {t("assetReplacer.searchYearOptional")}
                       </label>
                       <input
                         type="number"
@@ -2015,7 +2261,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                     <h3 className="text-base sm:text-lg font-semibold text-theme-text mb-3">
                       {t("assetReplacer.uploadYourOwnImage")}
                     </h3>
-                    <label className="block border-2 border-dashed border-theme rounded-lg p-4 sm:p-6 text-center cursor-pointer hover:border-theme-primary transition-colors">
+                    <label
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (uploading) return;
+                        const files = e.dataTransfer.files;
+                        if (files && files.length > 0) {
+                          processSelectedFile(files[0]);
+                        }
+                      }}
+                      className="block border-2 border-dashed border-theme rounded-lg p-4 sm:p-6 text-center cursor-pointer hover:border-theme-primary transition-colors"
+                    >
                       <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-theme-muted mx-auto mb-2" />
                       <p className="text-xs sm:text-sm text-theme-muted mb-2 sm:mb-3">
                         {t("assetReplacer.selectCustomImage")}
@@ -2035,11 +2293,50 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                       />
                     </label>
 
+                    {/* URL Input */}
+                    <div className="mt-3 pt-3 border-t border-theme/40">
+                      <label className="block text-xs font-medium text-theme-text mb-1.5">
+                        {t("assetReplacer.enterImageUrl", "Or paste image URL")}
+                      </label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Link className="w-4 h-4 text-theme-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="url"
+                            value={customImageUrl}
+                            onChange={(e) => setCustomImageUrl(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleLoadFromUrl();
+                              }
+                            }}
+                            placeholder="https://..."
+                            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-theme-bg border border-theme rounded-lg text-theme-text placeholder-theme-muted focus:outline-none focus:border-theme-primary transition-colors"
+                            disabled={loadingUrl || uploading}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleLoadFromUrl}
+                          disabled={loadingUrl || uploading || !customImageUrl.trim()}
+                          className="px-3 sm:px-4 py-2 bg-theme-primary/10 hover:bg-theme-primary/20 text-theme-primary border border-theme-primary/30 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                        >
+                          {loadingUrl ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                          <span>{loadingUrl ? t("assetReplacer.loadingUrl", "Loading...") : t("assetReplacer.loadUrl", "Load")}</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Text / Textless Dropdown */}
                     {uploadedImage && (
                       <div className="mt-4">
                         <label className="block text-sm font-medium text-theme-text mb-2">
-                          Asset Type
+                          {t("assetReplacer.assetType")}
                         </label>
                         <select
                           value={uploadHasText ? "text" : "textless"}
@@ -2047,19 +2344,19 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           className="w-full px-3 py-2 bg-theme-bg border border-theme rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary transition-colors"
                           disabled={uploading}
                         >
-                          <option value="textless">Textless Asset (Clean)</option>
-                          <option value="text">Has Language / Text</option>
+                          <option value="textless">{t("assetReplacer.textlessAsset")}</option>
+                          <option value="text">{t("assetReplacer.assetHasText")}</option>
                         </select>
                       </div>
                     )}
-                    
+
 
                   </div>
 
                   {uploadedImage && (
                     <div className="w-full sm:w-48 flex-shrink-0">
                       <p className="text-xs font-medium text-theme-text mb-2">
-                        Preview:
+                        {t("assetReplacer.previewLabel")}
                       </p>
                       <div
                         className={`relative bg-theme rounded-lg overflow-hidden border border-theme mx-auto ${useHorizontalLayout
@@ -2084,6 +2381,21 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           {isDimensionValid ? " ✓" : " ✗"}
                         </div>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowCropModal(true)}
+                        className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border ${
+                          !isDimensionValid
+                            ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shadow-md animate-pulse"
+                            : "bg-theme-card hover:bg-theme-hover border-theme text-theme-text"
+                        }`}
+                      >
+                        <Crop className="w-3.5 h-3.5" />
+                        {isPosterType
+                          ? t("assetReplacer.cropToPoster", "Crop to 2:3 Poster")
+                          : t("assetReplacer.cropImage", "Crop Image")}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2092,8 +2404,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   <div className="mt-4">
                     <button
                       onClick={handleUploadClick}
-                      disabled={!isDimensionValid || uploading || (isPosterizarrRunning && !addToQueue)}
-                      className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 ${isDimensionValid && !uploading && !isPosterizarrRunning
+                      disabled={!isDimensionValid || uploading}
+                      className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 ${isDimensionValid && !uploading
                         ? "bg-theme-primary hover:bg-theme-primary/90 text-white"
                         : "bg-gray-500/20 text-gray-500 cursor-not-allowed"
                         }`}
@@ -2101,8 +2413,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                       <Upload className="w-4 h-4" />
                       {uploading
                         ? t("assetReplacer.uploadingAsset")
-                        : isPosterizarrRunning
-                          ? "Upload Disabled (Running)"
+                        : queueUntilIdle
+                          ? t("assetReplacer.queueUntilIdleButton")
                           : t("assetReplacer.uploadAssetButton")}
                     </button>
                   </div>
@@ -2203,6 +2515,45 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                   </div>
 
                   <div>
+                    {/* Type Filter (Posters vs Backdrops) */}
+                    {hasPosters && hasBackdrops && (
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("poster")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "poster"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          {t("assetReplacer.filterPosters", "Posters")} ({currentProviderPreviews.filter(p => p.type === "poster" || p.type === "season" || p.type === "season_poster").length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("backdrop")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "backdrop"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          {t("assetReplacer.filterBackgrounds", "Backgrounds")} ({currentProviderPreviews.filter(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background").length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("all")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "all"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          {t("assetReplacer.filterAllTypes", "All Types")} ({currentProviderPreviews.length})
+                        </button>
+                      </div>
+                    )}
+
                     {/* Language Filter */}
                     {availableLanguages.length > 2 && (
                       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
@@ -2222,8 +2573,8 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                       </div>
                     )}
 
-                    <div className={useHorizontalLayout
-                      ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2"
+                    <div className={useHorizontalLayout || typeFilter === "backdrop"
+                      ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2"
                       : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
                     }>
                       {filteredPreviews.map((preview, index) => (
@@ -2231,8 +2582,10 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
                           key={`${activeProviderTab}-${index}`}
                           preview={preview}
                           onSelect={() => handlePreviewClick(preview)}
-                          disabled={uploading || (isPosterizarrRunning && !addToQueue)}
+                          disabled={uploading}
                           isHorizontal={useHorizontalLayout}
+                          isTargetPoster={isPosterType}
+                          targetLabel={titlecardCoordinates}
                         />
                       ))}
                     </div>
@@ -2252,6 +2605,18 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
         message={t("assetReplacer.confirmReplaceMessage")}
         confirmText={t("assetReplacer.confirmReplaceButton")}
         type="warning"
+      />
+
+      <ImageCropModal
+        isOpen={showCropModal}
+        onClose={() => setShowCropModal(false)}
+        imageSrc={rawUploadedImage || uploadedImage}
+        originalFile={rawUploadedFile || uploadedFile}
+        targetRatio={targetRatio}
+        targetWidth={targetWidth}
+        targetHeight={targetHeight}
+        assetType={metadata.asset_type}
+        onCropComplete={handleCropComplete}
       />
 
       <ConfirmDialog
@@ -2283,10 +2648,12 @@ function AssetReplacer({ asset, onClose, onSuccess }) {
   );
 }
 
-function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
+function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTargetPoster = false, targetLabel = null }) {
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  const isBackdrop = preview.type === "backdrop" || preview.type === "background" || preview.sub_type === "background";
 
   // Detect if it is a logo (updated to handle multiple variants)
   const isLogo = preview.type === "logo" ||
@@ -2296,8 +2663,10 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
 
   const handleDownload = async (e) => {
     e.stopPropagation();
+    const downloadUrl = preview.original_url || preview.url;
     try {
-      const response = await fetch(preview.original_url || preview.url);
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -2315,7 +2684,20 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error("Download failed:", error);
+      console.error("Blob download failed, falling back to direct link:", error);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      const source = preview.source?.toLowerCase() || "image";
+      const lang = preview.language || "";
+      const timestamp = Date.now();
+      const extension =
+        preview.original_url?.split(".").pop()?.split("?")[0] || "jpg";
+      a.download = `${source}_${lang}_${timestamp}.${extension}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   };
 
@@ -2325,9 +2707,19 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
       onClick={disabled ? undefined : onSelect}
     >
       <div
-        className={`relative ${isLogo ? "bg-slate-700/50" : "bg-theme"} ${isHorizontal ? "aspect-[16/9]" : "aspect-[2/3]"
+        className={`relative ${isLogo ? "bg-slate-700/50" : "bg-theme"} ${(isHorizontal || isBackdrop) ? "aspect-[16/9]" : "aspect-[2/3]"
           }`}
       >
+        {isBackdrop && (
+          <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-black/70 border border-white/20 text-[10px] font-mono uppercase tracking-wider text-white">
+            16:9
+          </div>
+        )}
+        {targetLabel && (
+          <div className="absolute bottom-2 left-2 z-20 rounded border border-white/25 bg-black/80 px-2 py-1 font-mono text-xs font-semibold text-white shadow">
+            {targetLabel}
+          </div>
+        )}
         {!imageLoaded && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-theme-muted" />
@@ -2349,6 +2741,7 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
         )}
 
         <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 text-center">
+          {targetLabel && <span className="mb-2 rounded border border-white/30 bg-black/80 px-2 py-1 font-mono text-xs font-semibold text-white">{targetLabel}</span>}
           <button
             onClick={handleDownload}
             className="absolute top-2 right-2 px-3 py-2 bg-theme-primary hover:bg-theme-primary/80 rounded-lg transition-all shadow-lg z-10 flex items-center gap-2"
@@ -2413,10 +2806,19 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false }) {
           </div>
 
           <p className="text-white text-sm font-semibold mt-3 flex items-center gap-2">
-            <Check className="w-4 h-4" />
-            {disabled
-              ? t("assetReplacer.uploading")
-              : t("assetReplacer.select")}
+            {isBackdrop && isTargetPoster ? (
+              <>
+                <Crop className="w-4 h-4 text-theme-primary" />
+                {t("assetReplacer.cropBackdropNotice", "Crop to poster")}
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                {disabled
+                  ? t("assetReplacer.uploading")
+                  : t("assetReplacer.select")}
+              </>
+            )}
           </p>
         </div>
       </div>

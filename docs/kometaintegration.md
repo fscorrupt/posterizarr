@@ -1,4 +1,15 @@
-# Kometa Integration
+# Optional Kometa Compatibility
+
+**Kometa is not required for Posterizarr artwork generation, direct uploads, or
+supported Dynamic Overlays.** For the native workflow, start with
+[Dynamic Overlays](dynamic_overlays.md): design supported badges, preview them,
+and sync directly to Plex, Jellyfin, or Emby while keeping clean source artwork
+unchanged on disk.
+
+This page is only for installations that deliberately continue using a separate
+Kometa instance. Keep one owner for each server/library/artwork type to avoid
+different upload jobs replacing one another's artwork. The instructions below
+describe that optional external workflow, not a prerequisite for Posterizarr.
 
 Posterizarr generates assets in a folder structure that is fully compatible with [Kometa](https://kometa.wiki/en/latest/kometa/guides/assets/), eliminating the need for manual renaming or relocation.
 
@@ -40,12 +51,12 @@ Add the following settings to your Kometa configuration file (e.g., `config.yml`
 libraries:
   "4K TV Shows":
     # Metadata files configurations...
-    
+
     # Asset directory settings
     settings:
       asset_directory: /assets/4K TV Shows
       prioritize_assets: true
-      
+
     # Operations
     operations:
       assets_for_all: true
@@ -53,7 +64,7 @@ libraries:
 
 ### Explanation of Settings
 
-- **`asset_directory`**: Tells Kometa specifically where to find the images for this library. Because we mapped the Posterizarr assets directly into `/assets`, the path corresponds directly to `/assets/YourLibraryName`.
+- **`asset_directory`**: Tells Kometa specifically where to find the images for this library. With the Posterizarr assets mounted at `/assets`, the path corresponds directly to `/assets/YourLibraryName`.
 - **`prioritize_assets`**: Ensures Kometa prioritizes found local image assets over downloading from metadata agents, preserving the textless images you generated.
 - **`assets_for_all`**: Instructs Kometa to apply these assets to all matches within the library during an operation run.
 
@@ -67,25 +78,25 @@ A common question is how Posterizarr's `PlexUpload` configuration behaves alongs
 
 ## 4. Kometa and Scheduled Plex Sync (Important Warning)
 
-> [!WARNING]
-> **Do NOT use the automated Plex Sync schedule (`plexsync`) on media managed by Kometa!**
-> 
-> The WebUI includes a lightweight **Plex Sync** schedule mode designed to directly upload artwork (posters, seasons, titlecards, backgrounds, and collections) from your local `/assets` directory to Plex via REST API.
-> 
-> If you run a Plex Sync schedule on libraries managed by Kometa:
-> 1. Kometa uploads its own overlaid artwork and metadata to Plex.
-> 2. Posterizarr's Plex Sync detects that the artwork currently live on Plex does not match the clean, un-overlaid local file in `/assets`.
-> 3. Plex Sync attempts to re-upload the local file, overwriting Kometa's overlays.
-> 4. Kometa runs its next cycle and overwrites Posterizarr's upload again, causing an **endless overwrite loop**.
-> 
-> **Best Practice:** If you use Kometa to manage posters/overlays, either:
-> - **Only** use Plex Sync for **Collections / BoxSets** (by checking *Collections Only*), provided Kometa is not managing collection artwork.
-> - Or leave artwork uploads entirely to Kometa.
+!!! warning "Do NOT use the automated Plex Sync schedule (`plexsync`) on media managed by Kometa!"
+    The WebUI includes a lightweight **Plex Sync** schedule mode designed to directly upload artwork (posters, seasons, titlecards, backgrounds, and collections) from your local `/assets` directory to Plex via REST API.
+
+    If you run a Plex Sync schedule on libraries managed by Kometa:
+
+    1. Kometa uploads its own overlaid artwork and metadata to Plex.
+    2. Posterizarr's Plex Sync detects that the artwork currently live on Plex does not match the clean, un-overlaid local file in `/assets`.
+    3. Plex Sync attempts to re-upload the local file, overwriting Kometa's overlays.
+    4. Kometa runs its next cycle and overwrites Posterizarr's upload again, causing an **endless overwrite loop**.
+
+    **Best Practice:** If you use Kometa to manage posters/overlays, either:
+
+    - **Only** use Plex Sync for **Collections / BoxSets** (by checking *Collections Only*), provided Kometa is not managing collection artwork.
+    - Or leave artwork uploads entirely to Kometa.
 
 ## Summary
 
-By doing these two simple steps: 
-1. Mounting the Posterizarr output folder to Kometa's `/assets` 
+By doing these two simple steps:
+1. Mounting the Posterizarr output folder to Kometa's `/assets`
 2. Configuring Kometa's library settings to point to this directory
 
 You fully automate your asset pipeline between Posterizarr and Kometa.

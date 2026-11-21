@@ -214,7 +214,7 @@ function SyncPlexArtwork {
         Write-Entry -Subtext "Image uploaded successfully." -Path $global:configLogging -Color Green -log Info
 
         switch ($artworktype) {
-            'poster' { $postercount++ }
+            'poster' { $global:posterCount = Increment-GlobalStat 'posterCount' }
             'tc' { $global:EpisodeCount = Increment-GlobalStat 'EpisodeCount' }
             'background' { $global:BackgroundCount = Increment-GlobalStat 'BackgroundCount' }
             'season' { $global:SeasonCount = Increment-GlobalStat 'SeasonCount' }

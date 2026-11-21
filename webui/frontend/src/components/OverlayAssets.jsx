@@ -484,11 +484,11 @@ const OverlayAssets = () => {
       {/* Preview Modal */}
       {previewFile && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          className="app-dialog-backdrop fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setPreviewFile(null)}
         >
           <div
-            className="relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden"
+            className="app-dialog-panel relative max-w-7xl max-h-[90vh] bg-theme-card rounded-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -656,11 +656,11 @@ const OverlayAssets = () => {
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          className="app-dialog-backdrop fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
           onClick={() => setDeleteConfirm(null)}
         >
           <div
-            className="bg-theme-card border border-theme rounded-lg max-w-md w-full p-6"
+            className="app-dialog-panel bg-theme-card border border-theme rounded-lg max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-4 mb-4">

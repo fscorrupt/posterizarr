@@ -13,7 +13,7 @@
     if ($global:runspaceStats) { $global:runspaceStats['SkipTBACount'] = 0 }
     $global:SkipJapTitleCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['SkipJapTitleCount'] = 0 }
-    
+
     # Initialize Summary Counts to prevent leakage between scheduled runs
     $FallbackCount = $null
     $TextlessCount = $null
@@ -28,18 +28,24 @@
         $Mode = "normal"
         Write-Entry -Message "Normal Mode Started..." -Path $global:configLogging -Color White -log Info
     }
+    $global:Mode = $Mode
 
     Write-Entry -Message "Query Jellyfin/Emby..." -Path $global:configLogging -Color White -log Info
     Write-Entry -Message "Query all items from all Libs, this can take a while..." -Path $global:configLogging -Color White -log Info
     $retryCount = 0
     $maxRetries = 3
     $AllLibs = $null
-    
+
     while ($retryCount -le $maxRetries) {
         try {
-            $PreferredMetadataLanguage = (Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/System/Configuration" -Headers $global:OtherMediaServerHeaders -ErrorAction Stop).PreferredMetadataLanguage ?? "en"
-            $allLibsquery = "$($OtherMediaServerUrl.TrimEnd('/'))/Library/VirtualFolders"
-            $AllLibs = Invoke-RestMethod -Method Get -Uri $allLibsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+            if ($UseSilo -eq 'true') {
+                $PreferredMetadataLanguage = 'en'
+                $AllLibs = $global:SiloLibraries
+            } else {
+                $PreferredMetadataLanguage = (Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/System/Configuration" -Headers $global:OtherMediaServerHeaders -ErrorAction Stop).PreferredMetadataLanguage ?? "en"
+                $allLibsquery = "$($OtherMediaServerUrl.TrimEnd('/'))/Library/VirtualFolders"
+                $AllLibs = Invoke-RestMethod -Method Get -Uri $allLibsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+            }
         } catch { }
 
         $validLibs = @($AllLibs | Where-Object { $_.Name -notin $LibstoExclude })
@@ -113,20 +119,79 @@
     $AllEpisodes = [System.Collections.Generic.List[object]]::new()
     foreach ($slib in $AllLibs) {
         if ($slib.Name -notin $LibstoExclude) {
+            if ($UseSilo -eq 'true') {
+                $nativeItems = @($global:SiloItems.Values | Where-Object SiloLibraryId -eq $slib.ItemId)
+                $AllMovies.Add([pscustomobject]@{ Items = @($nativeItems | Where-Object Type -eq 'Movie') })
+                $AllShows.Add([pscustomobject]@{ Items = @($nativeItems | Where-Object Type -eq 'Series') })
+                $AllEpisodes.Add([pscustomobject]@{ Items = @($nativeItems | Where-Object Type -eq 'Episode') })
+                continue
+            }
             if ($slib.CollectionType -eq 'movies') {
                 Write-Entry -Subtext "Getting all Itmes from [$($slib.Name)] with item id [$($slib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Settings,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
-                $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders
-                $AllMovies.Add($Querytemp)
+                $allMoviesquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Movie&CollapseBoxSetItems=false"
+                try {
+                    $Querytemp = Invoke-RestMethod -Method Get -Uri $allMoviesquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $AllMovies.Add($Querytemp)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve movies from [$($slib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
             }
             if ($slib.CollectionType -eq 'tvshows') {
                 Write-Entry -Subtext "Getting all Itmes from [$($slib.Name)] with item id [$($slib.ItemId)]" -Path $global:configLogging -Color Cyan -log Debug
-                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Series&CollapseBoxSetItems=false"
-                $allEpisodesquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,Settings,Tags,Width,Height,MediaStreams&IncludeItemTypes=Episode&CollapseBoxSetItems=false"
-                $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders
-                $QuerytempEpisodes = Invoke-RestMethod -Method Get -Uri $allEpisodesquery -Headers $global:OtherMediaServerHeaders
-                $AllShows.Add($Querytempshow)
-                $AllEpisodes.Add($QuerytempEpisodes)
+                $allShowsquery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true&Fields=ProviderIds,OriginalTitle,Path,ProductionYear,Tags,Width,Height,MediaStreams&IncludeItemTypes=Series&CollapseBoxSetItems=false"
+                try {
+                    $Querytempshow = Invoke-RestMethod -Method Get -Uri $allShowsquery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    $AllShows.Add($Querytempshow)
+                }
+                catch {
+                    Write-Entry -Message "Failed to retrieve shows from [$($slib.Name)]: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                }
+
+                $episodeLimit = 1000
+                $episodeStartIndex = 0
+                $libEpisodesList = [System.Collections.Generic.List[object]]::new()
+                $fieldsParam = if ($global:TitleCards -eq 'true') { "&Fields=Width,Height,MediaStreams" } else { "" }
+                $totalEpisodeRecords = $null
+
+                do {
+                    $pagedEpisodesQuery = "$OtherMediaServerUrl/Items?ParentId=$($slib.ItemId)&Recursive=true$fieldsParam&IncludeItemTypes=Episode&CollapseBoxSetItems=false&StartIndex=$episodeStartIndex&Limit=$episodeLimit"
+                    try {
+                        $pagedResult = Invoke-RestMethod -Method Get -Uri $pagedEpisodesQuery -Headers $global:OtherMediaServerHeaders -ErrorAction Stop
+                    }
+                    catch {
+                        Write-Entry -Message "Failed to retrieve episodes from [$($slib.Name)] (StartIndex: $episodeStartIndex): $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error
+                        break
+                    }
+
+                    if ($pagedResult -and $pagedResult.Items -and $pagedResult.Items.Count -gt 0) {
+                        foreach ($ep in $pagedResult.Items) {
+                            if ($ep.MediaStreams) {
+                                $vid = $ep.MediaStreams | Where-Object Type -eq 'Video' | Select-Object -First 1
+                                $currentRange = ($UseEmby -eq 'true') ? $vid.ExtendedVideoType : $vid.VideoRangeType
+                                $subTypeDesc = $vid.ExtendedVideoSubTypeDescription
+                                if ($currentRange -and $currentRange -ne 'None') {
+                                    if ($subTypeDesc -match 'Profile.*HDR10' -or $vid.VideoRangeType -match 'HDR10|EL' -or $vid.ExtendedVideoType -match 'HDR10|EL') {
+                                        $currentRange = "DOVIHDR10"
+                                    }
+                                } else {
+                                    $currentRange = "None"
+                                }
+                                $ep | Add-Member -MemberType NoteProperty -Name "ComputedVideoRange" -Value $currentRange -Force
+                                $ep | Add-Member -MemberType NoteProperty -Name "SubTypeDesc" -Value $subTypeDesc -Force
+                                $ep.MediaStreams = $null
+                            }
+                            $libEpisodesList.Add($ep)
+                        }
+                        $episodeStartIndex += $pagedResult.Items.Count
+                        $totalEpisodeRecords = $pagedResult.TotalRecordCount
+                    }
+                    else {
+                        break
+                    }
+                } while ($totalEpisodeRecords -and $episodeStartIndex -lt $totalEpisodeRecords)
+
+                $AllEpisodes.Add([PSCustomObject]@{ Items = $libEpisodesList })
             }
         }
     }
@@ -463,25 +528,37 @@
             $Episodes = ($SeasonEpisodes.IndexNumber -join ',')
             $Thumbs = ($SeasonEpisodes.ImageTags.Primary -join ',')
             $VideoRangesArray = foreach ($ep in $SeasonEpisodes) {
-                $vid = $ep.MediaStreams | Where-Object Type -eq 'Video' | Select-Object -First 1
-
-                # Determine the base HDR string (Emby uses ExtendedVideoType, Jellyfin uses VideoRangeType)
-                $currentRange = ($UseEmby -eq 'true') ? $vid.ExtendedVideoType : $vid.VideoRangeType
-
-                if ($currentRange -and $currentRange -ne 'None') {
-                    Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Video Description: $($currentRange)" -Path $global:configLogging -Color Cyan -log Debug
-                    if ($UseEmby -eq 'true' -and $vid.ExtendedVideoSubTypeDescription -and $vid.ExtendedVideoSubTypeDescription -ne 'None') {
-                        Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Sub Video Description: $($vid.ExtendedVideoSubTypeDescription)" -Path $global:configLogging -Color Cyan -log Debug
+                if ($ep.ComputedVideoRange) {
+                    $currentRange = $ep.ComputedVideoRange
+                    if ($currentRange -ne 'None') {
+                        Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Video Description: $($currentRange)" -Path $global:configLogging -Color Cyan -log Debug
+                        if ($UseEmby -eq 'true' -and $ep.SubTypeDesc -and $ep.SubTypeDesc -ne 'None') {
+                            Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Sub Video Description: $($ep.SubTypeDesc)" -Path $global:configLogging -Color Cyan -log Debug
+                        }
                     }
-                    # Refine for Dolby Vision + HDR10 Hybrid (Profile 7 or 8)
-                    if ($vid.ExtendedVideoSubTypeDescription -match 'Profile.*HDR10' -or $vid.VideoRangeType -match 'HDR10|EL' -or $vid.ExtendedVideoType -match 'HDR10|EL') {
-                        $currentRange = "DOVIHDR10"
-                    }
-
                     $currentRange
                 }
                 else {
-                    "None"
+                    $vid = $ep.MediaStreams | Where-Object Type -eq 'Video' | Select-Object -First 1
+
+                    # Determine the base HDR string (Emby uses ExtendedVideoType, Jellyfin uses VideoRangeType)
+                    $currentRange = ($UseEmby -eq 'true') ? $vid.ExtendedVideoType : $vid.VideoRangeType
+
+                    if ($currentRange -and $currentRange -ne 'None') {
+                        Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Video Description: $($currentRange)" -Path $global:configLogging -Color Cyan -log Debug
+                        if ($UseEmby -eq 'true' -and $vid.ExtendedVideoSubTypeDescription -and $vid.ExtendedVideoSubTypeDescription -ne 'None') {
+                            Write-Entry -Subtext "[$($show.title) - S$(([int]$ep.ParentIndexNumber).ToString('00'))E$(([int]$ep.IndexNumber).ToString('00')) - $($ep.Name)] Raw Sub Video Description: $($vid.ExtendedVideoSubTypeDescription)" -Path $global:configLogging -Color Cyan -log Debug
+                        }
+                        # Refine for Dolby Vision + HDR10 Hybrid (Profile 7 or 8)
+                        if ($vid.ExtendedVideoSubTypeDescription -match 'Profile.*HDR10' -or $vid.VideoRangeType -match 'HDR10|EL' -or $vid.ExtendedVideoType -match 'HDR10|EL') {
+                            $currentRange = "DOVIHDR10"
+                        }
+
+                        $currentRange
+                    }
+                    else {
+                        "None"
+                    }
                 }
             }
             $EpisodeVideoRanges = ($VideoRangesArray -join ',')
@@ -514,7 +591,12 @@
             $OtherMediaServerTitleCardUrlsList = [System.Collections.Generic.List[string]]::new()
             foreach ($epId in ($EpisodeIds -split ',')) {
                 if ($epId) {
-                    $OtherMediaServerTitleCardUrlsList.Add("$OtherMediaServerUrl/Items/$epId/Images/Primary")
+                    if ($UseSilo -eq 'true') {
+                        $nativeEpisode = $global:SiloItems.Values | Where-Object Id -eq $epId | Select-Object -First 1
+                        $OtherMediaServerTitleCardUrlsList.Add([string]$nativeEpisode.ImageTags.Primary)
+                    } else {
+                        $OtherMediaServerTitleCardUrlsList.Add("$OtherMediaServerUrl/Items/$epId/Images/Primary")
+                    }
                 }
             }
             $OtherMediaServerTitleCardUrls = $OtherMediaServerTitleCardUrlsList -join ','
@@ -554,7 +636,10 @@
             if ($SeasonId) { $showSeasonIds.Add($SeasonId) }
             $showSeasonNumbers.Add($SeasonEpisodes[0].ParentIndexNumber)
             $showSeasonNames.Add($Season.Name)
-            if ($SeasonId) { $showSeasonUrls.Add("$OtherMediaServerUrl/Items/$SeasonId/Images/Primary") }
+            if ($SeasonId) {
+                if ($UseSilo -eq 'true') { $showSeasonUrls.Add([string]$SeasonEpisodes[0].SeriesPrimaryImageTag) }
+                else { $showSeasonUrls.Add("$OtherMediaServerUrl/Items/$SeasonId/Images/Primary") }
+            }
         }
 
         # Append collected season metadata to the parent show object
@@ -637,8 +722,10 @@
     # Export the formatted data to CSV
     $FormattedData | Select-Object * | Export-Csv -Path "$global:ScriptRoot\Logs\OtherMediaServerEpisodeExport.csv" -NoTypeInformation -Delimiter ';' -Encoding UTF8 -Force
     $Episodedata = $FormattedData
-    if ($AllEpisodes) {
+    if ($AllEpisodes -and $AllEpisodes.Items.Count -gt 0) {
         Write-Entry -Subtext "Found '$($AllEpisodes.Items.count)' Episodes across $($Episodedata.Count) seasons..." -Path $global:configLogging -Color Cyan -log Info
+    } else {
+        Write-Entry -Subtext "Found '0' Episodes across $($Episodedata.Count) seasons..." -Path $global:configLogging -Color Yellow -log Warn
     }
 
     $AllShows = $Libraries | Where-Object { $_.'Library Type' -eq 'Series' }
@@ -674,13 +761,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-MoviePosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -694,13 +784,16 @@
             foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
             if ($state['FanartTvAPIKey']) {
                 Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
             }
+            function Runspace-Initialized {}
+        }
+        $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+        & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+        if ($state['FanartTvAPIKey']) {
+            Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+            Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+        }
 
         Invoke-ShowPosterCreation -entry $_
     } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -714,13 +807,16 @@
                 foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
                 if ($state['FanartTvAPIKey']) {
                     Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
                 }
-
                 function Runspace-Initialized {}
             }
             $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
             & $StateAssignerSb
+
+            if ($state['FanartTvAPIKey']) {
+                Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+            }
 
             Invoke-TitleCardCreation -episode $_
         } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -729,7 +825,8 @@
     if ($AssetCleanup -eq 'true') {
         $ImagesCleared = 0
         $PathsCleared = 0
-        $savedsizestring = 0
+        [long]$SavedSpace = 0
+        $savedsizestring = "{0:N2} MB" -f 0
         Write-Entry -Subtext "Starting Asset Cleanup, this can take some time..." -Path $global:configLogging -Color Yellow -log Info
         Write-Entry -Subtext "Only removing Artwork with posterizarr exif data" -Path $global:configLogging -Color Cyan -log Info
         $processedDirectories = [System.Collections.Generic.List[object]]::new()
@@ -747,7 +844,15 @@
                 $uncheckedItemPath = $uncheckedItem + ".jpg"
 
                 if (Test-IsPosterizarrAsset -Path $uncheckedItemPath) {
-                    Remove-Item -LiteralPath $uncheckedItemPath -Force
+                    try {
+                        $assetSize = (Get-Item -LiteralPath $uncheckedItemPath -ErrorAction Stop).Length
+                        Remove-Item -LiteralPath $uncheckedItemPath -Force -ErrorAction Stop
+                    }
+                    catch {
+                        Write-Entry -Subtext "Could not remove artwork: $uncheckedItemPath - $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                        continue
+                    }
+                    $SavedSpace += $assetSize
                     $ImagesCleared++
                     Write-Entry -Subtext "Artwork Removed: $uncheckedItemPath" -Path $global:configLogging -Color Yellow -log Info
 
@@ -766,15 +871,24 @@
 
         # Cleanup empty Asset dirs
         if ($LibraryFolders -eq 'true') {
-            # After all files are removed get all empty directories at once
-            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force | Where-Object { -not $_.GetFileSystemInfos() }
+            # NAS/OS metadata that should not keep an otherwise empty folder alive
+            $junkNames = [System.Collections.Generic.HashSet[string]]::new([string[]]@('@eaDir', '.DS_Store', 'Thumbs.db', 'desktop.ini'), [System.StringComparer]::OrdinalIgnoreCase)
+            $dirs2delete = Get-ChildItem -LiteralPath $AssetPath -Recurse -Directory -Force |
+                Where-Object { $_.FullName -notmatch '[\\/]@eaDir([\\/]|$)' } |
+                Sort-Object { $_.FullName.Length } -Descending
 
             # Loop through the pre-filtered list
             foreach ($dir in $dirs2delete) {
-                # Increment counter
+                if (@($dir.GetFileSystemInfos() | Where-Object { -not $junkNames.Contains($_.Name) }).Count -ne 0) { continue }
+
+                try {
+                    Remove-Item -LiteralPath $dir.FullName -Recurse -Force -Confirm:$false -ErrorAction Stop | Out-Null
+                }
+                catch {
+                    Write-Entry -Subtext "Could not remove empty directory: $($dir.FullName) - $($_.Exception.Message)" -Path $global:configLogging -Color Yellow -log Warning
+                    continue
+                }
                 $PathsCleared++
-                # Remove the empty directory
-                Remove-Item -LiteralPath $dir.FullName -Force -Confirm:$false | Out-Null
 
                 # Log the action
                 Write-Entry -Subtext "Removed empty directory: $($dir.FullName)" -Path $global:configLogging -Color Yellow -log Info
@@ -783,38 +897,12 @@
         if ($ImagesCleared -ge '1' -or $PathsCleared -ge '1') {
             Write-Entry -Message "Asset Cleanup overview..." -Path $global:configLogging -Color Green -log Info
         }
-        # Check new dir Size
         if ($ImagesCleared -ge '1') {
-            $newtotalSize = Get-ChildItem $AssetPath -Recurse | Measure-Object -Property Length -Sum
-            # Convert bytes to kilobytes, megabytes, or gigabytes as needed
-            if ($newtotalSize.Sum -gt 1GB) {
-                $newtotalSizeString = "{0:N2} GB" -f ($newtotalSize.Sum / 1GB)
-            }
-            elseif ($newtotalSize.Sum -gt 1MB) {
-                $newtotalSizeString = "{0:N2} MB" -f ($newtotalSize.Sum / 1MB)
-            }
-            elseif ($newtotalSize.Sum -gt 1KB) {
-                $newtotalSizeString = "{0:N2} KB" -f ($newtotalSize.Sum / 1KB)
-            }
-            else {
-                $newtotalSizeString = "$($newtotalSize.Sum) bytes"
-            }
-
-            # Saved space
-            $SavedSpace = $global:totalSize - $newtotalSize.Sum
-
-            # Convert bytes to kilobytes, megabytes, or gigabytes as needed
-            if ($SavedSpace -gt 1GB) {
+            if ($SavedSpace -ge 1GB) {
                 $savedsizestring = "{0:N2} GB" -f ($SavedSpace / 1GB)
             }
-            elseif ($SavedSpace -gt 1MB) {
-                $savedsizestring = "{0:N2} MB" -f ($SavedSpace / 1MB)
-            }
-            elseif ($SavedSpace -gt 1KB) {
-                $savedsizestring = "{0:N2} KB" -f ($SavedSpace / 1KB)
-            }
             else {
-                $savedsizestring = "$SavedSpace bytes"
+                $savedsizestring = "{0:N2} MB" -f ($SavedSpace / 1MB)
             }
 
             if ($ImagesCleared -ge '1') {

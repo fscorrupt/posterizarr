@@ -2,25 +2,25 @@
   {
     "name": "Posterizarr (Dev)",
     "guid": "f62d8560-6123-4567-89ab-cdef12345678",
-    "description": "Local asset metadata provider and real-time WebSocket sync engine. Instantly maps and updates posters, backgrounds, seasons, and title cards without library scans.",
-    "overview": "A companion plugin for Posterizarr that maps local assets to Jellyfin library items and connects to Posterizarr's real-time WebSocket stream (/ws/events) to instantaneously apply rendered artwork in under a second.",
+    "description": "Maps local Posterizarr assets to Jellyfin and optionally mirrors selected Plex artwork with real-time updates and scheduled sync.",
+    "overview": "The Posterizarr companion plugin maps local assets to Jellyfin and can optionally mirror selected Plex artwork. It supports real-time Posterizarr updates, scheduled Plex Direct Sync, and local collection syncing.",
     "owner": "Posterizarr",
     "category": "Metadata",
     "imageUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/dev/docs/images/Plugin_logo.png",
     "versions": [
       {
-        "version": "99.0.1005.0655",
-        "changelog": "Dev build: 2026-10-05 06:55",
+        "version": "99.0.1121.0819",
+        "changelog": "Dev build: 2026-11-21 08:19",
         "targetAbi": "12.0.0.0",
-        "sourceUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/builds/Posterizarr.Plugin_v99.0.1005.0655-jf12.zip",
-        "checksum": "1820F8EE152A90223E42DF2148895919"
+        "sourceUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/builds/Posterizarr.Plugin_v99.0.1121.0819-jf12.zip",
+        "checksum": "F525A9B274BE333A7E181C21BE2F70CA"
       },
       {
-        "version": "99.0.1005.0655",
-        "changelog": "Dev build: 2026-10-05 06:55",
+        "version": "99.0.1121.0819",
+        "changelog": "Dev build: 2026-11-21 08:19",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/builds/Posterizarr.Plugin_v99.0.1005.0655.zip",
-        "checksum": "1D3A7776DBC14BD8557CCC449941A90C"
+        "sourceUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/builds/Posterizarr.Plugin_v99.0.1121.0819.zip",
+        "checksum": "9394FC345BE6099D365E62FF42D0E2F5"
       }
     ]
   }

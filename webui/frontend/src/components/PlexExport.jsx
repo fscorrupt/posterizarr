@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import WorkspaceHeader from "./WorkspaceHeader";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
 import {
@@ -561,10 +562,10 @@ function PlexExport() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="workspace-page space-y-6">
       <ScrollToButtons />
       {/* Top Actions */}
-      <div className="flex justify-end items-start gap-2">
+      <WorkspaceHeader icon={Film} title="Plex Library Data">
         <button
           onClick={async () => {
             setRefreshing(true);
@@ -589,7 +590,7 @@ function PlexExport() {
             {importing ? t("plexExport.importing", "Importing...") : t("plexExport.import", "Import")}
           </span>
         </button>
-      </div>
+      </WorkspaceHeader>
 
       {/* Stats Cards */}
       {statistics && (
@@ -938,8 +939,8 @@ function PlexExport() {
 
       {/* Modal */}
       {showDetailModal && selectedItem && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto border border-theme shadow-2xl">
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto border border-theme shadow-2xl">
             <div className="sticky top-0 bg-theme-card/95 backdrop-blur border-b border-theme px-6 py-4 flex items-center justify-between z-10">
               <h3 className="text-xl font-bold text-theme-text truncate pr-4">
                 {activeTab === "library"

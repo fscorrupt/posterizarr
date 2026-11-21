@@ -1,3 +1,139 @@
+# Configure Posterizarr
+
+For normal use, configure Posterizarr in **Configuration** in the Web UI. You do
+not need to edit `config.json` or use the command line for routine setup.
+
+![Configuration with the Media Servers group selected](images/06-configuration-media-servers.png)
+
+*Choose **Configuration** in the sidebar, then select a group such as **Media Servers** or **Providers** to find its controls.*
+
+*Current Web UI capture; no API keys or personal media titles are shown.*
+
+## Find and change a setting
+
+1. Open **Configuration** from the left sidebar.
+2. Choose a group: **System**, **Providers**, **Media Servers**, **Global
+    Visuals**, **Posters**, **Seasons**, **Backgrounds**, **Title Cards**, or
+    **Collections**.
+3. Use **Search settings by name or value** to find a specific option, or open a
+    settings card to see its controls and explanation.
+4. Make changes, then select **Save Changes**. Use **Settings Wiki** on a card
+    when you need its detailed behavior or examples.
+
+## Suggested setup order
+
+- **System:** choose where assets and backups are stored and check Web UI options.
+- **Providers:** add the services and credentials used to search for artwork.
+- **Media Servers:** connect Plex, Jellyfin, or Emby and choose included
+  libraries.
+- **Global Visuals:** set shared language, image processing, text, logo, border,
+  and overlay preferences.
+- **Posters, Seasons, Backgrounds, Title Cards, Collections:** tune each output
+  type separately. Different asset types can use different layouts and language
+  priorities.
+
+Start with one library and the normal Web UI workflow in the
+[first-time setup guide](getting_started.md). Keep a backup before importing or
+editing raw configuration data.
+
+## Detailed `config.json` reference
+
+Most users will not need this field-by-field reference. Expand it when editing
+the underlying file directly or when a Settings Wiki link points here.
+
+<details markdown="1">
+<summary>Open advanced configuration fields and examples</summary>
+
+Do not replace an existing configuration with a partial example. Merge only the
+settings you intend to change, and keep a backup before editing manually.
+
+## Silo (Experimental)
+
+Silo support targets the native `/api/v2` API, not the Jellyfin compatibility listener.
+The initial integration was checked against server build `bb1ee435` using a movie,
+a series, three episodes and two seasons. Silo is pre-release: pin a tested build
+and back up its configuration, database and encryption key before updating.
+
+In Configuration > Media Servers, enable **Use Silo (Experimental)**, enter
+**Silo URL** and **Silo API Key**, validate, choose included libraries and save.
+Only one primary server may be enabled. Existing configurations receive disabled
+Silo fields in the editor; Silo is never enabled automatically.
+
+Silo-only capability notices appear in configuration/onboarding, run dialogs,
+Logo Browser, Collection Explorer, Dynamic Overlays, AniMetaFill, Ratings Cache,
+the scheduler and Asset Overview. Unsupported and partially supported actions are
+explained in English, German, French, Italian and Portuguese. Technical logs and
+PowerShell output keep their existing English format.
+
+- `SiloPart.UseSilo`: `"true"` to select Silo as the primary server.
+- `SiloPart.SiloUrl`: Native server URL, preserving any reverse-proxy path prefix.
+    For containers sharing a network, an internal address such as `http://silo:8080`
+    avoids interactive Authelia authentication. Host ports may differ.
+- `ApiPart.SiloAPIKey`: A key with catalog/file read access and artwork-edit authority.
+    Keep it out of URLs and public diagnostics.
+- `SiloPart.SiloProfileId`: Optional primary household profile ID; auto-discovered
+    when blank. Account/profile restrictions still apply.
+- `SiloPart.LibstoExclude`: Library names excluded from generation and overlay sync.
+
+Normal generation uses existing provider and naming settings. The existing global
+`PrerequisitePart.PlexUpload` setting also controls direct Silo uploads despite its
+historical name. When Dynamic Overlays is enabled, generation keeps clean assets
+and the separate overlay sync performs the upload instead.
+
+Supported initial workflows are movie/show posters and backdrops, season posters,
+targeted overlay sync, and movie/show change detection. Technical overlay inputs
+come from the selected file's actual audio/video/subtitle tracks. Explicitly scoped
+show/season rules can aggregate episode stream metadata.
+
+AniMetaFill's **Media Server & Integration Settings** also supports Silo. Select
+Silo, choose the target anime show libraries, and save. Credentials come from the
+same Silo configuration above; switching servers clears the previous library
+selection. Show discovery and native episode-coordinate matching are read-only.
+Ratings Cache refresh uses native Silo metadata for movies, shows, and opted-in
+anime seasons. Silo episode ratings refresh is excluded for now.
+
+Additional native Silo workflows are available in PowerShell and the UI:
+
+- Radarr/Sonarr triggers select catalog movies/shows and seasons without using the
+    Jellyfin compatibility API. Ambiguous external IDs or paths are not guessed.
+- Logo Browser and Logo Updater list movie/show logos and upload selected PNGs.
+- Collection Explorer lists existing collections in included libraries and uploads
+    posters. Manual collection generation can upload to a unique existing collection.
+- Backup/Restore downloads and restores movie/show posters, backgrounds, logos,
+    season posters and collection posters/backgrounds using the configured backup
+    layout and library/item/type filters.
+- Poster Reset and Logo Revert select the first matching provider image returned by
+    Silo. They do not delete uploaded images or recover an unknown previous selection.
+    If no provider candidate exists, the current image is retained.
+- **Sync Silo** in Run Modes, or `Posterizarr.ps1 -SyncSilo`, mirrors Plex artwork to
+    matched Silo movies/shows/seasons. Configure Plex URL/token while leaving Silo as
+    the enabled primary server. Matches require a unique external ID; identical bytes
+    are skipped. This can replace existing Silo artwork and is also schedulable.
+
+Episode artwork uploads and episode ratings refresh remain excluded; locally
+generated titlecards remain local. Native episode metadata is read only for anime
+matching and show/season aggregation. Silo has no native image-delete or full-server
+backup endpoint in the checked contract; artwork backup is not a Silo database backup.
+The Asset Overview server-side skip-tag action is unavailable for Silo because the
+native metadata contract has no writable tags field.
+
+Uploads use multipart image data, at most 10 MiB, and are not automatically retried
+after a connection failure with an uncertain outcome. Silo applies its artwork
+selection/lock behavior; season image changes can lock images on the parent series.
+Artwork URLs can expire and are fetched fresh rather than used as persistent IDs.
+Dynamic Overlays dry-run mode renders without making artwork writes.
+
+Validation included live read-only discovery in both Python and PowerShell and one
+live movie-poster upload using the existing image, followed by selected-image and
+pixel checks. Series/season upload routing is covered by isolated worker tests,
+not live writes. A complete scheduled PowerShell generation run was not executed
+against the test server. The additional workflows above are covered by isolated
+HTTP and executable PowerShell tests, not live Silo artwork mutations. Their native
+routes were checked against the upstream API v2 contract; pre-release API changes
+may require adapter updates.
+
+## Settings
+
 1. Open `config.example.json` located in the script directory.
 2. Update the following variables with your API keys and preferences [my personal config](https://github.com/fscorrupt/posterizarr/blob/main/MyPersonalConfig.json):
 
@@ -9,13 +145,15 @@
 
     #### ApiPart
 
-    - `tvdbapi`: Your TVDB Project API key.
+    - `tvdbapi`: Your TVDB Project API key (Optional if TMDb is configured).
         - If you are a TVDB subscriber, you can append your PIN to the end of your API key in the format `YourApiKey#YourPin`. (It is important to include a `#` between the API key and the PIN.)
-    - `tmdbtoken`: Your TMDB API Read Access Token.
-    - `FanartTvAPIKey`: Your Fanart personal API key.
+        - Note: In initial setup and movie-only or TMDb-exclusive setups, supplying TVDb is entirely optional.
+    - `tmdbtoken`: Your TMDB API Read Access Token (Free and instant to generate; recommended primary metadata source).
+    - `FanartTvAPIKey`: Your Fanart personal API key (Optional supplementary provider for logos and backgrounds).
     - `PlexToken`: Your Plex token (Leave empty if not applicable).
     - `JellyfinAPIKey`: Your Jellyfin API key. (You can create an API key from inside Jellyfin at Settings > Advanced > Api Keys.)
     - `EmbyAPIKey`: Your Emby API key. (You can create an API key from inside Emby at Settings > Advanced > Api Keys.)
+    - `SiloAPIKey`: A Silo API key with catalog/file read access and artwork-edit authority. Silo support is experimental and uses the native `/api/v2` API.
     - `FavProvider`: Set your preferred provider (default is `tmdb`).
 
         - possible values are:
@@ -29,7 +167,7 @@
 
         [Search order in script](searchorder.md)
 
-    - `ProviderPriorityMode`: Select the strategy Posterizarr uses when searching for artwork. 
+    - `ProviderPriorityMode`: Select the strategy Posterizarr uses when searching for artwork.
         - `Simple`: Starts with your `FavProvider`, followed by the remaining providers (Legacy default).
         - `Global`: Strictly follows the custom array you define in `ProviderOrder`.
         - `PerMediaType`: Strictly follows the `MovieProviderOrder` array for Movies and `ShowProviderOrder` for TV Shows.
@@ -56,7 +194,7 @@
     - `PreferredTCLanguageOrder`: Specify language preferences for TCs. Default is `PleaseFillMe` ( It will take your poster lang order / `xx` is Textless). Example configurations can be found in the config file. 2-digit language codes can be found here: [ISO 3166-1 Lang Codes](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
         - If you set it to `xx` you tell the script it should only search for textless, posters with text will be skipped.
     - `LogoLanguageOrder`: Specify language preferences for Logos. Default is `en,de`. Example configurations can be found in the config file. 2-digit language codes can be found here: [ISO 3166-1 Lang Codes](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
-    - `LibraryLanguageOverrides`: Override the language order and provider order on a per-library basis, for libraries where the server-wide settings don't fit (e.g. a single French or German library on an otherwise English server). Keyed by exact media server library name; each entry sets one `PreferredLanguageOrder` that can be applied to that library's posters, season posters and backgrounds using the `ApplyTo` flags. Title cards keep their own textless-first (`xx`) lead automatically unless the override itself already starts with `xx`. You can also configure a specific `ProviderOrder` for the library by setting `EnableProviderOrderOverride` to `true`. Libraries not listed here are unaffected and keep using the server-wide or media-type settings.
+    - `LibraryLanguageOverrides`: Override the language order and provider order on a per-library basis, for libraries where the server-wide settings don't fit (e.g. a single French or German library on an otherwise English server). Keyed by exact media server library name; each entry sets one `PreferredLanguageOrder` that can be applied to that library's posters, season posters and backgrounds using the `ApplyTo` flags. You can also define an optional separate `PreferredBackgroundLanguageOrder` (e.g. textless `xx` first) by enabling `EnableBackgroundLanguageOrderOverride`. Title cards keep their own textless-first (`xx`) lead automatically unless the override itself already starts with `xx`. You can also configure a specific `ProviderOrder` for the library by setting `EnableProviderOrderOverride` to `true`. Libraries not listed here are unaffected and keep using the server-wide or media-type settings.
         ```json
         "LibraryLanguageOverrides": {
           "German Movies": {
@@ -65,6 +203,8 @@
             "ApplyToSeason": true,
             "ApplyToBackground": true,
             "ApplyToLogo": true,
+            "EnableBackgroundLanguageOrderOverride": false,
+            "PreferredBackgroundLanguageOrder": ["xx", "de"],
             "EnableProviderOrderOverride": true,
             "ProviderOrder": ["TMDB", "TVDB", "Fanart", "Plex"]
           }
@@ -166,14 +306,14 @@
     - `TC4k`: 4K TitleCard overlay file name. (overlay has to match the Poster dimensions 3840x2160)
     - `TC1080p` : 1080p TitleCard overlay file name. (overlay has to match the Poster dimensions 3840x2160)
     - `4KDoVi`: Specific overlay for 4K Dolby Vision posters. (2000x3000)
-    - `4KHDR10`: Specific overlay for 4K HDR10 posters. (2000x3000)
-    - `4KDoViHDR10`: Specific overlay for 4K DoVi & HDR10 posters. (2000x3000)
+    - `4KHDR10`: Specific overlay for 4K HDR10 & HDR10+ posters. (2000x3000)
+    - `4KDoViHDR10`: Specific overlay for 4K DoVi & HDR10/HDR10+ posters. (2000x3000)
     - `4KDoViBackground`: Specific overlay for 4K Dolby Vision backgrounds. (3840x2160)
-    - `4KHDR10Background`: Specific overlay for 4K HDR10 backgrounds. (3840x2160)
-    - `4KDoViHDR10Background`: Specific overlay for 4K DoVi & HDR10 backgrounds. (3840x2160)
+    - `4KHDR10Background`: Specific overlay for 4K HDR10 & HDR10+ backgrounds. (3840x2160)
+    - `4KDoViHDR10Background`: Specific overlay for 4K DoVi & HDR10/HDR10+ backgrounds. (3840x2160)
     - `4KDoViTC`: Specific overlay for 4K Dolby Vision TitleCards. (3840x2160)
-    - `4KHDR10TC`: Specific overlay for 4K HDR10 TitleCards. (3840x2160)
-    - `4KDoViHDR10TC`: Specific overlay for 4K DoVi & HDR10 TitleCards. (3840x2160)
+    - `4KHDR10TC`: Specific overlay for 4K HDR10 & HDR10+ TitleCards. (3840x2160)
+    - `4KDoViHDR10TC`: Specific overlay for 4K DoVi & HDR10/HDR10+ TitleCards. (3840x2160)
     - `UsePosterResolutionOverlays`: Set to `true` to apply specific overlay with resolution for 4k/1080p posters [4K Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/poster-4k.png)/[1080p Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/poster-1080p.png).
         - if you only want 4k just add your default overlay file also for `Poster1080p`.
     - `UseBackgroundResolutionOverlays`: Set to `true` to apply specific overlay with resolution for 4k/1080p posters [4K Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/background-4k.png)/[1080p Example](https://github.com/fscorrupt/posterizarr/blob/main/docs/images/background-1080p.png).
@@ -190,7 +330,7 @@
     - `SeasonPosters`: Set to `true` to also create season posters.
     - `BackgroundPosters`: Set to `true` to also create background posters.
     - `TitleCards` : Set to `true` to also create title cards.
-    - `SkipTBA` : If set to `true`, TitleCard creation will be skipped when TitleText contains any word from `SkipWords`. (You can use Regex by wrapping the word in slashes like `/^TBA$/`)
+    - `SkipTBA` : If set to `true`, TitleCard creation is skipped when the title starts with a plain `SkipWords` entry or matches a regex entry wrapped in slashes, such as `/^TBA$/`. See the `SkipWords` examples below.
         !!! note "Regex in config.json"
             If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
     - `SkipJapTitle` : Set to `true` to skip TitleCard creation if the Titletext is `Jap or Chinese`.
@@ -327,10 +467,35 @@
     - `AddBorder`: Set to `true` to add a border to the TitleCard image.
     - `borderwidth`: Border width.
     - `bordercolor`: Color of border.
-    - `SkipWords`: List of words to be skipped for TC, e.g 'TBA, Episode...'. (SkipTBA has to be true). You can also use Regex by wrapping your expression in slashes (e.g. `/^TBA$/`).
-        - > [!NOTE]
-        - > If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
-         - **Any already created TitleCards that match these words will be deleted.**
+        - `SkipWords`: Title prefixes or regex expressions that skip TitleCard generation. `SkipTBA` must be `true`. Wrap each regex in `/slashes/` and add it as a separate list entry. `(?i)` makes matching case-insensitive.
+
+                Enter these examples exactly as shown in the Web UI:
+
+                ```text
+                /(?i)^\s*tba\s*$/
+                /(?i)^(?:folge|episode)\s*#?\s*[0-9]+(?:\.[0-9]+)?\s*$/
+                ```
+
+                The first matches only `TBA`, allowing surrounding whitespace. The second matches placeholders such as `Folge 12`, `Episode #12`, and `Episode 12.5`, but not `Episode 12 - A Real Title`. These are optional examples, not additional default skip rules. Successful skip logs show the matched title text rather than the regex pattern.
+
+        !!! note
+                        The Web UI accepts single backslashes and handles JSON escaping when saving. When editing `config.json` manually, double each backslash. Merge the following example into the corresponding sections of your existing configuration; do not replace the entire file:
+
+                        ```json
+                        {
+                            "PrerequisitePart": {
+                                "SkipTBA": "true"
+                            },
+                            "TitleCardOverlayPart": {
+                                "SkipWords": [
+                                    "/(?i)^\\s*tba\\s*$/",
+                                    "/(?i)^(?:folge|episode)\\s*#?\\s*[0-9]+(?:\\.[0-9]+)?\\s*$/"
+                                ]
+                            }
+                        }
+                        ```
+
+        - **Any already created TitleCards that match these words will be deleted.**
 
     #### TitleCardTitleTextPart
 
@@ -408,7 +573,4 @@
 3. Rename the config file to `config.json`.
 4. Place your overlay images (e.g. `overlay-innerglow.png` defined in `overlayfile`) and font files (e.g. `Colus-Regular.ttf` defined in `font`) into `Overlayfiles/` (or the script root if running bare-metal). Docker containers already bundle default overlays and fonts in `/app/Overlayfiles`.
 
-
-## Main Capabilities of Posterizarr
-
-The main capabilities of Posterizarr have been moved to a dedicated page. Please see the [Main Capabilities of Posterizarr](capabilities.md) for a full overview.
+</details>

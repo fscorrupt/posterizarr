@@ -3,13 +3,8 @@ function Write-MagickLog {
         [Parameter(ValueFromPipeline=$true)]
         [string]$Message
     )
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrMagickLogMutex")
-    try {
-        $mutex.WaitOne() | Out-Null
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrMagickLogMutex' -Action {
         try { $Message | Out-File $global:magickLog -Append -ErrorAction Stop } catch {}
-    } finally {
-        $mutex.ReleaseMutex()
-        $mutex.Dispose()
     }
 }
 
@@ -101,37 +96,28 @@ function Set-TextSizeCacheEntry {
         try { '{}' | Set-Content -LiteralPath $Path -Encoding UTF8 } catch {}
     }
 
-    $mutex = New-Object System.Threading.Mutex($false, "Global\PosterizarrTextSizeCacheMutex")
-    $hasMutex = $false
-
-    try {
-        $hasMutex = $mutex.WaitOne(5000)
-
-        $raw = if (Test-Path -LiteralPath $Path) { Get-Content -LiteralPath $Path -Raw -Encoding UTF8 } else { '{}' }
-        if (-not $raw) { $raw = '{}' }
-
+    Invoke-PosterizarrMutexLock -Name 'PosterizarrTextSizeCacheMutex' -TimeoutMilliseconds 5000 -Action {
         try {
-            $db = $raw | ConvertFrom-Json -ErrorAction Stop
+            $raw = if (Test-Path -LiteralPath $Path) { Get-Content -LiteralPath $Path -Raw -Encoding UTF8 } else { '{}' }
+            if (-not $raw) { $raw = '{}' }
+
+            try {
+                $db = $raw | ConvertFrom-Json -ErrorAction Stop
+            }
+            catch {
+                # If JSON is corrupt, log it and reset cache so we don't crash next time
+                Write-Entry -Message "TextSizeCache JSON is corrupt. Resetting cache." -Path $global:configLogging -Color Yellow -log Warning
+                $db = @{}
+            }
+
+            if ($null -eq $db) { $db = @{ } }
+
+            $db | Add-Member -NotePropertyName $Key -NotePropertyValue $Result -Force
+            ($db | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $Path -Encoding UTF8
         }
         catch {
-            # If JSON is corrupt, log it and reset DB so we don't crash next time
-            Write-Entry -Message "TextSizeCache JSON is corrupt. Resetting cache." -Path $global:configLogging -Color Yellow -log Warning
-            $db = @{}
+            Write-Entry -Message "Failed to write to TextSizeCache: $_" -Path $global:configLogging -Color Red -log Error
         }
-
-        if ($null -eq $db) { $db = @{ } }
-
-        $db | Add-Member -NotePropertyName $Key -NotePropertyValue $Result -Force
-        ($db | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $Path -Encoding UTF8
-    }
-    catch {
-        Write-Entry -Message "Failed to write to TextSizeCache: $_" -Path $global:configLogging -Color Red -log Error
-    }
-    finally {
-        if ($hasMutex) {
-            $mutex.ReleaseMutex()
-        }
-        $mutex.Dispose()
     }
 }
 function Get-OptimalPointSize {
@@ -179,17 +165,22 @@ function Get-OptimalPointSize {
 
     $global:IsTruncated = $null
 
-    # Construct the command with interline spacing and font option
-    $cmd = "& `"$magick`" -size ${box_width}x${box_height} -font `"$fontImagemagick`" -gravity center -fill black -interline-spacing ${lineSpacing} caption:`"$text`" -format `"%[caption:pointsize]`" info:"
+    $magickArgs = @(
+        '-size', "${box_width}x${box_height}",
+        '-font', $fontImagemagick,
+        '-gravity', 'center',
+        '-fill', 'black',
+        '-interline-spacing', "$lineSpacing",
+        "caption:$text",
+        '-format', '%[caption:pointsize]',
+        'info:'
+    )
 
-    # Log the command for debugging purposes
-    try { $cmd | Out-File $magickLog -Append
+    try { (ConvertTo-Json -InputObject $magickArgs -Compress) | Out-File $magickLog -Append
  -ErrorAction Stop } catch {}
-    # [stats] start timing the ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“missÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â compute path
     $tsc_sw = [Diagnostics.Stopwatch]::StartNew()
 
-    # Execute the command and get the current point size
-    $current_pointsize = [int](Invoke-Expression $cmd | Out-String).Trim()
+    $current_pointsize = [int](& $magick @magickArgs | Out-String).Trim()
 
     # Apply point size limits
     if ($current_pointsize -gt $max_pointsize) {
@@ -345,6 +336,10 @@ function InvokeMagickCommand {
         Write-Entry -Subtext "Skipping: No arguments provided for magick command." -Path $global:configLogging -Color Cyan -log Debug
         return
     }
+    # IM saves all-gray JPEGs as 1-channel Gray; later composites onto them drop all color (logos, text, overlays)
+    if ($Arguments -match '(?i)\.jpe?g"\s*$') {
+        $Arguments = "-type TrueColor $Arguments"
+    }
     function GetMagickErrorMessage {
         param (
             [string]$ErrorMessage
@@ -389,8 +384,14 @@ function InvokeMagickCommand {
             # Drain stdout (discard; only stderr carries actionable messages)
             $null = $stdoutTask.GetAwaiter().GetResult()
 
-            # Check if there was any error output
-            if (-not [string]::IsNullOrWhiteSpace($errorOutput)) {
+            # ImageMagick exits 0 for warnings (e.g. XMP "ParseError missing >") and still writes the image.
+            if ($process.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($errorOutput)) {
+                Write-Entry -Subtext "ImageMagick reported a warning (image was still written):" -Path $global:configLogging -Color Yellow -log Warning
+                Write-Entry -Subtext ($errorOutput -split "convert: |magick.exe: |magick: |@" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1).Trim() -Path $global:configLogging -Color Yellow -log Warning
+                Write-Entry -Subtext "$errorOutput" -Path $global:configLogging -Color Cyan -log Debug
+            }
+            elseif ($process.ExitCode -ne 0) {
+                if ([string]::IsNullOrWhiteSpace($errorOutput)) { $errorOutput = "magick exited with code $($process.ExitCode)" }
                 Write-Entry -Subtext "An error occurred while executing the magick command:" -Path $global:configLogging -Color Red -log Error
                 Write-Entry -Subtext (GetMagickErrorMessage $errorOutput) -Path $global:configLogging -Color Red -log Error
                 Write-Entry -Subtext "$errorOutput" -Path $global:configLogging -Color Cyan -log Debug

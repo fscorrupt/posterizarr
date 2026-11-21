@@ -1,3 +1,152 @@
+# Run Modes and Automation
+
+Posterizarr is designed to be operated from the Web UI. You do not need a
+terminal or PowerShell for the normal artwork workflow. Open **Run Modes** from
+the left sidebar to run, test, back up, restore, sync, or create one asset.
+
+![Run Modes page with quick actions and the manual asset form](images/02-run-modes.png)
+
+*Choose **Run Modes** in the left sidebar. Quick Run cards start common jobs; the manual form below creates or replaces one asset.*
+
+## Quick Run modes
+
+Quick Run cards are at the top of **Run Modes**. If a confirmation dialog opens,
+review it before starting. You can choose **Don't show this again** in supported
+dialogs; use **Reset Prompts** at the top of Quick Run to show them again.
+Only one script run can be active at a time. While one is running, its status and
+a **Stop** button appear on the page.
+
+### Normal Mode {#normal-mode}
+
+Choose **Normal Mode** to process the libraries and artwork types selected in
+your configuration. Review the confirmation dialog, especially the target
+server, enabled libraries, upload behavior, and asset cleanup settings, then
+start the run. Use [Testing Mode](#test-mode) first if you have changed styling
+or blueprints and want sample output before a library run.
+
+### Testing Mode {#test-mode}
+
+1. In **Run Modes > Quick Run**, choose **Testing Mode**.
+2. Confirm that the dialog says no artwork will be uploaded to Plex, Jellyfin,
+  or Emby. The generated examples use your current asset styling and settings.
+3. Choose **Start Test Run**, or **Start & Go to Gallery** to open the results
+  automatically when generation finishes.
+4. Review the samples in **Test Gallery** in the sidebar. The confirmation
+  dialog also lets you set automatic redirection for future test runs.
+
+Testing Mode is for checking generated artwork. It is separate from
+**Dynamic Overlays > Dry Run**, which tests overlay rules and renders their
+changes without uploading them.
+
+The examples below are current Testing Mode outputs from the supplied test set.
+They show how short, medium, long, and uppercase text affect each artwork type.
+Open the full [Artwork Showcase](showcase.md) for additional formats and real
+media-server examples.
+
+<div class="pz-test-gallery" markdown="1">
+<figure><img src="images/testing-mode/posterShortText.jpg" alt="Testing Mode poster with a short title"><figcaption>Poster · Short text</figcaption></figure>
+<figure><img src="images/testing-mode/showPosterLongTextCAPS.jpg" alt="Testing Mode show poster with long uppercase text"><figcaption>Show poster · Long, uppercase</figcaption></figure>
+<figure><img src="images/testing-mode/SeasonPosterMediumText.jpg" alt="Testing Mode season poster with medium-length text"><figcaption>Season poster · Medium text</figcaption></figure>
+<figure><img src="images/testing-mode/backgroundShortTextCAPS.jpg" alt="Testing Mode background with short uppercase text"><figcaption>Background · Short, uppercase</figcaption></figure>
+<figure><img src="images/testing-mode/showBackgroundMediumText.jpg" alt="Testing Mode show background with medium-length text"><figcaption>Show background · Medium text</figcaption></figure>
+<figure><img src="images/testing-mode/TitleCardLongTextCAPS.jpg" alt="Testing Mode titlecard with long uppercase text"><figcaption>Titlecard · Long, uppercase</figcaption></figure>
+</div>
+
+### Backup Mode {#backup-mode}
+
+Choose **Backup Mode** to copy existing media-server artwork into the configured
+backup location. Confirm the destination and start the backup. This preserves a
+local copy for recovery; it does not generate new artwork.
+
+### Restore Mode {#restore-mode}
+
+Choose **Restore Mode** to upload artwork from the local backup folder back to
+your media server. In the dialog, choose **Restore All Libraries** or
+**Restore Specific Items**. The specific-item filters can narrow by library,
+folder/item name, and asset type. Restoring all libraries can affect a large
+part of your server, so select a narrow target when you only need one item.
+Restored images are uploaded as saved; this step does not run them through the
+current overlay or artwork styling configuration.
+
+### Sync Jellyfin, Emby, or Silo {#sync-modes}
+
+Use the Jellyfin or Emby sync card to copy artwork from Plex to the selected
+server. Review the confirmation details first. Library names must match exactly
+between the source and target servers. Silo has its own **Sync Silo** action and
+limitations; see the [Silo notes](configuration.md#silo-experimental).
+
+### Logo Updater
+
+Choose **Logo Updater** to fetch or manage logos for one library or all suitable
+libraries. The dialog offers **Browse** for a single library, **Process All
+Libraries**, **Only Replace Non-Posterizarr Logos (EXIF Check)**,
+**Force Replace**, and **Revert**. Force Replace may overwrite existing logos;
+Revert removes logos previously added by Posterizarr. Review those switches
+before starting.
+
+### Reset Posters
+
+Choose **Reset Posters** to open the library selection modal (filtered to
+supported movie and TV libraries, with a refresh button to reload the cached
+server list). Select the target library and choose **Reset**; Posterizarr asks
+for confirmation before replacing selected posters with the media server's
+available default artwork. This changes live server artwork and cannot be undone
+by Posterizarr; make a backup first if you may want to restore the current
+images.
+
+## Create one asset manually {#manual-mode}
+
+Use the **Manual** form below the Quick Run cards when you want to make or
+replace one item without processing a full library:
+
+1. Choose the output type: poster, season poster, titlecard, background, or
+  collection poster. For standard posters and backgrounds, also choose movie
+  or TV show.
+2. Search by title and year in the built-in provider search, then select an
+  image. Or upload your own image or provide an image URL/path.
+3. Choose the library and item. Use **Select Library** and **Select Folder** to
+  browse what the connected server exposes.
+4. Fill in the type-specific details. Season posters need a season name;
+  titlecards need a season, episode title, and episode number.
+5. Select a blueprint or keep the global configuration. Review text/textless and
+  title/logo options, then choose **Run** or **Add to Queue**.
+
+The **Auto-Queue Changes** checkbox remembers the queue choice for future manual
+submissions. It is separate from the queue switch for the current asset.
+
+## Schedule and automate {#automation}
+
+- Use **Scheduler** in the sidebar to create, edit, enable, or run scheduled
+  jobs. Choose the mode, libraries, asset types where available, and schedule.
+- Use **Auto Triggers** to connect supported Tautulli or Sonarr/Radarr events.
+  The native webhook setup does not require a terminal or a custom script.
+- Use **Logs** to review a run. Return to **Run Modes** to stop an active run.
+
+### Native webhook setup {#native-webhook-setup}
+
+**Tautulli:** In Tautulli, open **Settings > Notification Agents**, add a
+**Webhook**, and enter `http://YOUR_POSTERIZARR_HOST:8000/api/webhook/tautulli?api_key=YOUR_API_KEY`.
+Set the method to `POST`, enable **Recently Added**, and provide the JSON data
+for rating key and media type. Create the API key in Posterizarr's Web UI
+configuration.
+
+**Sonarr or Radarr:** Open **Settings > Connect**, add a **Webhook**, and enter
+`http://YOUR_POSTERIZARR_HOST:8000/api/webhook/arr?api_key=YOUR_API_KEY`. Enable
+**On Import** and **On Upgrade**, set the method to `POST`, then save. No script
+file or shared container volume is needed for the native webhook.
+
+See the [Tautulli and Sonarr/Radarr setup notes](#native-webhook-setup) for the
+external-app steps.
+
+## CLI and legacy instructions (optional)
+
+The commands below are not required when using the Web UI. Expand this section
+only if you intentionally run Posterizarr from PowerShell, Docker exec, or an
+older script-based trigger integration.
+
+<details markdown="1">
+<summary>Optional PowerShell, Docker, and legacy trigger commands</summary>
+
 ### Automatic Mode
 
 Run the script without any parameters:
@@ -309,9 +458,9 @@ On [docker](platformandtools.md#docker) this way:
 !!! info "Direct Upload Enforced in Trigger Modes"
     Tautulli Mode always forces direct upload to Plex (`Upload2Plex = true`), regardless of whether `PlexUpload` is set to `false` in your `config.json`. The purpose of real-time triggers is to immediately style newly added media in Plex the moment it is imported, without waiting for your next scheduled run. If you use Kometa and want zero uploads from Posterizarr before Kometa applies overlays, do not configure Tautulli triggers; schedule regular Posterizarr batch runs before your Kometa schedule instead.
 
-In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex, like a new show, movie or episode got added.
+This mode lets Tautulli trigger Posterizarr for a specific Plex item, such as a newly added show, movie, or episode.
 
-To use it we need to configure a script in Tautulli, please follow these instructions.
+For the legacy script-based setup, configure a script in Tautulli as follows.
 
 1. Make sure that you mount the `Posterizarr` directory to tautulli, cause the script needs the Path `/posterizarr`
    ```yml
@@ -326,7 +475,7 @@ To use it we need to configure a script in Tautulli, please follow these instruc
 1. Open Tautulli and go to Settings -    `NOTIFICATION AGENTS`
 1. Click on `Add a new notification agent` and select `Script`
 1. Specify the script folder where you placed the script and select the script file.
-   - You can specify a `Description` at the bottom like i did.
+  - Add an optional `Description` to identify the script.
 
     ![backgroundtesting](images/Tautulli_Step1.png)
 
@@ -335,9 +484,8 @@ To use it we need to configure a script in Tautulli, please follow these instruc
     ![backgroundtesting](images/Tautulli_Step2.png)
 
 1. Go to `Conditions`, you can now specify when the script should get called.
-   - In my case i specified the **Media Type**: `episode, movie, show and season`
-   - I also excluded the **Youtube** Lib cause the videos i have there - **do not** have an `tmdb,tvdb or fanart ID`.
-     - This is an recommended setting, either exclude such libs or include only those libs where Posterizarr should create art for.
+   - Set **Media Type** to the types you want to process, for example `episode, movie, show and season`.
+   - Exclude libraries without `tmdb`, `tvdb`, or Fanart IDs, or include only libraries where Posterizarr should create artwork.
 
      ![backgroundtesting](images/Tautulli_Step3.png)
 
@@ -366,13 +514,13 @@ To use it we need to configure a script in Tautulli, please follow these instruc
 !!! note
     If Discord is configured it will send a Notification on each trigger.
 
-In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex, like a new show, movie or episode got added.
+This mode lets Tautulli trigger Posterizarr for a specific Plex item, such as a newly added show, movie, or episode.
 
 1. Open Tautulli and go to Settings -    `NOTIFICATION AGENTS`
 1. Click on `Add a new notification agent` and select `Script`
 1. Specify the script folder of Posterizarr and select the script file.
    - Set the script timeout to `0`, which is unlimited. (The default is `30`, which would kill the script before it finishes.)
-   - You can specify a `Description` at the bottom like i did.
+  - Add an optional `Description` to identify the script.
 
     ![backgroundtesting](images/Tautulli_windows_Step1.png)
 
@@ -381,9 +529,8 @@ In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex
     ![backgroundtesting](images/Tautulli_Step2.png)
 
 1. Go to `Conditions`, you can now specify when the script should get called.
-   - In my case i specified the **Media Type**: `episode, movie, show and season`
-   - I also excluded the **Youtube** Lib cause the videos i have there - **do not** have an `tmdb,tvdb or fanart ID`.
-     - This is an recommended setting, either exclude such libs or include only those libs where Posterizarr should create art for.
+   - Set **Media Type** to the types you want to process, for example `episode, movie, show and season`.
+   - Exclude libraries without `tmdb`, `tvdb`, or Fanart IDs, or include only libraries where Posterizarr should create artwork.
 
      ![backgroundtesting](images/Tautulli_Step3.png)
 
@@ -433,9 +580,9 @@ In this mode we use Tautulli to trigger Posterizarr for an specific item in Plex
 !!! info "Direct Upload Enforced in Trigger Modes"
     Arr trigger runs always force direct upload to your media server (`Upload2Plex = true` / Jellyfin / Emby), regardless of whether `PlexUpload` is set to `false` in your `config.json`.
 
-In this mode we use Sonarr/Radarr to trigger Posterizarr for an specific item in Plex/Jellyfin, like a new show, movie or episode got added.
+This mode lets Sonarr or Radarr trigger Posterizarr for a specific Plex or Jellyfin item, such as a newly added show, movie, or episode.
 
-To use it we need to configure a script in Sonarr/Radarr, please follow these instructions.
+For the legacy script-based setup, configure a script in Sonarr or Radarr as follows.
 
 1. Ensure you mount the `Posterizarr` directory to your Sonarr/Radarr container, as the script requires access to `/posterizarr`:
    ```yml
@@ -567,10 +714,11 @@ In **Scheduler** (`/scheduler`):
 4. Set your desired interval or cron schedule.
 5. All sync activity is logged to `UILogs/PlexSync.log` and viewable in real-time in the WebUI Log Viewer.
 
-> [!WARNING]
-> **Do not use Plex Sync schedule in combination with Kometa (Plex Meta Manager)!**
-> If you run Kometa to manage posters, titlecards, or overlays, **do not** schedule a Plex Sync job for those same libraries or asset types.
-> 
-> Because Kometa applies its own overlays and metadata modifications directly to Plex, Posterizarr's Plex Sync will continuously detect that the live Plex artwork differs from your clean local assets and will repeatedly attempt to re-upload them. This triggers an endless overwrite cycle between Kometa and Posterizarr.
-> 
-> If you use Kometa, ensure that Plex Sync is only scheduled for asset types that Kometa does not touch (e.g. custom **Collections** only), or manage all uploads exclusively through Kometa.
+!!! warning "Do not use Plex Sync schedule in combination with Kometa (Plex Meta Manager)!"
+    If you run Kometa to manage posters, titlecards, or overlays, **do not** schedule a Plex Sync job for those same libraries or asset types.
+
+    Because Kometa applies its own overlays and metadata modifications directly to Plex, Posterizarr's Plex Sync will continuously detect that the live Plex artwork differs from your clean local assets and will repeatedly attempt to re-upload them. This triggers an endless overwrite cycle between Kometa and Posterizarr.
+
+    If you use Kometa, ensure that Plex Sync is only scheduled for asset types that Kometa does not touch (e.g. custom **Collections** only), or manage all uploads exclusively through Kometa.
+
+  </details>

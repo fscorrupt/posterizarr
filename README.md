@@ -1,128 +1,107 @@
-<a name="readme-top"></a>
-<br />
 <div align="center">
-  <a href="https://github.com/fscorrupt/posterizarr">
-    <img src="/docs/images/logo_banner.png" alt="Logo" width="550" height="550">
+  <a href="https://fscorrupt.github.io/posterizarr/">
+    <img src="docs/images/logo_banner.png" alt="Posterizarr" width="340">
   </a>
 
-  <p align="center">
-    Automate the creation of beautiful assets for your Plex, Jellyfin, or Emby library.
+  <h3>Automated Artwork &amp; Native Dynamic Overlays for Plex, Jellyfin &amp; Emby</h3>
+  <p>
+    Generate consistent posters, seasons, backgrounds, title cards, and collections — while keeping your clean source artwork untouched on disk.
   </p>
-</div>
-<br />
-<div align="center">
-  <a href="https://github.com/fscorrupt/posterizarr">
-    <img src="/docs/images/posterizarr_banner.jpg" alt="Logo" width="650" height="550">
-  </a>
-    <br />
-    <br />
-    <strong><a href="https://fscorrupt.github.io/posterizarr/">View Full Documentation »</a></strong>
-    <br />
-    <br />
-    <a href="https://github.com/fscorrupt/posterizarr/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/fscorrupt/posterizarr/issues">Request Feature</a>
-    ·
-    <a href="https://discord.gg/fYyJQSGt54">Join our Discord</a>
+
+  <p>
+    <a href="https://github.com/fscorrupt/posterizarr/releases"><img src="https://img.shields.io/github/v/release/fscorrupt/posterizarr?style=for-the-badge&label=Release&labelColor=27272A&color=F97316" alt="Latest Release"></a>&nbsp;
+    <a href="https://github.com/fscorrupt/posterizarr/stargazers"><img src="https://img.shields.io/github/stars/fscorrupt/posterizarr?style=for-the-badge&label=Stars&labelColor=27272A&color=EA580C" alt="GitHub Stars"></a>&nbsp;
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/fscorrupt/posterizarr?style=for-the-badge&label=License&labelColor=27272A&color=10B981" alt="License"></a>&nbsp;
+    <a href="https://discord.gg/fYyJQSGt54"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&labelColor=27272A&logo=discord&logoColor=white" alt="Discord"></a>&nbsp;
+    <a href="https://ko-fi.com/R6R81S6SC"><img src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=for-the-badge&labelColor=27272A&logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
   </p>
-</div>
 
-<p align="center">
-    <a href="https://ko-fi.com/R6R81S6SC" target="_blank"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Buy Me A Coffee" height="25"></a><br />
-    <a href="https://discord.gg/fYyJQSGt54" target="_blank"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" height="25"></a>
-</p>
+  <p>
+    <a href="https://fscorrupt.github.io/posterizarr/"><strong>Documentation »</strong></a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/installation/">Installation</a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/dynamic_overlays/">Dynamic Overlays</a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/showcase/">Artwork Showcase</a>
+  </p>
 
-## About The Project
+  <br>
 
-Posterizarr is a PowerShell script with a full Web UI that automates generating images for your media library. It fetches artwork from Fanart.tv, TMDB, TVDB, Plex, and IMDb, focusing on textless images and applying your own custom overlays and text.
-
-* **User-Friendly Web UI:** Manage settings, monitor activity, and trigger runs from a browser.
-* **Logo Management:** Search, preview, and manually replace clearlogos directly from the Web UI.
-* **Multiple Media Servers:** Supports Plex, Jellyfin, and Emby.
-* **Kometa Integration:** Organizes assets in a Kometa-compatible folder structure.
-* **Smart Integration:** Trigger runs from Tautulli, Sonarr, and Radarr.
-
-<p align="center">
-  <a href="https://fscorrupt.github.io/posterizarr/installation">
-    <img alt="Web UI Preview" width="100%" src="/docs/images/PosterizarrUI.png">
+  <a href="https://fscorrupt.github.io/posterizarr/showcase/">
+    <img src="docs/images/posterizarr_banner.jpg" alt="Posterizarr artwork examples for posters, seasons, title cards, collections, and backgrounds" width="1000">
   </a>
-</p>
-
-## 🚀 Get Started
-
-All installation instructions, configuration guides, and advanced tutorials have been moved to our dedicated documentation site.
-
-## **[Click Here to Read the Full Documentation](https://fscorrupt.github.io/posterizarr/installation)**
-
-## Supported Platforms 💻
-
-[![Docker](https://img.shields.io/static/v1?style=for-the-badge&logo=docker&logoColor=FFFFFF&message=docker&color=1E63EE&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![Unraid](https://img.shields.io/static/v1?style=for-the-badge&logo=unraid&logoColor=FFFFFF&message=unraid&color=E8402A&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![Linux](https://img.shields.io/static/v1?style=for-the-badge&logo=linux&logoColor=FFFFFF&message=Linux&color=0D597F&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![Windows](https://img.shields.io/static/v1?style=for-the-badge&logo=windows&logoColor=FFFFFF&message=windows&color=097CD7&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![MacOS](https://img.shields.io/static/v1?style=for-the-badge&logo=apple&logoColor=FFFFFF&message=macOS&color=515151&label=)](https://fscorrupt.github.io/posterizarr/installation)
-[![ARM](https://img.shields.io/static/v1?style=for-the-badge&logo=arm&logoColor=FFFFFF&message=ARM&color=815151&label=)](https://fscorrupt.github.io/posterizarr/installation)
-
-## Sponsors ❤️
-
-Check out our awesome sponsors!
-
-<!-- sponsors --><!-- sponsors -->
-
-## Privacy & Telemetry
-
-[telemetry-code](telemetry-worker/worker.js)
-
-Starting with `v2.2.50`, Posterizarr collects completely anonymous, basic usage stats to help guide development (e.g., knowing whether to prioritize Docker vs. Bare-Metal, or Plex vs. Jellyfin).
-
-**NO** IP addresses, **NO** personal data, and **NO** file paths are collected or stored.
-
-The telemetry payload contains exactly:
-- Anonymous GUID
-- OS
-- Target Media Server
-- App Version
-
-You can opt-out at any time by setting `"telemetry": false` in your `config.json`.
-
-## Enjoy
-
-Feel free to customize the script further to meet your specific preferences or automation requirements.
-
-I'm open about the fact that I use AI as a coding assistant, for the UI and Web components since I’m not a web dev by trade.
-It helps me handle boilerplate and refactoring at a speed I couldn't achieve alone.
-I review and test every line before it’s committed.
-
-## PR Rules
-
-> [!IMPORTANT]
->
-> - Please review our full [Contributing Guidelines](.github/CONTRIBUTING.md) and [Code of Conduct](.github/CODE_OF_CONDUCT.md) before submitting a pull request.
-> - Adjust on each PR the version number in script on Line 78 `$CurrentScriptVersion = "3.0.0"`
-> - Adjust the version number in [Release.txt](Release.txt) to match the one in script.
->   - this is required because the script checks against this file if a newer version is available.
-> - Do not include images on a PR.
-
-<div align="center">
-<br />
-  <img src="docs/images/versioning.jpg" alt="Version Management" width="350">
-  <br />
-  <em>Version synchronization is critical for update detection</em>
 </div>
 
-<br />
+<br>
 
-**⭐ Star this repo if Posterizarr helps organize your media library!**
+<table width="100%">
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🎨 Automated Artwork</strong><br>
+      Generate matching posters, seasons, title cards, backgrounds, collections, and clearlogos via TMDb, TheTVDB, Fanart.tv, and Plex.
+    </td>
+    <td width="50%" valign="top">
+      <strong>✨ Native Dynamic Overlays</strong><br>
+      Import Kometa-style YAML, preview badges live, share portable bundles, and composite in memory — no extra container, clean sources untouched.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>📺 Plex, Jellyfin &amp; Emby</strong><br>
+      Direct sync, real-time WebSocket plugins with optional Plex Direct Sync, AniMetaFill, Asset Title Review, local IMDb ratings, and Plex Image Cleanup. <em>(Silo: experimental)</em>
+    </td>
+    <td width="50%" valign="top">
+      <strong>⚡ Web UI &amp; Automation</strong><br>
+      All-in-one Web UI with guided setup, built-in Scheduler, native Tautulli, Sonarr, and Radarr webhooks, Testing Mode, and safe Dry Run.
+    </td>
+  </tr>
+</table>
+
+<br>
 
 <div align="center">
+  <h3>🚀 Get Started</h3>
+  <p>
+    Docker Compose, Unraid, PowerShell guides, Web UI walkthroughs, and API references live on the dedicated docs site.
+  </p>
 
-[![Star History Chart](https://api.star-history.com/chart?repos=fscorrupt/posterizarr&type=date&legend=top-left&sealed_token=UnvtqA0-rM_NkgL8lgyAq-I_prozQwNYS1wh-4wh1wiIugXX349fyqJ530qGr22AVPY4GASP5PrS3s7GFpKqJ30IG8NpXMmHFqMa7F0cQghRjrCglFiErA)](https://www.star-history.com/?repos=fscorrupt%2Fposterizarr&type=date&legend=top-left)
+  <p>
+    <a href="https://fscorrupt.github.io/posterizarr/installation/">
+      <img src="https://img.shields.io/badge/Documentation-Install%20%26%20Quick%20Start-F97316?style=for-the-badge&labelColor=27272A&logo=materialformkdocs&logoColor=white" alt="Read the Documentation">
+    </a>
+  </p>
 
+  <p>
+    <a href="https://fscorrupt.github.io/posterizarr/installation/"><img src="https://img.shields.io/static/v1?style=for-the-badge&logo=docker&logoColor=FFFFFF&message=Docker&color=2496ED&label=" alt="Docker"></a>&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/installation/"><img src="https://img.shields.io/static/v1?style=for-the-badge&logo=unraid&logoColor=FFFFFF&message=Unraid&color=F15A2C&label=" alt="Unraid"></a>&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/installation/"><img src="https://img.shields.io/static/v1?style=for-the-badge&logo=linux&logoColor=FFFFFF&message=Linux&color=334155&label=" alt="Linux"></a>&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/installation/"><img src="https://img.shields.io/static/v1?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0wIDBoMTEuMzc3djExLjM3Mkgwem0xMi42MjMgMEgyNHYxMS4zNzJIMTIuNjIzek0wIDEyLjYyM2gxMS4zNzdWMjRIMHptMTIuNjIzIDBIMjRWMjRIMTIuNjIzeiIvPjwvc3ZnPg%3D%3D&message=Windows&color=0078D4&label=" alt="Windows"></a>&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/installation/"><img src="https://img.shields.io/static/v1?style=for-the-badge&logo=apple&logoColor=FFFFFF&message=macOS&color=3F3F46&label=" alt="macOS"></a>&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/installation/"><img src="https://img.shields.io/static/v1?style=for-the-badge&logo=arm&logoColor=FFFFFF&message=ARM64&color=0091BD&label=" alt="ARM64"></a>
+  </p>
 
-<br />
+  <p>
+    <a href="https://fscorrupt.github.io/posterizarr/getting_started/">First-Time Setup</a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/ui_guide/">Web UI Guide</a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/jellyfin_plugin/">Jellyfin</a> &amp; <a href="https://fscorrupt.github.io/posterizarr/emby_plugin/">Emby Plugins</a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/plex_image_cleanup/">Plex Cleanup</a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/endpoints/">API Docs</a> &nbsp;·&nbsp;
+    <a href="https://fscorrupt.github.io/posterizarr/faqs/">FAQs</a>
+  </p>
 
----
+  <br>
 
-<sub>Made with ❤️ by [fscorrupt](https://github.com/fscorrupt) and the [open source community](https://github.com/fscorrupt/posterizarr/graphs/contributors)</sub>
+  <h3>💖 Sponsors</h3>
+  <p>
+  Posterizarr is free, open source, and solo-developed, thank you to everyone supporting the project!
+  </p>
 
+  <!-- sponsors --><!-- sponsors -->
+
+  <br>
+  <hr>
+  Optional anonymous telemetry, disable anytime with <code>"telemetry": false</code> (<a href="https://fscorrupt.github.io/posterizarr/telemetry/">details</a> · <a href="telemetry-worker/worker.js">source</a>)<br>
+  The project maintainer reviews and tests AI-assisted UI and web changes before they are committed.<br>
+  Built by <a href="https://github.com/fscorrupt">fscorrupt</a> ·
+  <a href=".github/CONTRIBUTING.md">Contributing</a> ·
+  <a href="https://discord.gg/fYyJQSGt54">Discord</a> ·
+  <a href="https://ko-fi.com/R6R81S6SC">Ko-fi</a>
 </div>

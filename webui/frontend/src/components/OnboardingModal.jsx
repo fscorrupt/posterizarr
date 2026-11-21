@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronRight, ChevronLeft, Save, Server, Key, Settings, Bell, Rocket, Shield, Activity, HardDrive, Database, ExternalLink, Loader2, Clock, Calendar, Zap, RefreshCw, Grid, X, Eye, EyeOff } from "lucide-react";
+import SiloSupportNotice from "./SiloSupportNotice";
 
 const ClearableInput = ({ value, onChange, placeholder, isPassword }) => {
   const { t } = useTranslation();
@@ -45,6 +46,7 @@ import ValidateButton from "./ValidateButton";
 import LanguageSwitcher from "./LanguageSwitcher";
 import LibraryExclusionSelector from "./LibraryExclusionSelector";
 import PlexOAuthButton from "./PlexOAuthButton";
+import MediaServerLogo from "./MediaServerLogo";
 
 export default function OnboardingModal({ onComplete }) {
   const { t } = useTranslation();
@@ -56,6 +58,7 @@ const STEPS = [
   { id: "auto", title: t("onboarding.automation"), icon: <Settings className="w-5 h-5" /> },
   { id: "perf", title: t("onboarding.performance"), icon: <Activity className="w-5 h-5" /> },
   { id: "notif", title: t("onboarding.notifications"), icon: <Bell className="w-5 h-5" /> },
+  { id: "overlays", title: t("dynamicOverlays.title", "Dynamic Overlays"), icon: <Zap className="w-5 h-5" /> },
   { id: "schedule", title: t("onboarding.schedule"), icon: <Clock className="w-5 h-5" /> },
   { id: "finish", title: t("onboarding.ready"), icon: <Check className="w-5 h-5" /> },
 ];
@@ -103,6 +106,7 @@ const runModes = [
   { id: "normal", label: "Normal Run" },
   { id: "syncjelly", label: "Sync Jellyfin" },
   { id: "syncemby", label: "Sync Emby" },
+  { id: "syncsilo", label: t("silo.syncTitle") },
   { id: "backup", label: "System Backup" },
   { id: "logoupdater", label: "Logo Updater" },
 ];
@@ -125,19 +129,23 @@ const runModes = [
   const [intervalUnit, setIntervalUnit] = useState("hours");
   const [newMode, setNewMode] = useState("normal");
   const [newTime, setNewTime] = useState("03:00");
+  const [enableDynamicOverlays, setEnableDynamicOverlays] = useState(false);
   const [logoLibrary, setLogoLibrary] = useState("all");
   const [logoForceReplace, setLogoForceReplace] = useState(false);
   const [logoExifCheck, setLogoExifCheck] = useState(false);
   const [logoRevert, setLogoRevert] = useState(false);
   const [notificationType, setNotificationType] = useState('none'); // 'none', 'discord', 'apprise'
+  const [favProvider, setFavProvider] = useState("TMDB");
 
   const [plexValidated, setPlexValidated] = useState(false);
   const [jellyfinValidated, setJellyfinValidated] = useState(false);
   const [embyValidated, setEmbyValidated] = useState(false);
+  const [siloValidated, setSiloValidated] = useState(false);
 
   const [plexLibsValid, setPlexLibsValid] = useState(false);
   const [jellyfinLibsValid, setJellyfinLibsValid] = useState(false);
   const [embyLibsValid, setEmbyLibsValid] = useState(false);
+  const [siloLibsValid, setSiloLibsValid] = useState(false);
 
   const [config, setConfig] = useState({
     // Server URLs and Tokens
@@ -150,6 +158,9 @@ const runModes = [
     EmbyUrl: "",
     EmbyAPIKey: "",
     UseEmby: "false",
+    SiloUrl: "",
+    SiloAPIKey: "",
+    UseSilo: "false",
 
     // API Keys
     tmdbtoken: "",
@@ -177,6 +188,11 @@ const runModes = [
   });
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const hasTmdb = Boolean(config.tmdbtoken?.trim());
+  const hasTvdb = Boolean(config.tvdbapi?.trim());
+  const hasFanart = Boolean(config.FanartTvAPIKey?.trim());
+  const hasAnyMetadataProvider = hasTmdb || hasTvdb;
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -209,6 +225,11 @@ const runModes = [
 
             if (newConfig.Discord) setNotificationType('discord');
             else if (newConfig.AppriseUrl) setNotificationType('apprise');
+
+            const initialFav = (newConfig.FavProvider || newConfig.ApiPart?.FavProvider || "TMDB").toUpperCase();
+            if (initialFav === "TVDB" || initialFav === "TMDB") {
+              setFavProvider(initialFav);
+            }
             return newConfig;
           });
         }
@@ -251,6 +272,7 @@ const runModes = [
       finalConfig.UsePlex = (primaryServer === 'plex') ? "true" : "false";
       finalConfig.UseJellyfin = (primaryServer === 'jellyfin') ? "true" : "false";
       finalConfig.UseEmby = (primaryServer === 'emby') ? "true" : "false";
+      finalConfig.UseSilo = (primaryServer === 'silo') ? "true" : "false";
       // Note: If syncFromPlex is true, the secondary server URLs/Tokens are sent, but their 'Use' flag remains false.
 
       // Enforce Notification toggle
@@ -272,12 +294,63 @@ const runModes = [
           finalConfig.UptimeKumaUrl = "";
       }
 
+      // Configure Active Providers based on entered credentials
+      const finishHasTmdb = Boolean(finalConfig.tmdbtoken?.trim());
+      const finishHasTvdb = Boolean(finalConfig.tvdbapi?.trim());
+      const finishHasFanart = Boolean(finalConfig.FanartTvAPIKey?.trim());
+
+      const chosenPrimary = (finishHasTvdb && !finishHasTmdb)
+        ? "TVDB"
+        : (finishHasTmdb && !finishHasTvdb)
+          ? "TMDB"
+          : (favProvider || "TMDB");
+
+      const activeProviders = [];
+      if (chosenPrimary === "TVDB") {
+        if (finishHasTvdb) activeProviders.push("TVDB");
+        if (finishHasTmdb) activeProviders.push("TMDB");
+      } else {
+        if (finishHasTmdb) activeProviders.push("TMDB");
+        if (finishHasTvdb) activeProviders.push("TVDB");
+      }
+      if (finishHasFanart) {
+        activeProviders.push("FANART");
+      }
+      // Always include local server as fallback
+      activeProviders.push("PLEX");
+
+      finalConfig.FavProvider = chosenPrimary;
+      finalConfig.ProviderPriorityMode = "Global";
+      finalConfig.ProviderOrder = activeProviders;
+      finalConfig.MovieProviderOrder = activeProviders;
+      finalConfig.ShowProviderOrder = activeProviders;
+
+      if (finalConfig.ApiPart && typeof finalConfig.ApiPart === "object") {
+        finalConfig.ApiPart.FavProvider = chosenPrimary;
+        finalConfig.ApiPart.ProviderPriorityMode = "Global";
+        finalConfig.ApiPart.ProviderOrder = activeProviders;
+        finalConfig.ApiPart.MovieProviderOrder = activeProviders;
+        finalConfig.ApiPart.ShowProviderOrder = activeProviders;
+      }
+
       // Save config updates
       await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config: finalConfig }),
       });
+
+      if (enableDynamicOverlays) {
+        const overlaysResponse = await fetch("/api/dynamic-overlays/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: true, change_detection_dry_run: true }),
+        });
+        const overlaysData = await overlaysResponse.json();
+        if (!overlaysResponse.ok || !overlaysData.success) {
+          throw new Error(overlaysData.error || "Failed to enable Dynamic Overlays.");
+        }
+      }
 
       // Save Schedule if enabled
       if (enableSchedule) {
@@ -331,7 +404,7 @@ const runModes = [
         headers: { "Content-Type": "application/json" }
       });
 
-      onComplete();
+      onComplete(enableDynamicOverlays);
     } catch (err) {
       console.error("Failed to complete onboarding", err);
     } finally {
@@ -340,6 +413,29 @@ const runModes = [
   };
 
   const renderServerForm = (type) => {
+    if (type === 'silo') {
+      return (
+        <div className="mt-2 p-3 bg-theme-bg/30 rounded-lg flex flex-col gap-3 min-h-0 overflow-y-auto">
+          <h4 className="font-semibold text-sm text-theme-primary flex items-center gap-2">
+            <MediaServerLogo server="silo" className="w-4 h-4 rounded-sm" />
+            {t("silo.name")}
+          </h4>
+          <label className="block text-xs font-medium text-theme-muted">
+            {t("silo.serverUrl")}
+            <ClearableInput value={config.SiloUrl} onChange={value => { handleChange("SiloUrl", value); setSiloValidated(false); setSiloLibsValid(false); }} placeholder="http://silo:8080" />
+          </label>
+          <label className="block text-xs font-medium text-theme-muted">
+            {t("onboarding.apiKey")}
+            <ClearableInput value={config.SiloAPIKey} onChange={value => { handleChange("SiloAPIKey", value); setSiloValidated(false); setSiloLibsValid(false); }} isPassword />
+          </label>
+          <div className="flex justify-end">
+            <ValidateButton type="silo" config={config} label={t("onboarding.testConnection")} disabled={!config.SiloUrl || !config.SiloAPIKey} onSuccess={() => setSiloValidated(true)} />
+          </div>
+          <LibraryExclusionSelector value={config.SiloLibstoExclude || []} onChange={value => handleChange("SiloLibstoExclude", value)} mediaServerType="silo" config={config}
+            disabled={!siloValidated} inlineMode={true} autoFetchTrigger={siloValidated} onValidStateChange={setSiloLibsValid} />
+        </div>
+      );
+    }
     if (type === 'plex') {
       return (
         <div className="mt-2 p-3 bg-theme-bg/30 rounded-xl animate-fade-in flex flex-col h-full overflow-hidden">
@@ -476,7 +572,7 @@ const runModes = [
               <img src="/logo.png" alt="Posterizarr Logo" className="h-24 object-contain" />
             </div>
             <p className="text-theme-muted max-w-md text-lg">
-              The ultimate automated tool for standardizing and enhancing your media server's artwork. Let's get you set up in just a few steps!
+              Posterizarr automates artwork styling for your media server. Configure the essentials in a few steps.
             </p>
           </div>
         );
@@ -490,31 +586,37 @@ const runModes = [
               </div>
             )}
 
-            <div className={`grid grid-cols-3 gap-3 shrink-0 transition-all duration-300 ${primaryServer ? 'mb-2' : 'mb-6'}`}>
+            <div className={`grid grid-cols-1 min-[440px]:grid-cols-2 md:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${primaryServer ? 'mb-2' : 'mb-6'}`}>
               <button
                 onClick={() => setPrimaryServer('plex')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'plex' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
               >
-                <img src="/plex.svg" alt="Plex" className="w-5 h-5 mr-2 object-contain drop-shadow-md opacity-90 transition-transform hover:scale-110" />
+                <MediaServerLogo server="plex" className="w-5 h-5 mr-2 drop-shadow-md opacity-90 transition-transform hover:scale-110" />
                 <span className="font-semibold text-sm">Plex</span>
               </button>
               <button
                 onClick={() => setPrimaryServer('jellyfin')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'jellyfin' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
               >
-                <img src="/jellyfin.svg" alt="Jellyfin" className="w-5 h-5 mr-2 object-contain drop-shadow-md opacity-90 transition-transform hover:scale-110" />
+                <MediaServerLogo server="jellyfin" className="w-5 h-5 mr-2 drop-shadow-md opacity-90 transition-transform hover:scale-110" />
                 <span className="font-semibold text-sm">Jellyfin</span>
               </button>
               <button
                 onClick={() => setPrimaryServer('emby')}
                 className={`py-2 px-3 rounded-xl flex flex-row items-center justify-center transition-all ${primaryServer === 'emby' ? 'bg-theme-primary/15 text-theme-primary shadow-sm ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}
               >
-                <img src="/emby.svg" alt="Emby" className="w-5 h-5 mr-2 object-contain drop-shadow-md opacity-90 transition-transform hover:scale-110" />
+                <MediaServerLogo server="emby" className="w-5 h-5 mr-2 drop-shadow-md opacity-90 transition-transform hover:scale-110" />
                 <span className="font-semibold text-sm">Emby</span>
+              </button>
+              <button onClick={() => setPrimaryServer('silo')}
+                className={`py-2 px-3 rounded-lg flex items-center justify-center transition-all ${primaryServer === 'silo' ? 'bg-theme-primary/15 text-theme-primary ring-1 ring-theme-primary/50' : 'bg-theme-bg-dark/40 text-theme-muted hover:bg-theme-bg-dark/60'}`}>
+                <MediaServerLogo server="silo" className="w-5 h-5 mr-2 rounded-sm" />
+                <span className="font-semibold text-sm">Silo</span>
               </button>
             </div>
 
             <div className="flex-1 flex flex-col min-h-0">
+              <SiloSupportNotice enabled={primaryServer === "silo"} />
               {primaryServer && renderServerForm(primaryServer)}
             </div>
 
@@ -561,57 +663,176 @@ const runModes = [
       case 2: // API Keys
         return (
           <div className="space-y-4 animate-fade-in flex flex-col h-full">
-            <h3 className="text-xl font-bold text-white mb-1">{t("onboarding.apiKeys")}</h3>
-            <p className="text-sm text-theme-muted mb-4">{t("onboarding.requiredToFetchArtwork")}</p>
+            <div className="shrink-0">
+              <h3 className="text-xl font-bold text-white mb-1">{t("onboarding.apiKeys")}</h3>
+              <p className="text-sm text-theme-muted">{t("onboarding.requiredToFetchArtwork")}</p>
+            </div>
 
             <div className="flex flex-col gap-3 flex-1 justify-center max-w-2xl mx-auto w-full">
-              <div className="p-3 bg-theme-bg/30 rounded-xl flex flex-row items-center gap-4 hover:bg-theme-bg/50 transition-colors">
+              {/* TMDb Card */}
+              <div className={`p-3 rounded-xl flex flex-row items-center gap-4 transition-colors ${hasTmdb ? "bg-theme-bg/50 border border-emerald-500/30" : "bg-theme-bg/30 border border-transparent hover:bg-theme-bg/50"}`}>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-sm font-medium text-white flex items-center">
-                      <img src="/tmdb.png" alt="TMDb" className="w-5 h-5 mr-2 object-contain rounded" /> {t("onboarding.tmdbApiTokenRequired")} <span className="ml-1 text-xs text-theme-primary">(Free)</span>
+                    <label className="text-sm font-medium text-white flex items-center flex-wrap gap-1.5">
+                      <img src="/tmdb.png" alt="TMDb" className="w-5 h-5 mr-1 object-contain rounded" />
+                      <span>{t("onboarding.tmdbApiTokenRequired")}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        {t("onboarding.badgeFreeInstant")}
+                      </span>
+                      {hasTmdb ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> {t("onboarding.badgeActive")}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-theme-muted">
+                          {hasTvdb ? t("onboarding.badgeOptional") : t("onboarding.badgeRequired", "Required (at least one)")}
+                        </span>
+                      )}
                     </label>
-                    <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">{t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
+                    <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">
+                      {t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </div>
                   <ClearableInput value={config.tmdbtoken} onChange={val => handleChange("tmdbtoken", val)} placeholder={t("onboarding.v3ApiKeyV4Token")} isPassword />
+                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">{t("onboarding.tmdbNote")}</p>
                 </div>
-                <div className="mt-6">
+                <div className="mt-2">
                   <ValidateButton type="tmdb" config={config} label={t("onboarding.test")} disabled={!config.tmdbtoken} />
                 </div>
               </div>
 
-              <div className="p-3 bg-theme-bg/30 rounded-xl flex flex-row items-center gap-4 hover:bg-theme-bg/50 transition-colors">
+              {/* TVDb Card */}
+              <div className={`p-3 rounded-xl flex flex-row items-center gap-4 transition-colors ${hasTvdb ? "bg-theme-bg/50 border border-blue-500/30" : "bg-theme-bg/30 border border-transparent hover:bg-theme-bg/50"}`}>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-sm font-medium text-white flex items-center">
-                      <img src="/tvdb.png" alt="TVDb" className="w-5 h-5 mr-2 object-contain rounded bg-white/10 p-0.5" /> {t("onboarding.tvdbApiKeyRequired")} <span className="ml-1 text-xs text-theme-primary">(Free)</span>
+                    <label className="text-sm font-medium text-white flex items-center flex-wrap gap-1.5">
+                      <img src="/tvdb.png" alt="TVDb" className="w-5 h-5 mr-1 object-contain rounded bg-white/10 p-0.5" />
+                      <span>{t("onboarding.tvdbApiKeyRequired")}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                        {t("onboarding.badgeProjectOrPin")}
+                      </span>
+                      {hasTvdb ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> {t("onboarding.badgeActive")}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-theme-muted">
+                          {t("onboarding.badgeOptional")}
+                        </span>
+                      )}
                     </label>
-                    <a href="https://thetvdb.com/api-information" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">{t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
+                    <a href="https://thetvdb.com/api-information" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">
+                      {t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </div>
                   <ClearableInput value={config.tvdbapi} onChange={val => handleChange("tvdbapi", val)} placeholder={t("onboarding.v4ApiKey")} isPassword />
-                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">Free for personal use. Consider subscribing to support their work!</p>
+                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">{t("onboarding.tvdbNote")}</p>
                 </div>
-                <div className="mt-6">
+                <div className="mt-2">
                   <ValidateButton type="tvdb" config={config} label={t("onboarding.test")} disabled={!config.tvdbapi} />
                 </div>
               </div>
 
-              <div className="p-3 bg-theme-bg/30 rounded-xl flex flex-row items-center gap-4 hover:bg-theme-bg/50 transition-colors">
+              {/* Fanart.tv Card */}
+              <div className={`p-3 rounded-xl flex flex-row items-center gap-4 transition-colors ${hasFanart ? "bg-theme-bg/50 border border-purple-500/30" : "bg-theme-bg/30 border border-transparent hover:bg-theme-bg/50"}`}>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-sm font-medium text-white flex items-center">
-                      <img src="/fanart.png" alt="Fanart" className="w-5 h-5 mr-2 object-contain rounded" /> {t("onboarding.fanartTvApiKeyRequired")} <span className="ml-1 text-xs text-theme-primary">(Free)</span>
+                    <label className="text-sm font-medium text-white flex items-center flex-wrap gap-1.5">
+                      <img src="/fanart.png" alt="Fanart" className="w-5 h-5 mr-1 object-contain rounded" />
+                      <span>{t("onboarding.fanartTvApiKeyRequired")}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-medium">
+                        (Free)
+                      </span>
+                      {hasFanart ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> {t("onboarding.badgeActive")}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-theme-muted">
+                          {t("onboarding.badgeOptional")}
+                        </span>
+                      )}
                     </label>
-                    <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">{t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
+                    <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noreferrer" className="text-[10px] text-theme-primary flex items-center hover:underline">
+                      {t("onboarding.howToGet")}<ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </div>
                   <ClearableInput value={config.FanartTvAPIKey} onChange={val => handleChange("FanartTvAPIKey", val)} placeholder={t("onboarding.personalApiKey")} isPassword />
+                  <p className="text-[10px] text-theme-muted mt-1.5 leading-tight">{t("onboarding.fanartNote")}</p>
                 </div>
-                <div className="mt-6">
+                <div className="mt-2">
                   <ValidateButton type="fanart" config={config} label={t("onboarding.test")} disabled={!config.FanartTvAPIKey} />
                 </div>
+              </div>
+
+              {/* Activated Providers Bar */}
+              <div className="p-3 bg-theme-bg/40 rounded-xl border border-white/5 flex flex-col gap-2 mt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-theme-primary" />
+                    {t("onboarding.activeProviders")}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {hasTmdb && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-medium">
+                        <Check className="w-3 h-3" /> TMDb
+                      </span>
+                    )}
+                    {hasTvdb && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1 font-medium">
+                        <Check className="w-3 h-3" /> TVDb
+                      </span>
+                    )}
+                    {hasFanart && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-medium">
+                        <Check className="w-3 h-3" /> Fanart.tv
+                      </span>
+                    )}
+                    <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-white/80 border border-white/10 flex items-center gap-1">
+                      <Server className="w-3 h-3" /> {t("onboarding.localServerFallback")}
+                    </span>
+                    {!hasTmdb && !hasTvdb && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {t("onboarding.atLeastOneProviderRequired")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Primary Provider Selector when both are present */}
+                {hasTmdb && hasTvdb && (
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+                    <span className="text-theme-muted font-medium">{t("onboarding.primaryProvider")}</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFavProvider("TMDB")}
+                        className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                          favProvider === "TMDB"
+                            ? "bg-theme-primary text-black shadow-sm"
+                            : "bg-white/5 text-theme-muted hover:bg-white/10"
+                        }`}
+                      >
+                        TMDb (Recommended)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFavProvider("TVDB")}
+                        className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                          favProvider === "TVDB"
+                            ? "bg-theme-primary text-black shadow-sm"
+                            : "bg-white/5 text-theme-muted hover:bg-white/10"
+                        }`}
+                      >
+                        TVDb
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-theme-muted">
+                  {t("onboarding.onlyConfiguredProvidersUsed")}
+                </p>
               </div>
             </div>
           </div>
@@ -709,7 +930,7 @@ const runModes = [
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.notifications")}</h3>
             <p className="text-theme-muted mb-6">{t("onboarding.receiveAlertsWhenPosterizarrCompletes")}</p>
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 min-[440px]:grid-cols-3 gap-3 sm:gap-4 mb-6">
               <button
                 onClick={() => setNotificationType('none')}
                 className={`py-3 px-4 rounded-lg border flex flex-col items-center justify-center transition-all font-medium ${notificationType === 'none' ? 'bg-theme-primary/10 border-theme-primary text-theme-primary shadow-inner shadow-theme-primary/10' : 'bg-theme-bg-dark border-theme-border text-theme-muted hover:border-theme-primary/50'}`}
@@ -776,7 +997,31 @@ const runModes = [
             </div>
           </div>
         );
-      case 6: // Schedule
+      case 6: // Dynamic Overlays
+        return (
+          <div className="space-y-6 animate-fade-in">
+            <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.dynamicOverlaysTitle")}</h3>
+            <p className="text-theme-muted mb-6">{t("onboarding.dynamicOverlaysIntro")}</p>
+
+            <div className="flex items-center justify-between gap-4 p-4 bg-theme-bg/50 rounded-xl border border-theme-border/50">
+              <div>
+                <h4 className="font-semibold text-white">{t("onboarding.dynamicOverlaysEnable")}</h4>
+                <p className="text-sm text-theme-muted">{t("onboarding.dynamicOverlaysDescription")}</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input type="checkbox" className="sr-only peer" checked={enableDynamicOverlays} onChange={event => setEnableDynamicOverlays(event.target.checked)} />
+                <div className="w-11 h-6 bg-theme-bg peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-primary"></div>
+              </label>
+            </div>
+
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-theme-muted">
+              {enableDynamicOverlays
+                ? t("onboarding.dynamicOverlaysEnabledHint")
+                : t("onboarding.dynamicOverlaysDisabledHint")}
+            </div>
+          </div>
+        );
+      case 7: // Schedule
         return (
           <div className="space-y-6 animate-fade-in">
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.automatedSchedule")}</h3>
@@ -895,7 +1140,7 @@ const runModes = [
             </div>
           </div>
         );
-      case 7: // Finish
+      case 8: // Finish
         return (
           <div className="flex flex-col items-center justify-center text-center space-y-6 animate-fade-in py-10">
             <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mb-4 text-green-500 ring-4 ring-green-500/10">
@@ -932,14 +1177,14 @@ const runModes = [
 
   return (
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-sans"
+      className="app-dialog-backdrop fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-sans"
       style={{
         '--theme-primary': '#e5a00d',
         '--theme-primary-hover': '#cc8f0c',
         '--theme-accent': '#ffc107'
       }}
     >
-      <div className="bg-theme-bg-dark w-full max-w-5xl rounded-2xl shadow-2xl border border-theme-border/50 overflow-hidden flex flex-col md:flex-row h-full max-h-[700px] animate-scale-in">
+      <div role="dialog" aria-modal="true" aria-label="Posterizarr setup" className="app-dialog-panel bg-theme-bg-dark w-full min-w-0 max-w-5xl rounded-lg shadow-2xl border border-theme-border/50 overflow-hidden flex flex-col md:flex-row h-[calc(100dvh-2rem)] max-h-[700px] animate-scale-in">
 
         {/* Left Sidebar - Stepper */}
         <div className="w-full md:w-64 bg-theme-bg-dark border-r border-theme-border/30 p-6 flex flex-col shrink-0 hidden md:flex">
@@ -974,24 +1219,27 @@ const runModes = [
         </div>
 
         {/* Main Content Area */}
-          <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-theme-darker to-theme-dark h-full">
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden bg-gradient-to-br from-theme-darker to-theme-dark h-full">
               {/* Language Switcher */}
-              <div className="absolute top-4 right-6 z-50">
+              <div className="hidden md:block absolute top-4 right-6 z-50">
                 <LanguageSwitcher compact={true} />
               </div>
 
             {/* Mobile Stepper (visible only on small screens) */}
-            <div className="md:hidden flex p-4 border-b border-theme-border/30 items-center justify-between bg-theme-bg-dark shrink-0">
-              <span className="text-sm font-semibold text-theme-primary">Step {currentStep + 1} of {STEPS.length}</span>
-              <span className="text-sm text-theme-muted">{STEPS[currentStep].title}</span>
+            <div className="md:hidden flex gap-3 p-4 border-b border-theme-border/30 items-center justify-between bg-theme-bg-dark shrink-0">
+              <div className="min-w-0">
+                <span className="block text-xs font-semibold text-theme-primary">Step {currentStep + 1} of {STEPS.length}</span>
+                <span className="block text-sm text-theme-muted break-words">{STEPS[currentStep].title}</span>
+              </div>
+              <LanguageSwitcher compact={true} />
             </div>
 
-            <div className="flex-1 p-6 md:p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
+            <div className="flex-1 min-h-0 p-4 sm:p-6 md:p-8 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-thumb-theme-border scrollbar-track-transparent">
               {renderStepContent()}
             </div>
 
             {/* Footer Actions */}
-            <div className="px-6 py-4 bg-theme-bg-dark border-t border-theme-border/30 flex justify-between items-center shrink-0">
+            <div className="app-dialog-actions px-4 sm:px-6 py-3 sm:py-4 bg-theme-bg-dark border-t border-theme-border/30 flex flex-wrap gap-2 justify-between items-center shrink-0">
               <button
                 onClick={handlePrev}
                 disabled={currentStep === 0 || saving}
@@ -1007,8 +1255,8 @@ const runModes = [
                 <button
                   onClick={handleNext}
                   disabled={
-                    (currentStep === 1 && !((plexValidated && plexLibsValid) || (jellyfinValidated && jellyfinLibsValid) || (embyValidated && embyLibsValid))) ||
-                    (currentStep === 2 && (!config.tmdbtoken || !config.tvdbapi || !config.FanartTvAPIKey))
+                    (currentStep === 1 && !({ plex: plexValidated && plexLibsValid, jellyfin: jellyfinValidated && jellyfinLibsValid, emby: embyValidated && embyLibsValid, silo: siloValidated && siloLibsValid && config.SiloUrl && config.SiloAPIKey }[primaryServer])) ||
+                    (currentStep === 2 && !hasAnyMetadataProvider)
                   }
                   className="flex items-center px-5 py-2 bg-theme-primary text-black rounded-lg font-semibold shadow-md shadow-theme-primary/20 hover:bg-theme-accent hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >{t("onboarding.continue")}<ChevronRight className="w-4 h-4 ml-1" />

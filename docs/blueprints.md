@@ -3,6 +3,10 @@
 Welcome to the Posterizarr Blueprints and Recipes guide! This page provides quick-start configurations for common use cases.
 You can easily find which settings you need to adjust to achieve a specific look or behavior.
 
+![Blueprint Builder presets](images/11-blueprint-builder.png)
+
+*Expand **Builders** in the sidebar and choose **Blueprint Builder** to review, load, or apply a preset.*
+
 ---
 
 ## Logo Instead of Text
@@ -79,12 +83,12 @@ Posterizarr will download the artwork and upload it to Emby/Jellyfin. Kometa can
 
 Alternatively, you can run Posterizarr with the `-SyncJelly/Emby` switch as a scheduled task to sync artwork directly from Plex to Jellyfin/Emby.
 
-### 2. Testing Mode
-Want to see what your configuration looks like before applying it to your entire library? Use the `-Testing` switch when running Posterizarr:
-```powershell
-pwsh /app/Posterizarr.ps1 -Testing
-```
-This will test your settings without committing them en masse.
+### 2. Test a Blueprint
+
+Open **Run Modes > Testing Mode** to generate sample artwork with your current
+configuration and active blueprints. Review the results in **Test Gallery**
+before running a full library. Testing Mode does not upload the sample images to
+your media server. The [Run Modes guide](modes.md#test-mode) shows the workflow.
 
 ### 3. Textless Posters Only
 If you *only* want clean, textless posters and want Posterizarr to skip any posters that include text, set your language orders exclusively to `xx`:

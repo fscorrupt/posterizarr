@@ -10,6 +10,255 @@ The following API endpoints are available.
 
 ---
 
+## External Provider API
+
+These endpoints are opt-in: they do not change regular Posterizarr runs or
+media-server artwork. Both require a Posterizarr API key—either in the
+`X-API-Key` header (recommended), as an `Authorization: Bearer` token, or as an
+`api_key` query parameter—even when Web UI authentication is disabled. Create a
+key in the Web UI. Basic Auth is not accepted by these endpoints.
+
+### `GET /api/provider/v1/asset/{media_type}/{item_id}`
+
+`GET /api/provider/v1/poster/{media_type}/{item_id}` remains as a backwards-
+compatible alias. `media_type` is `movie` or `show`; the response is a JPEG.
+`asset_type` selects `poster` (default), `background`, `season`, or `titlecard`.
+Season and titlecard requests require `season_number`; titlecards also require
+`episode_number`. Seasons and titlecards require `media_type=show`.
+
+`provider` can be `auto` (default), `tmdb`, or `tvdb`. With `auto` or `tmdb`,
+`item_id` is a TMDb ID; `tvdb_id` may additionally be supplied so the configured
+provider order can try TVDB. With `provider=tvdb`, `item_id` is a TVDB ID and
+`tmdb_id` may be supplied for TMDb fallback. For shows, Posterizarr attempts to
+resolve a missing TVDB ID through TMDb's external IDs. Artwork selection follows
+`ProviderPriorityMode`, `FavProvider`, `ProviderOrder`, and the per-media-type
+provider order. This API currently searches TMDb and TVDB; Fanart and Plex
+providers are not yet queried here.
+
+The requested asset's Posterizarr language list is used: `PreferredLanguageOrder`
+for posters, `PreferredBackgroundLanguageOrder` for backgrounds,
+`PreferredSeasonLanguageOrder` for seasons, and `PreferredTCLanguageOrder` for
+titlecards. `PleaseFillMe` inherits the standard poster order, and
+`TmdbLanguageMappings` applies to TMDb requests. The caption uses the selected
+provider's localized title when available. If TVDB artwork has no matching
+title translation, Posterizarr uses the localized TMDb title, then TMDb's
+English default. A TVDB-only request without a resolvable TMDb ID can only use
+the TVDB title when available. TMDb is also the artwork fallback according to
+the configured provider order.
+
+Posterizarr applies the corresponding manual settings from `config.json` (text,
+font, borders, and overlays) in an isolated temporary workspace. Dynamic Overlay
+YAML rules are not applied. The result is cached separately in
+`database/provider_posters`; the cache key includes asset type, IDs, season or
+episode coordinates, and relevant provider/language/render settings. Existing
+assets are never overwritten and no media-server upload is performed.
+
+Pass `create=false` for lookup only. Without `library`, an existing matching
+asset or API cache entry may be returned, but no new asset is created. When
+`library` is provided, only an existing asset in that library is returned; the
+API cache is not used. Ambiguous existing matches return `409` and require
+`library`. A TMDb key is
+required for TMDb lookup/fallback; a TVDB key is required for TVDB. Creating an
+asset requires PowerShell 7 and ImageMagick. Missing artwork returns `404`;
+rendering or upstream failures return `502` or `503`.
+
+```bash
+# Existing/default poster request (same URL as before)
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/poster/movie/603" --output poster.jpg
+
+# TVDB-first show season poster
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/603?tvdb_id=121361&asset_type=season&season_number=2" --output season.jpg
+
+# TMDb show season poster
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/603?provider=tmdb&asset_type=season&season_number=2" --output season.jpg
+
+# TVDB episode titlecard, with TMDb ID available for localized title fallback
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/121361?provider=tvdb&tmdb_id=603&asset_type=titlecard&season_number=2&episode_number=3" --output titlecard.jpg
+
+# TMDb episode titlecard
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/asset/show/603?provider=tmdb&asset_type=titlecard&season_number=2&episode_number=3" --output titlecard.jpg
+```
+
+Prefer sending the key via `X-API-Key` or `Authorization: Bearer` headers so
+credentials are not exposed in URLs, reverse-proxy logs, or third-party media
+server metadata. While `?api_key=YOUR_KEY` is supported for consumers that
+cannot send custom headers, avoid passing API keys in shared or logged URLs.
+
+### `GET /api/provider/v1/ratings/{media_type}/{item_id}`
+
+`media_type` is `movie`, `show`, `episode`, or `season`. This endpoint reads
+only existing, unexpired entries from the Dynamic Overlays ratings cache; it
+does not call TMDb, TVDB, MDBList, SIMKL, or OMDb and does not resolve missing
+IDs. With `provider=auto` (the default), a numeric `item_id` is treated as a
+TMDb ID and an IMDb ID beginning with `tt` is detected automatically. Use
+`provider=tmdb` or `provider=imdb` to select the cached identifier explicitly.
+Optional `server_type` selects a cache entry from `plex`, `jellyfin`, `emby`,
+or another configured media server when IDs appear in multiple caches.
+
+Movie and show entries are matched by their cached TMDb or IMDb ID. Episodes
+can be matched by the **series TMDb ID plus `season_number` and
+`episode_number`**, or directly by the episode's IMDb ID. Episode coordinates
+are persisted during ratings refreshes. On startup, a background migration
+fills missing coordinates for existing Plex, Jellyfin, and Emby cache rows
+using only media-server metadata; it does not refresh ratings or change cache
+expiry. Season entries require `season_number` and can be found by TVDB series
+ID, or by TMDb/IMDb ID
+when a matching cached show entry and season mapping exist. Season ratings are
+available for anime seasons already mapped to SIMKL; the cached row may include
+SIMKL and MAL scores. A cache miss or expired entry returns `404`.
+
+The response title and score values come from the cached row. Each rating's
+`source` identifies the provider recorded for that score (for example,
+`tmdb`, `mdblist`, `omdb`, `simkl`, or `imdb_dataset`), and `updated_at`
+indicates the timestamp when that specific rating was refreshed or cached.
+New refreshes persist this per-score provenance and timestamp. For older entries,
+the API derives source from recorded refresh results where possible and falls
+back to the cache record's refresh or cached timestamp.
+The top-level `cache` object includes the cache record's server, timestamps, and
+record-level source. The `providers` object reports cached refresh statuses,
+not live provider status. Local IMDb dataset ratings are returned when they
+have already been written into the ratings cache.
+
+```bash
+# Movie or show: use an ID already present in the ratings cache
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/603"
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/show/1429?provider=tmdb"
+
+# IMDb ID lookup
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/movie/tt0133093?provider=imdb"
+
+# Anime episode: Attack on Titan S04E30 (series TMDb ID 1429)
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/1429?provider=tmdb&season_number=4&episode_number=30"
+
+# Or request an episode directly by its cached IMDb ID
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/episode/tt27048168?provider=imdb"
+
+# Anime season: TVDB ID and season number must match a cached season mapping
+curl -H "X-API-Key: YOUR_KEY" "http://posterizarr:8000/api/provider/v1/ratings/season/12345?provider=tvdb&season_number=1"
+```
+
+The endpoint is not a full metadata API and does not yet support Floppy ratings.
+It neither refreshes nor writes cache entries. `404` means no unexpired cache
+entry matches the requested ID; `400` indicates an unsupported identifier or
+missing season number. No provider credentials are needed to read cached data.
+
+```json
+{
+  "media_type": "movie",
+  "title": "The Matrix",
+  "tmdb_id": 603,
+  "imdb_id": "tt0133093",
+  "scale": 10,
+  "ratings": {
+    "tmdb": {"value": 8.2, "source": "tmdb", "updated_at": "2026-11-11T12:00:00"},
+    "rt_critic": {"value": 8.3, "source": "omdb", "updated_at": "2026-11-11T12:00:00"}
+  },
+  "providers": {"cache": "hit"},
+  "cache": {
+    "server_type": "plex",
+    "cached_at": "2026-11-11T12:00:00",
+    "expires_at": "2026-12-11T12:00:00",
+    "record_source": "mdblist"
+  }
+}
+```
+
+Example season response:
+
+```json
+{
+  "media_type": "season",
+  "title": "Attack on Titan S01",
+  "season_number": 1,
+  "scale": 10,
+  "ratings": {
+    "simkl": {"value": 8.4, "source": "simkl", "updated_at": "2026-11-11T12:00:00"},
+    "mal": {"value": 8.6, "source": "simkl", "updated_at": "2026-11-11T12:00:00"}
+  },
+  "providers": {"cache": "hit"},
+  "cache": {"server_type": "plex", "record_source": "simkl"}
+}
+```
+
+Kometa does not currently have a generic HTTP ratings-provider configuration.
+A Kometa feature request or adapter must register the Posterizarr rating
+variables, authenticate, map item IDs and consume this API. Existing Kometa
+configurations are unaffected.
+
+---
+
+## Dynamic Overlays
+
+The `/api/dynamic-overlays/episode-title-changes*` endpoints power **Asset Title Review** across all configured text-enabled artwork types (`episode`, `season`, `movie`, and `show`).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/dynamic-overlays/episode-title-changes` | Paged review candidates. Optional `search`, `limit`, `offset`, `status_filter` (`all`, `eligible`, `blocked`), `reason_filter` (`all`, `none`, or a blocking reason), `review_type` (`all`, `historical`, `future`), and `media_type_filter` (`all`, `episode`, `season`, `movie`, `show`) filter the result set and eligible count. |
+| `POST /api/dynamic-overlays/episode-title-changes/rebuild` | Confirmed queue recreation; returns `409` while another run is active. `candidate_ids` or `all_eligible` with `search` and the same filters selects candidates. Optional `force_unknown_text: true` includes safe uncertain-text candidates and media-server originals (re-downloaded and EXIF-checked) in either selection. |
+| `POST /api/dynamic-overlays/episode-title-changes/queue` | Confirmed queueing with the same body as `rebuild`. Allowed while a run is active. Returns `queued` and `queue_ids`; these items start automatically once no run, queue, overlay sync, or cleanup is active. |
+| `POST /api/dynamic-overlays/episode-title-changes/dismiss` | Permanently hides one review entry (`candidate_id`) with any blocking reason. |
+| `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed Fast Normal Run over `candidate_ids` or `all_eligible`, using the same search and filters. Optional `force_unknown_text: true` includes safe uncertain-text candidates. |
+
+### Overlay Bundles
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/dynamic-overlays/bundle/export` | Download custom YAML and required custom assets/fonts plus layouts and portable settings. Official downloadable Kometa files are dependency references, not ZIP payloads. Credential fields and media-server connections are excluded; known credentials in text are masked. |
+| `POST /api/dynamic-overlays/bundle/preview` | Multipart `file` upload. Returns source profiles, existing destination libraries/server, features, file counts, conflicts, and warnings without applying the bundle. |
+| `POST /api/dynamic-overlays/bundle/import` | Multipart upload with `file`, JSON-string `mapping`, JSON-string `anime_libraries`/`season_libraries`, and boolean `import_settings`/`replace_files`. Applies validated mappings and starts in Dry Run, without uploading artwork. |
+
+`mapping` maps source profile names to existing destination library names, for
+example `{"Source TV":"My Shows","Source Movies":""}`. An empty value skips a
+profile. The two feature-target arrays contain mapped destination show-library
+names. Duplicate destinations, nonexistent libraries, and movie/show mismatches
+are rejected. `replace_files=true` explicitly approves conflicting shared files;
+existing files are backed up before replacement.
+
+Local credentials and media-server selections are preserved even if an uploaded
+bundle contains credential fields with blank/null/masked values. Invalid bundles return
+`400`; validation failures include `detail.code` and a readable `detail.message`
+so clients can translate the error. Preview responses also include
+`warning_codes` alongside the existing readable `warnings` list. An active
+sync/classification/import returns `409`. See the
+[bundle workflow and limits](dynamic_overlays.md#share-a-complete-overlay-bundle).
+
+`official_dependency_count` in the preview reports omitted downloadable defaults.
+Export returns `503` with code `officialCatalogUnavailable` if the official
+Kometa catalog cannot be verified; it does not silently export the whole catalog.
+
+### `POST /api/dynamic-overlays/sync`
+
+Starts a background overlay sync. Without `target_items`, `library` and `target_server` select the libraries and servers to scan. `scope: "incremental"` skips unchanged artwork; `scope: "all"` forces uploads.
+
+For an item-only request, supply its media-server ID, server, and library:
+
+```json
+{
+  "target_server": "plex",
+  "scope": "incremental",
+  "library": "Kids Shows",
+  "target_items": [
+    {
+      "id": "12345",
+      "server_type": "plex",
+      "library_name": "Kids Shows",
+      "media_type": "show"
+    }
+  ]
+}
+```
+
+ID targets are fetched directly, without listing unrelated libraries. Missing targets are skipped rather than falling back to a broad scan. An empty `target_items` list does not start a sync. Use `jellyfin` or `emby` and the corresponding item IDs for those servers.
+
+A show target also evaluates its season posters and titlecards. Tautulli and Arr notifications submit the movie/show IDs and libraries processed by their trigger run. Requests received while a sync is running are rejected, not queued.
+
+### System Database Browser
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/dynamic-overlays/database-stats` | Returns file/WAL sizes, table row counts, and status/type/category/mode breakdowns across browsable SQLite databases in `database/` (`overlay_cache.db`, `animetafill.db`, `imagechoices.db`, `runtime_stats.db`, `media_export.db`, `server_libraries.db`, `plex_push_cache.db`, `queue.db`, `imdb_dataset.db`, and other non-excluded `*.db` files). `config.db` is strictly excluded. |
+| `GET /api/dynamic-overlays/database-entries` | Read-only (`?mode=ro`) paginated SQLite table browser with a 5-second query deadline. Accepts `database` (default `overlay_cache.db`), `table` (default `dynamic_overlay_cache`), `page` (`>= 1`, default `1`), `limit` (`1–200`, default `50`), `search` (max `300` chars), `sort_by` (optional column), and `descending` (`true`/`false`, default `true`). Rejects path traversal, `config.db`, unknown tables, and invalid sort columns with HTTP `400`, and returns `{ "success": false, "error": "..." }` on query timeout. |
+
 ## ⚙️ System
 
 ### `/api`
@@ -24,7 +273,8 @@ Returns the basic status of the API server.
     ```
 
 ### `/api/system-info`
-Returns hardware and OS information about the host system.
+Returns hardware, runtime tool, and OS information about the host system.
+OS, CPU model, core count, Docker detection, data directory, timezone, and runtime versions (Python, PowerShell, ImageMagick) are cached for the backend process lifetime. Memory usage is collected on every request. Collection runs in worker threads so system probes do not block unrelated API requests.
 
 ??? example "View Response"
     ```json
@@ -33,6 +283,11 @@ Returns hardware and OS information about the host system.
       "os_version": "Alpine Linux v3.22",
       "cpu_model": "11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz",
       "cpu_cores": 8,
+      "data_directory": "/config",
+      "python_version": "3.12.10",
+      "timezone": "UTC",
+      "powershell_version": "7.4.6",
+      "imagemagick_version": "ImageMagick 7.1.1-29",
       "total_memory": "63931 MB",
       "used_memory": "9589 MB",
       "free_memory": "54342 MB",
@@ -42,19 +297,20 @@ Returns hardware and OS information about the host system.
     ```
 
 ### `/api/version`
-Checks installed version against remote GitHub version.
+Checks installed version (`local` and `raw_local`) against the remote GitHub version.
 
 ??? example "View Response"
     ```json
     {
-      "local": "2.1.15",
-      "remote": "2.1.15",
+      "local": "4.0.0",
+      "raw_local": "4.0.0",
+      "remote": "4.0.0",
       "is_update_available": false
     }
     ```
 
 ### `/api/releases`
-Fetches the latest release notes from GitHub.
+Fetches the latest releases and Markdown changelogs from GitHub (TTL-cached). Pass `?refresh=true` to bypass the cache and query GitHub immediately.
 
 ??? example "View Response"
     ```json
@@ -62,16 +318,42 @@ Fetches the latest release notes from GitHub.
       "success": true,
       "releases": [
         {
-          "version": "2.1.15",
-          "name": "v2.1.15",
-          "published_at": "2025-11-21T11:00:57Z",
-          "days_ago": 4,
+          "version": "4.0.0",
+          "name": "Posterizarr 4.0.0",
+          "published_at": "2026-11-20T11:00:00Z",
+          "days_ago": 0,
           "is_prerelease": false,
           "is_draft": false,
-          "html_url": "[https://github.com/fscorrupt/posterizarr/releases/tag/2.1.15](https://github.com/fscorrupt/posterizarr/releases/tag/2.1.15)",
-          "body": "## What's Changed\r\n* Fix missing assets in gallery..."
+          "html_url": "https://github.com/fscorrupt/posterizarr/releases/tag/4.0.0",
+          "body": "## Highlights at a Glance\r\n..."
         }
       ]
+    }
+    ```
+
+### `GET /api/whats-new`
+Evaluates whether the one-time post-update "What's New" modal should be shown for the currently installed stable release. Returns `should_show: true` only when onboarding has completed, the installed version is a published stable GitHub release (not a `-dev` or prerelease build), and the installed version is strictly newer than the stored `last_seen_release_version`.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "should_show": false,
+      "installed_version": "4.0.0",
+      "display_version": "4.0.0",
+      "last_seen_version": "4.0.0",
+      "release": null
+    }
+    ```
+
+### `POST /api/whats-new/dismiss`
+Persists the dismissed stable release version in `webui_settings.json` (`last_seen_release_version`), advancing monotonically so the post-update popup is not shown again for the same or older versions. Accepts an optional JSON body `{"version": "4.0.0"}` (defaults to the currently installed version).
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "last_seen_version": "4.0.0"
     }
     ```
 
@@ -140,7 +422,9 @@ Details regarding the internal scheduler, next run times, and active jobs.
     ```
 
 ### `/api/runtime-history`
-Returns a full history of previous script executions.
+Returns a paginated history of previous script executions.
+
+- **Query parameters:** `limit` (`1`–`50000`, default `50`), `offset` (`>= 0`, default `0`), `mode` (optional run mode filter), and `days` (`1`–`9999`, optional last-N-days filter).
 
 ??? example "View Response"
     ```json
@@ -167,7 +451,8 @@ Returns a full history of previous script executions.
       "total": 327,
       "limit": 50,
       "offset": 0,
-      "mode_filter": null
+      "mode_filter": null,
+      "days": null
     }
     ```
 
@@ -256,6 +541,24 @@ Returns the full configuration.
 ---
 
 ## 📁 Assets & File Management
+
+### `/api/assets/overview/page`
+Returns only the visible Action Center rows, plus category counts, type/library
+filter options, and the configuration used to display issue tags.
+
+- `limit`: 1-500 rows (default 25); `offset`: zero-based starting row (default 0).
+- `tab`: `active` (default) or `skipped`.
+- `status`: `Unresolved` (default), `Resolved`, or `All`.
+- `category`: a category key from `/api/assets/overview`, or empty for all categories.
+- `search`: case-insensitive title/root-folder search; `asset_type` and `library`: exact filters.
+- `all_matches=true`: return the complete filtered set for an explicitly confirmed
+  bulk action. Normal browsing does not use this option.
+
+`total_count` counts all filtered matches, not just returned rows. `offset` is
+adjusted to the last available page if necessary. Category counts and filter
+options remain independent of pagination. The backend still classifies the full
+metadata snapshot; this endpoint limits serialization and transfer, not the
+underlying database read. The original full overview endpoint remains available.
 
 ### `/api/assets/overview`
 Returns a categorized overview of assets (missing, non-primary language, etc.).
@@ -510,8 +813,29 @@ List of timestamps for previous non-Plex export runs.
 
 ## 🖥️ Dashboard & Logs
 
+### `/api/sidebar/counts`
+Returns only `success`, `assets_with_issues`, and `manual_assets` for the navigation
+badges, rather than full asset lists. The issue count uses the same classification
+as `/api/assets/overview`; manual totals come from the existing asset cache.
+Results are cached for 60 seconds per backend process, with concurrent requests
+sharing one calculation. `?refresh=true` bypasses the cached counts after an asset
+replacement. Failed calculations are not cached.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "assets_with_issues": 12,
+      "manual_assets": 7
+    }
+    ```
+
 ### `/api/dashboard/all`
 A combined endpoint used to populate the main dashboard (Status + Version + System Info).
+The dashboard uses `?include_version=false` to receive status, scheduler jobs, and
+system information without waiting for the remote version check. In this mode
+`version` is `null`; the frontend loads `/api/version` independently. The parameter
+defaults to `true` for compatibility with existing clients.
 
 ??? example "View Response"
     ```json
@@ -589,7 +913,7 @@ Endpoint for Tautulli notifications. Maps incoming JSON keys directly to script 
     ```
 ---
 
-## ?? Authentication & Onboarding
+## 🔐 Authentication & Onboarding
 
 ### `/api/onboarding/complete`
 Submits data or triggers an action at `/api/onboarding/complete`.
@@ -644,7 +968,7 @@ Deletes a resource at `/api/auth/keys/{key_id}`.
 
 ---
 
-## ?? Connection Validation
+## ✅ Connection Validation
 
 ### `/api/validate/plex`
 Submits data or triggers an action at `/api/validate/plex`.
@@ -770,7 +1094,7 @@ integration status endpoint (`GET /api/v1/posterizarr/status`).
 
 ---
 
-## ?? Library & Server Management
+## 📚 Library & Server Management
 
 ### `/api/plex/action`
 Submits data or triggers an action at `/api/plex/action`.
@@ -855,7 +1179,7 @@ Submits data or triggers an action at `/api/libraries/plex/items`.
 
 ---
 
-## ?? Script Execution & Control
+## ▶️ Script Execution & Control
 
 ### `/api/run/{mode}`
 Submits data or triggers an action at `/api/run/{mode}`.
@@ -950,7 +1274,7 @@ Submits data or triggers an action at `/api/force-kill`.
 
 ---
 
-## ??? Asset Galleries & Image Choices
+## 🖼️ Asset Galleries & Image Choices
 
 ### `/api/assets/skip`
 Adds the `skip_posterizarr` tag/label to the specified asset in the active media server and removes it from the Action Center.
@@ -1161,12 +1485,30 @@ Retrieves data from `/api/assets-folder-images/{image_type}/{folder_path:path}`.
     ```
 
 ### `/api/recent-assets`
-Retrieves data from `/api/recent-assets`.
+Returns recently modified assets with existing artwork. The dashboard requests only
+its visible page using `limit` (1-100, default 100), `offset` (default 0), and `tab`
+(`All`, `Posters`, `Collections`, `Backgrounds`, `Seasons`, or `TitleCards`).
+The latest 100 matching records are deduplicated before tab filtering and pagination.
+`total_count` is the selected tab's count; `counts` contains counts for all tabs.
+An offset beyond the available entries is adjusted to the last page.
+Asset metadata is still matched against the in-memory file cache to preserve
+modification-time ordering; pagination limits the response, not the database scan.
 
 ??? example "View Response"
     ```json
     {
-      "success": true
+      "success": true,
+      "assets": [],
+      "total_count": 0,
+      "offset": 0,
+      "counts": {
+        "All": 0,
+        "Posters": 0,
+        "Collections": 0,
+        "Backgrounds": 0,
+        "Seasons": 0,
+        "TitleCards": 0
+      }
     }
     ```
 
@@ -1263,7 +1605,7 @@ Submits data or triggers an action at `/api/imagechoices/import`.
 
 ---
 
-## ?? Assets Replacement & Operations
+## 🔄 Assets Replacement & Operations
 
 ### `/api/assets/fetch-replacements`
 Submits data or triggers an action at `/api/assets/fetch-replacements`.
@@ -1276,7 +1618,7 @@ Submits data or triggers an action at `/api/assets/fetch-replacements`.
     ```
 
 ### `/api/assets/upload-replacement`
-Submits data or triggers an action at `/api/assets/upload-replacement`.
+Uploads a replacement image. With `add_to_queue=true` the item is queued instead of processed immediately; adding `start_when_idle=true` starts it automatically once no run is active.
 
 ??? example "View Response"
     ```json
@@ -1286,7 +1628,7 @@ Submits data or triggers an action at `/api/assets/upload-replacement`.
     ```
 
 ### `/api/assets/replace-from-url`
-Submits data or triggers an action at `/api/assets/replace-from-url`.
+Replaces an asset from a provider URL. Supports the same `add_to_queue` and `start_when_idle` query parameters as `upload-replacement`.
 
 ??? example "View Response"
     ```json
@@ -1338,7 +1680,7 @@ Retrieves data from `/api/cache/status`.
 
 ---
 
-## ?? Scheduler & Queue Management
+## ⏰ Scheduler & Queue Management
 
 ### `/api/scheduler/config`
 Retrieves data from `/api/scheduler/config`.
@@ -1483,7 +1825,7 @@ Submits data or triggers an action at `/api/queue/delete`.
 
 ---
 
-## ??? Fonts & Overlay Creator
+## 🔤 Fonts & Overlay Creator
 
 ### `/api/overlayfiles/upload`
 Submits data or triggers an action at `/api/overlayfiles/upload`.
@@ -1588,7 +1930,7 @@ Submits data or triggers an action at `/api/overlay-creator/save`.
 
 ---
 
-## ?? Runtime History & Exports Additional
+## 📈 Runtime History & Exports Additional
 
 ### `/api/runtime-stats`
 Retrieves data from `/api/runtime-stats`.
@@ -1723,7 +2065,7 @@ Submits data or triggers an action at `/api/other-media-export/import`.
 
 ---
 
-## ?? Additional Configuration & Database
+## 🗄️ Additional Configuration & Database
 
 ### `/api/config/backup`
 Submits data or triggers an action at `/api/config/backup`.
@@ -1848,7 +2190,7 @@ Submits data or triggers an action at `/api/webui-settings`.
 
 ---
 
-## ?? Logs, Diagnostics & Misc
+## 📋 Logs, Diagnostics & Misc
 
 ### `/api/logs/ui`
 Submits data or triggers an action at `/api/logs/ui`.

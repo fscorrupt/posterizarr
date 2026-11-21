@@ -10,6 +10,11 @@
 
 The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to work alongside the [Posterizarr](https://github.com/fscorrupt/posterizarr) automation script, allowing your media server to utilize locally generated or managed assets (posters, backgrounds, title cards) as metadata.
 
+Posterizarr's [native Dynamic Overlays](../../docs/dynamic_overlays.md) can upload
+supported overlaid artwork directly to Emby, without Plex or Kometa as an
+intermediary. This plugin's local-asset mapping and optional Plex mirroring are
+separate workflows. Avoid competing upload/sync jobs for the same artwork.
+
 > [!IMPORTANT]
 > This middleware does not allow you to browse, search, or download assets.
 > Its sole purpose is to replace the default artwork by mapping library items to your local file system.
@@ -19,10 +24,11 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
 *   **Local Asset Mapping:** Maps local files to library items without replacing original metadata permanently in some configurations.
 *   **Metadata Provider:** Registers as a metadata provider for images.
 *   **Support for Multiple Asset Types:** Handles Posters, Backgrounds (Fanart), and Title Cards.
-*   **Scheduled Sync Task:** Daily background task that keeps library images in sync with your local assets.
-
-> [!WARNING]
-> Only use this if you are not syncing from Plex, as it will overwrite your synced items with locally created assets from Posterizarr.
+*   **Optional Plex Artwork Mirroring:** Mirrors active Plex artwork into Emby for movies, TV series, seasons, episode title cards, and backdrops. Uses Plex metadata and artwork version timestamps, regardless of which tool produced the artwork (disabled by default, enabled via plugin settings).
+*   **Scheduled Sync Tasks:** 
+    *   *Sync Posterizarr Assets* (local asset sync)
+    *   *Sync Artwork from Plex* (direct Plex mass query)
+*   **Hybrid Sync Support:** Real-Time Sync and Plex Direct Sync can be used together. New Posterizarr assets apply via WebSocket, and scheduled Plex sync runs replace them when the selected Plex artwork differs.
 
 ## Installation
 
@@ -43,16 +49,22 @@ The Posterizarr Plugin acts as a local asset proxy for Emby. It is designed to w
 
 ## Scheduled Tasks & Automation
 
-The plugin registers a scheduled background task (default: daily at 02:00 AM) that automatically syncs and refreshes your libraries against local assets.
+The plugin registers two scheduled background tasks under **Scheduled Tasks**:
+
+*   **Posterizarr Sync Task** (default: daily at 02:00 AM): Automatically syncs and refreshes your libraries against your local curated asset directory.
+*   **Sync Artwork from Plex** (default: daily at 03:00 AM): High-speed direct query and mirroring of active artwork from Plex (only runs when *Enable Plex Direct Sync* is enabled).
+
+> [!NOTE]
+> If **Enable Plex Direct Sync** is turned on, the local *Posterizarr Sync Task* and image provider lookups are bypassed for movies and TV series so local files do not replace the selected Plex artwork through that local-sync path. If **Update Collections** is enabled, the scheduled task will exclusively sync **Collections (BoxSets)** from collection asset folders (`/assets/Collections`). Real-Time Sync remains active, with Plex Direct Sync taking precedence when artwork differs. Choose the intended artwork owner for each library and format.
 
 ### Configuring the Sync Schedule
 
 1. Open your Emby **Dashboard**.
 2. In the left sidebar under the **Server** section, navigate to **Scheduled Tasks**.
-3. Locate the **Posterizarr Sync Task** in the list.
-4. Click on the task to customize its triggers:
+3. Locate **Posterizarr Sync Task** or **Sync Artwork from Plex** in the list.
+4. Click on either task to customize its triggers:
     * You can configure the task to run on an interval, at a specific time of day (e.g., daily at 3:00 AM), on system startup, or on a weekly schedule.
-5. You can also trigger the task manually at any time by clicking the **Play (Run)** button next to it.
+5. You can also trigger either task manually at any time by clicking the **Play (Run)** button next to it.
 
 ## Building from Source
 

@@ -5,11 +5,21 @@
     if ($global:runspaceStats) { $global:runspaceStats['PlexChildArtworkUploads'] = 0 }
     $arrplatform = $arrTriggers['arr_platform']
     $Mode = "arr"
+    $global:Mode = "arr"
     Write-Entry -Message "ArrTrigger Mode Started..." -Path $global:configLogging -Color White -log Info
-    if ($UsePlex -eq 'true') {
+    # Check if Dynamic Overlays is enabled
+    $DynamicOverlaysEnabled = Get-DynamicOverlaysEnabled
+    $global:DynamicOverlaysEnabled = $DynamicOverlaysEnabled
+
+    if ($DynamicOverlaysEnabled) {
+        $Upload2Plex = 'false'
+        $global:UploadExistingAssets = 'false'
+        Write-Entry -Subtext "Dynamic Overlays enabled: Overriding trigger direct uploads (Upload2Plex=false, UploadExistingAssets=false) so finalized overlaid artwork will be pushed by overlay service." -Path $global:configLogging -Color DarkMagenta -log Info
+    } elseif ($UsePlex -eq 'true') {
         $Upload2Plex = 'true'
         Write-Entry -Subtext "Arr Mode forces direct Plex upload for generated assets." -Path $global:configLogging -Color Cyan -log Info
     }
+    if ($UseSilo -ne 'true') {
     switch ($arrplatform) {
         'Sonarr' {
             Write-Entry -Message "Processing Sonarr trigger" -Path $global:configLogging -Color Yellow -log Info
@@ -83,7 +93,7 @@
 
                 # Get Episode
                 $seasonId = $seasonItem.Id
-                $episodes = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?ParentId=$seasonId&Recursive=true&Fields=ProviderIds,SeasonUserData,OriginalTitle,Path,Overview,Settings,Tags,Width,Height,MediaStreams&IncludeItemTypes=Episode" -Headers $global:OtherMediaServerHeaders
+                $episodes = Invoke-RestMethod -Uri "$OtherMediaServerUrl/Items?ParentId=$seasonId&Recursive=true&Fields=Width,Height,MediaStreams&IncludeItemTypes=Episode" -Headers $global:OtherMediaServerHeaders
                 $episodeItem = $episodes.Items | Where-Object { $_.IndexNumber -eq $episodeIndex }
 
                 if (-not $episodeItem) {
@@ -231,6 +241,30 @@
                         Write-Entry -Message "Year mismatch ignored: Could not find '$movieTitle' with year $movieYear. Defaulting to first result." -Path $global:configLogging -Color Yellow -log Warning
                     }
                 }
+                # The same movie can exist in several libraries (e.g. Movies + 4K Movies); pick the copy whose file path best matches the Radarr path.
+                if (@($movies).Count -gt 1 -and -not [string]::IsNullOrWhiteSpace($ArrPath)) {
+                    $arrSegments = @(($ArrPath.TrimEnd('\', '/') -split '[\\/]+') | Where-Object { $_ })
+                    $scoredMovies = foreach ($candidate in @($movies)) {
+                        $bestScore = 0
+                        foreach ($partFile in @($candidate.Media.Part.file)) {
+                            if ([string]::IsNullOrWhiteSpace($partFile)) { continue }
+                            $partSegments = @((($partFile -replace '[\\/][^\\/]*$', '') -split '[\\/]+') | Where-Object { $_ })
+                            $score = 0
+                            while ($score -lt $arrSegments.Count -and $score -lt $partSegments.Count -and
+                                $arrSegments[$arrSegments.Count - 1 - $score] -ieq $partSegments[$partSegments.Count - 1 - $score]) {
+                                $score++
+                            }
+                            if ($score -gt $bestScore) { $bestScore = $score }
+                        }
+                        [PSCustomObject]@{ Movie = $candidate; Score = $bestScore }
+                    }
+                    $topScore = ($scoredMovies | Measure-Object -Property Score -Maximum).Maximum
+                    $topMovies = @($scoredMovies | Where-Object { $_.Score -eq $topScore -and $_.Score -gt 0 })
+                    if ($topMovies.Count -eq 1) {
+                        $movies = $topMovies[0].Movie
+                        Write-Entry -Message "Multiple matches: selected '$($movies.title)' in library '$($movies.librarySectionTitle)' by Radarr path." -Path $global:configLogging -Color Cyan -log Info
+                    }
+                }
                 $matchedMovie = $movies.Where({ $_.librarySectionTitle -notin $LibstoExclude }, 'First')
 
                 if ($matchedMovie) {
@@ -251,8 +285,19 @@
         }
         default { Write-Entry -Message "Unknown platform: $arrplatform" -Path $global:configLogging -Color Red -log Error }
     }
+    }
     $Libraries = [System.Collections.Generic.List[object]]::new()
-    if ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
+    if ($UseSilo -eq 'true') {
+        foreach ($entry in @(Get-SiloArrEntries -Trigger $arrTriggers)) {
+            $Libraries.Add($entry)
+            if ($entry.'Library Type' -eq 'Movie') {
+                Invoke-MoviePosterCreation -entry $entry
+            } else {
+                Invoke-ShowPosterCreation -entry $entry
+            }
+        }
+    }
+    elseif ($UseJellyfin -eq 'true' -or $UseEmby -eq 'true') {
         $PreferredMetadataLanguage = (Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/System/Configuration" -Headers $global:OtherMediaServerHeaders).PreferredMetadataLanguage ?? "en"
         foreach ($Movie in $AllMovies.Items) {
             $Resolution = $null
@@ -753,42 +798,50 @@
         # Movie Part
         if ($AllMovies) {
             $AllMovies | ForEach-Object -Parallel {
-            $state = $using:globalState
-            if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
-                $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
-                foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
-                if ($state['FanartTvAPIKey']) {
-                    Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
+                $state = $using:globalState
+                if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
+                    $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
+                    foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
+                    if ($state['FanartTvAPIKey']) {
+                        Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
+                    }
+                    function Runspace-Initialized {}
                 }
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+                $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+                & $StateAssignerSb
 
-            Invoke-MoviePosterCreation -entry $_
-        } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
+                if ($state['FanartTvAPIKey']) {
+                    Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+                }
+
+                Invoke-MoviePosterCreation -entry $_
+            } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
         }
 
         Write-Entry -Message "Starting Show/Season Poster/Background/TitleCard Creation part..." -Path $global:configLogging -Color Green -log Info
         # Show Part
         if ($AllShows) {
             $AllShows | ForEach-Object -Parallel {
-            $state = $using:globalState
-            if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
-                $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
-                foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
-                if ($state['FanartTvAPIKey']) {
-                    Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
+                $state = $using:globalState
+                if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
+                    $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
+                    foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
+                    if ($state['FanartTvAPIKey']) {
+                        Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
+                    }
+                    function Runspace-Initialized {}
                 }
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+                $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+                & $StateAssignerSb
 
-            Invoke-ShowPosterCreation -entry $_
-        } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
+                if ($state['FanartTvAPIKey']) {
+                    Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+                }
+
+                Invoke-ShowPosterCreation -entry $_
+            } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
         }
 
         if ($global:TitleCards -eq 'true' -and $FormattedData) {
@@ -800,13 +853,16 @@
                     foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
                     if ($state['FanartTvAPIKey']) {
                         Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                        Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
                     }
+                    function Runspace-Initialized {}
+                }
+                $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+                & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+                if ($state['FanartTvAPIKey']) {
+                    Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+                }
 
                 Invoke-TitleCardCreation -episode $_
             } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -914,9 +970,11 @@
         Write-TextSizeCacheSummary
         Write-Entry -Message "Script execution time: $FormattedTimespawn" -Path $global:configLogging -Color White -log Info
 
+        # Calculate Counts
+        $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
         # Export json
         $jsonObject = [PSCustomObject]@{
-            Posters              = if ($posterCount) { $posterCount } Else { 0 }
+            Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
             Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
             Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
             Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
@@ -1076,23 +1134,13 @@
             $Labels = ""
         }
         $FileMetadata = $Metadata.MediaContainer.$contentquery.media.part.stream
-        $Resolution = $null
-        # Get Resolution
-        if ($FileMetadata) {
-            $FileMetadata | ForEach-Object {
-                if ($_.streamType -eq '1') {
-                    $Resolution = $_.displayTitle
-                }
-            }
-        }
+        $Resolution = Get-MediaItemResolution -FileMetadata $FileMetadata -Media $Metadata.MediaContainer.$contentquery.media -Location $location -LibraryName $Library.title -MatchedPath $Matchedpath -Type $Metadata.MediaContainer.$contentquery.type
         $temp = New-Object psobject
         $temp | Add-Member -MemberType NoteProperty -Name "Library Name" -Value $Library.title
         $temp | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $Metadata.MediaContainer.$contentquery.type
         $temp | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $($Library.language.split("-")[0])
         $temp | Add-Member -MemberType NoteProperty -Name "title" -Value $Metadata.MediaContainer.$contentquery.title
-        if ($FileMetadata) {
-            $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
-        }
+        $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
         $temp | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $Metadata.MediaContainer.$contentquery.originalTitle
         $temp | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $SeasonNames
         $temp | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $SeasonNumbers
@@ -1192,28 +1240,32 @@
         # Movie Part
         if ($AllMovies) {
             $AllMovies | ForEach-Object -Parallel {
-            $state = $using:globalState
-            if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
-                $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
-                foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
-                if ($state['FanartTvAPIKey']) {
-                    Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
+                $state = $using:globalState
+                if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
+                    $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
+                    foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
+                    if ($state['FanartTvAPIKey']) {
+                        Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
+                    }
+                    function Runspace-Initialized {}
                 }
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+                $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+                & $StateAssignerSb
 
-            Invoke-MoviePosterCreation -entry $_
-        } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
+                if ($state['FanartTvAPIKey']) {
+                    Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+                }
+
+                Invoke-MoviePosterCreation -entry $_
+            } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
         }
 
     $global:SkipTBACount = 0
     if ($global:runspaceStats) { $global:runspaceStats['SkipTBACount'] = 0 }
     $global:SkipJapTitleCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['SkipJapTitleCount'] = 0 }
-    
+
     # Initialize Summary Counts to prevent leakage between scheduled runs
     $FallbackCount = $null
     $TextlessCount = $null
@@ -1224,21 +1276,25 @@
         # Show Part
         if ($AllShows) {
             $AllShows | ForEach-Object -Parallel {
-            $state = $using:globalState
-            if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
-                $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
-                foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
-                if ($state['FanartTvAPIKey']) {
-                    Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
+                $state = $using:globalState
+                if (-not (Get-Command "Runspace-Initialized" -ErrorAction SilentlyContinue)) {
+                    $functionFiles = Get-ChildItem -Path "$($state['AppRoot'])/modules/functions" -Filter "*.ps1"
+                    foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
+                    if ($state['FanartTvAPIKey']) {
+                        Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
+                    }
+                    function Runspace-Initialized {}
                 }
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+                $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+                & $StateAssignerSb
 
-            Invoke-ShowPosterCreation -entry $_
-        } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
+                if ($state['FanartTvAPIKey']) {
+                    Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+                }
+
+                Invoke-ShowPosterCreation -entry $_
+            } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
         }
 
         if ($global:TitleCards -eq 'true' -and $Episodedata) {
@@ -1250,13 +1306,16 @@
                     foreach ($funcFile in $functionFiles) { . $funcFile.FullName }
                     if ($state['FanartTvAPIKey']) {
                         Import-Module -Name Celerium.FanartTV -ErrorAction SilentlyContinue
-                        Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction SilentlyContinue
                     }
+                    function Runspace-Initialized {}
+                }
+                $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
+                & $StateAssignerSb
 
-                function Runspace-Initialized {}
-            }
-            $StateAssignerSb = [scriptblock]::Create($using:StateAssignerStr)
-            & $StateAssignerSb
+                if ($state['FanartTvAPIKey']) {
+                    Import-FanartTVModuleSettings -ErrorAction Stop -Verbose:$false
+                    Add-FanartTVAPIKey -ProjectKey $state['FanartTvAPIKey'] -ErrorAction Stop
+                }
 
                 Invoke-TitleCardCreation -episode $_
             } -ThrottleLimit $(if ($config.PrerequisitePart.ParallelJobs) { $config.PrerequisitePart.ParallelJobs } else { 5 })
@@ -1335,9 +1394,11 @@
         # Send Notification
         # Send-SummaryNotification -ScriptMode $Mode -FormattedTimespawn $FormattedTimespawn -ErrorCount $errorCount -FallbackCount $FallbackCount.count -TextlessCount $TextlessCount.count -TruncatedCount $TextTruncatedCount.count -PosterUnknownCount $PosterUnknownCount -SkipTBACount $SkipTBACount -SkipJapTitleCount $SkipJapTitleCount -PosterCount $posterCount -BackgroundCount $BackgroundCount -SeasonCount $SeasonCount -EpisodeCount $EpisodeCount
 
+        # Calculate Counts
+        $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
         # Export json
         $jsonObject = [PSCustomObject]@{
-            Posters              = if ($posterCount) { $posterCount } Else { 0 }
+            Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
             Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
             Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
             Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
@@ -1410,6 +1471,45 @@
         }
         Send-AgregarrTrigger @agregarrTrigger
     }
+
+    # Notify Dynamic Overlays service to composite and push newly created artwork
+    if (($posterCount -gt 0) -and ($DynamicOverlaysEnabled -or $global:DynamicOverlaysEnabled)) {
+        try {
+            $uiPort = if ($env:APP_PORT) { $env:APP_PORT } else { "8000" }
+            $syncUrl = "http://127.0.0.1:$uiPort/api/dynamic-overlays/sync"
+            $overlayServer = if ($UseSilo -eq 'true') { 'silo' } elseif ($UseEmby -eq 'true') { 'emby' } elseif ($UseJellyfin -eq 'true') { 'jellyfin' } else { 'plex' }
+            $overlayTargets = @(foreach ($overlayItem in $Libraries) {
+                $overlayId = if ($overlayServer -eq 'plex') { $overlayItem.ratingKey } else { $overlayItem.Id }
+                if ($overlayId -and $overlayItem.'Library Name') {
+                    @{
+                        id = [string]$overlayId
+                        server_type = $overlayServer
+                        library_name = $overlayItem.'Library Name'
+                        title = $overlayItem.title
+                        root_folder = $overlayItem.RootFoldername
+                        media_type = if ($overlayItem.'Library Type' -in @('show', 'Series')) { 'show' } else { 'movie' }
+                    }
+                }
+            })
+            if ($overlayTargets.Count -gt 0) {
+                $overlayLibraries = @($overlayTargets.library_name | Select-Object -Unique)
+                $body = @{
+                    target_server = $overlayServer
+                    scope = "incremental"
+                    library = if ($overlayLibraries.Count -eq 1) { $overlayLibraries[0] } else { "all" }
+                    target_items = $overlayTargets
+                } | ConvertTo-Json -Depth 6
+                $overlayResponse = Invoke-RestMethod -Uri $syncUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction Stop
+                if ($overlayResponse.success) {
+                    Write-Entry -Subtext "Notified Dynamic Overlays service for $($overlayTargets.Count) target item(s) on $overlayServer." -Path $global:configLogging -Color DarkMagenta -log Info
+                } else {
+                    Write-Entry -Subtext "Dynamic Overlays trigger skipped: $($overlayResponse.error)" -Path $global:configLogging -Color Yellow -log Warning
+                }
+            }
+        } catch {}
+    }
+
+    if ($UseSilo -eq 'true') { Complete-SiloRun }
 
 
 

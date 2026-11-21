@@ -81,6 +81,9 @@ namespace Posterizarr.Plugin.Providers
             if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
                 return false;
 
+            if (config.EnablePlexSync && (item is not BoxSet || !config.UpdateCollection))
+                return false;
+
             try
             {
                 foreach (var type in GetSupportedImages(item))
@@ -104,6 +107,12 @@ namespace Posterizarr.Plugin.Providers
         public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, LibraryOptions libraryOptions, CancellationToken cancellationToken)
         {
             var config = Plugin.Instance?.Configuration;
+            if (config?.EnablePlexSync == true && (item is not BoxSet || !config.UpdateCollection))
+            {
+                LogDebug("Plex Direct Sync is active. Bypassing local image provider for '{0}' to prevent overwrite.", item.Name);
+                return Task.FromResult(Enumerable.Empty<RemoteImageInfo>());
+            }
+
             _logger.Info("[Posterizarr] Searching images for '{0}' ({1})", item.Name, item.GetType().Name);
 
             if (config == null || string.IsNullOrEmpty(config.AssetFolderPath))
@@ -342,7 +351,7 @@ namespace Posterizarr.Plugin.Providers
                             if (match != null) return match;
                         }
 
-                        if (checkedDirs.Add(libraryDir))
+                        if (!config.EnablePlexSync && checkedDirs.Add(libraryDir))
                         {
                             var match = FindInDirectory(libraryDir, candidateNames, supportedExtensions, type);
                             if (match != null) return match;
@@ -360,7 +369,7 @@ namespace Posterizarr.Plugin.Providers
                         if (match != null) return match;
                     }
 
-                    if (checkedDirs.Add(rootDir))
+                    if (!config.EnablePlexSync && checkedDirs.Add(rootDir))
                     {
                         var match = FindInDirectory(rootDir, candidateNames, supportedExtensions, type);
                         if (match != null) return match;
@@ -369,8 +378,8 @@ namespace Posterizarr.Plugin.Providers
             }
             catch { }
 
-            // 4. Check root asset folder itself
-            if (checkedDirs.Add(assetRoot))
+            // 4. Check root asset folder itself (only if Plex Direct Sync is not restricting search to collection paths)
+            if (!config.EnablePlexSync && checkedDirs.Add(assetRoot))
             {
                 var match = FindInDirectory(assetRoot, candidateNames, supportedExtensions, type);
                 if (match != null) return match;
@@ -599,7 +608,7 @@ namespace Posterizarr.Plugin.Providers
         public static string NormalizeCollectionName(string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-            var stripped = Regex.Replace(s, @"[\[\(\{][^\]\)\}]*[\]\)\}]", "");
+            var stripped = Regex.Replace(s, @"\s*[\[\(\{]boxset[\]\)\}]\s*", "", RegexOptions.IgnoreCase);
             stripped = stripped.Replace("&", "and");
             var cleaned = Regex.Replace(stripped, @"[^a-zA-Z0-9]", "");
             return cleaned.ToLowerInvariant();

@@ -1,26 +1,48 @@
-!!! warning "Requirements"
+# Requirements
 
-    Before you begin, make sure you have:
+The exact requirements depend on how you install Posterizarr and which artwork
+providers you plan to use. You do not need to set up every optional integration
+before your first run.
 
-    - **A media server (Plex, Jellyfin, or Emby)**
-    - **TMDB API Read Access Token**
-        - [Obtain TMDB API Token](https://www.themoviedb.org/settings/api) (Free) -    **NOTE** the **TMDB API Read Access Token** is the really, really long one
-    - **Fanart Personal API Key**
-        - [Obtain Fanart API Key](https://fanart.tv/get-an-api-key) (Free)
-    - **TVDB API Key**
-        - [Obtain TVDB API Key](https://thetvdb.com/api-information/signup) (Free) -    **Do not** use `"Legacy API Key"`, it only works with a Project Api Key. *(The key is free for personal use. If configured, Posterizarr can utilize data provided by TheTVDB. If you would like to support their work, please consider paying for a subscription!)*
-    - **ImageMagick (already integrated in container)**
-        - **Version 7.x is required** - The script handles downloading and using a portable version of ImageMagick for all platforms. **(You may need to run the Script as Admin on first run)**. If you prefer to reference your own installation or prefer to download and install it yourself, goto: [Download ImageMagick](https://imagemagick.org/script/download.php)
-    - **Powershell Version (already integrated in container)**
-        - 7.x or higher.
-    - **FanartTv Powershell Module (already integrated in container)**
-        - This module is required, goto: [Install Module](https://github.com/Celerium/Celerium.FanartTV)
+## Needed for a basic setup
 
-## 📏 Image Size Requirements
-When uploading custom images through the Web UI or Manual mode, Posterizarr recommends the following dimensions for optimal quality:
+- A supported media server: Plex, Jellyfin, or Emby. Silo is also available with
+    **experimental** support, without full feature parity.
+- Network access from Posterizarr to that server, plus a server API token or key
+    with the permissions required for your workflow.
+- Persistent storage for configuration and generated assets. With Docker, use
+    writable `/config` and `/assets` mounts.
 
-- **Posters** (Movies/Shows/Seasons): **1000×1500px** (base) or **2000×3000px** or higher (**2:3 ratio**)
-- **Backgrounds**: **1920×1080px** (base) or **3840×2160px** or higher (**16:9 ratio / 4K**)
-- **Title Cards**: **1920×1080px** (base) or **3840×2160px** or higher (**16:9 ratio / 4K**)
+## Provider credentials
 
-The Web UI will display warnings if uploaded images are smaller than these recommended sizes, but will still process them.
+Add credentials for the providers you intend to use. Common providers are:
+
+- [TMDb](https://www.themoviedb.org/settings/api): create a Read Access Token.
+- [Fanart.tv](https://fanart.tv/get-an-api-key): create a personal API key.
+- [TheTVDB](https://thetvdb.com/api-information/signup): use a Project API key,
+    not a Legacy API key.
+
+The [configuration reference](configuration.md) lists the setting names and
+provider order. Optional features may require their own credentials; their guides
+explain those separately.
+
+## Installation-specific software
+
+- **Docker / Unraid:** Docker is required. PowerShell and ImageMagick are included
+    in the Posterizarr container; use the [installation guide](installation.md).
+- **Manual PowerShell installation:** PowerShell 7 or newer is required. Follow
+    the [manual walkthrough](walkthrough.md) for modules and first-run setup.
+- **Web UI from source:** Python and Node.js are required. This is a separate
+    development/manual UI path described in the [UI installation guide](uiinstallation.md).
+
+## Image sizes
+
+Recommended dimensions when preparing local artwork:
+
+| Artwork | Aspect ratio | Recommended dimensions |
+|---|---:|---:|
+| Movie, show, and season posters | 2:3 | 2000 × 3000 px |
+| Backgrounds and titlecards | 16:9 | 3840 × 2160 px |
+
+Smaller images may still be processed, but can look softer. The Web UI warns
+about undersized uploads.

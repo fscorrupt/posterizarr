@@ -38,7 +38,8 @@ import RecentAssets from "./RecentAssets";
 import Notification from "./Notification";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
-import { formatDateTimeInTimezone } from "../utils/timeUtils";
+import { formatDateTimeInTimezone, getUpcomingSchedules } from "../utils/timeUtils";
+import WorkspaceHeader from "./WorkspaceHeader";
 
 const API_URL = "/api";
 const isDev = import.meta.env.DEV;
@@ -100,6 +101,7 @@ function Dashboard() {
     running: false,
     is_executing: false,
     schedules: [],
+    active_jobs: [],
     next_run: null,
     timezone: null,
   });
@@ -158,7 +160,7 @@ function Dashboard() {
   const fetchDashboardData = async (silent = false) => {
     if (!silent) setIsRefreshing(true);
     try {
-      const response = await fetch(`${API_URL}/dashboard/all`);
+      const response = await fetch(`${API_URL}/dashboard/all?include_version=false`);
       const data = await response.json();
       if (data.success) {
         if (data.status) {
@@ -176,20 +178,21 @@ function Dashboard() {
             running: data.scheduler_status.running || false,
             is_executing: data.scheduler_status.is_executing || false,
             schedules: data.scheduler_status.schedules || [],
+            active_jobs: data.scheduler_status.active_jobs || [],
             next_run: data.scheduler_status.next_run || null,
             timezone: data.scheduler_status.timezone || null,
           });
         }
         if (data.system_info) {
           setSystemInfo({
-            platform: data.system_info.platform || "Unknown",
-            os_version: data.system_info.os_version || "Unknown",
-            cpu_model: data.system_info.cpu_model || "Unknown",
+            platform: data.system_info.platform || t("dashboard.controlDeck.unknown"),
+            os_version: data.system_info.os_version || t("dashboard.controlDeck.unknown"),
+            cpu_model: data.system_info.cpu_model || t("dashboard.controlDeck.unknown"),
             cpu_cores: data.system_info.cpu_cores || 0,
             memory_percent: data.system_info.memory_percent || 0,
-            total_memory: data.system_info.total_memory || "Unknown",
-            used_memory: data.system_info.used_memory || "Unknown",
-            free_memory: data.system_info.free_memory || "Unknown",
+            total_memory: data.system_info.total_memory || t("dashboard.controlDeck.unknown"),
+            used_memory: data.system_info.used_memory || t("dashboard.controlDeck.unknown"),
+            free_memory: data.system_info.free_memory || t("dashboard.controlDeck.unknown"),
             is_docker: data.system_info.is_docker || false,
           });
         }
@@ -237,7 +240,8 @@ function Dashboard() {
         const res = await fetch(`${API_URL}/version`);
         if(res.ok) {
             const data = await res.json();
-            setVersion({ local: data.local, remote: data.remote, is_update_available: data.is_update_available });
+          cachedVersion = { local: data.local, remote: data.remote, is_update_available: data.is_update_available };
+          setVersion(cachedVersion);
         }
     } catch(e){}
   }
@@ -287,6 +291,7 @@ function Dashboard() {
   useEffect(() => {
     startLoading("dashboard");
     fetchDashboardData(false);
+    fetchVersion(true);
     const statusInterval = setInterval(() => { fetchStatus(true); fetchSchedulerStatus(true); fetchSystemInfo(true); }, 3000);
     const versionInterval = setInterval(() => fetchVersion(true, true), 24 * 60 * 60 * 1000);
     const handleVisibilityChange = () => {
@@ -434,11 +439,34 @@ function Dashboard() {
     return colors[levelLower] || colors.default;
   };
 
-  const UnifiedControlDeck = () => {
+  const hasRunningFile = Boolean(
+    status.running_file_exists || status.already_running_detected
+  );
+  const showDangerZone = Boolean(status.running || hasRunningFile);
+  const firstVisibleCard = cardOrder.find((key) => visibleCards[key]);
+  const embedDangerZoneInDeck =
+    showDangerZone && firstVisibleCard === "statusCards";
+
+  const renderControlDeck = () => {
     if (!visibleCards.statusCards) return null;
 
     return (
-      <div className="bg-theme-card rounded-3xl border border-theme shadow-lg overflow-hidden flex flex-col md:flex-row md:divide-x divide-theme">
+      <div
+        key="statusCards"
+        className="bg-theme-card rounded-3xl border border-theme shadow-lg overflow-hidden"
+      >
+        {embedDangerZoneInDeck && (
+          <DangerZone
+            compact
+            embedded
+            status={status}
+            loading={loading}
+            onStatusUpdate={fetchStatus}
+            onSuccess={showSuccess}
+            onError={showError}
+          />
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(15rem,1.5fr)_minmax(0,1.3fr)_minmax(0,1fr)] md:divide-x divide-theme">
 
         {/* SECTION 1: SCRIPT ENGINE */}
         <div className="flex-1 p-6 relative group hover:bg-theme-hover/20 transition-colors">
@@ -472,7 +500,7 @@ function Dashboard() {
         </div>
 
         {/* SECTION 2: SCHEDULER */}
-        <div className="flex-1 p-6 relative group hover:bg-theme-hover/20 transition-colors border-t md:border-t-0 border-theme">
+        <div className="min-w-0 p-6 relative group hover:bg-theme-hover/20 transition-colors border-t lg:border-t-0 border-theme">
           <div className="flex items-start justify-between mb-4">
               {/* Clickable Header for Redirection */}
               <Link to="/scheduler" className="flex flex-col group/link">
@@ -486,112 +514,42 @@ function Dashboard() {
                     <ExternalLink className="w-3 h-3 text-theme-muted opacity-0 group-hover/link:opacity-100 transition-opacity" />
                 </div>
               </Link>
-              <div className={`p-2 rounded-xl ${schedulerStatus.enabled ? "bg-blue-500/10" : "bg-theme-hover"}`}>
+              <div className={`p-2 rounded-lg ${schedulerStatus.enabled ? "bg-blue-500/10" : "bg-theme-hover"}`}>
                 <CalendarClock className={`w-6 h-6 ${schedulerStatus.enabled ? "text-blue-400" : "text-theme-muted"}`} />
               </div>
           </div>
 
           <div className="mt-auto">
               {schedulerStatus.enabled && schedulerStatus.schedules?.length > 0 ? (() => {
-                const now = new Date();
-                const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                const totalMinutesInDay = 24 * 60;
-                const progressPercent = (currentMinutes / totalMinutesInDay) * 100;
-
+                const upcoming = getUpcomingSchedules(schedulerStatus.schedules, schedulerStatus.active_jobs);
+                const formatRun = (date) => new Date(date).toLocaleString([], {
+                  hour: '2-digit', minute: '2-digit', hour12: false, timeZone: schedulerStatus.timezone || undefined,
+                });
+                const formatDay = (date) => new Date(date).toLocaleDateString([], {
+                  weekday: 'short', timeZone: schedulerStatus.timezone || undefined,
+                });
                 return (
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-xs font-medium">
-                          <span className="text-theme-muted">{t("dashboard.controlDeck.nextRun")}</span>
-                          <span className="text-blue-300 font-bold">
-                            {schedulerStatus.next_run ? new Date(schedulerStatus.next_run).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--'}
-                          </span>
-                      </div>
-
-                      {/* Timeline Container */}
-                      <div className="relative h-3 w-full bg-theme-hover rounded-full flex items-center">
-                          {/* Background Progress (Current Time) */}
-                          <div
-                            className="absolute h-full bg-blue-500/20 rounded-full transition-all duration-1000"
-                            style={{ width: `${progressPercent}%` }}
-                          />
-
-                          {/* Current Time Indicator Line */}
-                          <div
-                            className="absolute h-4 w-0.5 bg-blue-400 z-10 shadow-[0_0_8px_rgba(96,165,250,0.8)]"
-                            style={{ left: `${progressPercent}%` }}
-                          />
-
-                          {/* Schedule Ticks */}
-                          {schedulerStatus.schedules.map((s, idx) => {
-                            const [hours, minutes] = s.time.split(':').map(Number);
-                            const scheduleMinutes = hours * 60 + minutes;
-                            const position = (scheduleMinutes / totalMinutesInDay) * 100;
-                            const isPast = scheduleMinutes < currentMinutes;
-
-                            // Determine style class based on status
-                            let tickClass = "bg-theme-card border-theme-muted hover:border-blue-400";
-                            let dotColorClass = "bg-gray-500";
-                            let statusText = t("dashboard.controlDeck.upcoming") || 'Upcoming';
-                            let statusTextColor = "text-gray-500";
-
-                            if (!isPast) {
-                              tickClass = "bg-slate-600 border-slate-500 shadow-[0_0_5px_rgba(100,116,139,0.3)]";
-                              dotColorClass = "bg-slate-400";
-                              statusText = t("dashboard.controlDeck.pending", "Pending");
-                              statusTextColor = "text-slate-400 font-semibold";
-                            } else if (s.status === "success") {
-                              tickClass = "bg-green-500 border-green-400 shadow-[0_0_5px_rgba(74,222,128,0.3)]";
-                              dotColorClass = "bg-green-400";
-                              statusText = t("dashboard.controlDeck.completed") || 'Completed';
-                              statusTextColor = "text-green-400 font-semibold";
-                            } else if (s.status === "failed") {
-                              tickClass = "bg-red-500 border-red-400 shadow-[0_0_5px_rgba(239,68,68,0.3)] animate-pulse";
-                              dotColorClass = "bg-red-400";
-                              statusText = t("dashboard.controlDeck.failed") || 'Failed';
-                              statusTextColor = "text-red-400 font-semibold";
-                            } else if (s.status === "retrying") {
-                              tickClass = "bg-yellow-500 border-yellow-400 shadow-[0_0_5px_rgba(234,179,8,0.3)] animate-pulse";
-                              dotColorClass = "bg-yellow-400";
-                              statusText = t("dashboard.controlDeck.retrying") || 'Retrying';
-                              statusTextColor = "text-yellow-400 font-semibold";
-                            } else if (isPast) {
-                              tickClass = "bg-blue-500 border-blue-400 shadow-[0_0_5px_rgba(59,130,246,0.3)]";
-                              dotColorClass = "bg-blue-400";
-                              statusText = t("dashboard.controlDeck.completed") || 'Completed';
-                            }
-
+                    <div className="min-w-0 space-y-3" role="region" aria-label={t("dashboard.controlDeck.scheduler")}>
+                      <div className="text-[11px] text-theme-muted">{t("dashboard.controlDeck.nextRun")}</div>
+                      {upcoming.length === 0 && <p className="text-sm text-theme-muted">{t("dashboard.controlDeck.noUpcomingRuns")}</p>}
+                      <div className="space-y-3">
+                          {upcoming.slice(0, 3).map(({ schedule, index, nextRun }, position) => {
+                            const label = schedule.description || t(`schedulerSettings.modes.${schedule.mode || 'normal'}`);
                             return (
-                              <div
-                                key={idx}
-                                className={`group/tick absolute w-2 h-2 rounded-full border-2 transform -translate-x-1/2 z-20 transition-all cursor-pointer ${tickClass}`}
-                                style={{ left: `${position}%` }}
-                              >
-                                {/* Custom Hover Tooltip - Removed the help cursor logic */}
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 px-2.5 py-1.5 bg-gray-900 text-white text-[10px] rounded-lg pointer-events-none opacity-0 group-hover/tick:opacity-100 transition-all duration-200 whitespace-nowrap z-30 border border-theme shadow-2xl scale-95 group-hover/tick:scale-100">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                        <div className={`w-1.5 h-1.5 rounded-full ${dotColorClass}`}></div>
-                                        <span className="font-bold text-blue-400">{s.time}</span>
-                                    </div>
-                                    <div className="text-gray-300 text-[9px]">{s.description}</div>
-                                    <div className={`text-[7px] mt-1 uppercase tracking-tighter ${statusTextColor}`}>
-                                        {statusText}
-                                    </div>
-                                    {/* Small Arrow */}
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-gray-900"></div>
-                                </div>
-                              </div>
+                              <Link key={index} to="/scheduler" className={`grid grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-3 border-l-2 pl-3 hover:text-blue-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 ${position === 0 ? 'border-blue-400' : 'border-theme'}`} title={`${formatDay(nextRun)} ${formatRun(nextRun)} - ${label}`}>
+                                <span className="flex flex-col gap-0.5">
+                                  <span className={`font-mono tabular-nums ${position === 0 ? 'text-base font-semibold text-blue-300' : 'text-xs text-theme-muted'}`}>{formatRun(nextRun)}</span>
+                                  <span className="text-[10px] text-theme-muted">{formatDay(nextRun)}</span>
+                                </span>
+                                <span className={`min-w-0 break-words leading-4 ${position === 0 ? 'text-sm font-medium text-theme-text' : 'text-xs text-theme-muted'}`}>{label}</span>
+                              </Link>
                             );
                           })}
                       </div>
-
-                      <div className="flex justify-between items-center mt-1">
-                          <span className="text-[9px] text-theme-muted font-mono opacity-50 uppercase">Start</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] text-theme-primary font-bold">{Math.round(progressPercent)}%</span>
-                            <span className="text-[8px] text-theme-muted uppercase tracking-tighter font-medium">{t("dashboard.controlDeck.ofDay") || 'of Day'}</span>
-                          </div>
-                          <span className="text-[9px] text-theme-muted font-mono opacity-50 uppercase">End</span>
-                      </div>
+                      <Link to="/scheduler" className="flex items-center justify-between gap-2 pt-1 text-[11px] text-theme-muted hover:text-blue-400">
+                        <span>{upcoming.length} {t("dashboard.controlDeck.upcoming").toLowerCase()}</span>
+                        <ArrowRight className="w-3.5 h-3.5" aria-label={t("dashboard.controlDeck.scheduler")} />
+                      </Link>
                     </div>
                 );
               })() : (
@@ -603,7 +561,7 @@ function Dashboard() {
         </div>
 
         {/* SECTION 3: SYSTEM */}
-        <div className="flex-[1.8] p-6 relative group hover:bg-theme-hover/20 transition-colors border-t md:border-t-0 border-theme">
+        <div className="min-w-0 p-6 relative group hover:bg-theme-hover/20 transition-colors border-t lg:border-t-0 border-theme">
            <div className="flex items-start justify-between mb-3">
               <div className="flex flex-col gap-1">
                  <span className="text-[10px] font-bold uppercase tracking-widest text-theme-muted">{t("dashboard.controlDeck.systemInfo")}</span>
@@ -614,7 +572,7 @@ function Dashboard() {
                            <span className="px-1.5 py-[1px] rounded-[3px] text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">{t("dashboard.controlDeck.docker")}</span>
                         )}
                     </div>
-                    {systemInfo.os_version && systemInfo.os_version !== "Unknown" && (
+                    {systemInfo.os_version && systemInfo.os_version !== t("dashboard.controlDeck.unknown") && (
                        <div className="text-[10px] text-theme-muted truncate max-w-[180px]" title={systemInfo.os_version}>
                           {systemInfo.os_version}
                        </div>
@@ -687,7 +645,7 @@ function Dashboard() {
                      <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-theme-primary">v{version.local || version.remote}</span>
                         {version.is_update_available && (
-                           <span className="flex h-2 w-2 rounded-full bg-green-400 animate-pulse" title="Update Available"></span>
+                           <span className="flex h-2 w-2 rounded-full bg-green-400 animate-pulse" title={t("dashboard.updateAvailable")}></span>
                         )}
                      </div>
                   </div>
@@ -703,13 +661,30 @@ function Dashboard() {
               )}
            </div>
         </div>
+        </div>
+        {status.running && (
+          <div className="relative bg-gradient-to-r from-orange-500/10 to-red-500/10 border-t border-orange-500/20 px-5 py-3 flex items-center gap-3">
+            <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+            <div className="p-1.5 bg-orange-500/20 rounded-lg animate-pulse flex-shrink-0">
+              <Zap className="w-4 h-4 text-orange-400" />
+            </div>
+            <div className="min-w-0 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+              <h3 className="text-sm font-semibold text-orange-100 whitespace-nowrap">
+                {t("dashboard.banners.executionInProgress")}
+              </h3>
+              <p className="text-xs text-orange-200/75">
+                {t("dashboard.banners.reviewLogs")}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
   const renderDashboardCards = () => {
     const cardComponents = {
-      statusCards: <UnifiedControlDeck />,
+      statusCards: renderControlDeck(),
       runtimeStats: visibleCards.runtimeStats && (
         <RuntimeStats key="runtimeStats" refreshTrigger={runtimeStatsRefreshTrigger} />
       ),
@@ -844,54 +819,22 @@ function Dashboard() {
       )
     };
 
-    return cardOrder.map((key) => {
-        const component = cardComponents[key];
-        if (key === "statusCards" && status.running) {
-           return (
-             <React.Fragment key={key}>
-                {component}
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/20 p-6 flex items-center justify-between animate-in slide-in-from-top-4 duration-500">
-                   <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                   <div className="flex items-center gap-4 relative z-10">
-                      <div className="p-3 bg-orange-500/20 rounded-xl animate-pulse"><Zap className="w-6 h-6 text-orange-400" /></div>
-                      <div>
-                         <h3 className="text-lg font-bold text-orange-100">{t("dashboard.banners.executionInProgress")}</h3>
-                         <p className="text-orange-200/70 text-sm">{t("dashboard.banners.reviewLogs")}</p>
-                      </div>
-                   </div>
-                </div>
-             </React.Fragment>
-           )
-        }
-        return component;
-    }).filter(Boolean);
+    return cardOrder.map((key) => cardComponents[key]).filter(Boolean);
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="relative overflow-hidden rounded-3xl bg-theme-card border border-theme p-8 shadow-2xl">
-         <div className="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-theme-primary/5 rounded-full blur-3xl"></div>
-         <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-64 h-64 bg-theme-primary/5 rounded-full blur-3xl"></div>
-         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-             <div className="flex flex-col gap-2">
-                 <h1 className="text-3xl md:text-4xl font-black text-theme-primary tracking-tight">{t("dashboard.title")}</h1>
-                 <p className="text-theme-muted font-medium text-sm md:text-base max-w-xl">
-                    {t("dashboard.welcome")}. {t("dashboard.status")}: <span className={`font-bold ${status.running ? "text-green-400" : "text-theme-text"}`}>{status.running ? t("dashboard.controlDeck.active").toLowerCase() : t("dashboard.controlDeck.idle").toLowerCase()}</span>.
-                 </p>
-             </div>
-             <div className="flex items-center gap-3 w-full md:w-auto">
+     <div className="workspace-page space-y-6 pb-12">
+      <WorkspaceHeader icon={Activity} title={t("dashboard.title")} subtitle={<>{t("dashboard.status")}: <span className={status.running ? "text-green-400" : "text-theme-text"}>{status.running ? t("dashboard.controlDeck.active") : t("dashboard.controlDeck.idle")}</span></>}>
                 {!status.running && (
-                   <Link to="/run-modes" className="flex-1 md:flex-none group flex items-center justify-center gap-2 px-6 py-3 bg-theme-primary hover:bg-theme-primary/90 text-white rounded-xl font-bold shadow-lg shadow-theme-primary/20 transition-all hover:-translate-y-0.5 active:translate-y-0">
-                      <Play className="w-5 h-5 fill-current" />
+               <Link to="/run-modes" className="workspace-command">
+                 <Play className="w-4 h-4" />
                       <span>{t("dashboard.runScript")}</span>
                    </Link>
                 )}
-                <button onClick={() => setShowCardsModal(true)} className="px-4 py-3 bg-theme-hover border border-theme text-theme-text hover:text-theme-primary hover:border-theme-primary/30 rounded-xl transition-all" title={t("dashboard.customize")}>
-                   <Edit3 className="w-5 h-5" />
+             <button onClick={() => setShowCardsModal(true)} className="workspace-icon-button" title={t("dashboard.customize")} aria-label={t("dashboard.customize")}>
+               <Edit3 className="w-4 h-4" />
                 </button>
-             </div>
-         </div>
-      </div>
+      </WorkspaceHeader>
       {status.already_running_detected && (
         <div className="rounded-2xl bg-yellow-900/20 border border-yellow-500/30 p-5 flex items-start gap-4 backdrop-blur-sm animate-in fade-in slide-in-from-top-2">
            <AlertTriangle className="w-6 h-6 text-yellow-500 flex-shrink-0" />
@@ -904,12 +847,21 @@ function Dashboard() {
            </div>
         </div>
       )}
+      {showDangerZone && !embedDangerZoneInDeck && (
+        <DangerZone
+          compact
+          status={status}
+          loading={loading}
+          onStatusUpdate={fetchStatus}
+          onSuccess={showSuccess}
+          onError={showError}
+        />
+      )}
       {renderDashboardCards()}
-      <DangerZone status={status} loading={loading} onStatusUpdate={fetchStatus} onSuccess={showSuccess} onError={showError} />
       <ConfirmDialog isOpen={deleteConfirm} onClose={() => setDeleteConfirm(false)} onConfirm={deleteRunningFile} title={t("dashboard.deleteConfirmTitle")} message={t("dashboard.deleteConfirmMessage")} confirmText={t("common.delete")} type="warning" />
       {showCardsModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-theme-card rounded-2xl border border-theme shadow-2xl max-w-md w-full overflow-hidden">
+        <div className="app-dialog-backdrop fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="app-dialog-panel bg-theme-card rounded-2xl border border-theme shadow-2xl max-w-md w-full overflow-hidden">
             <div className="p-5 border-b border-theme flex justify-between items-center bg-theme-hover/30">
                <h3 className="font-bold text-theme-text flex items-center gap-2"><Eye className="w-5 h-5 text-theme-primary" /> {t("dashboard.customize")}</h3>
                <button onClick={() => setShowCardsModal(false)}><X className="w-5 h-5 text-theme-muted hover:text-theme-text" /></button>

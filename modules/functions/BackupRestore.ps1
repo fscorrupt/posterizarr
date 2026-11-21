@@ -1,5 +1,6 @@
 function MassDownloadPlexArtwork {
     $Mode = "backup"
+    $global:Mode = "backup"
     Write-Entry -Message "Backup Mode Started..." -Path $global:configLogging -Color White -log Info
     Write-Entry -Message "Query plex libs..." -Path $global:configLogging -Color White -log Info
     $Libsoverview = [System.Collections.Generic.List[object]]::new()
@@ -59,8 +60,8 @@ function MassDownloadPlexArtwork {
                 $PlexHeaders['X-Plex-Container-Start'] = $searchsize
                 $PlexHeaders['X-Plex-Container-Size'] = '1000'
 
-                # Fetch content from Plex server (includeGuids=1 populates external GUIDs directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -293,23 +294,13 @@ function MassDownloadPlexArtwork {
                     $Labels = ""
                 }
                 $FileMetadata = $Metadata.MediaContainer.$contentquery.media.part.stream
-                $Resolution = $null
-                # Get Resolution
-                if ($FileMetadata) {
-                    $FileMetadata | ForEach-Object {
-                        if ($_.streamType -eq '1') {
-                            $Resolution = $_.displayTitle
-                        }
-                    }
-                }
+                $Resolution = Get-MediaItemResolution -FileMetadata $FileMetadata -Media $Metadata.MediaContainer.$contentquery.media -Location $location -LibraryName $Library.Name -MatchedPath $Matchedpath -Type $Metadata.MediaContainer.$contentquery.type
                 $temp = New-Object psobject
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Name" -Value $Library.Name
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $Metadata.MediaContainer.$contentquery.type
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $($Library.language.split("-")[0])
                 $temp | Add-Member -MemberType NoteProperty -Name "title" -Value $($item.title)
-                if ($FileMetadata) {
-                    $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
-                }
+                $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
                 $temp | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $($item.originalTitle)
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $SeasonNames
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $SeasonNumbers
@@ -541,8 +532,8 @@ function MassDownloadPlexArtwork {
                     $TestPath = $EntryDir
                     $Testfile = "poster"
 
-                    if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                        New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                    if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                        New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                     }
                 }
                 Else {
@@ -574,7 +565,7 @@ function MassDownloadPlexArtwork {
                 if ($global:Posters -eq 'true') {
                     $checkedItems.Add($hashtestpath)
 
-                    if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         # Define Global Variables
                         $SkippingText = 'false'
                         $global:tmdbid = $entry.tmdbid
@@ -625,7 +616,7 @@ function MassDownloadPlexArtwork {
 
                             }
                             # Move file back to original naming with Brackets.
-                            if (Get-ChildItem -LiteralPath $PosterImage -ErrorAction SilentlyContinue -WarningAction SilentlyContinue) {
+                            if (Test-Path -LiteralPath $PosterImage -PathType Leaf) {
                                 try {
                                     if ($LibraryFolders -eq 'true' -and !(Test-Path -LiteralPath $EntryDir)) {
                                         New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
@@ -669,8 +660,8 @@ function MassDownloadPlexArtwork {
                         $TestPath = $EntryDir
                         $Testfile = "background"
 
-                        if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                            New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                        if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                            New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                         }
                     }
                     Else {
@@ -697,7 +688,7 @@ function MassDownloadPlexArtwork {
                     $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                     $checkedItems.Add($hashtestpath)
 
-                    if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         # Define Global Variables
                         $SkippingText = 'false'
                         $global:tmdbid = $entry.tmdbid
@@ -863,8 +854,8 @@ function MassDownloadPlexArtwork {
                 $TestPath = $EntryDir
                 $Testfile = "poster"
 
-                if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                    New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                    New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                 }
             }
             Else {
@@ -899,7 +890,7 @@ function MassDownloadPlexArtwork {
             if ($global:Posters -eq 'true') {
                 $checkedItems.Add($hashtestpath)
 
-                if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                     $Arturl = $null
                     if ($entry.PlexPosterUrl -like "/library/*") {
                         $Arturl = $plexurl + $entry.PlexPosterUrl
@@ -936,7 +927,7 @@ function MassDownloadPlexArtwork {
                             $global:errorCount = Increment-GlobalStat 'errorCount'; Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
 
                         }
-                        if (Get-ChildItem -LiteralPath $PosterImage -ErrorAction SilentlyContinue -WarningAction SilentlyContinue) {
+                        if (Test-Path -LiteralPath $PosterImage -PathType Leaf) {
                             # Move file back to original naming with Brackets.
                             try {
                                 # Attempt to move the item
@@ -979,8 +970,8 @@ function MassDownloadPlexArtwork {
                     $TestPath = $EntryDir
                     $Testfile = "background"
 
-                    if (!(Get-ChildItem -LiteralPath $EntryDir -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)) {
-                        New-Item -ItemType Directory -path $EntryDir -Force | out-null
+                    if (-not (Test-Path -LiteralPath $EntryDir -PathType Container)) {
+                        New-Item -ItemType Directory -Path $EntryDir -Force | Out-Null
                     }
                 }
                 Else {
@@ -1012,7 +1003,7 @@ function MassDownloadPlexArtwork {
                 $backgroundImage = $backgroundImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                 $checkedItems.Add($hashtestpath)
 
-                if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                     # Define Global Variables
                     $SkippingText = 'false'
                     $global:tmdbid = $entry.tmdbid
@@ -1180,7 +1171,7 @@ function MassDownloadPlexArtwork {
                     $SeasonImage = $SeasonImage.Replace('[', '_').Replace(']', '_').Replace('{', '_').Replace('}', '_')
                     $checkedItems.Add($hashtestpath)
 
-                    if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                    if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                         $Arturl = $null
                         if ($global:PlexSeasonUrl -like "/library/*") {
                             $Arturl = $plexurl + $global:PlexSeasonUrl
@@ -1342,7 +1333,7 @@ function MassDownloadPlexArtwork {
                             $cjkTitlePattern = '[\p{IsHiragana}\p{IsKatakana}\p{IsCJKUnifiedIdeographs}\p{IsThai}]'
                             $checkedItems.Add($hashtestpath)
 
-                            if (($null -ne $FileTestOnTrigger -and $FileTestOnTrigger -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
+                            if ((($Mode -in @('tautulli', 'arr') -or $global:Mode -in @('tautulli', 'arr')) -and "$FileTestOnTrigger".ToLower() -eq 'false') -or (-not $directoryHashtable.ContainsKey("$hashtestpath"))) {
                                 $Arturl = $null
                                 if ($global:PlexTitleCardUrl -like "/library/*") {
                                     $Arturl = $plexurl + $global:PlexTitleCardUrl
@@ -1464,9 +1455,11 @@ function MassDownloadPlexArtwork {
     $argTruncated = if ($TextTruncatedCount -is [array]) { $TextTruncatedCount.count } else { 0 }
     Send-SummaryNotification -ScriptMode $Mode -FormattedTimespawn $FormattedTimespawn -ErrorCount $errorCount -FallbackCount $argFallback -TextlessCount $argTextless -TruncatedCount $argTruncated -PosterUnknownCount $PosterUnknownCount -PosterCount $posterCount -BackgroundCount $BackgroundCount -SeasonCount $SeasonCount -EpisodeCount $EpisodeCount
 
+    # Calculate Counts
+    $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
     # Export json
     $jsonObject = [PSCustomObject]@{
-        Posters              = if ($posterCount) { $posterCount } Else { 0 }
+        Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
         Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
         Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
         Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
@@ -1660,9 +1653,11 @@ function MassDownloadJellyEmbyArtwork {
     $argTruncated = if ($TextTruncatedCount -is [array]) { $TextTruncatedCount.count } else { 0 }
     Send-SummaryNotification -ScriptMode $Mode -FormattedTimespawn $FormattedTimespawn -ErrorCount $errorCount -FallbackCount $argFallback -TextlessCount $argTextless -TruncatedCount $argTruncated -PosterUnknownCount $PosterUnknownCount -PosterCount $posterCount -BackgroundCount $BackgroundCount -SeasonCount $SeasonCount -EpisodeCount $EpisodeCount
 
+    # Calculate Counts
+    $CalculatedCount = [Math]::Max(0, $posterCount - $SeasonCount - $BackgroundCount - $EpisodeCount)
     # Export json
     $jsonObject = [PSCustomObject]@{
-        Posters              = if ($posterCount) { $posterCount } Else { 0 }
+        Posters              = if ($CalculatedCount) { $CalculatedCount } Else { 0 }
         Backgrounds          = if ($BackgroundCount) { $BackgroundCount } Else { 0 }
         Titlecards           = if ($EpisodeCount) { $EpisodeCount } Else { 0 }
         Seasons              = if ($SeasonCount) { $SeasonCount } Else { 0 }
@@ -1766,8 +1761,8 @@ function MassRestorePlexArtwork {
                 $PlexHeaders['X-Plex-Container-Start'] = $searchsize
                 $PlexHeaders['X-Plex-Container-Size'] = '1000'
 
-                # Fetch content from Plex server (includeGuids=1 populates external GUIDs directly in section listing)
-                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1" -Headers $PlexHeaders
+                # Fetch content from Plex server (includeGuids=1 and includeStreams=1 populate external GUIDs and media streams directly in section listing)
+                $response = Invoke-PlexWebRequest -Uri "$PlexUrl/library/sections/$($Library.ID)/all?includeGuids=1&includeStreams=1" -Headers $PlexHeaders
 
                 # Convert response content to XML
                 [xml]$additionalContent = $response.Content
@@ -2000,23 +1995,13 @@ function MassRestorePlexArtwork {
                     $Labels = ""
                 }
                 $FileMetadata = $Metadata.MediaContainer.$contentquery.media.part.stream
-                $Resolution = $null
-                # Get Resolution
-                if ($FileMetadata) {
-                    $FileMetadata | ForEach-Object {
-                        if ($_.streamType -eq '1') {
-                            $Resolution = $_.displayTitle
-                        }
-                    }
-                }
+                $Resolution = Get-MediaItemResolution -FileMetadata $FileMetadata -Media $Metadata.MediaContainer.$contentquery.media -Location $location -LibraryName $Library.Name -MatchedPath $Matchedpath -Type $Metadata.MediaContainer.$contentquery.type
                 $temp = New-Object psobject
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Name" -Value $Library.Name
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Type" -Value $Metadata.MediaContainer.$contentquery.type
                 $temp | Add-Member -MemberType NoteProperty -Name "Library Language" -Value $($Library.language.split("-")[0])
                 $temp | Add-Member -MemberType NoteProperty -Name "title" -Value $($item.title)
-                if ($FileMetadata) {
-                    $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
-                }
+                $temp | Add-Member -MemberType NoteProperty -Name "Resolution" -Value $Resolution
                 $temp | Add-Member -MemberType NoteProperty -Name "originalTitle" -Value $($item.originalTitle)
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value $SeasonNames
                 $temp | Add-Member -MemberType NoteProperty -Name "SeasonNumbers" -Value $SeasonNumbers
