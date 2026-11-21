@@ -92,7 +92,14 @@ def poster_cache_path(cache_root, asset_type, media_type, tmdb_id, tvdb_id, seas
     identity = f"tmdb-{tmdb_id}" if tmdb_id else f"tvdb-{tvdb_id}"
     suffix = f"-s{season_number}" if season_number is not None else ""
     suffix += f"-e{episode_number}" if episode_number is not None else ""
-    return Path(cache_root) / f"{media_type}-{asset_type}-{identity}{suffix}-{digest}.jpg"
+    cache_root_path = Path(cache_root).resolve()
+    filename = f"{media_type}-{asset_type}-{identity}{suffix}-{digest}.jpg"
+    candidate = (cache_root_path / filename).resolve()
+    try:
+        candidate.relative_to(cache_root_path)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid cache path")
+    return candidate
 
 
 def _api_config(config):

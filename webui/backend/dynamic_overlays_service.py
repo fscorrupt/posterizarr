@@ -1734,7 +1734,7 @@ def import_yaml_to_visual(raw_yaml_text: str) -> Dict[str, Any]:
             extracted_keys = extract_kometa_api_keys(data)
             if extracted_keys:
                 save_dynamic_overlays_settings(extracted_keys)
-                logger.info(f"Extracted API keys from imported Kometa YAML: {list(extracted_keys.keys())}")
+                logger.info("Extracted %d API key(s) from imported Kometa YAML.", len(extracted_keys))
         except Exception as ee:
             logger.warning(f"Error extracting API keys from imported YAML: {ee}")
 

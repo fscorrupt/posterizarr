@@ -231,7 +231,12 @@ def create_provider_router(validate_key: Callable, get_credentials: Callable, ge
             raise HTTPException(status_code=404, detail="No matching asset found in the requested library")
         config = get_config() or {}
         provider_override = None if provider == "auto" else provider
-        cached = poster_cache_path(get_cache_root(), asset_type, media_type, tmdb_id, tvdb_id, season_number, episode_number, config, provider_override)
+        cache_root = Path(get_cache_root()).resolve()
+        cached = poster_cache_path(cache_root, asset_type, media_type, tmdb_id, tvdb_id, season_number, episode_number, config, provider_override).resolve()
+        try:
+            cached.relative_to(cache_root)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cache path")
         if cached.is_file():
             return FileResponse(cached, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
         if not create:
