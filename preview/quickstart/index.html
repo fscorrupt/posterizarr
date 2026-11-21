@@ -442,6 +442,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#bonus-apply-a-custom-png-overlay-to-one-library-eg-a-bootlegs-badge" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Bonus: Apply a Custom PNG Overlay to One Library (e.g. a "Bootlegs" Badge)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#where-to-go-next" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1777,6 +1788,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#bonus-apply-a-custom-png-overlay-to-one-library-eg-a-bootlegs-badge" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Bonus: Apply a Custom PNG Overlay to One Library (e.g. a "Bootlegs" Badge)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#where-to-go-next" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1903,6 +1925,26 @@ to <strong>Builders &gt; Dynamic Overlays</strong> and click <strong>Setup Wizar
 <li>Refresh the item in Jellyfin, Plex, or Emby — your overlaid poster is now
    live, while your clean <code>/assets</code> original stays untouched on disk.</li>
 </ol>
+<hr />
+<h2 id="bonus-apply-a-custom-png-overlay-to-one-library-eg-a-bootlegs-badge">Bonus: Apply a Custom PNG Overlay to One Library (e.g. a "Bootlegs" Badge)</h2>
+<p>Want to slap your own custom PNG badge or frame onto just one library (such as a
+<code>Cam</code> or <code>Bootlegs</code> movie library) without writing YAML?</p>
+<ul>
+<li><strong>Quick difference:</strong> <strong>Builders &gt; Overlay Builder</strong> saves static frames in
+  <code>Overlayfiles/</code> for global asset generation, while <strong>Builders &gt; Dynamic
+  Overlays</strong> applies rules <strong>per library</strong> in RAM (and can reuse images you
+  created in Overlay Builder).</li>
+<li>Open <strong>Builders &gt; Dynamic Overlays &gt; Libraries &amp; Rules</strong>.</li>
+<li>On the target library card (for example <code>Cam</code>), click <strong>+ Add Overlay</strong> and
+   choose <strong>Custom PNG Image</strong>.</li>
+<li>Either upload a PNG/JPG/WebP file or choose an existing PNG from <strong>From
+   Overlay Builder / Assets</strong>.</li>
+<li>Pick <strong>Corner Badge</strong> (choose corner, offset, and optional scale width) or
+   <strong>Full Poster / Frame</strong> (ideal for full-size Overlay Builder frames), pick
+   the <strong>Builder Level</strong>, and click <strong>Add Rule to Library</strong>.</li>
+<li>Inspect the result in <strong>Live Preview</strong>, then sync only that library via
+   <strong>Sync &amp; Maintenance &gt; Synchronize</strong>.</li>
+</ul>
 <hr />
 <h2 id="where-to-go-next">Where to Go Next</h2>
 <ul>

@@ -6905,6 +6905,14 @@ configurations are unaffected.</p>
 <td><code>POST /api/dynamic-overlays/episode-title-changes/fast-normal-run</code></td>
 <td>Confirmed Fast Normal Run over <code>candidate_ids</code> or <code>all_eligible</code>, using the same search and filters. Optional <code>force_unknown_text: true</code> includes safe uncertain-text candidates.</td>
 </tr>
+<tr>
+<td><code>GET /api/dynamic-overlays/custom-image-sources</code></td>
+<td>Lists available custom image files from <strong>Overlay Builder</strong> (<code>Overlayfiles/</code>) and <code>Overlayfiles/dynamic_overlays/assets/</code> (excluding built-in default subdirectories).</td>
+</tr>
+<tr>
+<td><code>POST /api/dynamic-overlays/rules/add-custom-image</code></td>
+<td>Multipart upload (<code>file</code>) or existing-image reuse (<code>existing_source</code> + <code>existing_image</code>) that copies/validates the image, writes a <code>custom_&lt;name&gt;.yml</code> (<code>plex_all: true</code>) rule, and attaches it to a single library in <code>config.yml</code>.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="overlay-bundles">Overlay Bundles</h3>
