@@ -1,0 +1,113 @@
+libraries:
+  poster-cinema:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: movie, horizontal_offset: 30, vertical_offset: 35, back_radius: 6}
+      - default: ratings
+        template_variables: {builder_level: movie, sources: [imdb, tmdb, letterboxd], theme: brand, orientation: vertical, horizontal_align: right, vertical_align: top, horizontal_offset: 30, vertical_offset: 35, font_size: 30, spacing: 10}
+  poster-vault:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: movie, mode: banner}
+      - default: single_rating
+        template_variables: {builder_level: movie, theme: dark, contrast_box: false, horizontal_align: right, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 55, font_size: 38}
+      - default: studio
+        template_variables: {builder_level: movie, horizontal_align: left, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 55, back_color: "#00000000", scale_height: 60}
+  poster-scoreboard:
+    overlay_files:
+      - default: ratings
+        template_variables: {builder_level: movie, sources: [imdb, tomatoes, tmdb], theme: dark, contrast_box: false, orientation: horizontal, horizontal_align: right, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 45, font_size: 32, spacing: 18}
+  poster-polyglot:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: movie, horizontal_offset: 30, vertical_offset: 35}
+      - default: languages
+        template_variables: {builder_level: movie, languages: [de, en, ja], overlay_limit: 3, horizontal_align: left, vertical_align: bottom, horizontal_offset: 30, vertical_offset: 40, hide_text: true}
+      - default: ratings
+        template_variables: {builder_level: movie, sources: [imdb], theme: dark, horizontal_align: right, vertical_align: top, horizontal_offset: 30, vertical_offset: 35, font_size: 32}
+  show-languages:
+    overlay_files:
+      - default: languages
+        template_variables: {builder_level: show, languages: [de, en, ja], overlay_limit: 3, hide_text: true, horizontal_align: left, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 200}
+      - default: ratings
+        template_variables: {builder_level: show, sources: [imdb, tmdb], theme: dark, contrast_box: false, orientation: vertical, horizontal_align: right, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 35, font_size: 32}
+  show-audio:
+    overlay_files:
+      - default: audio_codec
+        template_variables: {builder_level: show, style: compact, horizontal_align: left, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 200, back_color: "#00000000"}
+      - default: languages
+        template_variables: {builder_level: show, languages: [de, en], overlay_limit: 2, hide_text: false, back_color: "#00000000", horizontal_align: right, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 200}
+  show-minimal:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: show, horizontal_offset: 35, vertical_offset: 40, back_color: "#00000099"}
+      - default: ratings
+        template_variables: {builder_level: show, sources: [imdb], theme: dark, contrast_box: true, horizontal_align: right, vertical_align: top, horizontal_offset: 35, vertical_offset: 40, font_size: 32}
+      - default: status
+        template_variables: {builder_level: show, horizontal_align: center, vertical_align: bottom, horizontal_offset: 0, vertical_offset: 23, font: Colus-Regular.ttf, font_size: 80, font_color_airing: "#27C24C", font_color_returning: "#FFA500", font_color_canceled: "#ED1F1F", font_color_ended: "#FF0000", back_color: "#00000000", back_height: 149, back_width: 965}
+      - default: network
+        template_variables: {builder_level: show, horizontal_align: right, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 55, scale_height: 60, back_color: "#00000000"}
+  season-premiere:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: season, horizontal_offset: 30, vertical_offset: 35}
+      - default: ratings
+        template_variables: {builder_level: season, sources: [imdb, tmdb], theme: brand, orientation: vertical, horizontal_align: right, vertical_align: top, horizontal_offset: 30, vertical_offset: 35, font_size: 30}
+      - default: network
+        template_variables: {builder_level: season, horizontal_align: right, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 60, scale_height: 60, back_color: "#00000000"}
+  season-scoreboard:
+    overlay_files:
+      - default: ratings
+        template_variables: {builder_level: season, sources: [imdb, tomatoes, tmdb], theme: dark, contrast_box: false, orientation: vertical, horizontal_align: right, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 220, font_size: 32, spacing: 14}
+      - default: audio_codec
+        template_variables: {builder_level: season, style: compact, horizontal_align: left, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 220, back_color: "#00000000"}
+  season-languages:
+    overlay_files:
+      - default: languages
+        template_variables: {builder_level: season, languages: [de, en, ja], overlay_limit: 3, horizontal_align: left, vertical_align: bottom, horizontal_offset: 35, vertical_offset: 200, hide_text: true, vertical: false}
+      - default: ratings
+        template_variables: {builder_level: season, sources: [imdb], theme: dark, contrast_box: false, horizontal_align: right, vertical_align: bottom, horizontal_offset: 30, vertical_offset: 35, font_size: 32}
+  season-spotlight:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: season, mode: banner}
+      - default: ratings
+        template_variables: {builder_level: season, sources: [imdb, tmdb], theme: dark, orientation: vertical, horizontal_align: right, vertical_align: top, horizontal_offset: 30, vertical_offset: 140, font_size: 30}
+  titlecard-cinema:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: episode, horizontal_offset: 40, vertical_offset: 35, scale_height: 55}
+      - default: ratings
+        template_variables: {builder_level: episode, sources: [imdb, tmdb], theme: brand, horizontal_align: right, vertical_align: top, horizontal_offset: 40, vertical_offset: 35, font_size: 28}
+  titlecard-scoreboard:
+    overlay_files:
+      - default: ratings
+        template_variables: {builder_level: episode, sources: [imdb, tmdb], theme: dark, contrast_box: false, horizontal_align: right, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 30, font_size: 28}
+      - default: runtimes
+        template_variables: {builder_level: episode, horizontal_align: left, vertical_align: top, horizontal_offset: 40, vertical_offset: 40, font_size: 48, text: "", format: "<<runtimeH>>h <<runtimeM>>m"}
+  titlecard-languages:
+    overlay_files:
+      - default: languages
+        template_variables: {builder_level: episode, languages: [de, en, ja], overlay_limit: 3, horizontal_align: left, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 130, hide_text: true}
+      - default: ratings
+        template_variables: {builder_level: episode, sources: [imdb], theme: dark, contrast_box: false, horizontal_align: right, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 130, font_size: 28}
+  titlecard-minimal:
+    overlay_files:
+      - default: audio_codec
+        template_variables: {builder_level: episode, style: compact, horizontal_align: right, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 130, back_color: "#00000000"}
+      - default: resolution
+        template_variables: {builder_level: episode, horizontal_align: left, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 130, scale_height: 55, back_color: "#00000000"}
+  titlecard-anime-canon:
+    overlay_files:
+      - default: ratings
+        template_variables: {builder_level: episode, sources: [imdb, mal], theme: dark, contrast_box: false, horizontal_align: left, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 30, font_size: 28}
+      - default: languages
+        template_variables: {builder_level: episode, languages: [ja, en], overlay_limit: 2, hide_text: true, horizontal_align: left, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 110}
+  titlecard-anime-filler:
+    overlay_files:
+      - default: audio_codec
+        template_variables: {builder_level: episode, style: compact, horizontal_align: left, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 30, back_color: "#00000000"}
+  titlecard-anime-mixed:
+    overlay_files:
+      - default: resolution
+        template_variables: {builder_level: episode, horizontal_align: left, vertical_align: bottom, horizontal_offset: 40, vertical_offset: 130, scale_height: 55, back_color: "#00000000"}
