@@ -97,6 +97,21 @@
   <!-- sponsors --><!-- sponsors -->
 
   <br>
+
+  <h3>⭐ Star History</h3>
+  <p>Star this repo if Posterizarr helps organize your media library!</p>
+
+[![Star History of fscorrupt/posterizarr](https://starhistory.link/fscorrupt/posterizarr.svg?theme=amber&style=space)](https://starhistory.link/fscorrupt/posterizarr)
+
+  <br>
+
+  <h3>📦 Semantic Versioning</h3>
+  <p>
+    <img src="docs/images/versioning.jpg" alt="Version Management" width="350"><br>
+    <em>Version synchronization is critical for update detection</em>
+  </p>
+
+  <br>
   <hr>
   Optional anonymous telemetry, disable anytime with <code>"telemetry": false</code> (<a href="https://fscorrupt.github.io/posterizarr/telemetry/">details</a> · <a href="telemetry-worker/worker.js">source</a>)<br>
   The project maintainer reviews and tests AI-assisted UI and web changes before they are committed.<br>
