@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Download, Globe, Loader2, Upload, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
@@ -61,11 +62,16 @@ export default function OverlayBundleTransfer({
 
   useEffect(() => {
     if (!showCommunityModal) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onEscape = (event) => {
       if (event.key === "Escape" && !busy) setShowCommunityModal(false);
     };
     document.addEventListener("keydown", onEscape);
-    return () => document.removeEventListener("keydown", onEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onEscape);
+    };
   }, [showCommunityModal, busy]);
 
   useEffect(() => {
@@ -236,7 +242,7 @@ export default function OverlayBundleTransfer({
     </button>
     <input ref={inputRef} type="file" accept=".zip,application/zip" className="hidden" aria-label={t("overlayBundle.fileLabel")} onChange={inspectBundle} />
 
-    {showCommunityModal && (
+    {showCommunityModal && createPortal(
       <div
         className="app-dialog-backdrop fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-5"
         onClick={() => !busy && setShowCommunityModal(false)}
@@ -271,10 +277,11 @@ export default function OverlayBundleTransfer({
             />
           </div>
         </section>
-      </div>
+      </div>,
+      document.body
     )}
 
-    {preview && <div className="app-dialog-backdrop fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-3 sm:p-5">
+    {preview && createPortal(<div className="app-dialog-backdrop fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-3 sm:p-5">
       <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="overlay-bundle-title" className="app-dialog-panel flex max-h-[calc(100dvh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-theme bg-theme-card text-theme-text shadow-2xl">
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-theme p-4">
           <div>
@@ -330,6 +337,6 @@ export default function OverlayBundleTransfer({
           </button>
         </footer>
       </section>
-    </div>}
+    </div>, document.body)}
   </>;
 }

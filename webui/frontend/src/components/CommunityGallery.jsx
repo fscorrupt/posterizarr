@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   CheckCircle2,
@@ -581,7 +582,7 @@ export default function CommunityGallery({
       )}
 
       {/* Lightbox Modal */}
-      {lightbox && (
+      {lightbox && createPortal(
         <div
           className="fixed inset-0 z-[10001] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setLightbox(null)}
@@ -643,7 +644,8 @@ export default function CommunityGallery({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
