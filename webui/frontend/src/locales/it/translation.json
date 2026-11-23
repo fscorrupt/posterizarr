@@ -645,7 +645,9 @@
       },
       "resetPrompts": "Ripristina finestre modali",
       "resetPromptsTooltip": "Ripristina tutte le finestre di conferma",
-      "promptsReset": "Finestre di conferma delle modalità ripristinate."
+      "promptsReset": "Finestre di conferma delle modalità ripristinate.",
+      "resetOrder": "Ripristina ordine",
+      "resetOrderTooltip": "Ripristina l'ordine predefinito delle schede di avvio rapido"
     },
     "logoUpdater": {
       "title": "Modalità Aggiornatore Logo",

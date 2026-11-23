@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Play,
@@ -24,6 +24,7 @@ import {
   Search, // <--- Added Search Icon
   Upload,
   FileCheck,
+  GripVertical,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ConfirmDialog from "./ConfirmDialog";
@@ -39,6 +40,53 @@ import SiloSupportNotice, { useSiloEnabled } from "./SiloSupportNotice";
 import MediaServerLogo from "./MediaServerLogo";
 
 const API_URL = "/api";
+const QUICK_RUN_ORDER_STORAGE_KEY = "run_modes_quick_order";
+const DEFAULT_QUICK_RUN_ORDER = [
+  "normal",
+  "testing",
+  "backup",
+  "restore",
+  "syncJellyfin",
+  "syncEmby",
+  "syncSilo",
+  "logoUpdater",
+  "resetPosters",
+];
+
+const normalizeQuickRunOrder = (candidate) => {
+  if (!Array.isArray(candidate)) {
+    return [...DEFAULT_QUICK_RUN_ORDER];
+  }
+  const seen = new Set();
+  const valid = [];
+  for (const id of candidate) {
+    if (
+      typeof id === "string" &&
+      DEFAULT_QUICK_RUN_ORDER.includes(id) &&
+      !seen.has(id)
+    ) {
+      seen.add(id);
+      valid.push(id);
+    }
+  }
+  for (const id of DEFAULT_QUICK_RUN_ORDER) {
+    if (!seen.has(id)) {
+      valid.push(id);
+    }
+  }
+  return valid;
+};
+
+const loadQuickRunOrder = () => {
+  try {
+    const saved = localStorage.getItem(QUICK_RUN_ORDER_STORAGE_KEY);
+    if (!saved) return [...DEFAULT_QUICK_RUN_ORDER];
+    return normalizeQuickRunOrder(JSON.parse(saved));
+  } catch (e) {
+    console.error("Failed to load quick run order:", e);
+    return [...DEFAULT_QUICK_RUN_ORDER];
+  }
+};
 
 // ============================================================================
 // LOG FILE MAPPING - Maps run modes to their respective log files
@@ -635,6 +683,74 @@ function RunModes() {
   };
 
   const [hasSkippedModals, setHasSkippedModals] = useState(checkSkippedModals);
+
+  const [quickRunOrder, setQuickRunOrder] = useState(loadQuickRunOrder);
+  const quickRunOrderRef = useRef(quickRunOrder);
+  const [draggedQuickRunId, setDraggedQuickRunId] = useState(null);
+  const didDragQuickRunRef = useRef(false);
+
+  const isQuickRunOrderCustom =
+    quickRunOrder.length !== DEFAULT_QUICK_RUN_ORDER.length ||
+    quickRunOrder.some((id, idx) => id !== DEFAULT_QUICK_RUN_ORDER[idx]);
+
+  const saveQuickRunOrder = (newOrder) => {
+    try {
+      localStorage.setItem(QUICK_RUN_ORDER_STORAGE_KEY, JSON.stringify(newOrder));
+    } catch (e) {
+      console.error("Failed to save quick run order:", e);
+    }
+  };
+
+  const resetQuickRunOrder = () => {
+    const defaultOrder = [...DEFAULT_QUICK_RUN_ORDER];
+    quickRunOrderRef.current = defaultOrder;
+    setQuickRunOrder(defaultOrder);
+    saveQuickRunOrder(defaultOrder);
+  };
+
+  const handleQuickRunDragStart = (e, id) => {
+    if (loading || status.running) {
+      e.preventDefault();
+      return;
+    }
+    setDraggedQuickRunId(id);
+    didDragQuickRunRef.current = true;
+    quickRunOrderRef.current = quickRunOrder;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", id);
+    }
+  };
+
+  const handleQuickRunDragOver = (e, targetId) => {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "move";
+    }
+    if (!draggedQuickRunId || draggedQuickRunId === targetId) return;
+
+    const current = quickRunOrderRef.current;
+    const draggedIndex = current.indexOf(draggedQuickRunId);
+    const targetIndex = current.indexOf(targetId);
+    if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) {
+      return;
+    }
+    const next = [...current];
+    const [moved] = next.splice(draggedIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    quickRunOrderRef.current = next;
+    setQuickRunOrder(next);
+  };
+
+  const handleQuickRunDragEnd = () => {
+    if (draggedQuickRunId) {
+      saveQuickRunOrder(quickRunOrderRef.current);
+    }
+    setDraggedQuickRunId(null);
+    setTimeout(() => {
+      didDragQuickRunRef.current = false;
+    }, 0);
+  };
 
   const resetModalPreferences = () => {
     [
@@ -2454,153 +2570,161 @@ const LogoUpdaterModal = React.memo(({
             <Play className="w-5 h-5 text-theme-primary" />
             {t("runModes.quickRun.title")}
           </h2>
-          {hasSkippedModals && (
-            <button
-              type="button"
-              onClick={resetModalPreferences}
-              className="text-xs text-theme-muted hover:text-theme-primary transition-colors flex items-center gap-1.5 px-2.5 py-1 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg cursor-pointer shadow-sm"
-              title={t("runModes.quickRun.resetPromptsTooltip")}
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>{t("runModes.quickRun.resetPrompts")}</span>
-            </button>
+          {(isQuickRunOrderCustom || hasSkippedModals) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {isQuickRunOrderCustom && (
+                <button
+                  type="button"
+                  onClick={resetQuickRunOrder}
+                  className="text-xs text-theme-muted hover:text-theme-primary transition-colors flex items-center gap-1.5 px-2.5 py-1 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg cursor-pointer shadow-sm"
+                  title={t("runModes.quickRun.resetOrderTooltip")}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{t("runModes.quickRun.resetOrder")}</span>
+                </button>
+              )}
+              {hasSkippedModals && (
+                <button
+                  type="button"
+                  onClick={resetModalPreferences}
+                  className="text-xs text-theme-muted hover:text-theme-primary transition-colors flex items-center gap-1.5 px-2.5 py-1 bg-theme-bg hover:bg-theme-hover border border-theme rounded-lg cursor-pointer shadow-sm"
+                  title={t("runModes.quickRun.resetPromptsTooltip")}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{t("runModes.quickRun.resetPrompts")}</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="run-mode-actions grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {/* Normal Mode */}
-          <button
-            onClick={handleNormalModeClick}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <Play className="w-8 h-8 text-theme-primary mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.quickRun.normal.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.quickRun.normal.description")}
-            </p>
-          </button>
+        {(() => {
+          const isDisabled = loading || status.running;
+          const quickRunCardsById = {
+            normal: {
+              onClick: handleNormalModeClick,
+              icon: <Play className="w-8 h-8 text-theme-primary mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.quickRun.normal.title"),
+              description: t("runModes.quickRun.normal.description"),
+            },
+            testing: {
+              onClick: handleTestingModeClick,
+              icon: <TestTube className="w-8 h-8 text-blue-400 mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.quickRun.testing.title"),
+              description: t("runModes.quickRun.testing.description"),
+            },
+            backup: {
+              onClick: handleBackupModeClick,
+              icon: <Save className="w-8 h-8 text-orange-400 mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.quickRun.backup.title"),
+              description: t("runModes.quickRun.backup.description"),
+            },
+            restore: {
+              onClick: () => setShowRestoreModeModal(true),
+              icon: <Upload className="w-8 h-8 text-blue-400 mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.quickRun.restore.title"),
+              description: t("runModes.quickRun.restore.description"),
+            },
+            syncJellyfin: {
+              onClick: handleJellyfinSyncClick,
+              icon: <RefreshCw className="w-8 h-8 text-purple-400 mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.quickRun.syncJellyfin.title"),
+              description: t("runModes.quickRun.syncJellyfin.description"),
+            },
+            syncEmby: {
+              onClick: handleEmbySyncClick,
+              icon: <RefreshCw className="w-8 h-8 text-green-400 mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.quickRun.syncEmby.title"),
+              description: t("runModes.quickRun.syncEmby.description"),
+            },
+            syncSilo: {
+              onClick: () => setShowSiloSyncModal(true),
+              icon: <RefreshCw className="w-8 h-8 text-emerald-400 mb-3" />,
+              title: (
+                <>
+                  <MediaServerLogo server="silo" className="h-4 w-4 rounded-sm" />
+                  {t("silo.syncTitle")}
+                </>
+              ),
+              titleClassName: "font-semibold text-theme-text mb-1 flex items-center justify-center gap-2",
+              description: t("silo.syncDescription"),
+            },
+            logoUpdater: {
+              onClick: () => setShowLogoUpdaterModal(true),
+              icon: <ImageIcon className="w-8 h-8 text-blue-500 mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.quickRun.logoUpdater.title"),
+              description: t("runModes.quickRun.logoUpdater.description"),
+            },
+            resetPosters: {
+              onClick: () => setShowResetPostersModal(true),
+              icon: <RotateCcw className="w-8 h-8 text-red-400 mb-3 group-hover:scale-110 transition-transform" />,
+              title: t("runModes.reset.title"),
+              description: t("runModes.reset.description"),
+              isDanger: true,
+            },
+          };
 
-          {/* Testing Mode */}
-          <button
-            onClick={handleTestingModeClick}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <TestTube className="w-8 h-8 text-blue-400 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.quickRun.testing.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.quickRun.testing.description")}
-            </p>
-          </button>
+          return (
+            <div className="run-mode-actions grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {quickRunOrder.map((id) => {
+                const card = quickRunCardsById[id];
+                if (!card) return null;
+                const isDragging = draggedQuickRunId === id;
 
-          {/* Backup Mode */}
-          <button
-            onClick={handleBackupModeClick}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <Save className="w-8 h-8 text-orange-400 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.quickRun.backup.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.quickRun.backup.description")}
-            </p>
-          </button>
-
-          {/* Restore Mode */}
-          <button
-            onClick={() => setShowRestoreModeModal(true)}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <Upload className="w-8 h-8 text-blue-400 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.quickRun.restore.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.quickRun.restore.description")}
-            </p>
-          </button>
-
-          {/* Sync Jellyfin */}
-          <button
-            onClick={handleJellyfinSyncClick}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <RefreshCw className="w-8 h-8 text-purple-400 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.quickRun.syncJellyfin.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.quickRun.syncJellyfin.description")}
-            </p>
-          </button>
-
-          {/* Sync Emby */}
-          <button
-            onClick={handleEmbySyncClick}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <RefreshCw className="w-8 h-8 text-green-400 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.quickRun.syncEmby.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.quickRun.syncEmby.description")}
-            </p>
-          </button>
-
-          <button
-            onClick={() => setShowSiloSyncModal(true)}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <RefreshCw className="w-8 h-8 text-emerald-400 mb-3" />
-            <h3 className="font-semibold text-theme-text mb-1 flex items-center justify-center gap-2">
-              <MediaServerLogo server="silo" className="h-4 w-4 rounded-sm" />
-              {t("silo.syncTitle")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">{t("silo.syncDescription")}</p>
-          </button>
-
-          {/* Logo Updater Mode */}
-          <button
-            onClick={() => setShowLogoUpdaterModal(true)}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-theme-primary/20 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-theme-primary/30 hover:border-theme-primary transition-all group"
-          >
-            <ImageIcon className="w-8 h-8 text-blue-500 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.quickRun.logoUpdater.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.quickRun.logoUpdater.description")}
-            </p>
-          </button>
-
-          {/* Reset Posters Mode */}
-          <button
-            onClick={() => setShowResetPostersModal(true)}
-            disabled={loading || status.running}
-            className="flex flex-col items-center justify-center p-6 bg-theme-hover hover:bg-red-950/30 disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 rounded-lg border border-red-500/30 hover:border-red-500 transition-all group"
-          >
-            <RotateCcw className="w-8 h-8 text-red-400 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-semibold text-theme-text mb-1">
-              {t("runModes.reset.title")}
-            </h3>
-            <p className="text-sm text-theme-muted text-center">
-              {t("runModes.reset.description")}
-            </p>
-          </button>
-        </div>
+                return (
+                  <div
+                    key={id}
+                    role="button"
+                    tabIndex={isDisabled ? -1 : 0}
+                    aria-disabled={isDisabled || undefined}
+                    draggable={!isDisabled}
+                    onDragStart={(e) => handleQuickRunDragStart(e, id)}
+                    onDragOver={(e) => handleQuickRunDragOver(e, id)}
+                    onDrop={(e) => e.preventDefault()}
+                    onDragEnd={handleQuickRunDragEnd}
+                    onClick={() => {
+                      if (!isDisabled && !didDragQuickRunRef.current) {
+                        card.onClick();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (isDisabled) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        card.onClick();
+                      }
+                    }}
+                    className={`run-mode-card relative flex flex-col items-center justify-center p-6 rounded-lg border transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary ${
+                      isDisabled
+                        ? `bg-gray-800 cursor-not-allowed opacity-50 ${
+                            card.isDanger ? "border-red-500/30" : "border-theme-primary/30"
+                          }`
+                        : card.isDanger
+                        ? "bg-theme-hover hover:bg-red-950/30 border-red-500/30 hover:border-red-500 cursor-pointer"
+                        : "bg-theme-hover hover:bg-theme-primary/20 border-theme-primary/30 hover:border-theme-primary cursor-pointer"
+                    } ${isDragging ? "opacity-50" : ""}`}
+                  >
+                    {card.icon}
+                    <h3 className={card.titleClassName || "font-semibold text-theme-text mb-1"}>
+                      {card.title}
+                    </h3>
+                    <p className="text-sm text-theme-muted text-center">
+                      {card.description}
+                    </p>
+                    {!isDisabled && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-2 right-2 pointer-events-none opacity-0 group-hover:opacity-60 transition-opacity text-theme-muted"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Manual Mode */}

@@ -645,7 +645,9 @@
       },
       "resetPrompts": "Modaldialoge zurücksetzen",
       "resetPromptsTooltip": "Alle Bestätigungsdialoge wiederherstellen",
-      "promptsReset": "Bestätigungsdialoge für Ausführungsmodi wiederhergestellt."
+      "promptsReset": "Bestätigungsdialoge für Ausführungsmodi wiederhergestellt.",
+      "resetOrder": "Reihenfolge zurücksetzen",
+      "resetOrderTooltip": "Standardreihenfolge der Schnellstart-Karten wiederherstellen"
     },
     "logoUpdater": {
       "title": "Logo-Updater-Modus",

@@ -645,7 +645,9 @@
       },
       "resetPrompts": "Reset modal prompts",
       "resetPromptsTooltip": "Restore all confirmation dialogs",
-      "promptsReset": "Run mode confirmation dialogs restored."
+      "promptsReset": "Run mode confirmation dialogs restored.",
+      "resetOrder": "Reset order",
+      "resetOrderTooltip": "Restore default quick run card order"
     },
     "logoUpdater": {
       "title": "Logo Updater Mode",

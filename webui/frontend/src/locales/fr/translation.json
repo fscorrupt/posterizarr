@@ -645,7 +645,9 @@
       },
       "resetPrompts": "Réinitialiser les invites",
       "resetPromptsTooltip": "Restaurer toutes les boîtes de confirmation",
-      "promptsReset": "Boîtes de confirmation des modes d'exécution restaurées."
+      "promptsReset": "Boîtes de confirmation des modes d'exécution restaurées.",
+      "resetOrder": "Réinitialiser l'ordre",
+      "resetOrderTooltip": "Rétablir l'ordre par défaut des cartes de lancement rapide"
     },
     "logoUpdater": {
       "title": "Mode Mise à jour des logos",

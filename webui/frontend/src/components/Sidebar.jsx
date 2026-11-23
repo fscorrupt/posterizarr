@@ -374,29 +374,33 @@ const Sidebar = () => {
 
                 return (
                   <div key={item.id} onDragOver={(e) => handleDragOver(e, index)} onDragEnd={handleDragEnd} className={`relative ${isDragging ? "opacity-50" : ""}`}>
-                    <button
-                      type="button"
+                    <div
                       draggable={!isCollapsed}
                       onDragStart={(e) => handleDragStart(e, index)}
                       onMouseEnter={() => setHoveredItem(index)}
                       onMouseLeave={() => setHoveredItem(null)}
-                      onClick={toggleExpanded}
-                      className={`w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between px-4"} py-3 rounded-xl text-sm font-medium transition-all duration-200 group relative overflow-hidden ${isGroupActive && !isExpanded ? "bg-theme-primary/10 text-theme-primary border border-theme-primary/20" : inactiveClass}`}
-                      title={isCollapsed ? item.label : ""}
+                      className="relative"
                     >
-                      <div className="flex items-center relative z-10">
-                        <Icon className={`w-5 h-5 flex-shrink-0 ${isGroupActive ? "text-theme-primary" : ""}`} />
-                        {!isCollapsed && <span className="ml-3 font-medium">{item.label}</span>}
-                      </div>
-                      <div className="flex items-center gap-1 relative z-10">
-                        {!isCollapsed && (
-                          <>
-                            {hoveredItem === index && <GripVertical className="w-4 h-4 text-theme-muted opacity-60 cursor-grab active:cursor-grabbing" />}
-                            {isExpanded ? <ChevronDown className="w-4 h-4 opacity-70" /> : <ChevronRight className="w-4 h-4 opacity-70" />}
-                          </>
-                        )}
-                      </div>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={toggleExpanded}
+                        className={`w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between px-4"} py-3 rounded-xl text-sm font-medium transition-all duration-200 group relative overflow-hidden ${isGroupActive && !isExpanded ? "bg-theme-primary/10 text-theme-primary border border-theme-primary/20" : inactiveClass}`}
+                        title={isCollapsed ? item.label : ""}
+                      >
+                        <div className="flex items-center relative z-10">
+                          <Icon className={`w-5 h-5 flex-shrink-0 ${isGroupActive ? "text-theme-primary" : ""}`} />
+                          {!isCollapsed && <span className="ml-3 font-medium">{item.label}</span>}
+                        </div>
+                        <div className="flex items-center gap-1 relative z-10">
+                          {!isCollapsed && (
+                            <>
+                              {hoveredItem === index && <GripVertical className="w-4 h-4 text-theme-muted opacity-60 cursor-grab active:cursor-grabbing" />}
+                              {isExpanded ? <ChevronDown className="w-4 h-4 opacity-70" /> : <ChevronRight className="w-4 h-4 opacity-70" />}
+                            </>
+                          )}
+                        </div>
+                      </button>
+                    </div>
 
                     {isExpanded && !isCollapsed && (
                       <div className="ml-5 mt-1 space-y-1 pl-4 border-l-2 border-theme/50 animate-in slide-in-from-top-1 duration-200">

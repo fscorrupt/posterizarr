@@ -645,7 +645,9 @@
       },
       "resetPrompts": "Redefinir avisos modais",
       "resetPromptsTooltip": "Restaurar todas as caixas de confirmação",
-      "promptsReset": "Caixas de confirmação de modos restauradas."
+      "promptsReset": "Caixas de confirmação de modos restauradas.",
+      "resetOrder": "Redefinir ordem",
+      "resetOrderTooltip": "Restaurar a ordem padrão dos cartões de execução rápida"
     },
     "logoUpdater": {
       "title": "Modo Atualizador de Logos",
