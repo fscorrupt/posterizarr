@@ -4206,6 +4206,9 @@
     "applyAction": "Anwenden",
     "downloading": "Paket wird geladen...",
     "previewAndImport": "Prüfen & Importieren",
-    "loadBlueprintError": "Community-Blueprint konnte nicht geladen werden: {{message}}"
+    "loadBlueprintError": "Community-Blueprint konnte nicht geladen werden: {{message}}",
+    "downloadsCount": "{{count}} Downloads",
+    "sortDefault": "Standard",
+    "sortMostDownloaded": "Meistgeladen"
   }
 }

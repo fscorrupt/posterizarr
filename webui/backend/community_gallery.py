@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import stat
@@ -14,13 +15,18 @@ import uuid
 import zipfile
 from collections import OrderedDict
 from pathlib import Path, PurePosixPath
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 COMMUNITY_REPO = "fscorrupt/posterizarr-community"
 COMMUNITY_BRANCH = "main"
+COMMUNITY_STATS_BRANCH = "stats"
 COMMUNITY_RAW_BASE = f"https://raw.githubusercontent.com/{COMMUNITY_REPO}/{COMMUNITY_BRANCH}/"
+COMMUNITY_STATS_URL = f"https://raw.githubusercontent.com/{COMMUNITY_REPO}/{COMMUNITY_STATS_BRANCH}/stats.json"
+COMMUNITY_RELEASE_BASE = f"https://github.com/{COMMUNITY_REPO}/releases/download/"
 COMMUNITY_REPO_URL = f"https://github.com/{COMMUNITY_REPO}"
 
 CATALOG_TTL_SECONDS = 900
@@ -28,8 +34,19 @@ PREVIEW_CACHE_TTL_SECONDS = 900
 PREVIEW_CACHE_MAX_ITEMS = 8
 
 MAX_CATALOG_BYTES = 2 * 1024 * 1024
+MAX_STATS_BYTES = 2 * 1024 * 1024
 MAX_BLUEPRINT_BYTES = 512 * 1024
 MAX_BUNDLE_BYTES = 50 * 1024 * 1024
+
+_RELEASE_COMPONENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_ALLOWED_RELEASE_REDIRECT_HOSTS = frozenset(
+    {
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+        "github-releases.githubusercontent.com",
+    }
+)
 
 BLUEPRINT_BUNDLE_KIND = "posterizarr-blueprint-bundle"
 BLUEPRINT_BUNDLE_VERSION = 1
@@ -380,6 +397,172 @@ def _read_repo_bytes(rel_path: str, allowed_prefix: str, max_bytes: int) -> byte
         ) from exc
 
 
+def _validate_release_component(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned or ".." in cleaned or not _RELEASE_COMPONENT_RE.fullmatch(cleaned):
+        return None
+    return cleaned
+
+
+def _sanitize_stats_mapping(raw_map: object) -> dict[str, int]:
+    if not isinstance(raw_map, dict):
+        return {}
+    sanitized: dict[str, int] = {}
+    for key, val in raw_map.items():
+        if isinstance(key, str) and key and isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+            sanitized[key] = val
+    return sanitized
+
+
+def _fetch_community_stats() -> dict | None:
+    local_dir = os.environ.get("POSTERIZARR_COMMUNITY_LOCAL_DIR", "").strip()
+    try:
+        if local_dir:
+            root = Path(local_dir).resolve()
+            stats_path = (root / "stats.json").resolve()
+            if not stats_path.is_relative_to(root) or not stats_path.is_file():
+                return None
+            if stats_path.stat().st_size > MAX_STATS_BYTES:
+                return None
+            data = json.loads(stats_path.read_text(encoding="utf-8"))
+        else:
+            with httpx.Client(timeout=5.0, follow_redirects=False) as client:
+                with client.stream(
+                    "GET",
+                    COMMUNITY_STATS_URL,
+                    headers={"User-Agent": "Posterizarr-Community-Gallery"},
+                ) as response:
+                    if response.status_code == 404:
+                        return None
+                    response.raise_for_status()
+                    chunks: list[bytes] = []
+                    total = 0
+                    for chunk in response.iter_bytes():
+                        total += len(chunk)
+                        if total > MAX_STATS_BYTES:
+                            return None
+                        chunks.append(chunk)
+                    data = json.loads(b"".join(chunks).decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, httpx.HTTPError, ValueError) as exc:
+        logger.debug("Community download stats unavailable: %s", exc)
+        return None
+
+    if not isinstance(data, dict) or (
+        not isinstance(data.get("blueprints"), dict) and not isinstance(data.get("dynamic_overlays"), dict)
+    ):
+        return None
+
+    updated_at = data.get("updated_at")
+    return {
+        "updated_at": updated_at if isinstance(updated_at, str) else None,
+        "blueprints": _sanitize_stats_mapping(data.get("blueprints")),
+        "dynamic_overlays": _sanitize_stats_mapping(data.get("dynamic_overlays")),
+    }
+
+
+def _download_release_asset(release_tag: str, release_asset: str, max_bytes: int) -> bytes:
+    clean_tag = _validate_release_component(release_tag)
+    clean_asset = _validate_release_component(release_asset)
+    if not clean_tag or not clean_asset:
+        raise CommunityGalleryError("Invalid community release asset reference.", "invalidEntry")
+
+    current_url = f"{COMMUNITY_RELEASE_BASE}{quote(clean_tag, safe='')}/{quote(clean_asset, safe='')}"
+    try:
+        with httpx.Client(timeout=25.0, follow_redirects=False) as client:
+            for _ in range(5):
+                parsed = urlparse(current_url)
+                host = (parsed.hostname or "").lower()
+                if parsed.scheme != "https" or host not in _ALLOWED_RELEASE_REDIRECT_HOSTS:
+                    raise CommunityGalleryError(
+                        "Blocked redirect host while downloading community release asset.",
+                        "downloadFailed",
+                    )
+                with client.stream(
+                    "GET",
+                    current_url,
+                    headers={"User-Agent": "Posterizarr-Community-Gallery"},
+                ) as response:
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        location = response.headers.get("Location") or response.headers.get("location")
+                        if not location:
+                            raise CommunityGalleryError(
+                                "Redirect missing Location header for community release asset.",
+                                "downloadFailed",
+                            )
+                        next_url = urljoin(current_url, location.strip())
+                        next_parsed = urlparse(next_url)
+                        next_host = (next_parsed.hostname or "").lower()
+                        if next_parsed.scheme != "https" or next_host not in _ALLOWED_RELEASE_REDIRECT_HOSTS:
+                            raise CommunityGalleryError(
+                                "Blocked redirect host while downloading community release asset.",
+                                "downloadFailed",
+                            )
+                        current_url = next_url
+                        continue
+                    if response.status_code == 404:
+                        raise CommunityGalleryError("Community release asset was not found.", "entryNotFound")
+                    response.raise_for_status()
+                    chunks: list[bytes] = []
+                    total = 0
+                    for chunk in response.iter_bytes():
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise CommunityGalleryError("Community download exceeds size limit.", "sizeLimit")
+                        chunks.append(chunk)
+                    return b"".join(chunks)
+        raise CommunityGalleryError(
+            "Too many redirects while downloading community release asset.",
+            "downloadFailed",
+        )
+    except CommunityGalleryError:
+        raise
+    except httpx.HTTPError as exc:
+        raise CommunityGalleryError(
+            "Unable to download community release asset from GitHub.",
+            "downloadFailed",
+        ) from exc
+
+
+def _read_entry_bytes(
+    entry: dict,
+    max_bytes: int,
+    expected_sha: str | None,
+    checksum_error_msg: str,
+) -> bytes:
+    local_dir = os.environ.get("POSTERIZARR_COMMUNITY_LOCAL_DIR", "").strip()
+    release_tag = _validate_release_component(entry.get("release_tag"))
+    release_asset = _validate_release_component(entry.get("release_asset"))
+
+    if not local_dir and release_tag and release_asset:
+        try:
+            release_bytes = _download_release_asset(release_tag, release_asset, max_bytes)
+            if (
+                not isinstance(expected_sha, str)
+                or not expected_sha
+                or hashlib.sha256(release_bytes).hexdigest() == expected_sha
+            ):
+                return release_bytes
+            logger.warning(
+                "Release asset '%s' checksum mismatch for '%s'; falling back to raw GitHub file.",
+                release_asset,
+                entry.get("id"),
+            )
+        except CommunityGalleryError as exc:
+            logger.warning(
+                "Release asset download failed for '%s' (%s); falling back to raw GitHub file.",
+                entry.get("id"),
+                exc.code,
+            )
+
+    raw_bytes = _read_repo_bytes(entry["file"], entry["path"] + "/", max_bytes)
+    if isinstance(expected_sha, str) and expected_sha:
+        if hashlib.sha256(raw_bytes).hexdigest() != expected_sha:
+            raise CommunityGalleryError(checksum_error_msg, "checksumMismatch")
+    return raw_bytes
+
+
 def sanitize_blueprint_updates(raw_payload: object) -> dict:
     if not isinstance(raw_payload, dict):
         raise CommunityGalleryError("Blueprint payload must be a JSON object.", "invalidBlueprint")
@@ -463,7 +646,12 @@ def sanitize_manual_config_import(raw_payload: object) -> dict:
     return cleaned
 
 
-def _normalize_catalog_entry(raw_entry: object, expected_prefix: str, expected_kind: str) -> dict | None:
+def _normalize_catalog_entry(
+    raw_entry: object,
+    expected_prefix: str,
+    expected_kind: str,
+    downloads_map: dict[str, int] | None = None,
+) -> dict | None:
     if not isinstance(raw_entry, dict):
         return None
     entry_id = raw_entry.get("id")
@@ -491,6 +679,20 @@ def _normalize_catalog_entry(raw_entry: object, expected_prefix: str, expected_k
     normalized["file"] = clean_file
     normalized["preview_urls"] = preview_urls
     normalized["repo_url"] = f"{COMMUNITY_REPO_URL}/tree/{COMMUNITY_BRANCH}/{clean_path}"
+
+    clean_tag = _validate_release_component(raw_entry.get("release_tag"))
+    clean_asset = _validate_release_component(raw_entry.get("release_asset"))
+    if clean_tag and clean_asset:
+        normalized["release_tag"] = clean_tag
+        normalized["release_asset"] = clean_asset
+    else:
+        normalized.pop("release_tag", None)
+        normalized.pop("release_asset", None)
+
+    if downloads_map is not None:
+        normalized["downloads"] = downloads_map.get(entry_id, 0)
+    else:
+        normalized.pop("downloads", None)
     return normalized
 
 
@@ -510,15 +712,19 @@ def fetch_community_catalog(refresh: bool = False) -> dict:
     if not isinstance(data, dict):
         raise CommunityGalleryError("Community catalog format is invalid.", "catalogUnavailable")
 
+    stats = _fetch_community_stats()
+    bp_downloads = stats["blueprints"] if stats is not None else None
+    ov_downloads = stats["dynamic_overlays"] if stats is not None else None
+
     blueprints = [
         item
         for raw in (data.get("blueprints") or [])
-        if (item := _normalize_catalog_entry(raw, "blueprints/", "blueprint")) is not None
+        if (item := _normalize_catalog_entry(raw, "blueprints/", "blueprint", bp_downloads)) is not None
     ]
     dynamic_overlays = [
         item
         for raw in (data.get("dynamic_overlays") or [])
-        if (item := _normalize_catalog_entry(raw, "dynamic-overlays/", "dynamic-overlay")) is not None
+        if (item := _normalize_catalog_entry(raw, "dynamic-overlays/", "dynamic-overlay", ov_downloads)) is not None
     ]
 
     catalog = {
@@ -526,6 +732,7 @@ def fetch_community_catalog(refresh: bool = False) -> dict:
         "repo": COMMUNITY_REPO,
         "repo_url": COMMUNITY_REPO_URL,
         "submit_url": f"{COMMUNITY_REPO_URL}/blob/{COMMUNITY_BRANCH}/CONTRIBUTING.md",
+        "stats_updated_at": stats.get("updated_at") if stats is not None else None,
         "blueprints": blueprints,
         "dynamic_overlays": dynamic_overlays,
     }
@@ -981,12 +1188,13 @@ def fetch_community_blueprint(entry_id: str, overlayfiles_dir: Path | None = Non
     entry = _lookup_entry(entry_id, "blueprint")
     is_zip = entry["file"].lower().endswith(".zip")
     max_bytes = MAX_BLUEPRINT_BUNDLE_BYTES if is_zip else MAX_BLUEPRINT_BYTES
-    raw_bytes = _read_repo_bytes(entry["file"], entry["path"] + "/", max_bytes)
-
     expected_sha = entry.get("sha256")
-    if isinstance(expected_sha, str) and expected_sha:
-        if hashlib.sha256(raw_bytes).hexdigest() != expected_sha:
-            raise CommunityGalleryError("Blueprint checksum verification failed.", "checksumMismatch")
+    raw_bytes = _read_entry_bytes(
+        entry,
+        max_bytes,
+        expected_sha if isinstance(expected_sha, str) else None,
+        "Blueprint checksum verification failed.",
+    )
 
     if is_zip:
         unpacked = unpack_blueprint_bundle(raw_bytes)
@@ -1025,11 +1233,14 @@ def fetch_community_blueprint(entry_id: str, overlayfiles_dir: Path | None = Non
 
 def fetch_community_bundle(entry_id: str) -> tuple[dict, bytes, str]:
     entry = _lookup_entry(entry_id, "dynamic-overlay")
-    payload = _read_repo_bytes(entry["file"], entry["path"] + "/", MAX_BUNDLE_BYTES)
-    actual_sha = hashlib.sha256(payload).hexdigest()
     expected_sha = entry.get("bundle_sha256")
-    if isinstance(expected_sha, str) and expected_sha and actual_sha != expected_sha:
-        raise CommunityGalleryError("Overlay bundle checksum verification failed.", "checksumMismatch")
+    payload = _read_entry_bytes(
+        entry,
+        MAX_BUNDLE_BYTES,
+        expected_sha if isinstance(expected_sha, str) else None,
+        "Overlay bundle checksum verification failed.",
+    )
+    actual_sha = hashlib.sha256(payload).hexdigest()
 
     token = uuid.uuid4().hex
     now = time.monotonic()

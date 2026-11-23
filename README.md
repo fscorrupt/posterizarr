@@ -20,7 +20,8 @@
     <a href="https://fscorrupt.github.io/posterizarr/"><strong>Documentation »</strong></a> &nbsp;·&nbsp;
     <a href="https://fscorrupt.github.io/posterizarr/installation/">Installation</a> &nbsp;·&nbsp;
     <a href="https://fscorrupt.github.io/posterizarr/dynamic_overlays/">Dynamic Overlays</a> &nbsp;·&nbsp;
-    <a href="https://fscorrupt.github.io/posterizarr/showcase/">Artwork Showcase</a>
+    <a href="https://fscorrupt.github.io/posterizarr/showcase/">Artwork Showcase</a> &nbsp;·&nbsp;
+    <a href="https://github.com/fscorrupt/posterizarr-community">Community Gallery</a>
   </p>
 
   <br>
@@ -40,7 +41,7 @@
     </td>
     <td width="50%" valign="top">
       <strong>✨ Native Dynamic Overlays</strong><br>
-      Import Kometa-style YAML, preview badges live, share portable bundles, and composite in memory — no extra container, clean sources untouched.
+      Import Kometa-style YAML, preview badges live, share portable bundles via the <a href="https://github.com/fscorrupt/posterizarr-community">Community Gallery</a>, and composite in memory — no extra container, clean sources untouched.
     </td>
   </tr>
   <tr>
@@ -116,6 +117,7 @@
   Optional anonymous telemetry, disable anytime with <code>"telemetry": false</code> (<a href="https://fscorrupt.github.io/posterizarr/telemetry/">details</a> · <a href="telemetry-worker/worker.js">source</a>)<br>
   The project maintainer reviews and tests AI-assisted UI and web changes before they are committed.<br>
   Built by <a href="https://github.com/fscorrupt">fscorrupt</a> ·
+  <a href="https://github.com/fscorrupt/posterizarr-community">Community Gallery</a> ·
   <a href=".github/CONTRIBUTING.md">Contributing</a> ·
   <a href="https://discord.gg/fYyJQSGt54">Discord</a> ·
   <a href="https://ko-fi.com/R6R81S6SC">Ko-fi</a>

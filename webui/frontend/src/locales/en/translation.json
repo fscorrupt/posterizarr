@@ -4148,6 +4148,9 @@
     "applyAction": "Apply",
     "downloading": "Fetching bundle...",
     "previewAndImport": "Preview & Import Bundle",
-    "loadBlueprintError": "Failed to load community blueprint: {{message}}"
+    "loadBlueprintError": "Failed to load community blueprint: {{message}}",
+    "downloadsCount": "{{count}} downloads",
+    "sortDefault": "Default",
+    "sortMostDownloaded": "Most downloaded"
   }
 }

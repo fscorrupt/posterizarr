@@ -4154,6 +4154,9 @@
     "applyAction": "Aplicar",
     "downloading": "A transferir pacote...",
     "previewAndImport": "Rever e importar",
-    "loadBlueprintError": "Falha ao carregar blueprint da comunidade: {{message}}"
+    "loadBlueprintError": "Falha ao carregar blueprint da comunidade: {{message}}",
+    "downloadsCount": "{{count}} transferências",
+    "sortDefault": "Predefinito",
+    "sortMostDownloaded": "Mais transferidos"
   }
 }

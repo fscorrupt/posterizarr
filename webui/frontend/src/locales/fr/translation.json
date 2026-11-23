@@ -4155,6 +4155,9 @@
     "applyAction": "Appliquer",
     "downloading": "Téléchargement du paquet...",
     "previewAndImport": "Vérifier & Importer",
-    "loadBlueprintError": "Impossible de charger le blueprint communautaire : {{message}}"
+    "loadBlueprintError": "Impossible de charger le blueprint communautaire : {{message}}",
+    "downloadsCount": "{{count}} téléchargements",
+    "sortDefault": "Par défaut",
+    "sortMostDownloaded": "Les plus téléchargés"
   }
 }

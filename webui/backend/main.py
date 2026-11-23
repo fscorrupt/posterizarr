@@ -22082,6 +22082,7 @@ async def get_community_gallery(kind: str = "all", refresh: bool = False):
             "repo": catalog["repo"],
             "repo_url": catalog["repo_url"],
             "submit_url": catalog["submit_url"],
+            "stats_updated_at": catalog.get("stats_updated_at"),
             "blueprints": catalog["blueprints"] if kind in ("all", "blueprints") else [],
             "dynamic_overlays": catalog["dynamic_overlays"] if kind in ("all", "dynamic-overlays", "dynamic_overlays") else [],
         }
