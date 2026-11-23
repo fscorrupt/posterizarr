@@ -1863,10 +1863,13 @@ to get through setup; begin with one test library.</p>
 <p><img alt="First-run wizard at the Media Server step" src="../images/41-first-run-wizard.png" /></p>
 <p><em>The wizard appears automatically while the initial configuration is incomplete. Choose a primary server, validate its connection, and select libraries before continuing.</em></p>
 <p>The wizard is a nine-step modal, not a sidebar page. It opens automatically
-when Posterizarr has not recorded setup as complete. <strong>Finish Setup</strong> saves its
-configuration; before then, form edits remain in the wizard. Continue is gated
-on a validated server/library selection and on entering at least one primary
-metadata provider key (TMDb or TheTVDB).</p>
+when Posterizarr has not recorded setup as complete. You can click <strong>Skip for now
+(add later)</strong> at any time before finishing to explore the Web UI first without
+changing your config, and add your server or API keys later in <strong>Configuration</strong>
+or by reopening the <strong>Setup Wizard</strong> from the Dashboard. <strong>Finish Setup</strong> saves
+its configuration; before then, form edits remain in the wizard. Continue is
+gated on a validated server/library selection and on entering at least one
+primary metadata provider key (TMDb or TheTVDB).</p>
 <table>
 <thead>
 <tr>
@@ -1909,7 +1912,7 @@ metadata provider key (TMDb or TheTVDB).</p>
 </tr>
 <tr>
 <td>Ready</td>
-<td>Save the configuration and complete onboarding. If scheduling was enabled, the wizard enables the scheduler and creates the selected job. If Dynamic Overlays was enabled, its Setup Wizard opens; otherwise the wizard opens <strong>How It Works</strong>.</td>
+<td>Save the configuration and complete onboarding. If scheduling was enabled, the wizard enables the scheduler and creates the selected job. Choose where to go next: <strong>Blueprint Builder</strong>, <strong>Dynamic Overlays Setup Wizard</strong> (in Dry Run), safe <strong>Testing Mode</strong>, or <strong>Dashboard</strong> (fresh installs also display a dismissible <strong>Getting Started</strong> checklist on the Dashboard until the first run completes).</td>
 </tr>
 </tbody>
 </table>
