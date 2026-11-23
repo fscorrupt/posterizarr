@@ -466,6 +466,11 @@ export default function CommunityGallery({
                             {t("communityGallery.settingsCount", { count: item.settings_count, defaultValue: "{{count}} settings" })}
                           </span>
                         )}
+                        {item.asset_count > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-medium">
+                            {t("communityGallery.bundledAssetsCount", { count: item.asset_count, defaultValue: "{{count}} bundled files" })}
+                          </span>
+                        )}
                         {item.uses_logo && (
                           <span className="px-2 py-0.5 rounded-md bg-theme-primary/10 border border-theme-primary/25 text-theme-primary font-medium">
                             Logo

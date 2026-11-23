@@ -2866,7 +2866,7 @@ async def export_blueprint():
 
         # Remove specific paths from PrerequisitePart
         if "PrerequisitePart" in export_data:
-            for path_key in ["AssetPath", "ManualAssetPath", "BackupPath", "magickinstalllocation", "overlayfile"]:
+            for path_key in ["AssetPath", "ManualAssetPath", "BackupPath", "magickinstalllocation"]:
                 export_data["PrerequisitePart"].pop(path_key, None)
 
         return JSONResponse(
@@ -22041,6 +22041,18 @@ class CommunityBundlePreviewRequest(BaseModel):
     id: str
 
 
+class BlueprintExportRequest(BaseModel):
+    name: str = "Custom Blueprint Export"
+    updates: Dict[str, Any]
+    include_current_fonts: bool = True
+
+
+class BlueprintInstallAssetsRequest(BaseModel):
+    blueprint_token: Optional[str] = None
+    community_entry_id: Optional[str] = None
+    replace_assets: bool = False
+
+
 class CommunityBundleImportRequest(BaseModel):
     id: str
     bundle_token: Optional[str] = None
@@ -22087,7 +22099,7 @@ async def get_community_gallery(kind: str = "all", refresh: bool = False):
 async def get_community_blueprint(id: str):
     from community_gallery import CommunityGalleryError, fetch_community_blueprint
     try:
-        result = await asyncio.to_thread(fetch_community_blueprint, id)
+        result = await asyncio.to_thread(fetch_community_blueprint, id, OVERLAYFILES_DIR)
         return {"success": True, **result}
     except CommunityGalleryError as error:
         raise HTTPException(
@@ -22097,6 +22109,111 @@ async def get_community_blueprint(id: str):
     except Exception:
         logger.exception("Community blueprint fetch failed")
         raise HTTPException(status_code=500, detail="Could not load the selected community blueprint.")
+
+
+@app.post("/api/blueprints/export")
+async def export_blueprint_package_endpoint(body: BlueprintExportRequest):
+    from community_gallery import CommunityGalleryError, FONT_FILENAME_KEYS, export_blueprint_package
+    try:
+        config_fonts: Dict[str, str] = {}
+        if body.include_current_fonts and CONFIG_PATH.exists():
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as cfg_file:
+                    current_cfg = json.load(cfg_file)
+                prereq = current_cfg.get("PrerequisitePart") if isinstance(current_cfg, dict) else None
+                if isinstance(prereq, dict):
+                    for key in FONT_FILENAME_KEYS:
+                        val = prereq.get(key)
+                        if isinstance(val, str) and val.strip():
+                            config_fonts[key] = val.strip()
+            except Exception as cfg_err:
+                logger.warning(f"Could not read current fonts during blueprint export: {cfg_err}")
+
+        payload = {"name": body.name, "updates": body.updates}
+        result = await asyncio.to_thread(
+            export_blueprint_package,
+            payload,
+            OVERLAYFILES_DIR,
+            config_fonts,
+        )
+        return Response(
+            content=result["payload"],
+            media_type=result["media_type"],
+            headers={
+                "Content-Disposition": f'attachment; filename="{result["filename"]}"',
+                "X-Blueprint-Format": result["format"],
+                "X-Blueprint-Asset-Count": str(len(result["asset_names"])),
+                "X-Blueprint-Missing-Assets": ",".join(result["missing_assets"]),
+                "Access-Control-Expose-Headers": (
+                    "Content-Disposition, X-Blueprint-Format, "
+                    "X-Blueprint-Asset-Count, X-Blueprint-Missing-Assets"
+                ),
+            },
+        )
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Blueprint package export failed")
+        raise HTTPException(status_code=500, detail="Could not export blueprint package.")
+
+
+@app.post("/api/blueprints/inspect-upload")
+async def inspect_blueprint_upload_endpoint(file: UploadFile = File(...)):
+    from community_gallery import (
+        CommunityGalleryError,
+        MAX_BLUEPRINT_BUNDLE_BYTES,
+        inspect_uploaded_blueprint,
+    )
+    try:
+        raw_bytes = await file.read(MAX_BLUEPRINT_BUNDLE_BYTES + 1)
+        result = await asyncio.to_thread(
+            inspect_uploaded_blueprint,
+            file.filename or "",
+            raw_bytes,
+            OVERLAYFILES_DIR,
+        )
+        return {"success": True, **result}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Blueprint upload inspection failed")
+        raise HTTPException(status_code=500, detail="Could not inspect uploaded blueprint.")
+
+
+@app.post("/api/blueprints/install-assets")
+async def install_blueprint_assets_endpoint(body: BlueprintInstallAssetsRequest):
+    from community_gallery import (
+        CommunityGalleryError,
+        install_blueprint_assets,
+        resolve_cached_blueprint_assets,
+    )
+    try:
+        assets = await asyncio.to_thread(
+            resolve_cached_blueprint_assets,
+            body.blueprint_token,
+            body.community_entry_id,
+        )
+        install_result = await asyncio.to_thread(
+            install_blueprint_assets,
+            assets,
+            OVERLAYFILES_DIR,
+            body.replace_assets,
+        )
+        return {"success": True, **install_result}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Blueprint asset installation failed")
+        raise HTTPException(status_code=500, detail="Could not install blueprint assets.")
 
 
 @app.post("/api/community-gallery/dynamic-overlays/preview")
