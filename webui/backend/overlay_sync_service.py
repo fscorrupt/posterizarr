@@ -33,7 +33,7 @@ import asyncio
 import threading
 import traceback
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, Dict, Any, List, Tuple, Union, Callable
 import urllib.parse
 from xml.etree.ElementTree import ParseError, fromstring, tostring
@@ -43,6 +43,14 @@ import httpx
 from overlay_cache import OverlayCache, compute_metadata_hash, snapshot_overlay_layers
 from overlay_cache import compute_layers_recipe_hash as _compute_layers_recipe_hash
 from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
+from overlay_resolver import (
+    matches_artwork_type,
+    matches_episode_air_date,
+    normalize_language_tag,
+    language_base_code,
+    get_item_language_tags,
+    _language_target_matches,
+)
 from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
 from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
 from plex_push_service import get_asset_path_from_config
@@ -440,11 +448,15 @@ def cached_episode_streams(entry, server_updated_at, filepath):
 
 def aggregate_episode_streams(episodes, language_order=None):
     language_counts = Counter()
+    audio_tag_counts = Counter()
     video_counts = Counter()
     subtitle_counts = Counter()
+    subtitle_tag_counts = Counter()
     codec_counts = Counter()
     language_first_seen = {}
+    audio_tag_first_seen = {}
     subtitle_first_seen = {}
+    subtitle_tag_first_seen = {}
     codec_first_seen = {}
     codec_details = {}
     language_priority = {str(code).strip().lower(): index for index, code in enumerate(language_order or [])}
@@ -454,13 +466,16 @@ def aggregate_episode_streams(episodes, language_order=None):
             continue
         if episode.get("resolution"):
             video_counts[(episode["resolution"], bool(episode.get("has_hdr")), bool(episode.get("has_dolby_vision")))] += 1
-        for field, counts, first_seen in (
-            ("audio_languages", language_counts, language_first_seen),
-            ("subtitle_languages", subtitle_counts, subtitle_first_seen),
+        for field, fallback_field, counts, first_seen in (
+            ("audio_languages", None, language_counts, language_first_seen),
+            ("audio_language_tags", "audio_languages", audio_tag_counts, audio_tag_first_seen),
+            ("subtitle_languages", None, subtitle_counts, subtitle_first_seen),
+            ("subtitle_language_tags", "subtitle_languages", subtitle_tag_counts, subtitle_tag_first_seen),
         ):
+            raw_vals = episode.get(field) or (episode.get(fallback_field) if fallback_field else None) or []
             episode_languages = dict.fromkeys(
                 str(code).strip().lower()
-                for code in episode.get(field) or []
+                for code in raw_vals
                 if str(code).strip()
             )
             for code in episode_languages:
@@ -481,23 +496,33 @@ def aggregate_episode_streams(episodes, language_order=None):
             codec_counts[codec_key] += 1
 
     def ranked(counts, first_seen, use_language_priority=False):
+        def _lang_pri(val):
+            v = str(val).strip().lower()
+            if v in language_priority:
+                return language_priority[v]
+            base = v.split("-", 1)[0]
+            return language_priority.get(base, len(language_priority))
+
         return sorted(
             counts,
             key=lambda value: (
                 -counts[value],
-                language_priority.get(value, len(language_priority)) if use_language_priority else 0,
+                _lang_pri(value) if use_language_priority else 0,
                 first_seen[value],
                 value,
             ),
         )
 
     ranked_languages = ranked(language_counts, language_first_seen, use_language_priority=True)
+    ranked_audio_tags = ranked(audio_tag_counts, audio_tag_first_seen, use_language_priority=True)
     selected_codec = ranked(codec_counts, codec_first_seen)[0] if codec_counts else None
     selected_video = max(video_counts, key=lambda value: (video_counts[value], _resolution_rank(value[0]), value[2], value[1])) if video_counts else None
     return {
         **({"resolution": selected_video[0], "has_hdr": selected_video[1], "has_dolby_vision": selected_video[2]} if selected_video else {}),
         "audio_languages": ranked_languages,
+        "audio_language_tags": ranked_audio_tags,
         "subtitle_languages": ranked(subtitle_counts, subtitle_first_seen, use_language_priority=True),
+        "subtitle_language_tags": ranked(subtitle_tag_counts, subtitle_tag_first_seen, use_language_priority=True),
         "audio_codec": selected_codec[0] if selected_codec else None,
         **(codec_details[selected_codec] if selected_codec else {"audio_profile": None, "audio_track_title": None, "audio_title": None}),
     }
@@ -529,14 +554,39 @@ def _parent_stream_aggregation_requested(rules):
     return False
 
 def _normalized_stream_language(value):
-    code = str(value or "").strip().lower().replace("_", "-").split("-")[0]
-    if not code:
-        return None
-    normalized = LANGUAGE_MAP.get(code, code)
-    return normalized if normalized not in ("und", "unknown") else None
+    return language_base_code(value)
+
+
+def _extract_plex_stream_language(stream_node) -> Tuple[Optional[str], Optional[str]]:
+    """Return (base_code, full_bcp47_tag) from a Plex Stream element, preferring languageTag."""
+    tag = (
+        normalize_language_tag(stream_node.get("languageTag"))
+        or normalize_language_tag(stream_node.get("languageCode"))
+        or normalize_language_tag(stream_node.get("language"))
+    )
+    if tag and "-" not in tag:
+        lang_display = normalize_language_tag(stream_node.get("language"))
+        if lang_display and lang_display.startswith(f"{tag}-"):
+            tag = lang_display
+    return language_base_code(tag), tag
+
+
+def _extract_jellyfin_stream_language(stream_obj) -> Tuple[Optional[str], Optional[str]]:
+    """Return (base_code, full_bcp47_tag) from a Jellyfin/Emby stream dict."""
+    lang_tag = normalize_language_tag(stream_obj.get("Language"))
+    disp_tag = normalize_language_tag(stream_obj.get("DisplayLanguage"))
+    if lang_tag and "-" in lang_tag:
+        tag = lang_tag
+    elif disp_tag and "-" in disp_tag and (not lang_tag or language_base_code(disp_tag) == language_base_code(lang_tag)):
+        tag = disp_tag
+    else:
+        tag = lang_tag or disp_tag
+    return language_base_code(tag), tag
+
 
 def _plex_episode_stream_summary(item):
     languages = []
+    language_tags = []
     audio_codec = None
     has_hdr = False
     has_dolby_vision = False
@@ -552,9 +602,11 @@ def _plex_episode_stream_summary(item):
     for stream in item.findall(".//Stream"):
         stream_type = stream.get("streamType")
         if stream_type == "2":
-            language = _normalized_stream_language(stream.get("languageCode") or stream.get("languageTag") or stream.get("language"))
-            if language and language not in languages:
-                languages.append(language)
+            base_lang, full_tag = _extract_plex_stream_language(stream)
+            if base_lang and base_lang not in languages:
+                languages.append(base_lang)
+            if full_tag and full_tag not in language_tags:
+                language_tags.append(full_tag)
         elif stream_type == "1":
             has_dolby_vision = has_dolby_vision or stream.get("DOVIPresent") == "1"
             has_hdr = has_hdr or stream.get("colorPrimaries") == "bt2020"
@@ -564,10 +616,12 @@ def _plex_episode_stream_summary(item):
     return {
         "resolution": _plex_media_resolution(media) if media is not None else None,
         "audio_languages": languages,
+        "audio_language_tags": language_tags,
         "audio_codec": audio_codec,
         "audio_profile": audio_profile,
         "audio_track_title": audio_track_title,
         "subtitle_languages": streams.get("subtitle_languages", []),
+        "subtitle_language_tags": streams.get("subtitle_language_tags", []),
         "aspect_ratio": streams.get("aspect_ratio"),
         "has_hdr": has_hdr,
         "has_dolby_vision": has_dolby_vision,
@@ -576,6 +630,7 @@ def _plex_episode_stream_summary(item):
 
 def _emby_episode_stream_summary(item):
     languages = []
+    language_tags = []
     audio_codec = None
     has_hdr = False
     has_dolby_vision = False
@@ -584,9 +639,11 @@ def _emby_episode_stream_summary(item):
     for stream in item.get("MediaStreams") or []:
         stream_type = stream.get("Type")
         if stream_type == "Audio":
-            language = _normalized_stream_language(stream.get("Language") or stream.get("DisplayLanguage"))
-            if language and language not in languages:
-                languages.append(language)
+            base_lang, full_tag = _extract_jellyfin_stream_language(stream)
+            if base_lang and base_lang not in languages:
+                languages.append(base_lang)
+            if full_tag and full_tag not in language_tags:
+                language_tags.append(full_tag)
             if not audio_codec and stream.get("Codec"):
                 audio_codec = str(stream["Codec"]).strip().lower()
         elif stream_type == "Video":
@@ -599,10 +656,12 @@ def _emby_episode_stream_summary(item):
     return {
         "resolution": _plex_media_resolution({"width": video_stream.get("Width"), "height": video_stream.get("Height")}),
         "audio_languages": languages,
+        "audio_language_tags": language_tags,
         "audio_codec": str(primary_audio.get("Codec") or audio_codec or "").strip().lower() or None,
         "audio_profile": primary_audio.get("Profile"),
         "audio_track_title": primary_audio.get("Title") or primary_audio.get("DisplayTitle"),
         "subtitle_languages": streams.get("subtitle_languages", []),
+        "subtitle_language_tags": streams.get("subtitle_language_tags", []),
         "aspect_ratio": streams.get("aspect_ratio"),
         "has_hdr": has_hdr,
         "has_dolby_vision": has_dolby_vision,
@@ -653,8 +712,9 @@ async def fetch_show_episode_stream_data(http_client, server_type, server_url, i
                 )
                 if cached and "resolution" in cached:
                     summary = {key: cached.get(key) for key in (
-                        "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
-                        "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title", "resolution",
+                        "audio_languages", "audio_language_tags", "audio_codec", "subtitle_languages",
+                        "subtitle_language_tags", "aspect_ratio", "has_hdr", "has_dolby_vision",
+                        "filepath", "audio_profile", "audio_track_title", "resolution",
                     )}
                     summary["streams_verified"] = True
                 else:
@@ -744,8 +804,9 @@ def titlecard_attr_snapshot(episode, snapshot):
     if episode.get("streams_verified"):
         values["_episode_streams"] = {
             key: episode.get(key) for key in (
-                "audio_languages", "audio_codec", "subtitle_languages", "aspect_ratio",
-                "has_hdr", "has_dolby_vision", "filepath", "audio_profile", "audio_track_title", "resolution"
+                "audio_languages", "audio_language_tags", "audio_codec", "subtitle_languages",
+                "subtitle_language_tags", "aspect_ratio", "has_hdr", "has_dolby_vision",
+                "filepath", "audio_profile", "audio_track_title", "resolution"
             )
         }
         values["_episode_streams"]["version"] = 1
@@ -811,14 +872,18 @@ def build_attr_snapshot(item: Dict[str, Any]) -> str:
         "studio": item.get("studio") or None,
         "audio_track_title": item.get("audio_track_title") or None,
         "subtitle_languages": item.get("subtitle_languages") or [],
+        "audio_language_tags": item.get("audio_language_tags") or [],
+        "subtitle_language_tags": item.get("subtitle_language_tags") or [],
         "aspect_ratio": item.get("aspect_ratio"),
         "season_resolutions": item.get("season_resolutions"),
         "leaf_count": item.get("leaf_count"),
+        "last_episode_air_date": item.get("last_episode_air_date") or None,
     }, sort_keys=True)
 
 
 def _extract_stream_overlay_metadata(item):
     subtitles = []
+    subtitle_tags = []
     aspect = None
     width = height = 0
     audio_profile = None
@@ -834,12 +899,11 @@ def _extract_stream_overlay_metadata(item):
             audio_track_title = primary_audio.get("Title") or primary_audio.get("DisplayTitle")
         for stream in streams:
             if stream.get("Type") == "Subtitle":
-                language = stream.get("Language") or stream.get("DisplayLanguage")
-                if language:
-                    code = str(language).strip().lower().replace("_", "-").split("-")[0]
-                    normalized = LANGUAGE_MAP.get(code, code)
-                    if normalized not in subtitles and normalized not in ("und", "unknown"):
-                        subtitles.append(normalized)
+                base_lang, full_tag = _extract_jellyfin_stream_language(stream)
+                if base_lang and base_lang not in subtitles:
+                    subtitles.append(base_lang)
+                if full_tag and full_tag not in subtitle_tags:
+                    subtitle_tags.append(full_tag)
             elif stream.get("Type") == "Video" and aspect is None:
                 aspect = stream.get("AspectRatio")
                 width, height = stream.get("Width") or 0, stream.get("Height") or 0
@@ -855,12 +919,11 @@ def _extract_stream_overlay_metadata(item):
             width, height = media.get("width") or 0, media.get("height") or 0
         for stream in item.findall(".//Stream"):
             if stream.get("streamType") == "3":
-                language = stream.get("languageCode") or stream.get("languageTag") or stream.get("language")
-                if language:
-                    code = str(language).strip().lower().replace("_", "-").split("-")[0]
-                    normalized = LANGUAGE_MAP.get(code, code)
-                    if normalized not in subtitles and normalized not in ("und", "unknown"):
-                        subtitles.append(normalized)
+                base_lang, full_tag = _extract_plex_stream_language(stream)
+                if base_lang and base_lang not in subtitles:
+                    subtitles.append(base_lang)
+                if full_tag and full_tag not in subtitle_tags:
+                    subtitle_tags.append(full_tag)
     try:
         if aspect:
             components = str(aspect).replace("/", ":").split(":")
@@ -871,7 +934,13 @@ def _extract_stream_overlay_metadata(item):
             ratio = None
     except (ValueError, TypeError, ZeroDivisionError):
         ratio = None
-    return {"subtitle_languages": subtitles, "aspect_ratio": ratio, "audio_profile": audio_profile, "audio_track_title": audio_track_title}
+    return {
+        "subtitle_languages": subtitles,
+        "subtitle_language_tags": subtitle_tags,
+        "aspect_ratio": ratio,
+        "audio_profile": audio_profile,
+        "audio_track_title": audio_track_title,
+    }
 
 # ==============================================================================
 # DYNAMIC OVERLAY SYNC ENGINE:
@@ -1306,7 +1375,9 @@ async def resolve_tmdb_show_info(
             from ratings_service import ratings_cache
             if server_type and item_id:
                 cached_status = ratings_cache.get_show_status(server_type, str(item_id), clean_id or None)
-                if cached_status and cached_status.get("status"):
+                if cached_status and cached_status.get("status") and (
+                    not clean_id or cached_status.get("last_episode_air_date") is not None
+                ):
                     return cached_status
         except Exception as cache_read_err:
             logger.debug(f"[OverlaySync] Persistent show cache read error: {cache_read_err}")
@@ -1344,12 +1415,14 @@ async def resolve_tmdb_show_info(
                 "continuing": "returning",
                 "canceled": "canceled",
                 "cancelled": "canceled",
-                "in production": "airing",
-                "planned": "airing",
-                "pilot": "airing",
+                "in production": "in production",
+                "planned": "planned",
+                "pilot": "pilot",
             }
             norm_st = status_map.get(raw_st, raw_st)
             nets = [n.get("name") for n in data.get("networks", []) if n.get("name")]
+            last_ep = data.get("last_episode_to_air")
+            last_ep_air_date = str(last_ep.get("air_date") or "").strip() if isinstance(last_ep, dict) else ""
 
             # Extract content rating
             content_rating = None
@@ -1371,7 +1444,8 @@ async def resolve_tmdb_show_info(
                 "status": norm_st,
                 "networks": nets,
                 "network": nets[0] if nets else None,
-                "content_rating": content_rating
+                "content_rating": content_rating,
+                "last_episode_air_date": last_ep_air_date,
             }
             _TMDB_SHOW_CACHE[clean_id] = (time.monotonic() + _TMDB_SHOW_CACHE_TTL_SECONDS, info)
 
@@ -1388,7 +1462,8 @@ async def resolve_tmdb_show_info(
                         status=norm_st,
                         network=info["network"],
                         content_rating=content_rating,
-                        source="tmdb"
+                        source="tmdb",
+                        last_episode_air_date=last_ep_air_date,
                     )
             except Exception as cache_save_err:
                 logger.debug(f"[OverlaySync] Persistent show cache save error: {cache_save_err}")
@@ -2371,7 +2446,6 @@ def build_overlay_layers_for_item(
         "truehd_atmos": "TrueHD Atmos", "plus_atmos": "EAC3 Atmos", "dolby_atmos": "Dolby Atmos",
         "dtsx": "DTS:X", "ma": "DTS-HD MA", "hra": "DTS-HD HRA", "plus": "EAC3", "digital": "AC3"
     }
-    from overlay_resolver import matches_artwork_type
 
     library_rules = [rule for rule in library_rules if isinstance(rule, dict) and matches_artwork_type(rule, item_metadata)]
     codec_key = str(item_metadata.get("audio_codec") or "").strip().lower()
@@ -2492,12 +2566,39 @@ def build_overlay_layers_for_item(
     flag_assets_dir = overlays_dir / "assets"
 
     def resolve_parent_flag(code, variables):
-        filename = LANGUAGE_TO_FLAG_MAP.get(code, f"{code}.png")
+        norm_code = normalize_language_tag(code) or str(code).strip().lower()
+        filename = LANGUAGE_TO_FLAG_MAP.get(norm_code)
+        if not filename:
+            if "-" in norm_code:
+                region = norm_code.split("-", 1)[1]
+                filename = f"{region}.png" if len(region) == 2 and region.isalpha() else f"{norm_code}.png"
+            else:
+                filename = f"{norm_code}.png"
         style = "round" if str(variables.get("style", "round")).lower() == "round" else "square"
-        selected_asset = variables.get(f"file_{code}") or f"flag/{style}/{filename}"
+        selected_asset = variables.get(f"file_{norm_code}") or variables.get(f"file_{code}") or f"flag/{style}/{filename}"
         return _get_overlay_config_engine(overlays_dir).resolve_image_path(selected_asset) or flag_assets_dir / "flag" / style / filename
 
+    engine_rules = []
+    for rule in library_rules:
+        if rule in rating_rules or rule in single_rules or rule in resolution_rules or rule in streaming_rules:
+            continue
+        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("languages", "audio_codec"):
+            continue
+        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() == "languages":
+            continue
+        engine_rules.append(rule)
+
     if aggregated_parent:
+        claimed_audio_by_engine: set = set()
+        claimed_sub_by_engine: set = set()
+        if engine_rules:
+            try:
+                claimed_audio_by_engine, claimed_sub_by_engine = _get_overlay_config_engine(overlays_dir).get_claimed_language_tags(
+                    item_metadata, engine_rules
+                )
+            except Exception:
+                claimed_audio_by_engine, claimed_sub_by_engine = set(), set()
+
         for rule in library_rules:
             if not isinstance(rule, dict) or str(rule.get("default", "")).lower() != "languages":
                 continue
@@ -2507,14 +2608,20 @@ def build_overlay_layers_for_item(
             if target not in ("all", target_level):
                 continue
             subtitle_rule = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
-            detected = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
-            allowed = [str(code).strip().lower() for code in variables.get("languages", ["de", "en", "ja", "zh", "ko"])]
+            item_tags = get_item_language_tags(item_metadata, is_subtitle=subtitle_rule)
+            allowed = [t for t in (normalize_language_tag(code) for code in variables.get("languages", ["de", "en", "ja", "zh", "ko"])) if t]
+            external_claimed = claimed_sub_by_engine if subtitle_rule else claimed_audio_by_engine
+            claimed_in_rule = {
+                tag for a in allowed if "-" in a
+                for tag in item_tags if tag == a or tag.startswith(f"{a}-")
+            } | external_claimed
             selected = []
-            for value in detected:
-                code = str(value).strip().lower()
-                code = LANGUAGE_MAP.get(code, code)
-                if code in allowed and code not in selected:
-                    selected.append(code)
+            for tag in item_tags:
+                matched_code = next((c for c in allowed if "-" in c and (tag == c or tag.startswith(f"{c}-"))), None)
+                if matched_code is None and tag not in claimed_in_rule:
+                    matched_code = next((c for c in allowed if "-" not in c and _language_target_matches(c, [tag])), None)
+                if matched_code and matched_code not in selected:
+                    selected.append(matched_code)
             if not item_metadata.get("_language_order_precomputed"):
                 priority = {code: index for index, code in enumerate(allowed)}
                 selected.sort(key=priority.__getitem__)
@@ -2644,15 +2751,6 @@ def build_overlay_layers_for_item(
                     "vertical_offset": int(variables.get("vertical_offset", 15)),
                 })
 
-    engine_rules = []
-    for rule in library_rules:
-        if rule in rating_rules or rule in single_rules or rule in resolution_rules or rule in streaming_rules:
-            continue
-        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("languages", "audio_codec"):
-            continue
-        if aggregated_parent and isinstance(rule, dict) and str(rule.get("default", "")).lower() == "languages":
-            continue
-        engine_rules.append(rule)
     try:
         engine = _get_overlay_config_engine(overlays_dir)
         layers = engine.evaluate_item(item_metadata, engine_rules)
@@ -2809,16 +2907,20 @@ def build_overlay_layers_for_item(
             builder_level == "episode"
             and media_type in ["show", "season"]
         ):
-            allowed_langs = [str(l).lower() for l in lang_vars.get("languages", ["de", "en", "ja", "zh", "ko"])]
+            allowed_langs = [t for t in (normalize_language_tag(l) for l in lang_vars.get("languages", ["de", "en", "ja", "zh", "ko"])) if t]
             subtitle_rule = str(lang_vars.get("use_subtitles", False)).lower() in ("true", "1")
-            item_langs = item_metadata.get("subtitle_languages" if subtitle_rule else "audio_languages") or []
-            # Normalize detected languages to 2-letter codes
+            item_tags = get_item_language_tags(item_metadata, is_subtitle=subtitle_rule)
+            claimed_in_rule = {
+                tag for a in allowed_langs if "-" in a
+                for tag in item_tags if tag == a or tag.startswith(f"{a}-")
+            }
             clean_detected = []
-            for raw_l in item_langs:
-                code_l = str(raw_l).strip().lower()
-                norm_l = LANGUAGE_MAP.get(code_l, code_l)
-                if norm_l in allowed_langs and norm_l not in clean_detected:
-                    clean_detected.append(norm_l)
+            for tag in item_tags:
+                matched_code = next((c for c in allowed_langs if "-" in c and (tag == c or tag.startswith(f"{c}-"))), None)
+                if matched_code is None and tag not in claimed_in_rule:
+                    matched_code = next((c for c in allowed_langs if "-" not in c and _language_target_matches(c, [tag])), None)
+                if matched_code and matched_code not in clean_detected:
+                    clean_detected.append(matched_code)
 
             if not item_metadata.get("_language_order_precomputed"):
                 language_priority = {language: index for index, language in enumerate(allowed_langs)}
@@ -2988,20 +3090,28 @@ def build_overlay_layers_for_item(
 
     # 5. Series Status Banner (TV Shows)
     series_status = str(item_metadata.get("status") or "").strip()
-    if series_status and "status" in rule_names and media_type == "show" and not is_season:
-        if series_status.lower() in ["airing", "returning", "ended", "canceled"]:
-            status_vars = rule_names["status"]
+    if (series_status or item_metadata.get("last_episode_air_date")) and "status" in rule_names and media_type == "show" and not is_season:
+        status_vars = rule_names["status"]
+        norm_series_status = {
+            "returning series": "returning",
+            "continuing": "returning",
+            "cancelled": "canceled",
+        }.get(series_status.lower(), series_status.lower())
+        is_recently_aired = matches_episode_air_date(status_vars.get("last", 14), item_metadata)
+        eff_status = "airing" if is_recently_aired else norm_series_status
+        if eff_status in ["airing", "returning", "ended", "canceled"]:
             status_colors = {
                 "airing": status_vars.get("font_color_airing", "#27C24C"),
                 "returning": status_vars.get("font_color_returning", "#FFA500"),
                 "ended": status_vars.get("font_color_ended", "#FF0000"),
                 "canceled": status_vars.get("font_color_canceled", "#ED1F1F"),
             }
-            color = status_colors.get(series_status.lower(), "#FF0000")
+            color = status_colors.get(eff_status, "#FF0000")
+            status_text = str(status_vars.get(f"text_{eff_status}") or eff_status.upper())
             layers.append({
                 "name": "status",
                 "type": "text",
-                "text": series_status.upper(),
+                "text": status_text,
                 "font_path": str(colus_font) if colus_font.exists() else font_to_use,
                 "font_size": int(status_vars.get("font_size", 80 if not is_landscape else 50)),
                 "font_color": color,
@@ -3010,7 +3120,7 @@ def build_overlay_layers_for_item(
                 "back_height": int(status_vars.get("back_height", 149)),
                 "horizontal_align": status_vars.get("horizontal_align", "center"),
                 "horizontal_offset": int(status_vars.get("horizontal_offset", 0)),
-                "vertical_align": "bottom",
+                "vertical_align": status_vars.get("vertical_align") or status_vars.get("vertical_position") or "bottom",
                 "vertical_offset": int(status_vars.get("vertical_offset", 23))
             })
 
@@ -3298,6 +3408,22 @@ def _plex_season_resolutions(videos) -> Dict[str, str]:
     return best
 
 
+def _plex_latest_episode_air_date(videos) -> Optional[str]:
+    """Latest aired episode date (YYYY-MM-DD) from Plex Video nodes' originallyAvailableAt."""
+    today_iso = date.today().isoformat()
+    latest: Optional[str] = None
+    for video in videos:
+        raw = str(video.get("originallyAvailableAt") or "").strip()[:10]
+        if len(raw) == 10:
+            try:
+                date.fromisoformat(raw)
+            except ValueError:
+                continue
+            if raw <= today_iso and (latest is None or raw > latest):
+                latest = raw
+    return latest
+
+
 @functools.lru_cache(maxsize=64)
 def _overlay_file_text(path_str: str, mtime: float) -> str:
     try:
@@ -3321,6 +3447,36 @@ def _rule_files_mention(overlays_dir: Path, rules, keyword: str) -> bool:
                     break
             except OSError:
                 continue
+    return False
+
+
+_REGIONAL_LANG_BLOCK_RE = re.compile(
+    r"(?i)(?:audio|subtitle)_languages?\s*:(?:[ \t]*[^\n]*|(?:\r?\n[ \t]*-[ \t]*[^\n]+)+)"
+)
+_REGIONAL_LANG_TOKEN_RE = re.compile(r"(?i)\b[a-z]{2,3}[-_](?:[a-z]{2,4}|\d{3})\b|\([^)]+\)")
+
+
+def _rules_use_regional_languages(overlays_dir: Path, rules) -> bool:
+    """True if library rules or referenced overlay YAMLs match regional language tags (e.g. fr-CA)."""
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        vars_dict = rule.get("template_variables") or rule.get("variables") or {}
+        if any("-" in str(c) or "_" in str(c) for c in (vars_dict.get("languages") or [])):
+            return True
+        if rule.get("file"):
+            name = str(rule["file"]).strip()
+            name = name[7:] if name.startswith("config/") else name
+            for candidate in (overlays_dir / "configs" / name, Path(name)):
+                try:
+                    if candidate.is_file():
+                        txt = _overlay_file_text(str(candidate), candidate.stat().st_mtime)
+                        for m in _REGIONAL_LANG_BLOCK_RE.finditer(txt):
+                            if _REGIONAL_LANG_TOKEN_RE.search(m.group(0)):
+                                return True
+                        break
+                except OSError:
+                    continue
     return False
 
 
@@ -3431,6 +3587,7 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
             streams.extend(ms.get("MediaStreams", []))
 
     audio_langs = []
+    audio_lang_tags = []
     item_audio_c = None
     item_audio_t = None
     item_has_dv = False
@@ -3440,11 +3597,11 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
     for s in streams:
         stype = s.get("Type")
         if stype == "Audio":
-            lc = s.get("Language") or s.get("DisplayLanguage")
-            if lc:
-                norm_l = LANGUAGE_MAP.get(lc.lower(), lc.lower())
-                if norm_l not in audio_langs:
-                    audio_langs.append(norm_l)
+            base_lang, full_tag = _extract_jellyfin_stream_language(s)
+            if base_lang and base_lang not in audio_langs:
+                audio_langs.append(base_lang)
+            if full_tag and full_tag not in audio_lang_tags:
+                audio_lang_tags.append(full_tag)
             if not item_audio_c and s.get("Codec"):
                 item_audio_c = s.get("Codec")
             if not item_audio_t:
@@ -3507,6 +3664,7 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
         "runtime_mins": (item_obj.get("RunTimeTicks", 0) // 600000000) or None,
         "status": item_obj.get("Status"),
         "audio_languages": audio_langs,
+        "audio_language_tags": audio_lang_tags,
         **_extract_stream_overlay_metadata(item_obj),
         "audio_codec": item_audio_c,
         "audio_track_title": item_audio_t,
@@ -4313,7 +4471,12 @@ async def _run_overlay_sync_task(
 
                     # Inspect active rules to identify what metadata domains are actually required
                     rules_str = json.dumps([r for r in lib_rules if isinstance(r, dict)]).lower()
-                    needs_languages = any(k in rules_str for k in ["language", "flag", "lang_"])
+                    needs_languages = (
+                        any(k in rules_str for k in ["language", "flag", "lang_"])
+                        or _rule_files_mention(overlays_dir, lib_rules, "audio_language")
+                        or _rule_files_mention(overlays_dir, lib_rules, "subtitle_language")
+                    )
+                    needs_regional_languages = needs_languages and _rules_use_regional_languages(overlays_dir, lib_rules)
                     needs_audio = any(k in rules_str for k in ["audio", "atmos", "truehd", "dts", "codec", "surround"])
                     needs_hdr_dv = any(k in rules_str for k in ["hdr", "dovi", "dolby_vision", "dv"])
                     needs_ratings = any(
@@ -4498,9 +4661,13 @@ async def _run_overlay_sync_task(
                                     for key in ("networks", "studio", "audio_track_title"):
                                         if snap.get(key) and not item.get(key):
                                             item[key] = snap[key]
-                                    for key in ("subtitle_languages", "aspect_ratio"):
+                                    for key in ("subtitle_languages", "audio_language_tags", "subtitle_language_tags", "aspect_ratio"):
                                         if key in snap:
                                             item[key] = snap[key]
+                                    if needs_regional_languages and "audio_language_tags" not in snap:
+                                        need_plex_detail = True
+                                    if snap.get("last_episode_air_date") and not item.get("last_episode_air_date"):
+                                        item["last_episode_air_date"] = snap["last_episode_air_date"]
                                     if item.get("audio_track_title"):
                                         item["audio_title"] = item["audio_track_title"]
                                 except Exception:
@@ -4530,14 +4697,14 @@ async def _run_overlay_sync_task(
                                         item["video_source"] = detect_video_source(item["media_file_path"])
                                     item.update(_extract_stream_overlay_metadata(m_root))
                                     audio_langs = []
+                                    audio_lang_tags = []
                                     for s in m_root.findall(".//Stream"):
                                         if s.get("streamType") == "2":
-                                            lc = s.get("languageCode") or s.get("languageTag") or s.get("language")
-                                            if lc:
-                                                clean_code = str(lc).lower().split("-")[0].split("_")[0].strip()
-                                                norm_l = LANGUAGE_MAP.get(clean_code, LANGUAGE_MAP.get(str(lc).lower(), clean_code))
-                                                if norm_l not in audio_langs:
-                                                    audio_langs.append(norm_l)
+                                            base_lang, full_tag = _extract_plex_stream_language(s)
+                                            if base_lang and base_lang not in audio_langs:
+                                                audio_langs.append(base_lang)
+                                            if full_tag and full_tag not in audio_lang_tags:
+                                                audio_lang_tags.append(full_tag)
                                             if not item.get("audio_codec") and s.get("codec"):
                                                 item["audio_codec"] = s.get("codec")
                                             a_title = s.get("title") or s.get("displayTitle") or ""
@@ -4553,6 +4720,8 @@ async def _run_overlay_sync_task(
                                                 item["has_hdr"] = True
                                     if audio_langs:
                                         item["audio_languages"] = audio_langs
+                                    if audio_lang_tags:
+                                        item["audio_language_tags"] = audio_lang_tags
 
                                     for v_node in m_root.findall(".//Video"):
                                         if v_node.get("editionTitle"):
@@ -4591,6 +4760,7 @@ async def _run_overlay_sync_task(
 
                     # Plex show/season nodes carry no <Media>; derive resolution from the episodes instead
                     season_res_changed = False
+                    plex_leaves_air_date_checked = False
                     if s_type == "plex" and m_type == "show" and needs_resolution:
                         try:
                             res_snap = json.loads((cached_entry or {}).get("attr_snapshot") or "{}")
@@ -4612,7 +4782,12 @@ async def _run_overlay_sync_task(
                                     headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
                                 )
                                 if leaves_resp.status_code == 200:
-                                    season_res = _plex_season_resolutions(fromstring(leaves_resp.content).findall(".//Video"))
+                                    leaves_videos = fromstring(leaves_resp.content).findall(".//Video")
+                                    season_res = _plex_season_resolutions(leaves_videos)
+                                    plex_leaves_air_date_checked = True
+                                    plex_air_date = _plex_latest_episode_air_date(leaves_videos)
+                                    if plex_air_date:
+                                        item["last_episode_air_date"] = plex_air_date
                                 else:
                                     write_log(f"  [!] {w_tag}'{title}': episode resolution lookup returned HTTP {leaves_resp.status_code}; keeping '{item.get('resolution')}'.")
                             except Exception as leaves_err:
@@ -4629,9 +4804,13 @@ async def _run_overlay_sync_task(
                     server_changed = bool(cached_entry and str(cached_entry.get("server_updated_at") or "") != str(item.get("server_updated_at") or ""))
                     needs_tmdb = (scope not in ("incremental", "changed")) or needs_snapshot_refresh or not cached_entry or not cached_entry.get("attr_snapshot") or server_changed
                     cached_show_status = ratings_cache.get_show_status(s_type, str(item_id), item.get("tmdb_id")) if (m_type == "show" and needs_status and not needs_tmdb and s_type and item_id) else None
+                    if cached_show_status and cached_show_status.get("last_episode_air_date") and not item.get("last_episode_air_date"):
+                        item["last_episode_air_date"] = cached_show_status["last_episode_air_date"]
                     status_cache_expired = bool(not needs_tmdb and item.get("tmdb_id") and cached_show_status is None)
                     status_cache_differs = bool(cached_show_status and cached_show_status.get("status") and cached_show_status["status"].strip().lower() != str(item.get("status") or "").strip().lower())
-                    if m_type == "show" and needs_status and (needs_tmdb or status_cache_expired or status_cache_differs or not item.get("status")):
+                    air_date_missing = bool(not needs_tmdb and item.get("tmdb_id") and cached_show_status is not None and cached_show_status.get("last_episode_air_date") is None)
+                    if m_type == "show" and needs_status and (needs_tmdb or status_cache_expired or status_cache_differs or air_date_missing or not item.get("status")):
+                        show_info_checked_tmdb = False
                         if item.get("tmdb_id"):
                             tmdb_token = creds.get("tmdb_token")
                             show_info = await resolve_tmdb_show_info(
@@ -4642,16 +4821,32 @@ async def _run_overlay_sync_task(
                                 item_id=str(item_id),
                                 title=title,
                                 year=item.get("year"),
-                                force_refresh=(scope not in ("incremental", "changed") or server_changed),
+                                force_refresh=(scope not in ("incremental", "changed") or server_changed or air_date_missing),
                             )
+                            if show_info:
+                                show_info_checked_tmdb = True
                             if show_info.get("status"):
                                 item["status"] = show_info["status"]
+                            if show_info.get("last_episode_air_date"):
+                                item["last_episode_air_date"] = show_info["last_episode_air_date"]
                             if show_info.get("networks"):
                                 item["networks"] = show_info["networks"]
                                 if not item.get("network"):
                                     item["network"] = show_info.get("network")
                             if show_info.get("content_rating") and not item.get("content_rating"):
                                 item["content_rating"] = show_info["content_rating"]
+                        if s_type == "plex" and not item.get("tmdb_id") and not plex_leaves_air_date_checked and (server_changed or not item.get("last_episode_air_date")):
+                            try:
+                                leaves_resp = await http_client.get(
+                                    f"{s_url}/library/metadata/{item_id}/allLeaves",
+                                    headers={"X-Plex-Token": creds.get("token"), "Accept": "application/xml"}
+                                )
+                                if leaves_resp.status_code == 200:
+                                    plex_air_date = _plex_latest_episode_air_date(fromstring(leaves_resp.content).findall(".//Video"))
+                                    if plex_air_date:
+                                        item["last_episode_air_date"] = plex_air_date
+                            except Exception as leaves_err:
+                                logger.debug(f"[OverlaySync] Episode air date lookup failed for {title}: {leaves_err}")
                         # Normalize status string if raw (e.g. from Emby / Jellyfin)
                         raw_st = str(item.get("status") or "").strip().lower()
                         if "continu" in raw_st or "return" in raw_st:
@@ -4660,7 +4855,7 @@ async def _run_overlay_sync_task(
                             item["status"] = "ended"
                         elif "cancel" in raw_st:
                             item["status"] = "canceled"
-                        elif "air" in raw_st or "product" in raw_st:
+                        elif "air" in raw_st:
                             item["status"] = "airing"
 
                         # Ensure show status is persistently saved to SQLite cache for scheduled updates
@@ -4675,7 +4870,8 @@ async def _run_overlay_sync_task(
                                     status=item["status"],
                                     network=item.get("network"),
                                     content_rating=item.get("content_rating"),
-                                    source="server" if not item.get("tmdb_id") else "tmdb"
+                                    source="server" if not item.get("tmdb_id") else "tmdb",
+                                    last_episode_air_date=(item.get("last_episode_air_date") or ("" if show_info_checked_tmdb else None)),
                                 )
                             except Exception as st_save_err:
                                 logger.debug(f"[OverlaySync] Failed to persist show status for {title}: {st_save_err}")
@@ -4745,8 +4941,12 @@ async def _run_overlay_sync_task(
                                 aggregate = show_stream_data["aggregate"]
                                 if aggregate["audio_languages"]:
                                     item["audio_languages"] = aggregate["audio_languages"]
+                                if aggregate.get("audio_language_tags"):
+                                    item["audio_language_tags"] = aggregate["audio_language_tags"]
                                 if aggregate["subtitle_languages"]:
                                     item["subtitle_languages"] = aggregate["subtitle_languages"]
+                                if aggregate.get("subtitle_language_tags"):
+                                    item["subtitle_language_tags"] = aggregate["subtitle_language_tags"]
                                 if aggregate["audio_codec"]:
                                     for key in ("audio_codec", "audio_profile", "audio_track_title", "audio_title"):
                                         item[key] = aggregate.get(key)
@@ -5542,14 +5742,14 @@ async def _run_overlay_sync_task(
                                                     ep_res = ep_res or "1080p"
 
                                                     ep_langs = []
+                                                    ep_lang_tags = []
                                                     for st_node in ep_elem.findall(".//Stream"):
                                                         if st_node.get("streamType") == "2":
-                                                            lc_code = st_node.get("languageCode") or st_node.get("languageTag") or st_node.get("language")
-                                                            if lc_code:
-                                                                clean_code = str(lc_code).lower().split("-")[0].split("_")[0].strip()
-                                                                norm_lang = LANGUAGE_MAP.get(clean_code, LANGUAGE_MAP.get(str(lc_code).lower(), clean_code))
-                                                                if norm_lang not in ep_langs:
-                                                                    ep_langs.append(norm_lang)
+                                                            base_lang, full_tag = _extract_plex_stream_language(st_node)
+                                                            if base_lang and base_lang not in ep_langs:
+                                                                ep_langs.append(base_lang)
+                                                            if full_tag and full_tag not in ep_lang_tags:
+                                                                ep_lang_tags.append(full_tag)
                                                         elif st_node.get("streamType") == "1":
                                                             if st_node.get("DOVIPresent") == "1":
                                                                 ep_has_dv = True
@@ -5568,11 +5768,12 @@ async def _run_overlay_sync_task(
                                                     if previous_streams:
                                                         ep_res = previous_streams.get("resolution") or ep_res
                                                         ep_langs = previous_streams["audio_languages"] or []
+                                                        ep_lang_tags = previous_streams.get("audio_language_tags") or []
                                                         ep_audio_c = previous_streams["audio_codec"]
                                                         ep_has_hdr = previous_streams["has_hdr"]
                                                         ep_has_dv = previous_streams["has_dolby_vision"]
                                                         ep_filepath = previous_streams["filepath"]
-                                                        ep_stream_metadata = {key: previous_streams.get(key) for key in ("subtitle_languages", "aspect_ratio", "audio_profile", "audio_track_title")}
+                                                        ep_stream_metadata = {key: previous_streams.get(key) for key in ("subtitle_languages", "subtitle_language_tags", "aspect_ratio", "audio_profile", "audio_track_title")}
                                                     elif needs_languages or needs_audio or needs_hdr_dv or not ep_filepath:
                                                         try:
                                                             ep_det_resp = await http_client.get(
@@ -5591,11 +5792,11 @@ async def _run_overlay_sync_task(
                                                                 streams_verified = True
                                                                 for st_node in ep_det_root.findall(".//Stream"):
                                                                     if st_node.get("streamType") == "2":
-                                                                        lc_code = st_node.get("languageCode") or st_node.get("language")
-                                                                        if lc_code:
-                                                                            norm_lang = LANGUAGE_MAP.get(lc_code.lower(), lc_code.lower())
-                                                                            if norm_lang not in ep_langs:
-                                                                                ep_langs.append(norm_lang)
+                                                                        base_lang, full_tag = _extract_plex_stream_language(st_node)
+                                                                        if base_lang and base_lang not in ep_langs:
+                                                                            ep_langs.append(base_lang)
+                                                                        if full_tag and full_tag not in ep_lang_tags:
+                                                                            ep_lang_tags.append(full_tag)
                                                                     elif st_node.get("streamType") == "1":
                                                                         if st_node.get("DOVIPresent") == "1":
                                                                             ep_has_dv = True
@@ -5680,6 +5881,7 @@ async def _run_overlay_sync_task(
                                                         "rating_xml": tostring(ep_elem),
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
+                                                        "audio_language_tags": ep_lang_tags,
                                                         **ep_stream_metadata,
                                                         "has_hdr": ep_has_hdr,
                                                         "has_dolby_vision": ep_has_dv,
@@ -5722,15 +5924,16 @@ async def _run_overlay_sync_task(
                                                     ep_has_dv = False
                                                     ep_has_hdr = False
                                                     ep_langs = []
+                                                    ep_lang_tags = []
 
                                                     for s in ep_obj.get("MediaStreams", []):
                                                         stype = s.get("Type")
                                                         if stype == "Audio":
-                                                            lc = s.get("Language") or s.get("DisplayLanguage")
-                                                            if lc:
-                                                                norm_lang = LANGUAGE_MAP.get(lc.lower(), lc.lower())
-                                                                if norm_lang not in ep_langs:
-                                                                    ep_langs.append(norm_lang)
+                                                            base_lang, full_tag = _extract_jellyfin_stream_language(s)
+                                                            if base_lang and base_lang not in ep_langs:
+                                                                ep_langs.append(base_lang)
+                                                            if full_tag and full_tag not in ep_lang_tags:
+                                                                ep_lang_tags.append(full_tag)
                                                             if not ep_audio_c and s.get("Codec"):
                                                                 ep_audio_c = s.get("Codec")
                                                         elif stype == "Video":
@@ -5758,6 +5961,7 @@ async def _run_overlay_sync_task(
                                                         "provider_ids": ep_obj.get("ProviderIds") or {},
                                                         "audio_codec": ep_audio_c,
                                                         "audio_languages": ep_langs,
+                                                        "audio_language_tags": ep_lang_tags,
                                                         **_extract_stream_overlay_metadata(ep_obj),
                                                         "has_hdr": ep_has_hdr,
                                                         "has_dolby_vision": ep_has_dv,
@@ -5811,7 +6015,9 @@ async def _run_overlay_sync_task(
                                                 "audio_profile": ep_data.get("audio_profile"),
                                                 "audio_track_title": ep_data.get("audio_track_title"),
                                                 "audio_languages": ep_data["audio_languages"],
+                                                "audio_language_tags": ep_data.get("audio_language_tags", []),
                                                 "subtitle_languages": ep_data.get("subtitle_languages", []),
+                                                "subtitle_language_tags": ep_data.get("subtitle_language_tags", []),
                                                 "streaming_providers": item.get("streaming_providers", {}),
                                                 "aspect_ratio": ep_data.get("aspect_ratio"),
                                                 "has_hdr": ep_data["has_hdr"],

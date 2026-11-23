@@ -248,7 +248,8 @@ class RatingsCacheManager:
                         "ALTER TABLE media_ratings_cache ADD COLUMN season_number INTEGER;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN episode_number INTEGER;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN rating_sources TEXT;",
-                        "ALTER TABLE media_ratings_cache ADD COLUMN rating_updated_at TEXT;"
+                        "ALTER TABLE media_ratings_cache ADD COLUMN rating_updated_at TEXT;",
+                        "ALTER TABLE media_ratings_cache ADD COLUMN last_episode_air_date TEXT;"
                     ]:
                         try:
                             conn.execute(col_sql)
@@ -785,13 +786,13 @@ class RatingsCacheManager:
                 row = None
                 if item_id:
                     cur.execute(
-                        "SELECT show_status, network, content_rating, expires_at FROM media_ratings_cache WHERE server_type = ? AND item_id = ? LIMIT 1",
+                        "SELECT show_status, network, content_rating, last_episode_air_date, expires_at FROM media_ratings_cache WHERE server_type = ? AND item_id = ? LIMIT 1",
                         (server_type.lower(), str(item_id))
                     )
                     row = cur.fetchone()
                 if not row and tmdb_id:
                     cur.execute(
-                        "SELECT show_status, network, content_rating, expires_at FROM media_ratings_cache WHERE tmdb_id = ? AND show_status IS NOT NULL LIMIT 1",
+                        "SELECT show_status, network, content_rating, last_episode_air_date, expires_at FROM media_ratings_cache WHERE tmdb_id = ? AND show_status IS NOT NULL LIMIT 1",
                         (str(tmdb_id),)
                     )
                     row = cur.fetchone()
@@ -812,7 +813,8 @@ class RatingsCacheManager:
                     "status": row["show_status"],
                     "network": row["network"],
                     "networks": [row["network"]] if row["network"] else [],
-                    "content_rating": row["content_rating"]
+                    "content_rating": row["content_rating"],
+                    "last_episode_air_date": row["last_episode_air_date"],
                 }
             except Exception as e:
                 logger.debug(f"[RatingsCache] Error reading show status: {e}")
@@ -829,7 +831,8 @@ class RatingsCacheManager:
         network: Optional[str] = None,
         content_rating: Optional[str] = None,
         source: str = "tmdb",
-        ttl_days: Optional[int] = None
+        ttl_days: Optional[int] = None,
+        last_episode_air_date: Optional[str] = None
     ):
         """Persistently cache TV show status with tiered TTL."""
         norm_st = str(status or "").strip().lower()
@@ -838,7 +841,7 @@ class RatingsCacheManager:
             effective_ttl = ttl_days
         else:
             # Active/returning/airing shows can change anytime -> 7-day TTL (or 3 days if current year)
-            if norm_st in ("returning", "airing", "returning series", "continuing"):
+            if norm_st in ("returning", "airing", "returning series", "continuing", "in production", "planned", "pilot"):
                 if year and year >= now.year:
                     effective_ttl = TTL_NEW_MEDIA_DAYS  # 3 days
                 else:
@@ -847,6 +850,14 @@ class RatingsCacheManager:
                 effective_ttl = TTL_CLASSIC_MEDIA_DAYS  # 30 days
             else:
                 effective_ttl = 14
+
+            if last_episode_air_date:
+                try:
+                    ep_dt = datetime.fromisoformat(str(last_episode_air_date).strip()[:10]).date()
+                    if (now.date() - ep_dt).days <= 21:
+                        effective_ttl = min(effective_ttl, 3)
+                except ValueError:
+                    pass
 
         expires_at = now + timedelta(days=effective_ttl)
 
@@ -858,8 +869,9 @@ class RatingsCacheManager:
                         """
                         INSERT INTO media_ratings_cache (
                             server_type, item_id, media_type, title, year, tmdb_id,
-                            show_status, network, content_rating, source, cached_at, expires_at
-                        ) VALUES (?, ?, 'show', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            show_status, network, content_rating, last_episode_air_date,
+                            source, cached_at, expires_at
+                        ) VALUES (?, ?, 'show', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(server_type, item_id) DO UPDATE SET
                             media_type = 'show',
                             title = COALESCE(excluded.title, media_ratings_cache.title),
@@ -868,6 +880,7 @@ class RatingsCacheManager:
                             show_status = excluded.show_status,
                             network = COALESCE(excluded.network, media_ratings_cache.network),
                             content_rating = COALESCE(excluded.content_rating, media_ratings_cache.content_rating),
+                            last_episode_air_date = COALESCE(excluded.last_episode_air_date, media_ratings_cache.last_episode_air_date),
                             source = COALESCE(NULLIF(media_ratings_cache.source, ''), excluded.source),
                             cached_at = excluded.cached_at,
                             expires_at = CASE
@@ -887,6 +900,7 @@ class RatingsCacheManager:
                             norm_st,
                             network,
                             content_rating,
+                            last_episode_air_date,
                             source,
                             now.isoformat(),
                             expires_at.isoformat()
