@@ -1482,7 +1482,7 @@ export default function Blueprints() {
         showSuccess(
           t("blueprints.exportBundleSuccess", {
             count: assetCount,
-            defaultValue: "Exported blueprint bundle (.zip) with {{count}} custom overlay/font file(s).",
+            defaultValue: "Exported blueprint bundle (.zip) with {{count}} overlay/font file(s).",
           })
         );
       } else {
@@ -1493,7 +1493,7 @@ export default function Blueprints() {
         showError(
           t("blueprints.exportMissingAssets", {
             files: missingAssets.join(", "),
-            defaultValue: "Referenced custom file(s) not found in Overlayfiles and omitted: {{files}}",
+            defaultValue: "Referenced file(s) not found in Overlayfiles and omitted: {{files}}",
           })
         );
       }

@@ -222,24 +222,45 @@ def _minimal_ttf_bytes(marker: bytes = b"TTFDATA") -> bytes:
     return b"\x00\x01\x00\x00" + marker
 
 
-def test_export_blueprint_package_json_for_builtins_and_zip_for_custom(tmp_path):
+def test_export_blueprint_package_json_for_settings_only_and_zip_with_assets(tmp_path):
     overlayfiles_dir = tmp_path / "Overlayfiles"
     overlayfiles_dir.mkdir()
+    modified_default_overlay = _minimal_png_bytes(b"customized-default-innerglow")
+    modified_default_font = _minimal_ttf_bytes(b"customized-colus")
     custom_bg = _minimal_png_bytes(b"innerglow2")
     custom_res = _minimal_png_bytes(b"unused4k")
     custom_font = _minimal_ttf_bytes(b"customfont")
+    (overlayfiles_dir / "overlay-innerglow.png").write_bytes(modified_default_overlay)
+    (overlayfiles_dir / "Colus-Regular.ttf").write_bytes(modified_default_font)
     (overlayfiles_dir / "backgroundoverlay-innerglow2.png").write_bytes(custom_bg)
     (overlayfiles_dir / "custom-4k.png").write_bytes(custom_res)
     (overlayfiles_dir / "CustomDisplay.ttf").write_bytes(custom_font)
 
-    builtin_only = {
-        "name": "Builtins",
+    settings_only = {
+        "name": "Settings Only",
         "updates": {
             "nested": {
                 "PrerequisitePart": {
                     "overlayfile": "overlay-innerglow.png",
-                    "backgroundoverlayfile": "backgroundoverlay-innerglow.png",
-                    "font": "Colus-Regular.ttf",
+                    "UsePosterResolutionOverlays": "false",
+                    "poster4k": "custom-4k.png",
+                },
+                "PosterOverlayPart": {"AddOverlay": "false", "AddBorder": "true"},
+            }
+        },
+    }
+    json_pkg = cg.export_blueprint_package(settings_only, overlayfiles_dir)
+    assert json_pkg["format"] == "json"
+    assert json_pkg["filename"] == "custom_blueprint.json"
+    assert json_pkg["asset_names"] == []
+    assert json_pkg["missing_assets"] == []
+
+    default_named = {
+        "name": "Modified Default Assets",
+        "updates": {
+            "nested": {
+                "PrerequisitePart": {
+                    "overlayfile": "overlay-innerglow.png",
                     "UsePosterResolutionOverlays": "false",
                     "poster4k": "custom-4k.png",
                 },
@@ -247,11 +268,18 @@ def test_export_blueprint_package_json_for_builtins_and_zip_for_custom(tmp_path)
             }
         },
     }
-    json_pkg = cg.export_blueprint_package(builtin_only, overlayfiles_dir)
-    assert json_pkg["format"] == "json"
-    assert json_pkg["filename"] == "custom_blueprint.json"
-    assert json_pkg["asset_names"] == []
-    assert json_pkg["missing_assets"] == []
+    default_zip = cg.export_blueprint_package(
+        default_named,
+        overlayfiles_dir,
+        config_fonts={"font": "Colus-Regular.ttf"},
+    )
+    assert default_zip["format"] == "bundle"
+    assert default_zip["filename"] == "custom_blueprint.zip"
+    assert default_zip["asset_names"] == ["Colus-Regular.ttf", "overlay-innerglow.png"]
+    assert default_zip["missing_assets"] == []
+    unpacked_default = cg.unpack_blueprint_bundle(default_zip["payload"])
+    assert unpacked_default["assets"]["overlay-innerglow.png"] == modified_default_overlay
+    assert unpacked_default["assets"]["Colus-Regular.ttf"] == modified_default_font
 
     with_custom = {
         "name": "Custom Suite",
@@ -278,7 +306,12 @@ def test_export_blueprint_package_json_for_builtins_and_zip_for_custom(tmp_path)
     )
     assert zip_pkg["format"] == "bundle"
     assert zip_pkg["filename"] == "custom_blueprint.zip"
-    assert zip_pkg["asset_names"] == ["CustomDisplay.ttf", "backgroundoverlay-innerglow2.png"]
+    assert zip_pkg["asset_names"] == [
+        "Colus-Regular.ttf",
+        "CustomDisplay.ttf",
+        "backgroundoverlay-innerglow2.png",
+        "overlay-innerglow.png",
+    ]
     assert zip_pkg["missing_assets"] == ["missing-collection.png"]
 
     unpacked = cg.unpack_blueprint_bundle(zip_pkg["payload"])
@@ -286,6 +319,7 @@ def test_export_blueprint_package_json_for_builtins_and_zip_for_custom(tmp_path)
     assert unpacked["updates"]["nested"]["PrerequisitePart"]["font"] == "CustomDisplay.ttf"
     assert unpacked["assets"]["backgroundoverlay-innerglow2.png"] == custom_bg
     assert unpacked["assets"]["CustomDisplay.ttf"] == custom_font
+    assert unpacked["assets"]["overlay-innerglow.png"] == modified_default_overlay
 
 
 def test_unpack_blueprint_bundle_rejects_bad_entries(tmp_path):

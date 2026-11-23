@@ -41,22 +41,6 @@ BLUEPRINT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 BLUEPRINT_FONT_EXTS = {".ttf", ".otf", ".woff", ".woff2"}
 BLUEPRINT_ASSET_EXTS = BLUEPRINT_IMAGE_EXTS | BLUEPRINT_FONT_EXTS
 FONT_FILENAME_KEYS = ("font", "collectionfont", "RTLFont", "backgroundfont", "titlecardfont")
-BUILTIN_OVERLAY_FILENAMES_FOLDED = {
-    "overlay.png",
-    "overlay-innerglow.png",
-    "overlay_old.png",
-    "backgroundoverlay.png",
-    "backgroundoverlay-innerglow.png",
-    "backgroundoverlay_old.png",
-    "colus-regular.ttf",
-    "comfortaa-bold.ttf",
-    "comfortaa-light.ttf",
-    "comfortaa-medium.ttf",
-    "comfortaa-regular.ttf",
-    "comfortaa-semibold.ttf",
-    "rocky.ttf",
-    "aharoni clm book.ttf",
-}
 _WINDOWS_RESERVED_STEMS = {
     "CON",
     "PRN",
@@ -729,8 +713,6 @@ def export_blueprint_package(
     expanded_total = 0
 
     for fname in sorted(active_files):
-        if fname.casefold() in BUILTIN_OVERLAY_FILENAMES_FOLDED:
-            continue
         if not _is_valid_asset_filename(fname):
             continue
         asset_data = _find_local_asset(Path(overlayfiles_dir), fname)
