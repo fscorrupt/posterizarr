@@ -14,12 +14,12 @@
   </div>
 </div>
 
-!!! info "Looking for ready-to-import presets & bundles?"
-    This showcase displays real user artwork alongside the built-in examples. You can browse and import shared presets and overlay bundles directly inside the Web UI via the **Community Gallery** (in **Builders > Blueprint Builder** and **Builders > Dynamic Overlays**, powered by [posterizarr-community](https://github.com/fscorrupt/posterizarr-community)):
+!!! info "About these examples & where to get presets"
+    The scroller below shows curated static artwork examples from this repository (hover or click any image to see the contributor and any overlay source note). These page examples are separate from the live preset repository:
 
+    - **In-app Community Gallery (ready-to-import presets & bundles):** Open **Builders > Blueprint Builder** or **Builders > Dynamic Overlays** in the Posterizarr Web UI to browse and import configurations directly from [posterizarr-community](https://github.com/fscorrupt/posterizarr-community).
     - **Poster style (fonts, logos, borders, textless):** **Builders > Blueprint Builder** ([Blueprints & Recipes](blueprints.md)) or [Configuration](configuration.md)
-    - **Badges & ratings:** **Builders > Dynamic Overlays** (**Community Gallery**, built-in presets, Kometa-compatible YAML import, or portable ZIP bundles — see [Dynamic Overlays guide](dynamic_overlays.md) · [5-Minute Quickstart](quickstart.md))
-    - **Tip:** Hover or click any artwork below to view its contributor and whether an imported overlay configuration was used.
+    - **Badges & ratings:** **Builders > Dynamic Overlays** (Community Gallery, built-in presets, Kometa-compatible YAML import, or portable ZIP bundles — see [Dynamic Overlays guide](dynamic_overlays.md) · [5-Minute Quickstart](quickstart.md))
 
 --8<-- "docs/includes/artwork-gallery.md"
 
