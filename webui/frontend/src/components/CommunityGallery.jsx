@@ -12,6 +12,7 @@ import {
   Info,
   Layers,
   Loader2,
+  Package,
   RefreshCw,
   Save,
   Search,
@@ -54,6 +55,7 @@ export default function CommunityGallery({
   const [search, setSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState("all");
   const [previewIndexById, setPreviewIndexById] = useState({});
+  const [expandedAssetsById, setExpandedAssetsById] = useState({});
   const [lightbox, setLightbox] = useState(null);
 
   const loadCatalog = useCallback(async (forceRefresh = false) => {
@@ -518,6 +520,48 @@ export default function CommunityGallery({
                       </span>
                     ))}
                   </div>
+
+                  {Array.isArray(item.assets) && item.assets.length > 0 && (() => {
+                    const isExpanded = Boolean(expandedAssetsById[item.id]);
+                    const visibleAssets = isExpanded ? item.assets : item.assets.slice(0, 6);
+                    const hiddenCount = item.assets.length - visibleAssets.length;
+                    return (
+                      <div className="p-2.5 rounded-lg bg-theme-card/60 border border-theme/60 space-y-1.5 text-[11px]">
+                        <div className="flex items-center gap-1.5 text-theme-muted font-medium">
+                          <Package className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>
+                            {t("communityGallery.includedFiles", "Included files")} ({item.assets.length})
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {visibleAssets.map((filename) => (
+                            <span
+                              key={filename}
+                              className="px-1.5 py-0.5 rounded bg-theme-bg border border-theme/70 font-mono text-[10px] text-theme-text break-all"
+                            >
+                              {filename}
+                            </span>
+                          ))}
+                          {item.assets.length > 6 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedAssetsById((prev) => ({ ...prev, [item.id]: !isExpanded }))
+                              }
+                              className="px-1.5 py-0.5 rounded bg-theme-primary/10 border border-theme-primary/25 text-[10px] font-medium text-theme-primary hover:bg-theme-primary/20 transition-colors"
+                            >
+                              {isExpanded
+                                ? t("communityGallery.showLessFiles", "Show less")
+                                : t("communityGallery.showMoreFiles", {
+                                    count: hiddenCount,
+                                    defaultValue: "+{{count}} more",
+                                  })}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {item.notes && (
                     <div className="p-2.5 rounded-lg bg-theme-card/80 border border-theme/60 flex items-start gap-2 text-[11px] text-theme-muted">
