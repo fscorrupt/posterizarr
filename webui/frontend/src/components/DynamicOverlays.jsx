@@ -17,7 +17,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import ImdbDatasetPanel from "./ImdbDatasetPanel";
 import OverlayBundleTransfer from "./OverlayBundleTransfer";
 import CommunityGallery from "./CommunityGallery";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Layers,
@@ -526,6 +526,7 @@ const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => 
 export default function DynamicOverlays() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { showSuccess, showError, showInfo } = useToast();
 
@@ -692,6 +693,37 @@ export default function DynamicOverlays() {
       return "";
     }
   });
+  const [highlightedOverlayLib, setHighlightedOverlayLib] = useState(null);
+  const lastOverlayJumpTsRef = useRef(null);
+  useEffect(() => {
+    const targetLib = location.state?.selectedLibrary;
+    if (!targetLib) return undefined;
+    const jumpTs = location.state?.ts || targetLib;
+    if (lastOverlayJumpTsRef.current === jumpTs) return undefined;
+    lastOverlayJumpTsRef.current = jumpTs;
+
+    if (visualConfig?.libraries?.[targetLib]) {
+      setSelectedVisualLib(targetLib);
+      try {
+        localStorage.setItem("posterizarr_selected_visual_lib", targetLib);
+      } catch {}
+    }
+    setHighlightedOverlayLib(targetLib);
+
+    const scrollTimer = setTimeout(() => {
+      const cardEl = document.getElementById(`overlay-library-card-${encodeURIComponent(targetLib)}`);
+      if (cardEl) {
+        cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 150);
+    const clearTimer = setTimeout(() => {
+      setHighlightedOverlayLib((prev) => (prev === targetLib ? null : prev));
+    }, 3000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [location.state, visualConfig]);
   const [isVisualLoading, setIsVisualLoading] = useState(false);
   const [isVisualSaving, setIsVisualSaving] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -8672,9 +8704,16 @@ export default function DynamicOverlays() {
           {/* LIBRARIES GRID */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {Object.entries(libraries).map(([libName, libInfo]) => (
-              <div key={libName} className={`bg-theme-card border rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between transition-all ${
-                selectedLibraries.includes(libName) ? "border-theme-primary ring-1 ring-theme-primary/30" : "border-theme"
-              }`}>
+              <div
+                key={libName}
+                id={`overlay-library-card-${encodeURIComponent(libName)}`}
+                className={`bg-theme-card border rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between transition-all ${
+                  highlightedOverlayLib === libName
+                    ? "border-theme-primary ring-2 ring-theme-primary bg-theme-primary/5"
+                    : selectedLibraries.includes(libName)
+                      ? "border-theme-primary ring-1 ring-theme-primary/30"
+                      : "border-theme"
+                }`}>
                 {/* Library Header */}
                 <div className="flex items-center justify-between border-b border-theme pb-3">
                   <div className="flex items-center gap-3">

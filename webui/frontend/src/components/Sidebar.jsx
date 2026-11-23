@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Activity, Play, Image, Settings, Clock, FileText, Info, Menu, X,
+  Activity, Play, Image, Settings, Clock, FileText, Info, Menu, X, Search,
   ChevronDown, ChevronRight, Film, Layers, Tv, Database, Server,
   Palette, Bell, Lock, User, FileImage, Lightbulb, AlertTriangle,
   TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer, Sparkles, Clapperboard
@@ -531,6 +531,18 @@ const Sidebar = () => {
             <span className="ml-3 text-lg font-bold text-theme-primary tracking-tight">Posterizarr</span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                setIsThemeDropdownOpen(false);
+                window.dispatchEvent(new Event("openGlobalSearch"));
+              }}
+              aria-label={t("globalSearch.triggerPlaceholder", "Search UI, settings, assets...")}
+              className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"
+            >
+              <Search className="w-5 h-5" />
+            </button>
             <div className="relative">
               <button onClick={() => { setIsThemeDropdownOpen(!isThemeDropdownOpen); setIsMobileMenuOpen(false); }} aria-label="Change theme" aria-expanded={isThemeDropdownOpen} className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><Palette className="w-5 h-5" /></button>
               {isThemeDropdownOpen && (

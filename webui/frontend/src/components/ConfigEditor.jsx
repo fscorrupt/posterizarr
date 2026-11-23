@@ -284,8 +284,19 @@ function ConfigEditor() {
   }, [activeTab]);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!location.state?.jumpToSetting) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, [activeTab]);
+
+  const lastGlobalJumpTsRef = useRef(null);
+  useEffect(() => {
+    const target = location.state?.jumpToSetting;
+    if (!config || !target || !target.group || !target.key) return;
+    if (target.ts && lastGlobalJumpTsRef.current === target.ts) return;
+    lastGlobalJumpTsRef.current = target.ts || "jump";
+    handleJumpToSetting(target.group, target.key);
+  }, [location.state, config]);
 
   // Data Fetching & Saving
   const fetchConfig = async () => {

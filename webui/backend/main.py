@@ -17248,6 +17248,56 @@ async def get_sidebar_counts(refresh: bool = False):
         return data
 
 
+@app.get("/api/global-search")
+async def global_search_endpoint(
+    q: str = Query("", max_length=120),
+    limit: int = Query(8, ge=1, le=20),
+):
+    from global_search import run_global_search
+
+    clean_q = (q or "").strip()
+    if not clean_q:
+        return {
+            "success": True,
+            "query": "",
+            "assets": [],
+            "overlays": [],
+            "logs": [],
+            "blueprints": [],
+        }
+
+    cache_snapshot = get_fresh_assets()
+    visual_config = None
+    try:
+        from dynamic_overlays_service import parse_config_yml_to_visual
+
+        visual_config = await asyncio.to_thread(parse_config_yml_to_visual, auto_seed=False)
+    except Exception as vis_err:
+        logger.debug(f"Global search skipped visual overlay index: {vis_err}")
+
+    custom_blueprints = []
+    try:
+        if CONFIG_DATABASE_AVAILABLE and config_db:
+            raw_bp = config_db.get_value("CustomBlueprints", "blueprints")
+            if raw_bp:
+                parsed_bp = json.loads(raw_bp)
+                if isinstance(parsed_bp, list):
+                    custom_blueprints = parsed_bp
+    except Exception as bp_err:
+        logger.debug(f"Global search skipped custom blueprints index: {bp_err}")
+
+    return await asyncio.to_thread(
+        run_global_search,
+        clean_q,
+        asset_cache=cache_snapshot,
+        logs_dir=LOGS_DIR,
+        ui_logs_dir=UI_LOGS_DIR,
+        visual_config=visual_config,
+        custom_blueprints=custom_blueprints,
+        limit=limit,
+    )
+
+
 @app.get("/api/imagechoices")
 async def get_all_imagechoices(rootfolder: Optional[str] = None):
     """Get all image choice records (optionally filtered by Rootfolder)"""

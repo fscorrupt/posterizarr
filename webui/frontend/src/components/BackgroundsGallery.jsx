@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Layers,
   Folder,
@@ -140,6 +141,7 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
 
 function BackgroundsGallery() {
   const { t } = useTranslation();
+  const location = useLocation();
   const { showSuccess, showError, showInfo } = useToast();
   const [folders, setFolders] = useState([]);
   const [activeFolder, setActiveFolder] = useState(null);
@@ -151,7 +153,33 @@ function BackgroundsGallery() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [deletingImage, setDeletingImage] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(() => location.state?.globalSearchTerm || "");
+  const pendingGlobalFolderRef = useRef(location.state?.globalSearchFolder || null);
+  const lastGlobalSearchTsRef = useRef(null);
+
+  useEffect(() => {
+    const stateTerm = location.state?.globalSearchTerm;
+    const stateFolder = location.state?.globalSearchFolder;
+    if (stateTerm === undefined && stateFolder === undefined) return;
+    const jumpTs = location.state?.ts || `${stateFolder || ""}:${stateTerm || ""}`;
+    if (lastGlobalSearchTsRef.current === jumpTs) return;
+    lastGlobalSearchTsRef.current = jumpTs;
+
+    if (typeof stateTerm === "string") {
+      setSearchTerm(stateTerm);
+    }
+    if (stateFolder) {
+      if (folders.length > 0) {
+        const matched = folders.find((f) => f.name === stateFolder || f.path === stateFolder);
+        if (matched) {
+          pendingGlobalFolderRef.current = null;
+          setActiveFolder(matched);
+          return;
+        }
+      }
+      pendingGlobalFolderRef.current = stateFolder;
+    }
+  }, [location.state, folders]);
 
   // --- SORTING STATE ---
   const [sortOrder, setSortOrder] = useState(() => {
@@ -276,12 +304,25 @@ function BackgroundsGallery() {
         }
       }
 
-      if (data.folders && data.folders.length > 0 && !activeFolder) {
-        const folderWithImages = data.folders.find(
-          (f) => f.background_count > 0
-        );
-        if (folderWithImages) {
-          setActiveFolder(folderWithImages);
+      if (data.folders && data.folders.length > 0) {
+        const requestedFolder = pendingGlobalFolderRef.current;
+        if (requestedFolder) {
+          const matched = data.folders.find(
+            (f) => f.name === requestedFolder || f.path === requestedFolder
+          );
+          if (matched) {
+            pendingGlobalFolderRef.current = null;
+            setActiveFolder(matched);
+            return;
+          }
+        }
+        if (!activeFolder) {
+          const folderWithImages = data.folders.find(
+            (f) => f.background_count > 0
+          );
+          if (folderWithImages) {
+            setActiveFolder(folderWithImages);
+          }
         }
       }
     } catch (error) {

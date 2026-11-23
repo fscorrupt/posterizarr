@@ -4158,5 +4158,36 @@
     "downloadsCount": "{{count}} transferências",
     "sortDefault": "Predefinito",
     "sortMostDownloaded": "Mais transferidos"
+  },
+  "globalSearch": {
+    "triggerPlaceholder": "Pesquisar UI, definições, assets...",
+    "inputPlaceholder": "Pesquisar páginas, definições, assets, overlays, registos...",
+    "clear": "Limpar pesquisa",
+    "noResults": "Sem resultados para \"{{query}}\"",
+    "noResultsHint": "Tente o nome de uma página, chave de definição, título, regra de overlay ou ficheiro de registo.",
+    "searching": "A pesquisar no Posterizarr...",
+    "recent": "Recentes",
+    "quickJump": "Acesso rápido",
+    "categories": {
+      "all": "Todos",
+      "pages": "Páginas",
+      "settings": "Definições",
+      "assets": "Assets",
+      "overlays": "Overlays",
+      "blueprints": "Blueprints",
+      "logs": "Registos",
+      "actions": "Ações"
+    },
+    "actions": {
+      "openOnboarding": "Abrir assistente de configuração",
+      "openOnboardingDesc": "Iniciar a configuração guiada do Posterizarr",
+      "switchTheme": "Mudar tema: {{name}}",
+      "switchThemeDesc": "Aplicar esquema de cores imediatamente"
+    },
+    "hints": {
+      "navigate": "Navegar",
+      "open": "Abrir",
+      "close": "Fechar"
+    }
   }
 }

@@ -4159,5 +4159,36 @@
     "downloadsCount": "{{count}} téléchargements",
     "sortDefault": "Par défaut",
     "sortMostDownloaded": "Les plus téléchargés"
+  },
+  "globalSearch": {
+    "triggerPlaceholder": "Rechercher UI, paramètres, médias...",
+    "inputPlaceholder": "Rechercher pages, paramètres, médias, overlays, journaux...",
+    "clear": "Effacer la recherche",
+    "noResults": "Aucun résultat pour « {{query}} »",
+    "noResultsHint": "Essayez un nom de page, une clé de paramètre, un titre, une règle d'overlay ou un fichier journal.",
+    "searching": "Recherche dans Posterizarr...",
+    "recent": "Récents",
+    "quickJump": "Accès rapide",
+    "categories": {
+      "all": "Tout",
+      "pages": "Pages",
+      "settings": "Paramètres",
+      "assets": "Médias",
+      "overlays": "Overlays",
+      "blueprints": "Blueprints",
+      "logs": "Journaux",
+      "actions": "Actions"
+    },
+    "actions": {
+      "openOnboarding": "Ouvrir l'assistant de configuration",
+      "openOnboardingDesc": "Lancer la fenêtre guidée Posterizarr",
+      "switchTheme": "Changer de thème : {{name}}",
+      "switchThemeDesc": "Appliquer immédiatement le thème"
+    },
+    "hints": {
+      "navigate": "Naviguer",
+      "open": "Ouvrir",
+      "close": "Fermer"
+    }
   }
 }

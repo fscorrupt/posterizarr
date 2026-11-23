@@ -4152,5 +4152,36 @@
     "downloadsCount": "{{count}} downloads",
     "sortDefault": "Default",
     "sortMostDownloaded": "Most downloaded"
+  },
+  "globalSearch": {
+    "triggerPlaceholder": "Search UI, settings, assets...",
+    "inputPlaceholder": "Search pages, settings, assets, overlays, logs...",
+    "clear": "Clear search",
+    "noResults": "No matches for \"{{query}}\"",
+    "noResultsHint": "Try a page name, setting key, movie/show title, overlay rule, or log filename.",
+    "searching": "Searching across Posterizarr...",
+    "recent": "Recent",
+    "quickJump": "Quick Jump",
+    "categories": {
+      "all": "All",
+      "pages": "Pages",
+      "settings": "Settings",
+      "assets": "Assets",
+      "overlays": "Overlays",
+      "blueprints": "Blueprints",
+      "logs": "Logs",
+      "actions": "Actions"
+    },
+    "actions": {
+      "openOnboarding": "Open Setup Wizard",
+      "openOnboardingDesc": "Launch the guided Posterizarr onboarding modal",
+      "switchTheme": "Switch Theme: {{name}}",
+      "switchThemeDesc": "Apply color theme immediately"
+    },
+    "hints": {
+      "navigate": "Navigate",
+      "open": "Open",
+      "close": "Close"
+    }
   }
 }

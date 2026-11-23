@@ -4210,5 +4210,36 @@
     "downloadsCount": "{{count}} Downloads",
     "sortDefault": "Standard",
     "sortMostDownloaded": "Meistgeladen"
+  },
+  "globalSearch": {
+    "triggerPlaceholder": "UI, Einstellungen, Assets suchen...",
+    "inputPlaceholder": "Seiten, Einstellungen, Assets, Overlays, Logs durchsuchen...",
+    "clear": "Suche leeren",
+    "noResults": "Keine Treffer für „{{query}}“",
+    "noResultsHint": "Versuche einen Seitennamen, Setting-Key, Film-/Serientitel, eine Overlay-Regel oder eine Log-Datei.",
+    "searching": "Durchsuche Posterizarr...",
+    "recent": "Zuletzt genutzt",
+    "quickJump": "Schnellzugriff",
+    "categories": {
+      "all": "Alle",
+      "pages": "Seiten",
+      "settings": "Einstellungen",
+      "assets": "Assets",
+      "overlays": "Overlays",
+      "blueprints": "Blueprints",
+      "logs": "Logs",
+      "actions": "Aktionen"
+    },
+    "actions": {
+      "openOnboarding": "Einrichtungsassistent öffnen",
+      "openOnboardingDesc": "Geführtes Posterizarr-Onboarding starten",
+      "switchTheme": "Design wechseln: {{name}}",
+      "switchThemeDesc": "Farbschema sofort anwenden"
+    },
+    "hints": {
+      "navigate": "Navigieren",
+      "open": "Öffnen",
+      "close": "Schließen"
+    }
   }
 }

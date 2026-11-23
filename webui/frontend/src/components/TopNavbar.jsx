@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Palette, User, LogOut, Activity, Zap, Square, Trash2, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Palette, User, LogOut, Activity, Zap, Square, Trash2, ChevronDown, ChevronRight, AlertTriangle, Search } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -147,15 +147,38 @@ const TopNavbar = () => {
 
   const compactTasks = systemStatus.activeTasks.length > 1;
   const getTaskName = (task) => taskNameKeys[task.id] ? t(taskNameKeys[task.id]) : task.name || task.label;
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPod|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || "");
 
   return (
     <div className={`app-topbar hidden md:block fixed top-0 left-0 right-0 z-40 h-16 transition-all duration-300 ${isCollapsed ? "md:pl-20" : "md:pl-64"}`}>
       <div className="flex items-center justify-between gap-4 h-full px-4 lg:px-6">
-        <nav aria-label="Current view" className={`${compactTasks ? "hidden 2xl:flex" : "hidden lg:flex"} min-w-0 max-w-48 items-center gap-2 text-xs text-theme-muted`}>
-          <Link to="/" className="shrink-0 hover:text-theme-text">Posterizarr</Link>
-          <ChevronRight size={13} className="shrink-0" />
-          <span aria-current="page" className="truncate capitalize text-theme-text">{viewName}</span>
-        </nav>
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("openGlobalSearch"))}
+            className="flex items-center justify-between gap-2 w-48 lg:w-64 xl:w-72 h-9 px-3 rounded-xl bg-theme-card/70 hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-xs text-theme-muted hover:text-theme-text transition-all shrink-0 shadow-sm"
+            title={t("globalSearch.triggerPlaceholder", "Search UI, settings, assets...")}
+            aria-label={t("globalSearch.triggerPlaceholder", "Search UI, settings, assets...")}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Search className="w-3.5 h-3.5 text-theme-primary shrink-0" />
+              <span className="truncate">
+                {t("globalSearch.triggerPlaceholder", "Search UI, settings, assets...")}
+              </span>
+            </span>
+            <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.5 rounded bg-theme-bg border border-theme text-[10px] font-mono text-theme-muted shrink-0">
+              {isMac ? "⌘K" : "Ctrl+K"}
+            </kbd>
+          </button>
+
+          <nav aria-label="Current view" className={`${compactTasks ? "hidden 2xl:flex" : "hidden xl:flex"} min-w-0 max-w-44 items-center gap-2 text-xs text-theme-muted`}>
+            <Link to="/" className="shrink-0 hover:text-theme-text">Posterizarr</Link>
+            <ChevronRight size={13} className="shrink-0" />
+            <span aria-current="page" className="truncate capitalize text-theme-text">{viewName}</span>
+          </nav>
+        </div>
 
         {/* Right Side: Tools & Status */}
           <div className="ml-auto flex min-w-0 items-center justify-end gap-3">

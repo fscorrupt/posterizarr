@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import WorkspaceHeader from "./WorkspaceHeader";
 import { Loader2, Palette, Image, Layers, CheckCircle2, AlertCircle, Type, Square, Languages, Sparkles, Download, Upload, Info, Sliders, LayoutTemplate, ChevronDown, ChevronRight, Settings, ImagePlus, RotateCcw, Wand2, MousePointerClick, Trash2, Save, X, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -363,8 +364,21 @@ export default function Blueprints() {
   const [customPreviewImage, setCustomPreviewImage] = useState(null);
   const [overlayFiles, setOverlayFiles] = useState([]);
 
-  // Tabs: "presets" | "builder"
-  const [activeTab, setActiveTab] = useState("presets");
+  // Tabs: "presets" | "builder" | "community"
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => {
+    const initialTab = location.state?.tab;
+    return ["presets", "builder", "community"].includes(initialTab) ? initialTab : "presets";
+  });
+  const lastGlobalTabTsRef = useRef(null);
+  useEffect(() => {
+    const targetTab = location.state?.tab;
+    if (!targetTab || !["presets", "builder", "community"].includes(targetTab)) return;
+    const jumpTs = location.state?.ts || targetTab;
+    if (lastGlobalTabTsRef.current === jumpTs) return;
+    lastGlobalTabTsRef.current = jumpTs;
+    setActiveTab(targetTab);
+  }, [location.state]);
   const [showOnlyModified, setShowOnlyModified] = useState(false);
 
   // Builder State

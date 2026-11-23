@@ -45,6 +45,7 @@ import LogoBrowser from "./components/LogoBrowser";
 import CollectionExplorer from "./components/CollectionExplorer";
 import Sidebar from "./components/Sidebar";
 import TopNavbar from "./components/TopNavbar";
+import GlobalSearchModal from "./components/GlobalSearchModal";
 import LoginScreen from "./components/LoginScreen";
 import LoadingScreen from "./components/LoadingScreen";
 import TestGallery from "./components/TestGallery";
@@ -346,6 +347,7 @@ function AppContent() {
       {/* Main App - rendered in background while loading screen is shown */}
       <div className="app-shell min-h-screen text-theme-text">
         <TopNavbar />
+        <GlobalSearchModal />
         <Sidebar />
 
         <main

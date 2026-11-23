@@ -660,6 +660,21 @@ function LogViewer() {
     }
   }, [selectedLog]);
 
+  const lastLogJumpTsRef = useRef(null);
+  useEffect(() => {
+    if (isInitialLoad.current) return;
+    const requestedLogFile = location.state?.logFile;
+    if (!requestedLogFile) return;
+    const jumpTs = location.state?.ts || requestedLogFile;
+    if (lastLogJumpTsRef.current === jumpTs) return;
+    if (availableLogs.some((log) => log.name === requestedLogFile)) {
+      lastLogJumpTsRef.current = jumpTs;
+      if (requestedLogFile !== selectedLog) {
+        setSelectedLog(requestedLogFile);
+      }
+    }
+  }, [location.state, availableLogs, selectedLog]);
+
 
   const filteredLogs = useMemo(() => {
     const query = searchTerm.toLowerCase();
