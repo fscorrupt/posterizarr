@@ -18,8 +18,11 @@
   "overlayBundle": {
     "export": "Export bundle",
     "import": "Import bundle",
+    "community": "Community Gallery",
     "exportHint": "Export overlay YAML, assets, fonts, and feature settings",
     "importHint": "Review and import an overlay bundle",
+    "communityHint": "Browse and import community-shared Dynamic Overlay bundles",
+    "communitySource": "Community bundle: {{name}} by {{author}}",
     "fileLabel": "Overlay bundle ZIP file",
     "title": "Import overlay bundle",
     "stats": "Files: {{files}} / Assets: {{assets}} / Destination: {{server}}",
@@ -1358,7 +1361,39 @@
     "stopSuccess": "Script stopping...",
     "assets": "Assets to Show",
     "cores": "Cores",
-    "free": "Free"
+    "free": "Free",
+    "gettingStarted": {
+      "title": "Getting Started",
+      "subtitle": "Your configuration is ready. Follow these safe steps to style and preview your artwork before updating your media server.",
+      "quickstartLink": "5-Min Quickstart",
+      "setupWizard": "Setup Wizard",
+      "dismiss": "Dismiss getting started guide",
+      "stepLabel": "Step {{number}}",
+      "steps": {
+        "style": {
+          "title": "Choose a Poster Style",
+          "description": "Pick a 1-click preset in Blueprint Builder to set fonts, logos, borders, or textless rules.",
+          "cta": "Open Blueprint Builder"
+        },
+        "overlays": {
+          "title": "Dynamic Overlays (Optional)",
+          "description": "Add 4K/HDR, rating, and status badges in memory. Starts safely in Dry Run without server uploads.",
+          "cta": "Open Dynamic Overlays"
+        },
+        "test": {
+          "title": "Preview Safely (Testing Mode)",
+          "description": "Generate sample posters into Test Gallery using your settings — zero changes to your live library.",
+          "cta": "Run Testing Mode"
+        },
+        "run": {
+          "title": "Run Your First Job",
+          "description": "Test a single movie or show via Manual Asset, or run your configured library when ready.",
+          "cta": "Open Run Modes"
+        }
+      },
+      "schedulerWarning": "An automated schedule is already active. Run Testing Mode or verify your style before the next scheduled job runs.",
+      "manageScheduler": "Manage Scheduler"
+    }
   },
   "config": {
     "title": "Configuration",
@@ -3864,6 +3899,7 @@
       "savePreset": "Save as Preset",
       "tabPresets": "Presets",
       "tabBuilder": "Builder",
+      "tabCommunity": "Community Gallery",
       "tabBuilderDesc": "Create your own custom blueprint by mixing and matching specific overlays.",
       "categoryPoster": "Poster",
       "categorySeason": "Season",
@@ -3982,6 +4018,9 @@
     "preparingEnvironment": "Preparing environment...",
     "saving": "Saving...",
     "finishSetup": "Finish Setup",
+    "skipForNow": "Skip for now (add later)",
+    "skipShort": "Skip setup",
+    "skipping": "Skipping...",
     "back": "Back",
     "continue": "Continue",
     "testConnection": "Test Connection",
@@ -4043,6 +4082,55 @@
       "moveUp": "Move Up",
       "moveDown": "Move Down",
       "removeProvider": "Remove Provider"
+    },
+    "nextStep": {
+      "heading": "Where would you like to go next?",
+      "recommended": "Recommended",
+      "blueprints": {
+        "title": "Choose a Poster Style",
+        "description": "Browse visual 1-click presets in Blueprint Builder for text, logos, borders, or clean posters."
+      },
+      "dynamicOverlays": {
+        "title": "Set Up Dynamic Overlays",
+        "description": "Open the overlay Setup Wizard for ratings and resolution badges (starts safely in Dry Run)."
+      },
+      "testing": {
+        "title": "Preview Safely (Testing Mode)",
+        "description": "Generate sample artwork in Test Gallery without uploading anything to your media server."
+      },
+      "dashboard": {
+        "title": "Go to Dashboard",
+        "description": "Open the main workspace with a step-by-step Getting Started checklist."
+      }
     }
+  },
+  "communityGallery": {
+    "tabTitle": "Community Gallery",
+    "title": "Posterizarr Community Gallery",
+    "subtitleBlueprints": "Browse user-shared visual styles and import them straight into Blueprint Builder or your config.",
+    "subtitleOverlays": "Browse sanitized Dynamic Overlay bundles and map them safely to your own libraries in Dry Run.",
+    "submitYours": "Submit yours on GitHub",
+    "searchPlaceholder": "Search presets, authors, or tags...",
+    "allTags": "All",
+    "loading": "Loading Community Gallery from GitHub...",
+    "notPublishedTitle": "Community catalog not published yet",
+    "notPublishedDesc": "The community repository does not have a published index.json on main yet, or is still private.",
+    "unavailableTitle": "Could not load Community Gallery",
+    "retry": "Retry",
+    "emptyCatalog": "No entries published in this category yet.",
+    "noMatches": "No presets match your search or tag filter.",
+    "resetFilters": "Reset filters",
+    "zoomPreview": "Click to enlarge preview",
+    "noPreview": "No preview image",
+    "previousPreview": "Previous preview",
+    "nextPreview": "Next preview",
+    "settingsCount": "{{count}} settings",
+    "profilesCount": "{{count}} library profiles",
+    "saveAsPreset": "Save as Custom Preset",
+    "saveShort": "Save",
+    "applyAction": "Apply",
+    "downloading": "Fetching bundle...",
+    "previewAndImport": "Preview & Import Bundle",
+    "loadBlueprintError": "Failed to load community blueprint: {{message}}"
   }
 }

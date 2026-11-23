@@ -2861,7 +2861,7 @@ async def export_blueprint():
             export_data = json.load(f)
 
         # Remove sensitive sections completely
-        for section in ["ApiPart", "PlexPart", "JellyfinPart", "EmbyPart", "Notification", "WebUI"]:
+        for section in ["ApiPart", "PlexPart", "JellyfinPart", "EmbyPart", "SiloPart", "Notification", "WebUI"]:
             export_data.pop(section, None)
 
         # Remove specific paths from PrerequisitePart
@@ -2879,9 +2879,11 @@ async def export_blueprint():
 
 @app.post("/api/config/import")
 async def import_blueprint(request: Request):
-    """Import a grouped config.json (blueprint), create backup, and deep merge"""
+    """Import a grouped config.json (blueprint), sanitize unsafe sections, create backup, and deep merge"""
     try:
-        imported_config = await request.json()
+        from community_gallery import CommunityGalleryError, sanitize_manual_config_import
+        raw_imported = await request.json()
+        imported_config = sanitize_manual_config_import(raw_imported)
 
         # 1. Create backup
         if CONFIG_PATH.exists():
@@ -2920,6 +2922,8 @@ async def import_blueprint(request: Request):
             logger.warning(f"Failed to sync imported config to database: {db_err}")
 
         return {"success": True, "message": "Blueprint imported successfully"}
+    except CommunityGalleryError as e:
+        raise HTTPException(status_code=400, detail={"code": e.code, "message": str(e)})
     except Exception as e:
         logger.error(f"Error importing blueprint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -21931,42 +21935,36 @@ async def export_dynamic_overlay_bundle():
         raise HTTPException(status_code=500, detail="Could not export the overlay bundle.")
 
 
-@app.post("/api/dynamic-overlays/bundle/preview")
-async def preview_dynamic_overlay_bundle(file: UploadFile = File(...)):
-    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES, inspect_profile
-    try:
-        payload = await file.read(MAX_BUNDLE_BYTES + 1)
-        context = await _overlay_bundle_context(resolve_libraries=True)
-        summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
-        warnings = []
-        warning_codes = []
-        if summary.get("official_dependency_count"):
-            warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
-            warning_codes.append("officialDependencies")
-        if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
-            warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
-            warning_codes.append("simklRequired")
-        if summary["features"]["imdb_dataset"]:
-            warnings.append("The local IMDb dataset must be downloaded separately; its index is not included.")
-            warning_codes.append("imdbDownload")
-        if not context["libraries"]:
-            warnings.append("No destination libraries are available. Refresh the libraries for your configured media server first.")
-            warning_codes.append("noLibraries")
-        return {"success": True, **summary, "destination_server": context["server"], "warnings": warnings, "warning_codes": warning_codes}
-    except BundleError as error:
-        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
-    except Exception:
-        logger.exception("Overlay bundle preview failed")
-        raise HTTPException(status_code=500, detail="Could not inspect the overlay bundle.")
+async def _build_overlay_bundle_preview_response(payload: bytes) -> dict:
+    from overlay_bundle import inspect_profile
+    context = await _overlay_bundle_context(resolve_libraries=True)
+    summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
+    warnings = []
+    warning_codes = []
+    if summary.get("official_dependency_count"):
+        warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
+        warning_codes.append("officialDependencies")
+    if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
+        warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
+        warning_codes.append("simklRequired")
+    if summary["features"]["imdb_dataset"]:
+        warnings.append("The local IMDb dataset must be downloaded separately; its index is not included.")
+        warning_codes.append("imdbDownload")
+    if not context["libraries"]:
+        warnings.append("No destination libraries are available. Refresh the libraries for your configured media server first.")
+        warning_codes.append("noLibraries")
+    return {"success": True, **summary, "destination_server": context["server"], "warnings": warnings, "warning_codes": warning_codes}
 
 
-@app.post("/api/dynamic-overlays/bundle/import")
-async def import_dynamic_overlay_bundle(
-    file: UploadFile = File(...), mapping: str = Form(...),
-    anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
-    import_settings: bool = Form(True), replace_files: bool = Form(False),
-):
-    from overlay_bundle import BundleError, IMPORT_LOCK, MAX_BUNDLE_BYTES, commit_import, prepare_import
+async def _execute_overlay_bundle_import(
+    payload: bytes,
+    library_mapping: dict,
+    anime_targets: list,
+    season_targets: list,
+    import_settings: bool,
+    replace_files: bool,
+) -> dict:
+    from overlay_bundle import IMPORT_LOCK, commit_import, prepare_import
     from overlay_sync_service import is_overlay_sync_running, stop_overlay_change_detector_background, start_overlay_change_detector_background
     from animetafill_service import is_animetafill_running, _write_to_config_db
     if not IMPORT_LOCK.acquire(blocking=False):
@@ -21974,13 +21972,6 @@ async def import_dynamic_overlay_bundle(
     try:
         if is_overlay_sync_running() or is_animetafill_running():
             raise HTTPException(status_code=409, detail="Wait for the current overlay or AniMetaFill run to finish before importing.")
-        try:
-            library_mapping = json.loads(mapping)
-            anime_targets = json.loads(anime_libraries)
-            season_targets = json.loads(season_libraries)
-        except ValueError:
-            raise BundleError("Invalid library mapping JSON.")
-        payload = await file.read(MAX_BUNDLE_BYTES + 1)
         context = await _overlay_bundle_context(resolve_libraries=True)
         plan = await asyncio.to_thread(
             prepare_import, payload, context["overlays"], context["libraries"], library_mapping,
@@ -22002,6 +21993,41 @@ async def import_dynamic_overlay_bundle(
         if (saved.get("enabled", False) and saved.get("change_detection_enabled", True)) or saved.get("regenerate_assets_on_title_change", False):
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
         return {"success": True, **result, "message": "Overlay bundle imported in Dry Run. No artwork was uploaded."}
+    finally:
+        IMPORT_LOCK.release()
+
+
+@app.post("/api/dynamic-overlays/bundle/preview")
+async def preview_dynamic_overlay_bundle(file: UploadFile = File(...)):
+    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES
+    try:
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        return await _build_overlay_bundle_preview_response(payload)
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Overlay bundle preview failed")
+        raise HTTPException(status_code=500, detail="Could not inspect the overlay bundle.")
+
+
+@app.post("/api/dynamic-overlays/bundle/import")
+async def import_dynamic_overlay_bundle(
+    file: UploadFile = File(...), mapping: str = Form(...),
+    anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
+    import_settings: bool = Form(True), replace_files: bool = Form(False),
+):
+    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES
+    try:
+        try:
+            library_mapping = json.loads(mapping)
+            anime_targets = json.loads(anime_libraries)
+            season_targets = json.loads(season_libraries)
+        except ValueError:
+            raise BundleError("Invalid library mapping JSON.")
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        return await _execute_overlay_bundle_import(
+            payload, library_mapping, anime_targets, season_targets, import_settings, replace_files
+        )
     except BundleError as error:
         raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
     except HTTPException:
@@ -22009,8 +22035,111 @@ async def import_dynamic_overlay_bundle(
     except Exception:
         logger.exception("Overlay bundle import failed")
         raise HTTPException(status_code=500, detail="Could not import the overlay bundle. Check the local log and bundle backups.")
-    finally:
-        IMPORT_LOCK.release()
+
+
+class CommunityBundlePreviewRequest(BaseModel):
+    id: str
+
+
+class CommunityBundleImportRequest(BaseModel):
+    id: str
+    bundle_token: Optional[str] = None
+    mapping: Dict[str, str]
+    anime_libraries: List[str] = []
+    season_libraries: List[str] = []
+    import_settings: bool = True
+    replace_files: bool = False
+
+
+def _community_error_http_status(code: str) -> int:
+    if code in ("catalogUnavailable", "catalogNotPublished", "downloadFailed"):
+        return 503
+    if code == "entryNotFound":
+        return 404
+    return 400
+
+
+@app.get("/api/community-gallery")
+async def get_community_gallery(kind: str = "all", refresh: bool = False):
+    from community_gallery import CommunityGalleryError, fetch_community_catalog
+    try:
+        catalog = await asyncio.to_thread(fetch_community_catalog, refresh)
+        return {
+            "success": True,
+            "schema_version": catalog["schema_version"],
+            "repo": catalog["repo"],
+            "repo_url": catalog["repo_url"],
+            "submit_url": catalog["submit_url"],
+            "blueprints": catalog["blueprints"] if kind in ("all", "blueprints") else [],
+            "dynamic_overlays": catalog["dynamic_overlays"] if kind in ("all", "dynamic-overlays", "dynamic_overlays") else [],
+        }
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Community gallery catalog fetch failed")
+        raise HTTPException(status_code=500, detail="Could not load the Community Gallery catalog.")
+
+
+@app.get("/api/community-gallery/blueprint")
+async def get_community_blueprint(id: str):
+    from community_gallery import CommunityGalleryError, fetch_community_blueprint
+    try:
+        result = await asyncio.to_thread(fetch_community_blueprint, id)
+        return {"success": True, **result}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Community blueprint fetch failed")
+        raise HTTPException(status_code=500, detail="Could not load the selected community blueprint.")
+
+
+@app.post("/api/community-gallery/dynamic-overlays/preview")
+async def preview_community_overlay_bundle(body: CommunityBundlePreviewRequest):
+    from community_gallery import CommunityGalleryError, fetch_community_bundle
+    from overlay_bundle import BundleError
+    try:
+        entry, payload, bundle_token = await asyncio.to_thread(fetch_community_bundle, body.id)
+        summary = await _build_overlay_bundle_preview_response(payload)
+        return {**summary, "bundle_token": bundle_token, "community_entry": entry}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Community overlay bundle preview failed")
+        raise HTTPException(status_code=500, detail="Could not inspect the community overlay bundle.")
+
+
+@app.post("/api/community-gallery/dynamic-overlays/import")
+async def import_community_overlay_bundle(body: CommunityBundleImportRequest):
+    from community_gallery import CommunityGalleryError, resolve_community_bundle_payload
+    from overlay_bundle import BundleError
+    try:
+        _, payload = await asyncio.to_thread(resolve_community_bundle_payload, body.id, body.bundle_token)
+        return await _execute_overlay_bundle_import(
+            payload, body.mapping, body.anime_libraries, body.season_libraries, body.import_settings, body.replace_files
+        )
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Community overlay bundle import failed")
+        raise HTTPException(status_code=500, detail="Could not import the community overlay bundle.")
 
 
 @app.get("/api/dynamic-overlays/settings")

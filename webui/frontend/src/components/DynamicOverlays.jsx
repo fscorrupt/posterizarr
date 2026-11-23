@@ -16,6 +16,7 @@ import MediaServerLogo from "./MediaServerLogo";
 import ConfirmDialog from "./ConfirmDialog";
 import ImdbDatasetPanel from "./ImdbDatasetPanel";
 import OverlayBundleTransfer from "./OverlayBundleTransfer";
+import CommunityGallery from "./CommunityGallery";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -77,7 +78,8 @@ import {
   Clapperboard,
   Type,
   Terminal,
-  Palette
+  Palette,
+  Globe
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
@@ -720,7 +722,8 @@ export default function DynamicOverlays() {
     }
   };
   const [wizardQuickStartDone, setWizardQuickStartDone] = useState(false);
-  const [wizardConfigMode, setWizardConfigMode] = useState("presets"); // "presets" | "upload"
+  const [wizardConfigMode, setWizardConfigMode] = useState("presets"); // "presets" | "upload" | "community"
+  const [pendingCommunityBundle, setPendingCommunityBundle] = useState(null);
   const [wizardUploadedFiles, setWizardUploadedFiles] = useState([]);
   const [wizardExtractedKeys, setWizardExtractedKeys] = useState([]);
   const [isWizardUploading, setIsWizardUploading] = useState(false);
@@ -5073,7 +5076,12 @@ export default function DynamicOverlays() {
 
           {/* MASTER FEATURE TOGGLE & QUICK STATS */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <OverlayBundleTransfer disabled={systemRunStatus.running || isAnimetafillRunning} onImported={() => window.location.reload()} />
+            <OverlayBundleTransfer
+              disabled={systemRunStatus.running || isAnimetafillRunning}
+              onImported={() => window.location.reload()}
+              pendingCommunityEntry={pendingCommunityBundle}
+              onPendingCommunityEntryHandled={() => setPendingCommunityBundle(null)}
+            />
             <div className="flex items-center gap-2.5 bg-theme-bg border border-theme px-3 py-1.5 rounded-lg">
               <span className="text-xs font-semibold text-theme-muted">Master Switch:</span>
               <button
@@ -15666,6 +15674,18 @@ export default function DynamicOverlays() {
                     <FolderOpen className="w-3.5 h-3.5 text-theme-primary" />
                     <span>Import Existing Files</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setWizardConfigMode("community")}
+                    className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all ${
+                      wizardConfigMode === "community"
+                        ? "bg-theme-card text-theme-text font-bold shadow-sm border border-theme"
+                        : "text-theme-muted hover:text-theme-text"
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5 text-theme-primary" />
+                    <span>Community Gallery</span>
+                  </button>
                 </div>
 
                 {/* Sub-Mode A: Presets */}
@@ -15880,6 +15900,20 @@ export default function DynamicOverlays() {
                         )}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Sub-Mode C: Community Gallery */}
+                {wizardConfigMode === "community" && (
+                  <div className="animate-in fade-in duration-150">
+                    <CommunityGallery
+                      kind="dynamic-overlays"
+                      compact
+                      onSelectOverlayBundle={(entry) => {
+                        setIsWizardOpen(false);
+                        setPendingCommunityBundle(entry);
+                      }}
+                    />
                   </div>
                 )}
               </div>

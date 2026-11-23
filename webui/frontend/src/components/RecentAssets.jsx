@@ -23,7 +23,7 @@ const API_URL = "/api";
 
 let cachedAssets = null;
 
-function RecentAssets({ refreshTrigger = 0 }) {
+function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
   const { startLoading, finishLoading } = useDashboardLoading();
@@ -87,6 +87,7 @@ function RecentAssets({ refreshTrigger = 0 }) {
         setAssets(data.assets);
         setTotalCount(data.total_count);
         setTabCounts(data.counts || {});
+        onHasAssetsChange?.((data.total_count || 0) > 0 || Boolean(data.counts?.All));
         const requestedParams = new URLSearchParams(requestedQuery);
         if (Number.isInteger(data.offset) && data.offset !== Number(requestedParams.get("offset"))) {
           setPageOffset(data.offset);
@@ -123,6 +124,7 @@ function RecentAssets({ refreshTrigger = 0 }) {
       setAssets(cachedAssets.data.assets);
       setTotalCount(cachedAssets.data.total_count);
       setTabCounts(cachedAssets.data.counts || {});
+      onHasAssetsChange?.((cachedAssets.data.total_count || 0) > 0 || Boolean(cachedAssets.data.counts?.All));
       setLoading(false);
       hasInitiallyLoaded.current = true;
       finishLoading("recent-assets");

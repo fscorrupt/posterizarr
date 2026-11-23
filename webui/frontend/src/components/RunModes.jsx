@@ -606,6 +606,7 @@ function RunModes() {
   const [resetLibrary, setResetLibrary] = useState("");
 
   // Sync Modal States
+  const openParamHandledRef = React.useRef(false);
   const [showNormalModeModal, setShowNormalModeModal] = useState(false);
   const [showTestingModeModal, setShowTestingModeModal] = useState(false);
   const [autoRedirectTesting, setAutoRedirectTesting] = useState(true);
@@ -713,6 +714,19 @@ function RunModes() {
     visibleProviders: ["tmdb", "tvdb", "fanart"], // Default: show all tabs
     isLogoSearch: false, // New flag for logo search mode
   });
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("open") !== "testing" || openParamHandledRef.current) return;
+    openParamHandledRef.current = true;
+    setShowTestingModeModal(true);
+    url.searchParams.delete("open");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`
+    );
+  }, []);
 
   useEffect(() => {
     fetchStatus();

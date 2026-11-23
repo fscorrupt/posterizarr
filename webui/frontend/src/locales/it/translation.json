@@ -18,8 +18,11 @@
   "overlayBundle": {
     "export": "Esporta pacchetto",
     "import": "Importa pacchetto",
+    "community": "Galleria community",
     "exportHint": "Esporta YAML, risorse, caratteri e impostazioni delle sovrapposizioni",
     "importHint": "Controlla e importa un pacchetto di sovrapposizioni",
+    "communityHint": "Esplora e importa pacchetti Dynamic Overlays condivisi dalla community",
+    "communitySource": "Pacchetto community: {{name}} di {{author}}",
     "fileLabel": "File ZIP del pacchetto di sovrapposizioni",
     "title": "Importa un pacchetto di sovrapposizioni",
     "stats": "File: {{files}} / Risorse: {{assets}} / Destinazione: {{server}}",
@@ -1358,7 +1361,39 @@
     "customizeDescription": "Mostra o nascondi sezioni del pannello di controllo • Trascina per riordinare",
     "hideScrollbars": "Nascondi barre di scorrimento",
     "hideScrollbarsDesc": "Nascondi le barre di scorrimento in tutta l'interfaccia",
-    "schedulesConfigured": "pianificazione/i"
+    "schedulesConfigured": "pianificazione/i",
+    "gettingStarted": {
+      "title": "Primi passi",
+      "subtitle": "La configurazione è pronta. Segui questi passaggi sicuri per scegliere lo stile e vedere un'anteprima prima di aggiornare il server multimediale.",
+      "quickstartLink": "Guida rapida 5 min",
+      "setupWizard": "Procedura guidata",
+      "dismiss": "Nascondi guida iniziale",
+      "stepLabel": "Passo {{number}}",
+      "steps": {
+        "style": {
+          "title": "Scegli uno stile poster",
+          "description": "Seleziona un preset con 1 clic in Blueprint Builder per font, loghi, bordi o poster senza testo.",
+          "cta": "Apri Blueprint Builder"
+        },
+        "overlays": {
+          "title": "Dynamic Overlays (Opzionale)",
+          "description": "Aggiungi badge 4K/HDR, valutazioni e stato in memoria. Parte in modalità sicura Dry Run senza caricamenti.",
+          "cta": "Apri Dynamic Overlays"
+        },
+        "test": {
+          "title": "Anteprima sicura (Testing Mode)",
+          "description": "Genera immagini di esempio in Test Gallery con le tue impostazioni — nessuna modifica alla libreria reale.",
+          "cta": "Avvia Testing Mode"
+        },
+        "run": {
+          "title": "Avvia il primo lavoro",
+          "description": "Prova un singolo film o serie tramite Manual Asset oppure esegui la tua libreria quando sei pronto.",
+          "cta": "Apri Run Modes"
+        }
+      },
+      "schedulerWarning": "Una pianificazione automatica è già attiva. Esegui prima Testing Mode o verifica lo stile prima della prossima esecuzione.",
+      "manageScheduler": "Gestisci pianificatore"
+    }
   },
   "config": {
     "title": "Configurazione",
@@ -3870,6 +3905,7 @@
       "savePreset": "Salva come preimpostazione",
       "tabPresets": "Preimpostazioni",
       "tabBuilder": "Costruttore",
+      "tabCommunity": "Galleria community",
       "tabBuilderDesc": "Crea il tuo blueprint personalizzato combinando overlay specifici.",
       "categoryPoster": "Locandina",
       "categorySeason": "Stagione",
@@ -3988,6 +4024,9 @@
     "preparingEnvironment": "Preparazione dell'ambiente...",
     "saving": "Salvataggio...",
     "finishSetup": "Termina Configurazione",
+    "skipForNow": "Salta per ora (aggiungi dopo)",
+    "skipShort": "Salta configurazione",
+    "skipping": "Chiusura...",
     "back": "Indietro",
     "continue": "Continua",
     "testConnection": "Test Connessione",
@@ -4049,6 +4088,55 @@
       "moveUp": "Move Up",
       "moveDown": "Move Down",
       "removeProvider": "Remove Provider"
+    },
+    "nextStep": {
+      "heading": "Dove vuoi andare adesso?",
+      "recommended": "Consigliato",
+      "blueprints": {
+        "title": "Scegli uno stile poster",
+        "description": "Esplora i preset visivi con 1 clic in Blueprint Builder per testo, loghi, bordi o poster puliti."
+      },
+      "dynamicOverlays": {
+        "title": "Configura Dynamic Overlays",
+        "description": "Apre la procedura guidata overlay per valutazioni e badge risoluzione (parte in sicurezza in Dry Run)."
+      },
+      "testing": {
+        "title": "Anteprima sicura (Testing Mode)",
+        "description": "Genera esempi nella Test Gallery senza caricare nulla sul server multimediale."
+      },
+      "dashboard": {
+        "title": "Vai alla Dashboard",
+        "description": "Apre l'area principale con una checklist guidata per iniziare."
+      }
     }
+  },
+  "communityGallery": {
+    "tabTitle": "Galleria community",
+    "title": "Galleria community di Posterizarr",
+    "subtitleBlueprints": "Esplora gli stili condivisi dagli utenti e importali direttamente in Blueprint Builder o nella tua configurazione.",
+    "subtitleOverlays": "Esplora pacchetti Dynamic Overlays sicuri e mappali sulle tue librerie in modalità Dry Run.",
+    "submitYours": "Invia su GitHub",
+    "searchPlaceholder": "Cerca preset, autori o tag...",
+    "allTags": "Tutti",
+    "loading": "Caricamento Galleria community da GitHub...",
+    "notPublishedTitle": "Catalogo community non ancora pubblicato",
+    "notPublishedDesc": "Il repository della community non ha ancora un file index.json pubblicato su main, oppure è ancora privato.",
+    "unavailableTitle": "Impossibile caricare la Galleria community",
+    "retry": "Riprova",
+    "emptyCatalog": "Nessun elemento pubblicato in questa categoria al momento.",
+    "noMatches": "Nessun preset corrisponde alla ricerca o al filtro selezionato.",
+    "resetFilters": "Reimposta filtri",
+    "zoomPreview": "Clicca per ingrandire l'anteprima",
+    "noPreview": "Nessuna immagine di anteprima",
+    "previousPreview": "Anteprima precedente",
+    "nextPreview": "Anteprima successiva",
+    "settingsCount": "{{count}} impostazioni",
+    "profilesCount": "{{count}} profili libreria",
+    "saveAsPreset": "Salva come preset personalizzato",
+    "saveShort": "Salva",
+    "applyAction": "Applica",
+    "downloading": "Download del pacchetto...",
+    "previewAndImport": "Verifica e importa",
+    "loadBlueprintError": "Impossibile caricare il blueprint della community: {{message}}"
   }
 }

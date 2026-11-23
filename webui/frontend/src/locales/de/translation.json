@@ -18,8 +18,11 @@
   "overlayBundle": {
     "export": "Paket exportieren",
     "import": "Paket importieren",
+    "community": "Community-Galerie",
     "exportHint": "Overlay-YAML, Assets, Schriftarten und Funktionseinstellungen exportieren",
     "importHint": "Ein Overlay-Paket prüfen und importieren",
+    "communityHint": "Von der Community geteilte Dynamic-Overlay-Pakete durchsuchen und importieren",
+    "communitySource": "Community-Paket: {{name}} von {{author}}",
     "fileLabel": "ZIP-Datei des Overlay-Pakets",
     "title": "Overlay-Paket importieren",
     "stats": "Dateien: {{files}} / Assets: {{assets}} / Ziel: {{server}}",
@@ -1358,7 +1361,39 @@
     "stopSuccess": "Skript wird gestoppt...",
     "assets": "Anzuzeigende Assets",
     "cores": "Kerne",
-    "free": "Frei"
+    "free": "Frei",
+    "gettingStarted": {
+      "title": "Erste Schritte",
+      "subtitle": "Deine Konfiguration ist bereit. Mit diesen sicheren Schritten kannst du dein Poster-Design festlegen und vorab testen, bevor etwas hochgeladen wird.",
+      "quickstartLink": "5-Min-Schnellstart",
+      "setupWizard": "Einrichtungsassistent",
+      "dismiss": "Erste-Schritte-Hinweis ausblenden",
+      "stepLabel": "Schritt {{number}}",
+      "steps": {
+        "style": {
+          "title": "Poster-Stil wählen",
+          "description": "Wähle im Blueprint Builder eine 1-Klick-Vorlage für Text, Logos, Rahmen oder textlose Poster.",
+          "cta": "Blueprint Builder öffnen"
+        },
+        "overlays": {
+          "title": "Dynamic Overlays (Optional)",
+          "description": "Fügt 4K/HDR-, Bewertungs- und Status-Badges im RAM hinzu. Startet sicher im Dry Run ohne Upload.",
+          "cta": "Dynamic Overlays öffnen"
+        },
+        "test": {
+          "title": "Sicher testen (Testing Mode)",
+          "description": "Erstellt Beispiel-Poster in der Test Gallery mit deinen Einstellungen — ohne Änderungen am Medienserver.",
+          "cta": "Testing Mode starten"
+        },
+        "run": {
+          "title": "Ersten Lauf starten",
+          "description": "Teste einen einzelnen Film/eine Serie per Manual Asset oder starte deine Bibliothek, sobald alles passt.",
+          "cta": "Run Modes öffnen"
+        }
+      },
+      "schedulerWarning": "Es ist bereits ein automatischer Zeitplan aktiv. Teste dein Design am besten per Testing Mode, bevor der nächste geplante Lauf startet.",
+      "manageScheduler": "Zeitplan verwalten"
+    }
   },
   "config": {
     "title": "Konfiguration",
@@ -3922,6 +3957,7 @@
       "savePreset": "Als Vorlage speichern",
       "tabPresets": "Vorlagen",
       "tabBuilder": "Baukasten",
+      "tabCommunity": "Community-Galerie",
       "tabBuilderDesc": "Erstellen Sie Ihren eigenen benutzerdefinierten Blueprint, indem Sie spezifische Overlays kombinieren.",
       "categoryPoster": "Poster",
       "categorySeason": "Staffel",
@@ -4040,6 +4076,9 @@
     "preparingEnvironment": "Umgebung wird vorbereitet...",
     "saving": "Speichern...",
     "finishSetup": "Setup abschließen",
+    "skipForNow": "Überspringen (später einrichten)",
+    "skipShort": "Setup überspringen",
+    "skipping": "Wird übersprungen...",
     "back": "Zurück",
     "continue": "Weiter",
     "testConnection": "Verbindung testen",
@@ -4101,6 +4140,55 @@
       "moveUp": "Move Up",
       "moveDown": "Move Down",
       "removeProvider": "Remove Provider"
+    },
+    "nextStep": {
+      "heading": "Wohin möchtest du als Nächstes?",
+      "recommended": "Empfohlen",
+      "blueprints": {
+        "title": "Poster-Stil wählen",
+        "description": "Entdecke 1-Klick-Vorlagen im Blueprint Builder für Text, Logos, Rahmen oder cleane Poster."
+      },
+      "dynamicOverlays": {
+        "title": "Dynamic Overlays einrichten",
+        "description": "Öffnet den Overlay-Einrichtungsassistenten für Bewertungen und Auflösungs-Badges (im sicheren Dry Run)."
+      },
+      "testing": {
+        "title": "Sicher testen (Testing Mode)",
+        "description": "Erstellt Beispiel-Artwork in der Test Gallery, ohne etwas auf deinen Medienserver hochzuladen."
+      },
+      "dashboard": {
+        "title": "Zum Dashboard",
+        "description": "Öffnet die Übersicht inklusive einer Schritt-für-Schritt-Checkliste für den Einstieg."
+      }
     }
+  },
+  "communityGallery": {
+    "tabTitle": "Community-Galerie",
+    "title": "Posterizarr Community-Galerie",
+    "subtitleBlueprints": "Durchsuche von Nutzern geteilte Stile und übernimm sie direkt in den Blueprint Builder oder deine Konfiguration.",
+    "subtitleOverlays": "Durchsuche bereinigte Dynamic-Overlay-Pakete und weise sie sicher im Dry Run deinen Bibliotheken zu.",
+    "submitYours": "Auf GitHub einreichen",
+    "searchPlaceholder": "Vorlagen, Autoren oder Tags suchen...",
+    "allTags": "Alle",
+    "loading": "Lade Community-Galerie von GitHub...",
+    "notPublishedTitle": "Community-Katalog noch nicht veröffentlicht",
+    "notPublishedDesc": "Das Community-Repository hat auf main noch keine veröffentlichte index.json oder ist noch privat.",
+    "unavailableTitle": "Community-Galerie konnte nicht geladen werden",
+    "retry": "Erneut versuchen",
+    "emptyCatalog": "In dieser Kategorie wurden noch keine Einträge veröffentlicht.",
+    "noMatches": "Keine Vorlagen passen zu deiner Suche oder Tag-Auswahl.",
+    "resetFilters": "Filter zurücksetzen",
+    "zoomPreview": "Klicken zum Vergrößern",
+    "noPreview": "Kein Vorschaubild",
+    "previousPreview": "Vorherige Vorschau",
+    "nextPreview": "Nächste Vorschau",
+    "settingsCount": "{{count}} Einstellungen",
+    "profilesCount": "{{count}} Bibliotheksprofile",
+    "saveAsPreset": "Als eigene Vorlage speichern",
+    "saveShort": "Speichern",
+    "applyAction": "Anwenden",
+    "downloading": "Paket wird geladen...",
+    "previewAndImport": "Prüfen & Importieren",
+    "loadBlueprintError": "Community-Blueprint konnte nicht geladen werden: {{message}}"
   }
 }

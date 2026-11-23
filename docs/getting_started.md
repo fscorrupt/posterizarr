@@ -57,10 +57,13 @@ to get through setup; begin with one test library.
 *The wizard appears automatically while the initial configuration is incomplete. Choose a primary server, validate its connection, and select libraries before continuing.*
 
 The wizard is a nine-step modal, not a sidebar page. It opens automatically
-when Posterizarr has not recorded setup as complete. **Finish Setup** saves its
-configuration; before then, form edits remain in the wizard. Continue is gated
-on a validated server/library selection and on entering at least one primary
-metadata provider key (TMDb or TheTVDB).
+when Posterizarr has not recorded setup as complete. You can click **Skip for now
+(add later)** at any time before finishing to explore the Web UI first without
+changing your config, and add your server or API keys later in **Configuration**
+or by reopening the **Setup Wizard** from the Dashboard. **Finish Setup** saves
+its configuration; before then, form edits remain in the wizard. Continue is
+gated on a validated server/library selection and on entering at least one
+primary metadata provider key (TMDb or TheTVDB).
 
 | Step | What it configures |
 |---|---|
@@ -72,7 +75,7 @@ metadata provider key (TMDb or TheTVDB).
 | Notifications | Choose none, Discord, or Apprise; Uptime Kuma can be configured separately. |
 | Dynamic Overlays | Optional. Enable the feature and continue into its dedicated Setup Wizard after finishing. It starts in Dry Run. |
 | Schedule | Optional. Choose a run mode and daily, weekly, monthly, or interval schedule. Logo Updater also exposes library, force-replace, EXIF-check, and revert options. |
-| Ready | Save the configuration and complete onboarding. If scheduling was enabled, the wizard enables the scheduler and creates the selected job. If Dynamic Overlays was enabled, its Setup Wizard opens; otherwise the wizard opens **How It Works**. |
+| Ready | Save the configuration and complete onboarding. If scheduling was enabled, the wizard enables the scheduler and creates the selected job. Choose where to go next: **Blueprint Builder**, **Dynamic Overlays Setup Wizard** (in Dry Run), safe **Testing Mode**, or **Dashboard** (fresh installs also display a dismissible **Getting Started** checklist on the Dashboard until the first run completes). |
 
 ![Optional Dynamic Overlays step in the first-run wizard](images/43-first-run-dynamic-overlays.png)
 

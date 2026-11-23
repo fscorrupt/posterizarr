@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import WorkspaceHeader from "./WorkspaceHeader";
-import { Loader2, Palette, Image, Layers, CheckCircle2, AlertCircle, Type, Square, Languages, Sparkles, Download, Upload, Info, Sliders, LayoutTemplate, ChevronDown, ChevronRight, Settings, ImagePlus, RotateCcw, Wand2, MousePointerClick, Trash2, Save, X } from "lucide-react";
+import { Loader2, Palette, Image, Layers, CheckCircle2, AlertCircle, Type, Square, Languages, Sparkles, Download, Upload, Info, Sliders, LayoutTemplate, ChevronDown, ChevronRight, Settings, ImagePlus, RotateCcw, Wand2, MousePointerClick, Trash2, Save, X, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
+import CommunityGallery from "./CommunityGallery";
 
 const API_URL = "/api";
 
@@ -371,6 +372,7 @@ export default function Blueprints() {
   const [previewType, setPreviewType] = useState("Poster"); // "Poster", "Season", "TitleCard", "Background", "Collection"
   const [selectedLayer, setSelectedLayer] = useState("Global");
   const [importBlueprintState, setImportBlueprintState] = useState(null);
+  const [communityBusyId, setCommunityBusyId] = useState(null);
 
   // Custom Presets State
   const [customBlueprints, setCustomBlueprints] = useState([]);
@@ -1354,12 +1356,53 @@ export default function Blueprints() {
     }
   };
 
+  const handleCommunityBlueprintAction = async (entry, action) => {
+    setCommunityBusyId(entry.id);
+    try {
+      const response = await fetch(`${API_URL}/community-gallery/blueprint?id=${encodeURIComponent(entry.id)}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        const msg = data.detail?.message || data.detail || "Could not load community blueprint.";
+        throw new Error(msg);
+      }
+
+      if (action === "builder") {
+        await handleLoadBlueprintInBuilder({
+          id: `community_${entry.id}`,
+          customTitle: entry.name,
+          updates: { nested: data.updates?.nested || {} },
+        });
+      } else if (action === "save") {
+        setSavePresetModalState({
+          updates: data.updates?.nested || {},
+          isImport: true,
+          defaultTitle: entry.name || data.blueprint_name || "",
+          defaultDescription: entry.description || "",
+        });
+      } else if (action === "apply") {
+        setImportBlueprintState({
+          title: entry.name || data.blueprint_name,
+          author: entry.author,
+          updates: {
+            nested: data.updates?.nested || {},
+            flat: data.flat_preview || {},
+          },
+        });
+      }
+    } catch (err) {
+      showError(t("communityGallery.loadBlueprintError", { message: err.message }));
+    } finally {
+      setCommunityBusyId(null);
+    }
+  };
+
   const confirmImport = async () => {
     if (!importBlueprintState) return;
     setIsImporting(true);
     try {
+      const payloadToImport = importBlueprintState.updates?.nested || importBlueprintState;
       const response = await fetch(`${API_URL}/config/import`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(importBlueprintState),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payloadToImport),
       });
 
       const result = await response.json();
@@ -1578,7 +1621,22 @@ export default function Blueprints() {
             <Sliders className="w-4 h-4" />
             {t("blueprints.builder.tabBuilder", "Builder")}
           </button>
+          <button
+            onClick={() => setActiveTab("community")}
+            className={`px-6 py-3 flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'community' ? 'border-theme-primary text-theme-primary font-medium' : 'border-transparent text-theme-muted hover:text-theme-text'}`}
+          >
+            <Globe className="w-4 h-4" />
+            {t("blueprints.builder.tabCommunity", "Community Gallery")}
+          </button>
         </div>
+
+        {activeTab === "community" && (
+          <CommunityGallery
+            kind="blueprints"
+            onSelectBlueprint={handleCommunityBlueprintAction}
+            busyEntryId={communityBusyId}
+          />
+        )}
 
         {activeTab === "presets" && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -2086,11 +2144,11 @@ export default function Blueprints() {
               <div className="space-y-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-sm font-medium text-theme-muted">Preset Title</label>
-                  <input type="text" id="presetTitleInput" placeholder="e.g. Clean Poster Layout" className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors" autoFocus />
+                  <input key={`title-${savePresetModalState.defaultTitle || "new"}`} type="text" id="presetTitleInput" defaultValue={savePresetModalState.defaultTitle || ""} placeholder="e.g. Clean Poster Layout" className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors" autoFocus />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-sm font-medium text-theme-muted">Description</label>
-                  <textarea id="presetDescInput" placeholder="Describe what this preset does..." className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors resize-none h-24" />
+                  <textarea key={`desc-${savePresetModalState.defaultTitle || "new"}`} id="presetDescInput" defaultValue={savePresetModalState.defaultDescription || ""} placeholder="Describe what this preset does..." className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors resize-none h-24" />
                 </div>
               </div>
 
@@ -2169,10 +2227,14 @@ export default function Blueprints() {
             <div className="p-6 border-b border-theme bg-theme-bg/50">
               <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
                 <AlertCircle className="w-6 h-6 text-theme-primary" />
-                {t("blueprints.importConfirmTitle", "Confirm Blueprint Import")}
+                {importBlueprintState.title
+                  ? `${t("blueprints.importConfirmTitle", "Confirm Blueprint Import")} — ${importBlueprintState.title}`
+                  : t("blueprints.importConfirmTitle", "Confirm Blueprint Import")}
               </h2>
               <p className="text-theme-muted mt-2">
-                {t("blueprints.importConfirmDesc", "The following settings will be modified by this blueprint. Do you want to proceed?")}
+                {importBlueprintState.author
+                  ? `${t("blueprints.importConfirmDesc", "The following settings will be modified by this blueprint. Do you want to proceed?")} (${importBlueprintState.author})`
+                  : t("blueprints.importConfirmDesc", "The following settings will be modified by this blueprint. Do you want to proceed?")}
               </p>
             </div>
 

@@ -19,7 +19,7 @@ const API_URL = "/api";
 
 let cachedRuntimeStats = null;
 
-function RuntimeStats({ refreshTrigger = 0 }) {
+function RuntimeStats({ refreshTrigger = 0, onHasDataChange }) {
   const { t } = useTranslation();
   const { startLoading, finishLoading } = useDashboardLoading();
   const hasInitiallyLoaded = useRef(false);
@@ -89,6 +89,7 @@ function RuntimeStats({ refreshTrigger = 0 }) {
         return;
       }
       const data = await response.json();
+      onHasDataChange?.(data.runtime !== null);
 
       if (!hasInitiallyLoaded.current) {
         hasInitiallyLoaded.current = true;
@@ -123,6 +124,7 @@ function RuntimeStats({ refreshTrigger = 0 }) {
 
     if (cachedRuntimeStats) {
       setRuntimeStats(cachedRuntimeStats);
+      onHasDataChange?.(cachedRuntimeStats.runtime !== null);
       setLoading(false);
       if (!hasInitiallyLoaded.current) {
         hasInitiallyLoaded.current = true;

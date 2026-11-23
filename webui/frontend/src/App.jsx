@@ -188,6 +188,13 @@ function AppContent() {
     };
   }, [isAuthenticated]);
 
+  // Allow reopening the guided onboarding setup wizard from Dashboard
+  useEffect(() => {
+    const handleOpenOnboarding = () => setShowOnboarding(true);
+    window.addEventListener("openOnboarding", handleOpenOnboarding);
+    return () => window.removeEventListener("openOnboarding", handleOpenOnboarding);
+  }, []);
+
   // Check once per session if an updated stable release should display the post-update What's New modal
   useEffect(() => {
     if (
@@ -309,9 +316,13 @@ function AppContent() {
   return (
     <>
       {/* Onboarding Modal - highest priority */}
-      {showOnboarding && <OnboardingModal onComplete={(openDynamicOverlaysSetup) => {
+      {showOnboarding && <OnboardingModal onComplete={(targetRoute) => {
         setShowOnboarding(false);
-        navigate(openDynamicOverlaysSetup ? "/dynamic-overlays?setupWizard=1" : "/how-it-works");
+        if (typeof targetRoute === "string" && targetRoute.startsWith("/")) {
+          navigate(targetRoute);
+        } else {
+          navigate(targetRoute ? "/dynamic-overlays?setupWizard=1" : "/");
+        }
       }} />}
 
       {/* Post-update Release Notes Modal */}

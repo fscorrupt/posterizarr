@@ -18,8 +18,11 @@
   "overlayBundle": {
     "export": "Exportar pacote",
     "import": "Importar pacote",
+    "community": "Galeria da comunidade",
     "exportHint": "Exportar YAML, recursos, tipos de letra e definições das sobreposições",
     "importHint": "Rever e importar um pacote de sobreposições",
+    "communityHint": "Explorar e importar pacotes de Dynamic Overlays partilhados pela comunidade",
+    "communitySource": "Pacote da comunidade: {{name}} por {{author}}",
     "fileLabel": "Ficheiro ZIP do pacote de sobreposições",
     "title": "Importar pacote de sobreposições",
     "stats": "Ficheiros: {{files}} / Recursos: {{assets}} / Destino: {{server}}",
@@ -1358,7 +1361,39 @@
     "customizeDescription": "Mostrar ou ocultar seções do painel • Arraste para reordenar",
     "hideScrollbars": "Ocultar barras de rolagem",
     "hideScrollbarsDesc": "Ocultar barras de rolagem em toda a interface",
-    "schedulesConfigured": "agendamento(s)"
+    "schedulesConfigured": "agendamento(s)",
+    "gettingStarted": {
+      "title": "Primeiros passos",
+      "subtitle": "Sua configuração está pronta. Siga estas etapas seguras para definir o estilo e visualizar os resultados antes de atualizar seu servidor de mídia.",
+      "quickstartLink": "Guia rápido 5 min",
+      "setupWizard": "Assistente de configuração",
+      "dismiss": "Ocultar guia inicial",
+      "stepLabel": "Passo {{number}}",
+      "steps": {
+        "style": {
+          "title": "Escolher estilo de pôster",
+          "description": "Escolha uma predefinição de 1 clique no Blueprint Builder para fontes, logotipos, bordas ou pôsteres sem texto.",
+          "cta": "Abrir Blueprint Builder"
+        },
+        "overlays": {
+          "title": "Dynamic Overlays (Opcional)",
+          "description": "Adicione selos 4K/HDR, notas e status em memória. Inicia com segurança em Dry Run sem envios ao servidor.",
+          "cta": "Abrir Dynamic Overlays"
+        },
+        "test": {
+          "title": "Testar com segurança (Testing Mode)",
+          "description": "Gere pôsteres de exemplo na Test Gallery com suas configurações — zero alterações na biblioteca real.",
+          "cta": "Executar Testing Mode"
+        },
+        "run": {
+          "title": "Executar seu primeiro trabalho",
+          "description": "Teste um único filme ou série em Manual Asset ou execute sua biblioteca configurada quando estiver pronto.",
+          "cta": "Abrir Run Modes"
+        }
+      },
+      "schedulerWarning": "Um agendamento automático já está ativo. Execute o Testing Mode ou verifique seu estilo antes da próxima execução.",
+      "manageScheduler": "Gerenciar agendador"
+    }
   },
   "config": {
     "title": "Configuração",
@@ -3870,6 +3905,7 @@
       "savePreset": "Guardar como predefinição",
       "tabPresets": "Predefinições",
       "tabBuilder": "Construtor",
+      "tabCommunity": "Galeria da comunidade",
       "tabBuilderDesc": "Crie seu próprio blueprint personalizado combinando overlays específicos.",
       "categoryPoster": "Pôster",
       "categorySeason": "Temporada",
@@ -3988,6 +4024,9 @@
     "preparingEnvironment": "Preparando ambiente...",
     "saving": "Salvando...",
     "finishSetup": "Concluir Configuração",
+    "skipForNow": "Ignorar por agora (adicionar depois)",
+    "skipShort": "Ignorar configuração",
+    "skipping": "A ignorar...",
     "back": "Voltar",
     "continue": "Continuar",
     "testConnection": "Testar Conexão",
@@ -4049,6 +4088,55 @@
       "moveUp": "Move Up",
       "moveDown": "Move Down",
       "removeProvider": "Remove Provider"
+    },
+    "nextStep": {
+      "heading": "Para onde você gostaria de ir agora?",
+      "recommended": "Recomendado",
+      "blueprints": {
+        "title": "Escolher estilo de pôster",
+        "description": "Explore predefinições visuais de 1 clique no Blueprint Builder para texto, logotipos, bordas ou pôsteres limpos."
+      },
+      "dynamicOverlays": {
+        "title": "Configurar Dynamic Overlays",
+        "description": "Abre o assistente de Dynamic Overlays para notas e selos de resolução (inicia com segurança em Dry Run)."
+      },
+      "testing": {
+        "title": "Testar com segurança (Testing Mode)",
+        "description": "Gere artes de exemplo na Test Gallery sem enviar nada para o servidor de mídia."
+      },
+      "dashboard": {
+        "title": "Ir para o Painel",
+        "description": "Abre o painel principal com uma lista de verificação passo a passo para começar."
+      }
     }
+  },
+  "communityGallery": {
+    "tabTitle": "Galeria da comunidade",
+    "title": "Galeria da comunidade Posterizarr",
+    "subtitleBlueprints": "Explore estilos partilhados pelos utilizadores e importe-os diretamente para o Blueprint Builder ou para a sua configuração.",
+    "subtitleOverlays": "Explore pacotes de Dynamic Overlays sanitizados e mapeie-os com segurança em Dry Run para as suas bibliotecas.",
+    "submitYours": "Enviar no GitHub",
+    "searchPlaceholder": "Pesquisar predefinições, autores ou etiquetas...",
+    "allTags": "Todos",
+    "loading": "A carregar Galeria da comunidade a partir do GitHub...",
+    "notPublishedTitle": "Catálogo da comunidade ainda não publicado",
+    "notPublishedDesc": "O repositório da comunidade ainda não tem um index.json publicado em main ou ainda é privado.",
+    "unavailableTitle": "Não foi possível carregar a Galeria da comunidade",
+    "retry": "Tentar novamente",
+    "emptyCatalog": "Ainda não existem entradas publicadas nesta categoria.",
+    "noMatches": "Nenhuma predefinição corresponde à sua pesquisa ou filtro.",
+    "resetFilters": "Limpar filtros",
+    "zoomPreview": "Clique para ampliar a pré-visualização",
+    "noPreview": "Sem imagem de pré-visualização",
+    "previousPreview": "Pré-visualização anterior",
+    "nextPreview": "Pré-visualização seguinte",
+    "settingsCount": "{{count}} definições",
+    "profilesCount": "{{count}} perfis de biblioteca",
+    "saveAsPreset": "Guardar como predefinição personalizada",
+    "saveShort": "Guardar",
+    "applyAction": "Aplicar",
+    "downloading": "A transferir pacote...",
+    "previewAndImport": "Rever e importar",
+    "loadBlueprintError": "Falha ao carregar blueprint da comunidade: {{message}}"
   }
 }
