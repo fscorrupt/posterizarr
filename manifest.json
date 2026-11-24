@@ -9,6 +9,20 @@
     "imageUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/main/docs/images/Plugin_logo.png",
     "versions": [
       {
+        "version": "4.0.1",
+        "changelog": "Official Release 4.0.1",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/4.0.1/Posterizarr.Plugin_v4.0.1-jf12.zip",
+        "checksum": "BD98B21BB6A38B7A3DB7289C54490D25"
+      },
+      {
+        "version": "4.0.1",
+        "changelog": "Official Release 4.0.1",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/4.0.1/Posterizarr.Plugin_v4.0.1.zip",
+        "checksum": "221AF8C8C11425FE3B8DEC1401B6D7B2"
+      },
+      {
         "version": "4.0.0",
         "changelog": "Official Release 4.0.0\n\n- **Plex Direct Sync:** Optionally mirror selected Plex posters, shows, seasons, episode title cards, and backdrops, with persistent matching caches.\n- **Hybrid updates:** Combine scheduled Plex mirroring with real-time Posterizarr WebSocket updates.\n- **Collections:** Keep local collection syncing available when Plex Direct Sync owns the other artwork types, and normalize collection names by stripping only `[boxset]` markers.\n- **Opt-in mirroring:** Plex Direct Sync remains disabled by default; native Dynamic Overlays can upload directly to Jellyfin or Emby without Plex.",
         "targetAbi": "12.0.0.0",
