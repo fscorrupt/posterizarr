@@ -21138,7 +21138,7 @@ async def add_custom_image_overlay_rule(
             if len(content) > 15 * 1024 * 1024:
                 raise HTTPException(status_code=400, detail="Image size exceeds maximum 15MB limit.")
             try:
-                with Image.open(io.BytesIO(content)) as img_check:
+                with Image.open(BytesIO(content)) as img_check:
                     img_check.verify()
             except Exception:
                 raise HTTPException(status_code=400, detail="Uploaded file is not a valid image.")
