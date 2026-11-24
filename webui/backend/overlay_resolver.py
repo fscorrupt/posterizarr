@@ -176,17 +176,18 @@ def normalize_language_tag(value: Any) -> Optional[str]:
     if not s:
         return None
 
-    paren_match = re.match(r"^([^()]+?)\s*\(([^()]+)\)$", s)
-    if paren_match:
-        base_raw = paren_match.group(1).strip()
-        region_raw = paren_match.group(2).strip()
-        base = LANGUAGE_CODE_MAP.get(base_raw, base_raw)
-        if base in ("und", "unknown", ""):
-            return None
-        region = LANGUAGE_REGION_NAME_MAP.get(region_raw)
-        if not region and re.fullmatch(r"[a-z]{2}|\d{3}|[a-z]{4}", region_raw):
-            region = region_raw
-        return f"{base}-{region}" if region else base
+    if s.endswith(")") and s.count("(") == 1 and s.count(")") == 1:
+        open_idx = s.index("(")
+        if open_idx > 0 and open_idx + 1 < len(s) - 1:
+            base_raw = s[:open_idx].strip()
+            region_raw = s[open_idx + 1:-1].strip()
+            base = LANGUAGE_CODE_MAP.get(base_raw, base_raw)
+            if base in ("und", "unknown", ""):
+                return None
+            region = LANGUAGE_REGION_NAME_MAP.get(region_raw)
+            if not region and re.fullmatch(r"[a-z]{2}|\d{3}|[a-z]{4}", region_raw):
+                region = region_raw
+            return f"{base}-{region}" if region else base
 
     parts = [p.strip() for p in s.replace("_", "-").split("-") if p.strip()]
     if not parts:
@@ -525,6 +526,12 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
         return None
 
     clean = image_name.replace("\\", "/").strip().lstrip("/")
+    if (
+        not clean
+        or re.search(r"[\x00-\x1f\x7f?#@:]", clean)
+        or ".." in PurePosixPath(clean).parts
+    ):
+        return None
     parts = PurePosixPath(clean).parts
     asset_indices = [index for index, part in enumerate(parts) if part.lower() == "assets"]
     if asset_indices:
@@ -590,8 +597,8 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
 
 def is_safe_remote_url(url: str) -> bool:
     """
-    Validate that an outbound URL uses HTTPS, resolves to a valid public IP,
-    and does not target link-local, private, or loopback IPs (SSRF mitigation).
+    Validate that an outbound URL uses HTTPS, resolves only to public global IPs,
+    and does not target link-local, private, loopback, or reserved IPs (SSRF mitigation).
     """
     if not url:
         return False
@@ -600,20 +607,41 @@ def is_safe_remote_url(url: str) -> bool:
         if parsed.scheme.lower() != "https":
             return False
 
+        if parsed.username or parsed.password:
+            return False
+
         hostname = parsed.hostname
         if not hostname or hostname.lower() in ("localhost", "127.0.0.1", "::1"):
             return False
 
         try:
-            ip_addr = socket.gethostbyname(hostname)
-            ip = ipaddress.ip_address(ip_addr)
+            addr_infos = socket.getaddrinfo(hostname, parsed.port or 443, type=socket.SOCK_STREAM)
         except Exception:
             return False
 
-        # Strictly block link-local cloud metadata (169.254.x.x), loopback, private IPs, and multicast
-        if ip.is_link_local or ip.is_multicast or ip.is_loopback or ip.is_private:
-            logger.warning(f"[Security] Blocked unsafe IP target: {ip_addr} for URL: {url}")
+        if not addr_infos:
             return False
+
+        for _, _, _, _, sockaddr in addr_infos:
+            ip_str = str(sockaddr[0]).split("%", 1)[0]
+            try:
+                ip = ipaddress.ip_address(ip_str)
+            except Exception:
+                return False
+
+            target_ip = ip.ipv4_mapped if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped else ip
+            # Strictly block link-local cloud metadata (169.254.x.x), loopback, private, unspecified, and non-global IPs
+            if (
+                not target_ip.is_global
+                or target_ip.is_private
+                or target_ip.is_loopback
+                or target_ip.is_link_local
+                or target_ip.is_multicast
+                or target_ip.is_reserved
+                or target_ip.is_unspecified
+            ):
+                logger.warning(f"[Security] Blocked unsafe IP target: {ip_str} for URL: {url}")
+                return False
 
         return True
     except Exception as e:
@@ -1632,6 +1660,27 @@ class OverlayResolver:
             "assets": items_report
         }
 
+    def _lookup_configured_asset_url(self, asset_name: str, category: str) -> Optional[str]:
+        """Look up a safe remote download_url from server-configured overlay YAML rules."""
+        target_name = str(asset_name or "").strip()
+        target_cat = str(category or "")
+        if not target_name:
+            return None
+        try:
+            analysis = self.scan_and_analyze_rules()
+        except Exception:
+            return None
+        assets = analysis.get("readiness", {}).get("assets", [])
+        for entry in assets:
+            if (
+                str(entry.get("category") or "") == target_cat
+                and str(entry.get("name") or "").strip() == target_name
+            ):
+                candidate = entry.get("download_url")
+                if isinstance(candidate, str) and candidate and is_safe_remote_url(candidate):
+                    return candidate
+        return None
+
     async def fetch_asset(self, asset_name: str, category: str, custom_url: Optional[str] = None) -> Dict[str, Any]:
         """
         Download a missing asset directly into Overlayfiles/dynamic_overlays/.
@@ -1644,10 +1693,11 @@ class OverlayResolver:
         if category == "font":
             target_dir = self.fonts_dir
             allowed_exts = ALLOWED_FONT_EXTS
+            official_font = next((f for f in OFFICIAL_KOMETA_FONTS if f == asset_name), None)
             if custom_url and is_safe_remote_url(custom_url):
                 default_url = custom_url
-            elif asset_name in OFFICIAL_KOMETA_FONTS:
-                default_url = f"{KOMETA_GITHUB_RAW}/fonts/{asset_name}"
+            elif official_font:
+                default_url = f"{KOMETA_GITHUB_RAW}/fonts/{official_font}"
             else:
                 return {
                     "success": False,
@@ -1657,22 +1707,26 @@ class OverlayResolver:
             target_dir = self.defaults_dir
             allowed_exts = ALLOWED_CONFIG_EXTS
             stem = Path(asset_name).stem
-            if (
-                asset_name not in OFFICIAL_OVERLAY_DEFAULTS and
-                f"{stem}.yml" not in OFFICIAL_OVERLAY_DEFAULTS
-            ):
+            official_tpl = next(
+                (d for d in OFFICIAL_OVERLAY_DEFAULTS if d == asset_name or d == f"{stem}.yml"),
+                None,
+            )
+            if not official_tpl:
                 return {
                     "success": False,
                     "error": f"'{asset_name}' is not an official Kometa overlay template and cannot be downloaded from the remote repository."
                 }
-            default_url = f"{KOMETA_GITHUB_RAW}/defaults/overlays/{asset_name}"
+            default_url = f"{KOMETA_GITHUB_RAW}/defaults/overlays/{official_tpl}"
         else:
             target_dir = self.assets_dir
             allowed_exts = ALLOWED_IMAGE_EXTS
             if custom_url and is_safe_remote_url(custom_url):
                 default_url = custom_url
             else:
-                default_url = resolve_official_kometa_image_url(asset_name)
+                default_url = (
+                    self._lookup_configured_asset_url(asset_name, category)
+                    or resolve_official_kometa_image_url(asset_name)
+                )
 
             if not default_url:
                 return {
@@ -1699,7 +1753,7 @@ class OverlayResolver:
         safe_dest.parent.mkdir(parents=True, exist_ok=True)
 
         # Remote Download via HTTPS
-        download_url = custom_url or default_url
+        download_url = default_url
         if not download_url or not is_safe_remote_url(download_url):
             return {"success": False, "error": f"Invalid or unsafe download URL for {asset_name}: {download_url}"}
 

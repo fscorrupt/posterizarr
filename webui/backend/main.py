@@ -20158,14 +20158,13 @@ async def import_dynamic_overlays_images(req: Optional[DynamicOverlayImportDefau
 
 @app.post("/api/dynamic-overlays/fetch-asset")
 async def fetch_dynamic_overlay_asset(req: DynamicOverlayFetchRequest):
-    """Fetch a single missing asset safely from official repository or custom URL."""
+    """Fetch a single missing asset server-side from official Kometa catalogs or server-configured overlay YAML."""
     if not kometa_resolver:
         return {"success": False, "error": "Dynamic overlays service is uninitialized."}
     try:
         res = await kometa_resolver.fetch_asset(
             asset_name=req.asset_name,
             category=req.category,
-            custom_url=req.custom_url
         )
         return res
     except Exception as e:
