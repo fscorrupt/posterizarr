@@ -726,7 +726,7 @@ html.hide-scrollbars * {
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--ui-shadow);
 }
 
-.app-content :is([class~="bg-theme-card/80"], [class~="bg-theme-card/85"], [class~="bg-theme-card/90"], [class~="bg-theme-card/95"], .bg-theme-card):not(:has(.fixed)) {
+html:not(.is-firefox) .app-content :is([class~="bg-theme-card/80"], [class~="bg-theme-card/85"], [class~="bg-theme-card/90"], [class~="bg-theme-card/95"], .bg-theme-card):not(:has(.fixed)) {
   backdrop-filter: blur(12px);
 }
 
@@ -884,7 +884,7 @@ html.hide-scrollbars * {
   }
 }
 
-.run-mode-actions > button {
+.run-mode-actions > :is(button, .run-mode-card) {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
   gap: 4px 12px;
@@ -899,7 +899,7 @@ html.hide-scrollbars * {
   text-align: left;
 }
 
-.run-mode-actions > button > svg {
+.run-mode-actions > :is(button, .run-mode-card) > svg {
   grid-row: 1 / span 2;
   align-self: center;
   width: 22px;
@@ -907,16 +907,16 @@ html.hide-scrollbars * {
   margin: 0;
 }
 
-.run-mode-actions > button :is(h3, p) {
+.run-mode-actions > :is(button, .run-mode-card) :is(h3, p) {
   grid-column: 2;
   margin: 0;
   text-align: left;
 }
 
-.run-mode-actions > button h3 { font-size: 14px; }
-.run-mode-actions > button p { font-size: 12px; line-height: 1.5; }
+.run-mode-actions > :is(button, .run-mode-card) h3 { font-size: 14px; }
+.run-mode-actions > :is(button, .run-mode-card) p { font-size: 12px; line-height: 1.5; }
 
-.run-mode-actions > button:hover:not(:disabled) {
+.run-mode-actions > :is(button, .run-mode-card):hover:not(:disabled):not([aria-disabled="true"]) {
   border-color: color-mix(in srgb, var(--theme-primary) 50%, var(--theme-border));
   background: var(--ui-sheen), var(--ui-glass-raised);
   box-shadow: 0 8px 24px rgb(0 0 0 / 22%), inset 0 1px 0 var(--ui-highlight), 0 0 0 1px color-mix(in srgb, var(--theme-primary) 10%, transparent);
@@ -926,6 +926,39 @@ html.hide-scrollbars * {
   margin: auto;
   max-height: calc(100dvh - 32px);
   box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+}
+
+/* Firefox/Gecko performance mode: keep hardware APZ scrolling active and
+   disable layered backdrop-filter blur surfaces that severely degrade FPS
+   in Firefox WebRender while preserving full glassmorphism elsewhere. */
+html.is-firefox[data-theme="plex"] body,
+html.is-firefox .app-shell {
+  background-attachment: scroll;
+}
+
+html.is-firefox .app-shell {
+  --ui-glass: var(--ui-surface);
+  --ui-glass-raised: var(--ui-raised);
+}
+
+html.is-firefox .app-topbar {
+  background: linear-gradient(180deg, var(--ui-highlight), transparent), color-mix(in srgb, var(--ui-canvas) 96%, transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.is-firefox .app-sidebar {
+  background: linear-gradient(160deg, var(--ui-highlight), transparent 45%), var(--ui-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.is-firefox .insight-records,
+html.is-firefox .workspace-header,
+html.is-firefox .run-mode-actions > :is(button, .run-mode-card),
+html.is-firefox [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

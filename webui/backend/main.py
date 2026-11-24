@@ -2861,12 +2861,12 @@ async def export_blueprint():
             export_data = json.load(f)
 
         # Remove sensitive sections completely
-        for section in ["ApiPart", "PlexPart", "JellyfinPart", "EmbyPart", "Notification", "WebUI"]:
+        for section in ["ApiPart", "PlexPart", "JellyfinPart", "EmbyPart", "SiloPart", "Notification", "WebUI"]:
             export_data.pop(section, None)
 
         # Remove specific paths from PrerequisitePart
         if "PrerequisitePart" in export_data:
-            for path_key in ["AssetPath", "ManualAssetPath", "BackupPath", "magickinstalllocation", "overlayfile"]:
+            for path_key in ["AssetPath", "ManualAssetPath", "BackupPath", "magickinstalllocation"]:
                 export_data["PrerequisitePart"].pop(path_key, None)
 
         return JSONResponse(
@@ -2879,9 +2879,11 @@ async def export_blueprint():
 
 @app.post("/api/config/import")
 async def import_blueprint(request: Request):
-    """Import a grouped config.json (blueprint), create backup, and deep merge"""
+    """Import a grouped config.json (blueprint), sanitize unsafe sections, create backup, and deep merge"""
     try:
-        imported_config = await request.json()
+        from community_gallery import CommunityGalleryError, sanitize_manual_config_import
+        raw_imported = await request.json()
+        imported_config = sanitize_manual_config_import(raw_imported)
 
         # 1. Create backup
         if CONFIG_PATH.exists():
@@ -2920,6 +2922,8 @@ async def import_blueprint(request: Request):
             logger.warning(f"Failed to sync imported config to database: {db_err}")
 
         return {"success": True, "message": "Blueprint imported successfully"}
+    except CommunityGalleryError as e:
+        raise HTTPException(status_code=400, detail={"code": e.code, "message": str(e)})
     except Exception as e:
         logger.error(f"Error importing blueprint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -3002,7 +3006,10 @@ async def update_config(data: ConfigUpdate):
         for key, new_value in data.config.items():
             old_value = current_flat.get(key)
             if old_value != new_value:
-                if any(sensitive in key.lower() for sensitive in ["password", "token", "key", "api"]):
+                if key.lower() == "discord" or any(
+                    sensitive in key.lower()
+                    for sensitive in ("password", "token", "key", "api", "secret", "webhook", "apprise", "uptimekuma")
+                ):
                     old_display = "***" if old_value else None
                     new_display = "***" if new_value else None
                 else:
@@ -3010,9 +3017,7 @@ async def update_config(data: ConfigUpdate):
                     new_display = new_value
 
                 changes_detected.append({"key": key, "old": old_display, "new": new_display})
-                logger.info(f"CONFIG CHANGE: {key}")
-                logger.info(f"  Old value: {old_display}")
-                logger.info(f"  New value: {new_display}")
+                logger.info("CONFIG CHANGE: %s (updated)", key)
 
         if changes_detected:
             logger.info(f"Total changes detected: {len(changes_detected)}")
@@ -8929,6 +8934,73 @@ async def run_restore(request: RestoreModeRequest):
             logger.error(f"Error running Restore: {e}")
             raise HTTPException(status_code=500, detail="Internal server error")
 
+def _posterizarr_script_alive() -> bool:
+    """True if any Posterizarr.ps1 PowerShell process is alive (UI, scheduler, webhook or CLI run).
+
+    Errs on the side of "alive" when the process table cannot be read, so a lock
+    file belonging to a real run is never removed.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return True
+    try:
+        for proc in psutil.process_iter(["cmdline"]):
+            try:
+                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            if ("pwsh" in cmdline or "powershell" in cmdline) and "posterizarr.ps1" in cmdline:
+                return True
+        return False
+    except Exception as e:
+        logger.error(f"Error checking for running Posterizarr processes: {e}")
+        return True
+
+
+def _clear_stale_running_file(context: str) -> bool:
+    """Remove Posterizarr.Running when no Posterizarr.ps1 process is alive.
+
+    A stopped, killed or crashed run never reaches the script's own cleanup, so
+    the lock file stays behind and the UI keeps reporting the run as active.
+    Returns True if a stale file was removed.
+    """
+    if not RUNNING_FILE.exists() or _posterizarr_script_alive():
+        return False
+    try:
+        RUNNING_FILE.unlink()
+        logger.warning(f"Removed stale Posterizarr.Running file ({context})")
+        return True
+    except FileNotFoundError:
+        return False
+    except Exception as e:
+        logger.error(f"Failed to remove stale Posterizarr.Running file ({context}): {e}")
+        return False
+
+
+def _no_tracked_process_response() -> dict:
+    """Response for stop/force-kill when the Web UI has no live process of its own."""
+    if not RUNNING_FILE.exists():
+        return {"success": False, "message": "No script is running"}
+    if _posterizarr_script_alive():
+        return {
+            "success": False,
+            "message": "A run started outside the Web UI (webhook, trigger or CLI) is still active. "
+            "It cannot be stopped from here and will clear when it finishes.",
+        }
+    if _clear_stale_running_file("stop requested, no live process"):
+        return {
+            "success": True,
+            "stale_lock_cleared": True,
+            "message": "No script was running. Removed the leftover lock file from an interrupted run.",
+        }
+    return {
+        "success": False,
+        "message": "No script is running, but the leftover lock file could not be removed. "
+        "Use Delete Running File, or check write permissions on the temp folder.",
+    }
+
+
 @app.post("/api/stop")
 async def stop_script():
     """Stop running script gracefully - works for both manual and scheduled runs"""
@@ -8945,7 +9017,7 @@ async def stop_script():
 
         # If nothing is running
         if not manual_running and not scheduler_running:
-            return {"success": False, "message": "No script is running"}
+            return _no_tracked_process_response()
 
         try:
             stopped_processes = []
@@ -8983,6 +9055,8 @@ async def stop_script():
                     logger.error(f"Error stopping scheduler process: {e}")
 
             if stopped_processes:
+                # The script's own cleanup does not run on terminate/kill
+                _clear_stale_running_file("after stop")
                 message = f"Stopped: {', '.join(stopped_processes)}"
                 return {"success": True, "message": message}
             else:
@@ -9009,7 +9083,7 @@ async def force_kill_script():
 
         # If nothing is running
         if not manual_running and not scheduler_running:
-            return {"success": False, "message": "No script is running"}
+            return _no_tracked_process_response()
 
         try:
             killed_processes = []
@@ -9047,6 +9121,8 @@ async def force_kill_script():
                     killed_processes.append("scheduled (cleared)")
 
             if killed_processes:
+                # The script's own cleanup does not run on kill
+                _clear_stale_running_file("after force kill")
                 message = f"Force killed: {', '.join(killed_processes)}"
                 return {"success": True, "message": message}
             else:
@@ -15639,36 +15715,37 @@ async def regenerate_asset_title(job, manual=False):
 
     target_media_type = "movie" if media_type == "movie" else "show"
     target_asset_type = "titlecard" if media_type == "episode" else ("season" if media_type == "season" else "poster")
-    target_item = {
-        "id": job["parent_id"] if media_type == "episode" else job["item_id"],
-        "server_type": job["server_type"],
-        "library_name": job["library"],
-        "media_type": target_media_type,
-        "asset_type": target_asset_type,
-        "season_number": job.get("season"),
-        "episode_number": job.get("episode"),
-        "force_reapply": False,
-    }
-    result = await run_overlay_sync_task(
-        target_server=job["server_type"], scope="incremental", library=job["library"],
-        base_dir=BASE_DIR, config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
-        target_items=[target_item],
-    )
-    if not result.get("success") or result.get("stopped") or result.get("total_failed", 0):
-        return False
-    if result.get("total_synced", 0) + result.get("total_skipped", 0):
-        return True
-    from overlay_sync_service import resolve_library_rules
-    rules_path = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "configs" / "config.yml"
-    if not rules_path.is_file():
-        rules_path = BASE_DIR / "Overlayfiles" / "kometa" / "configs" / "config.yml"
-    if rules_path.is_file():
-        with open(rules_path, encoding="utf-8-sig") as rules_file:
-            libraries = (yaml.safe_load(rules_file) or {}).get("libraries") or {}
-        library_rules = {str(name).lower(): data.get("overlay_files") or data.get("overlays") or [] for name, data in libraries.items() if isinstance(data, dict)}
-        if resolve_library_rules(job["library"], target_media_type, library_rules)[1]:
-            logger.warning("[TitleChanges] Configured overlay target was not processed: %s", target.name)
+    if settings.get("enabled", False):
+        target_item = {
+            "id": job["parent_id"] if media_type == "episode" else job["item_id"],
+            "server_type": job["server_type"],
+            "library_name": job["library"],
+            "media_type": target_media_type,
+            "asset_type": target_asset_type,
+            "season_number": job.get("season"),
+            "episode_number": job.get("episode"),
+            "force_reapply": False,
+        }
+        result = await run_overlay_sync_task(
+            target_server=job["server_type"], scope="incremental", library=job["library"],
+            base_dir=BASE_DIR, config_path=CONFIG_PATH, log_file_path=UI_LOGS_DIR / "DynamicOverlaysSync.log",
+            target_items=[target_item],
+        )
+        if not result.get("success") or result.get("stopped") or result.get("total_failed", 0):
             return False
+        if result.get("total_synced", 0) + result.get("total_skipped", 0):
+            return True
+        from overlay_sync_service import resolve_library_rules
+        rules_path = BASE_DIR / "Overlayfiles" / "dynamic_overlays" / "configs" / "config.yml"
+        if not rules_path.is_file():
+            rules_path = BASE_DIR / "Overlayfiles" / "kometa" / "configs" / "config.yml"
+        if rules_path.is_file():
+            with open(rules_path, encoding="utf-8-sig") as rules_file:
+                libraries = (yaml.safe_load(rules_file) or {}).get("libraries") or {}
+            library_rules = {str(name).lower(): data.get("overlay_files") or data.get("overlays") or [] for name, data in libraries.items() if isinstance(data, dict)}
+            if resolve_library_rules(job["library"], target_media_type, library_rules)[1]:
+                logger.warning("[TitleChanges] Configured overlay target was not processed: %s", target.name)
+                return False
     content = target.read_bytes()
     async with httpx.AsyncClient(timeout=30, verify=False) as client:
         if job["server_type"] == "plex":
@@ -17169,6 +17246,56 @@ async def get_sidebar_counts(refresh: bool = False):
         data = await asyncio.to_thread(_build_sidebar_counts)
         _sidebar_counts_cache.update(data=data, expires_at=time.monotonic() + 60)
         return data
+
+
+@app.get("/api/global-search")
+async def global_search_endpoint(
+    q: str = Query("", max_length=120),
+    limit: int = Query(8, ge=1, le=20),
+):
+    from global_search import run_global_search
+
+    clean_q = (q or "").strip()
+    if not clean_q:
+        return {
+            "success": True,
+            "query": "",
+            "assets": [],
+            "overlays": [],
+            "logs": [],
+            "blueprints": [],
+        }
+
+    cache_snapshot = get_fresh_assets()
+    visual_config = None
+    try:
+        from dynamic_overlays_service import parse_config_yml_to_visual
+
+        visual_config = await asyncio.to_thread(parse_config_yml_to_visual, auto_seed=False)
+    except Exception as vis_err:
+        logger.debug(f"Global search skipped visual overlay index: {vis_err}")
+
+    custom_blueprints = []
+    try:
+        if CONFIG_DATABASE_AVAILABLE and config_db:
+            raw_bp = config_db.get_value("CustomBlueprints", "blueprints")
+            if raw_bp:
+                parsed_bp = json.loads(raw_bp)
+                if isinstance(parsed_bp, list):
+                    custom_blueprints = parsed_bp
+    except Exception as bp_err:
+        logger.debug(f"Global search skipped custom blueprints index: {bp_err}")
+
+    return await asyncio.to_thread(
+        run_global_search,
+        clean_q,
+        asset_cache=cache_snapshot,
+        logs_dir=LOGS_DIR,
+        ui_logs_dir=UI_LOGS_DIR,
+        visual_config=visual_config,
+        custom_blueprints=custom_blueprints,
+        limit=limit,
+    )
 
 
 @app.get("/api/imagechoices")
@@ -20031,14 +20158,13 @@ async def import_dynamic_overlays_images(req: Optional[DynamicOverlayImportDefau
 
 @app.post("/api/dynamic-overlays/fetch-asset")
 async def fetch_dynamic_overlay_asset(req: DynamicOverlayFetchRequest):
-    """Fetch a single missing asset safely from official repository or custom URL."""
+    """Fetch a single missing asset server-side from official Kometa catalogs or server-configured overlay YAML."""
     if not kometa_resolver:
         return {"success": False, "error": "Dynamic overlays service is uninitialized."}
     try:
         res = await kometa_resolver.fetch_asset(
             asset_name=req.asset_name,
             category=req.category,
-            custom_url=req.custom_url
         )
         return res
     except Exception as e:
@@ -20129,7 +20255,7 @@ async def upload_dynamic_overlay_asset(
                         if extracted:
                             save_dynamic_overlays_settings(extracted)
                             all_extracted_keys.update(extracted)
-                            logger.info(f"[Upload] Extracted API keys from {filename}: {list(extracted.keys())}")
+                            logger.info("[Upload] Extracted %d API key(s) from %s", len(extracted), filename)
                     except Exception as ee:
                         logger.warning(f"[Upload] Error extracting API keys from {filename}: {ee}")
 
@@ -20919,6 +21045,172 @@ async def add_dynamic_overlay_rule(req: AddOverlayRuleRequest):
     return res
 
 
+def _list_custom_overlay_image_sources(overlayfiles_dir: Path, assets_dir: Path) -> Dict[str, List[str]]:
+    """List user-usable custom images from Overlayfiles/ and dynamic_overlays/assets/."""
+    builtin_subdirs = {
+        "audio_codec", "cr", "edition", "flag", "flags", "logo", "network",
+        "rating", "resolution", "ribbon", "streaming", "studio",
+    }
+    overlay_builder_files: List[str] = []
+    if overlayfiles_dir.is_dir() and not overlayfiles_dir.is_symlink():
+        for entry in overlayfiles_dir.iterdir():
+            if not entry.is_symlink() and entry.is_file() and entry.suffix.lower() in ALLOWED_IMAGE_EXTS:
+                overlay_builder_files.append(entry.name)
+
+    dynamic_asset_files: List[str] = []
+    if assets_dir.is_dir() and not assets_dir.is_symlink():
+        assets_root = assets_dir.resolve()
+        for entry in assets_dir.rglob("*"):
+            if entry.is_symlink() or not entry.is_file() or entry.suffix.lower() not in ALLOWED_IMAGE_EXTS:
+                continue
+            try:
+                rel = entry.resolve().relative_to(assets_root).as_posix()
+            except (OSError, ValueError):
+                continue
+            top_dir = rel.split("/", 1)[0].lower() if "/" in rel else ""
+            if top_dir in builtin_subdirs:
+                continue
+            dynamic_asset_files.append(rel)
+
+    return {
+        "overlay_builder": sorted(overlay_builder_files, key=str.casefold),
+        "dynamic_assets": sorted(dynamic_asset_files, key=str.casefold),
+    }
+
+
+@app.get("/api/dynamic-overlays/custom-image-sources")
+async def get_custom_overlay_image_sources():
+    """List PNG/image files from Overlay Builder and Dynamic Overlays assets."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+    try:
+        sources = await asyncio.to_thread(
+            _list_custom_overlay_image_sources, OVERLAYFILES_DIR, kometa_resolver.assets_dir
+        )
+        return {"success": True, **sources}
+    except Exception as exc:
+        logger.error(f"Error listing custom overlay image sources: {exc}", exc_info=True)
+        return {"success": False, "error": "Could not list available custom images."}
+
+
+@app.post("/api/dynamic-overlays/rules/add-custom-image")
+async def add_custom_image_overlay_rule(
+    library_name: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    existing_source: Optional[str] = Form(None),
+    existing_image: Optional[str] = Form(None),
+    overlay_name: Optional[str] = Form(None),
+    builder_level: str = Form("movie"),
+    artwork_type: str = Form("poster"),
+    horizontal_align: str = Form("left"),
+    vertical_align: str = Form("top"),
+    horizontal_offset: int = Form(30),
+    vertical_offset: int = Form(30),
+    scale_width: Optional[int] = Form(None),
+    scale_height: Optional[int] = Form(None),
+    fit_full_canvas: bool = Form(False),
+    filename: str = Form("config.yml"),
+):
+    """Upload or reuse a custom PNG/image and create a per-library overlay YAML rule in one step."""
+    if not kometa_resolver:
+        return {"success": False, "error": "Dynamic overlays service is uninitialized."}
+
+    has_upload = file is not None and bool(file.filename)
+    has_existing = bool(existing_source and existing_image)
+    if has_upload == has_existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either an uploaded image file or an existing image selection.",
+        )
+
+    try:
+        kometa_resolver.assets_dir.mkdir(parents=True, exist_ok=True)
+        rel_image = ""
+
+        if has_upload:
+            raw_name = Path(file.filename or "").name
+            safe_dest = safe_resolve_kometa_path(kometa_resolver.assets_dir, raw_name, ALLOWED_IMAGE_EXTS)
+            if not safe_dest:
+                raise HTTPException(status_code=400, detail="Unsupported or invalid image filename.")
+            content = await file.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="Uploaded image file is empty.")
+            if len(content) > 15 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Image size exceeds maximum 15MB limit.")
+            try:
+                with Image.open(io.BytesIO(content)) as img_check:
+                    img_check.verify()
+            except Exception:
+                raise HTTPException(status_code=400, detail="Uploaded file is not a valid image.")
+            await asyncio.to_thread(safe_dest.write_bytes, content)
+            rel_image = safe_dest.name
+        else:
+            src_kind = str(existing_source or "").strip().lower()
+            raw_existing = str(existing_image or "").strip()
+            if src_kind == "overlay_builder":
+                if any(sep in raw_existing for sep in ("/", "\\", "..")) or raw_existing.startswith("~"):
+                    raise HTTPException(status_code=400, detail="Invalid Overlay Builder image selection.")
+                src_path = safe_resolve_kometa_path(OVERLAYFILES_DIR, raw_existing, ALLOWED_IMAGE_EXTS)
+                if not src_path or src_path.is_symlink() or not src_path.is_file():
+                    raise HTTPException(status_code=400, detail="Selected Overlay Builder image was not found.")
+                overlayfiles_root = OVERLAYFILES_DIR.resolve()
+                src_resolved = src_path.resolve()
+                if not src_resolved.is_relative_to(overlayfiles_root):
+                    raise HTTPException(status_code=400, detail="Invalid Overlay Builder image path.")
+                dest_path = safe_resolve_kometa_path(kometa_resolver.assets_dir, src_resolved.name, ALLOWED_IMAGE_EXTS)
+                if not dest_path:
+                    raise HTTPException(status_code=400, detail="Invalid target image filename.")
+                src_bytes = await asyncio.to_thread(src_resolved.read_bytes)
+                if not dest_path.exists() or dest_path.stat().st_size != len(src_bytes) or await asyncio.to_thread(dest_path.read_bytes) != src_bytes:
+                    await asyncio.to_thread(dest_path.write_bytes, src_bytes)
+                rel_image = dest_path.name
+            elif src_kind == "dynamic_assets":
+                src_path = safe_resolve_kometa_path(kometa_resolver.assets_dir, raw_existing, ALLOWED_IMAGE_EXTS)
+                if not src_path or src_path.is_symlink() or not src_path.is_file():
+                    raise HTTPException(status_code=400, detail="Selected Dynamic Overlays asset image was not found.")
+                assets_root = kometa_resolver.assets_dir.resolve()
+                src_resolved = src_path.resolve()
+                if not src_resolved.is_relative_to(assets_root):
+                    raise HTTPException(status_code=400, detail="Invalid Dynamic Overlays asset path.")
+                rel_image = src_resolved.relative_to(assets_root).as_posix()
+            else:
+                raise HTTPException(status_code=400, detail="Unsupported existing image source.")
+
+        res = await asyncio.to_thread(
+            kometa_resolver.create_custom_png_overlay,
+            library_name=library_name,
+            image_filename=rel_image,
+            rule_name=overlay_name,
+            builder_level=builder_level,
+            artwork_type=artwork_type,
+            horizontal_align=horizontal_align,
+            vertical_align=vertical_align,
+            horizontal_offset=horizontal_offset,
+            vertical_offset=vertical_offset,
+            scale_width=scale_width,
+            scale_height=scale_height,
+            fit_full_canvas=fit_full_canvas,
+            config_filename=filename,
+        )
+        if res.get("success"):
+            fresh_scan = await asyncio.to_thread(kometa_resolver.scan_and_analyze_rules)
+            fresh_vis = {}
+            try:
+                from dynamic_overlays_service import parse_config_yml_to_visual, save_visual_config
+                fresh_vis = await asyncio.to_thread(parse_config_yml_to_visual, auto_seed=False)
+                if isinstance(fresh_vis, dict) and fresh_vis.get("libraries"):
+                    await asyncio.to_thread(save_visual_config, fresh_vis)
+            except Exception as vis_err:
+                logger.warning(f"Failed syncing visual config after custom image add: {vis_err}")
+            return {**res, "scan": fresh_scan, "config": fresh_vis}
+        return res
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error adding custom image overlay rule: {exc}", exc_info=True)
+        return {"success": False, "error": "Failed to add custom image overlay rule."}
+
+
 @app.post("/api/dynamic-overlays/rules/update")
 async def update_dynamic_overlay_variables(req: UpdateOverlayVariablesRequest):
     """Update template variables for an overlay rule in a library."""
@@ -21168,7 +21460,7 @@ async def get_episode_title_changes(
     except (ValueError, FileNotFoundError):
         result = {"entries": [], "total": 0, "eligible": 0}
     return {"success": True, **result, "job": episode_title_review.status(),
-            "can_scan": bool(settings.get("enabled")),
+            "can_scan": True,
             "can_rebuild": title_regeneration_allowed(settings, manual=True)}
 
 
@@ -21220,8 +21512,6 @@ async def queue_episode_title_changes(request: EpisodeTitleRebuildRequest):
     if bool(request.candidate_ids) == bool(request.all_eligible):
         raise HTTPException(status_code=400, detail="invalid_selection")
     settings = get_dynamic_overlays_settings()
-    if not settings.get("enabled"):
-        raise HTTPException(status_code=400, detail="master_off")
     if not title_regeneration_allowed(settings, manual=True):
         raise HTTPException(status_code=400, detail="rebuild_disabled")
     monitor = await asyncio.to_thread(create_title_monitor, BASE_DIR, CONFIG_PATH)
@@ -21287,8 +21577,6 @@ async def fast_normal_run_episode_title_changes(request: EpisodeTitleFastRunRequ
     if bool(request.candidate_ids) == bool(request.all_eligible):
         raise HTTPException(status_code=400, detail="invalid_selection")
     settings = get_dynamic_overlays_settings()
-    if not settings.get("enabled"):
-        raise HTTPException(status_code=400, detail="master_off")
     if not title_regeneration_allowed(settings, manual=True):
         raise HTTPException(status_code=400, detail="rebuild_disabled")
     if not episode_title_review.operation_lock.acquire(blocking=False):
@@ -21638,6 +21926,8 @@ class DynamicOverlaysSettingsRequest(BaseModel):
     change_detection_interval_minutes: Optional[int] = None
     auto_resync_on_change: Optional[bool] = None
     regenerate_assets_on_title_change: Optional[bool] = None
+    title_change_interval_minutes: Optional[int] = Field(default=None, ge=5, le=10080)
+    title_change_dry_run: Optional[bool] = None
     change_detection_dry_run: Optional[bool] = None
     fast_bulk_query_enabled: Optional[bool] = None
     debug_logging: Optional[bool] = None
@@ -21694,42 +21984,36 @@ async def export_dynamic_overlay_bundle():
         raise HTTPException(status_code=500, detail="Could not export the overlay bundle.")
 
 
-@app.post("/api/dynamic-overlays/bundle/preview")
-async def preview_dynamic_overlay_bundle(file: UploadFile = File(...)):
-    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES, inspect_profile
-    try:
-        payload = await file.read(MAX_BUNDLE_BYTES + 1)
-        context = await _overlay_bundle_context(resolve_libraries=True)
-        summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
-        warnings = []
-        warning_codes = []
-        if summary.get("official_dependency_count"):
-            warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
-            warning_codes.append("officialDependencies")
-        if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
-            warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
-            warning_codes.append("simklRequired")
-        if summary["features"]["imdb_dataset"]:
-            warnings.append("The local IMDb dataset must be downloaded separately; its index is not included.")
-            warning_codes.append("imdbDownload")
-        if not context["libraries"]:
-            warnings.append("No destination libraries are available. Refresh the libraries for your configured media server first.")
-            warning_codes.append("noLibraries")
-        return {"success": True, **summary, "destination_server": context["server"], "warnings": warnings, "warning_codes": warning_codes}
-    except BundleError as error:
-        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
-    except Exception:
-        logger.exception("Overlay bundle preview failed")
-        raise HTTPException(status_code=500, detail="Could not inspect the overlay bundle.")
+async def _build_overlay_bundle_preview_response(payload: bytes) -> dict:
+    from overlay_bundle import inspect_profile
+    context = await _overlay_bundle_context(resolve_libraries=True)
+    summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
+    warnings = []
+    warning_codes = []
+    if summary.get("official_dependency_count"):
+        warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
+        warning_codes.append("officialDependencies")
+    if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
+        warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
+        warning_codes.append("simklRequired")
+    if summary["features"]["imdb_dataset"]:
+        warnings.append("The local IMDb dataset must be downloaded separately; its index is not included.")
+        warning_codes.append("imdbDownload")
+    if not context["libraries"]:
+        warnings.append("No destination libraries are available. Refresh the libraries for your configured media server first.")
+        warning_codes.append("noLibraries")
+    return {"success": True, **summary, "destination_server": context["server"], "warnings": warnings, "warning_codes": warning_codes}
 
 
-@app.post("/api/dynamic-overlays/bundle/import")
-async def import_dynamic_overlay_bundle(
-    file: UploadFile = File(...), mapping: str = Form(...),
-    anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
-    import_settings: bool = Form(True), replace_files: bool = Form(False),
-):
-    from overlay_bundle import BundleError, IMPORT_LOCK, MAX_BUNDLE_BYTES, commit_import, prepare_import
+async def _execute_overlay_bundle_import(
+    payload: bytes,
+    library_mapping: dict,
+    anime_targets: list,
+    season_targets: list,
+    import_settings: bool,
+    replace_files: bool,
+) -> dict:
+    from overlay_bundle import IMPORT_LOCK, commit_import, prepare_import
     from overlay_sync_service import is_overlay_sync_running, stop_overlay_change_detector_background, start_overlay_change_detector_background
     from animetafill_service import is_animetafill_running, _write_to_config_db
     if not IMPORT_LOCK.acquire(blocking=False):
@@ -21737,13 +22021,6 @@ async def import_dynamic_overlay_bundle(
     try:
         if is_overlay_sync_running() or is_animetafill_running():
             raise HTTPException(status_code=409, detail="Wait for the current overlay or AniMetaFill run to finish before importing.")
-        try:
-            library_mapping = json.loads(mapping)
-            anime_targets = json.loads(anime_libraries)
-            season_targets = json.loads(season_libraries)
-        except ValueError:
-            raise BundleError("Invalid library mapping JSON.")
-        payload = await file.read(MAX_BUNDLE_BYTES + 1)
         context = await _overlay_bundle_context(resolve_libraries=True)
         plan = await asyncio.to_thread(
             prepare_import, payload, context["overlays"], context["libraries"], library_mapping,
@@ -21762,9 +22039,44 @@ async def import_dynamic_overlay_bundle(
             await asyncio.to_thread(imdb_dataset.configure, plan["imdb_dataset"])
         from dynamic_overlays_service import get_dynamic_overlays_settings
         saved = await asyncio.to_thread(get_dynamic_overlays_settings)
-        if saved.get("enabled") and saved.get("change_detection_enabled", True):
+        if (saved.get("enabled", False) and saved.get("change_detection_enabled", True)) or saved.get("regenerate_assets_on_title_change", False):
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
         return {"success": True, **result, "message": "Overlay bundle imported in Dry Run. No artwork was uploaded."}
+    finally:
+        IMPORT_LOCK.release()
+
+
+@app.post("/api/dynamic-overlays/bundle/preview")
+async def preview_dynamic_overlay_bundle(file: UploadFile = File(...)):
+    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES
+    try:
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        return await _build_overlay_bundle_preview_response(payload)
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Overlay bundle preview failed")
+        raise HTTPException(status_code=500, detail="Could not inspect the overlay bundle.")
+
+
+@app.post("/api/dynamic-overlays/bundle/import")
+async def import_dynamic_overlay_bundle(
+    file: UploadFile = File(...), mapping: str = Form(...),
+    anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
+    import_settings: bool = Form(True), replace_files: bool = Form(False),
+):
+    from overlay_bundle import BundleError, MAX_BUNDLE_BYTES
+    try:
+        try:
+            library_mapping = json.loads(mapping)
+            anime_targets = json.loads(anime_libraries)
+            season_targets = json.loads(season_libraries)
+        except ValueError:
+            raise BundleError("Invalid library mapping JSON.")
+        payload = await file.read(MAX_BUNDLE_BYTES + 1)
+        return await _execute_overlay_bundle_import(
+            payload, library_mapping, anime_targets, season_targets, import_settings, replace_files
+        )
     except BundleError as error:
         raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
     except HTTPException:
@@ -21772,8 +22084,229 @@ async def import_dynamic_overlay_bundle(
     except Exception:
         logger.exception("Overlay bundle import failed")
         raise HTTPException(status_code=500, detail="Could not import the overlay bundle. Check the local log and bundle backups.")
-    finally:
-        IMPORT_LOCK.release()
+
+
+class CommunityBundlePreviewRequest(BaseModel):
+    id: str
+
+
+class BlueprintExportRequest(BaseModel):
+    name: str = "Custom Blueprint Export"
+    updates: Dict[str, Any]
+    include_current_fonts: bool = True
+
+
+class BlueprintInstallAssetsRequest(BaseModel):
+    blueprint_token: Optional[str] = None
+    community_entry_id: Optional[str] = None
+    replace_assets: bool = False
+
+
+class CommunityBundleImportRequest(BaseModel):
+    id: str
+    bundle_token: Optional[str] = None
+    mapping: Dict[str, str]
+    anime_libraries: List[str] = []
+    season_libraries: List[str] = []
+    import_settings: bool = True
+    replace_files: bool = False
+
+
+def _community_error_http_status(code: str) -> int:
+    if code in ("catalogUnavailable", "catalogNotPublished", "downloadFailed"):
+        return 503
+    if code == "entryNotFound":
+        return 404
+    return 400
+
+
+@app.get("/api/community-gallery")
+async def get_community_gallery(kind: str = "all", refresh: bool = False):
+    from community_gallery import CommunityGalleryError, fetch_community_catalog
+    try:
+        catalog = await asyncio.to_thread(fetch_community_catalog, refresh)
+        return {
+            "success": True,
+            "schema_version": catalog["schema_version"],
+            "repo": catalog["repo"],
+            "repo_url": catalog["repo_url"],
+            "submit_url": catalog["submit_url"],
+            "stats_updated_at": catalog.get("stats_updated_at"),
+            "blueprints": catalog["blueprints"] if kind in ("all", "blueprints") else [],
+            "dynamic_overlays": catalog["dynamic_overlays"] if kind in ("all", "dynamic-overlays", "dynamic_overlays") else [],
+        }
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Community gallery catalog fetch failed")
+        raise HTTPException(status_code=500, detail="Could not load the Community Gallery catalog.")
+
+
+@app.get("/api/community-gallery/blueprint")
+async def get_community_blueprint(id: str):
+    from community_gallery import CommunityGalleryError, fetch_community_blueprint
+    try:
+        result = await asyncio.to_thread(fetch_community_blueprint, id, OVERLAYFILES_DIR)
+        return {"success": True, **result}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Community blueprint fetch failed")
+        raise HTTPException(status_code=500, detail="Could not load the selected community blueprint.")
+
+
+@app.post("/api/blueprints/export")
+async def export_blueprint_package_endpoint(body: BlueprintExportRequest):
+    from community_gallery import CommunityGalleryError, FONT_FILENAME_KEYS, export_blueprint_package
+    try:
+        config_fonts: Dict[str, str] = {}
+        if body.include_current_fonts and CONFIG_PATH.exists():
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as cfg_file:
+                    current_cfg = json.load(cfg_file)
+                prereq = current_cfg.get("PrerequisitePart") if isinstance(current_cfg, dict) else None
+                if isinstance(prereq, dict):
+                    for key in FONT_FILENAME_KEYS:
+                        val = prereq.get(key)
+                        if isinstance(val, str) and val.strip():
+                            config_fonts[key] = val.strip()
+            except Exception as cfg_err:
+                logger.warning(f"Could not read current fonts during blueprint export: {cfg_err}")
+
+        payload = {"name": body.name, "updates": body.updates}
+        result = await asyncio.to_thread(
+            export_blueprint_package,
+            payload,
+            OVERLAYFILES_DIR,
+            config_fonts,
+        )
+        return Response(
+            content=result["payload"],
+            media_type=result["media_type"],
+            headers={
+                "Content-Disposition": f'attachment; filename="{result["filename"]}"',
+                "X-Blueprint-Format": result["format"],
+                "X-Blueprint-Asset-Count": str(len(result["asset_names"])),
+                "X-Blueprint-Missing-Assets": ",".join(result["missing_assets"]),
+                "Access-Control-Expose-Headers": (
+                    "Content-Disposition, X-Blueprint-Format, "
+                    "X-Blueprint-Asset-Count, X-Blueprint-Missing-Assets"
+                ),
+            },
+        )
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Blueprint package export failed")
+        raise HTTPException(status_code=500, detail="Could not export blueprint package.")
+
+
+@app.post("/api/blueprints/inspect-upload")
+async def inspect_blueprint_upload_endpoint(file: UploadFile = File(...)):
+    from community_gallery import (
+        CommunityGalleryError,
+        MAX_BLUEPRINT_BUNDLE_BYTES,
+        inspect_uploaded_blueprint,
+    )
+    try:
+        raw_bytes = await file.read(MAX_BLUEPRINT_BUNDLE_BYTES + 1)
+        result = await asyncio.to_thread(
+            inspect_uploaded_blueprint,
+            file.filename or "",
+            raw_bytes,
+            OVERLAYFILES_DIR,
+        )
+        return {"success": True, **result}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Blueprint upload inspection failed")
+        raise HTTPException(status_code=500, detail="Could not inspect uploaded blueprint.")
+
+
+@app.post("/api/blueprints/install-assets")
+async def install_blueprint_assets_endpoint(body: BlueprintInstallAssetsRequest):
+    from community_gallery import (
+        CommunityGalleryError,
+        install_blueprint_assets,
+        resolve_cached_blueprint_assets,
+    )
+    try:
+        assets = await asyncio.to_thread(
+            resolve_cached_blueprint_assets,
+            body.blueprint_token,
+            body.community_entry_id,
+        )
+        install_result = await asyncio.to_thread(
+            install_blueprint_assets,
+            assets,
+            OVERLAYFILES_DIR,
+            body.replace_assets,
+        )
+        return {"success": True, **install_result}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except Exception:
+        logger.exception("Blueprint asset installation failed")
+        raise HTTPException(status_code=500, detail="Could not install blueprint assets.")
+
+
+@app.post("/api/community-gallery/dynamic-overlays/preview")
+async def preview_community_overlay_bundle(body: CommunityBundlePreviewRequest):
+    from community_gallery import CommunityGalleryError, fetch_community_bundle
+    from overlay_bundle import BundleError
+    try:
+        entry, payload, bundle_token = await asyncio.to_thread(fetch_community_bundle, body.id)
+        summary = await _build_overlay_bundle_preview_response(payload)
+        return {**summary, "bundle_token": bundle_token, "community_entry": entry}
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except Exception:
+        logger.exception("Community overlay bundle preview failed")
+        raise HTTPException(status_code=500, detail="Could not inspect the community overlay bundle.")
+
+
+@app.post("/api/community-gallery/dynamic-overlays/import")
+async def import_community_overlay_bundle(body: CommunityBundleImportRequest):
+    from community_gallery import CommunityGalleryError, resolve_community_bundle_payload
+    from overlay_bundle import BundleError
+    try:
+        _, payload = await asyncio.to_thread(resolve_community_bundle_payload, body.id, body.bundle_token)
+        return await _execute_overlay_bundle_import(
+            payload, body.mapping, body.anime_libraries, body.season_libraries, body.import_settings, body.replace_files
+        )
+    except CommunityGalleryError as error:
+        raise HTTPException(
+            status_code=_community_error_http_status(error.code),
+            detail={"code": error.code, "message": str(error)},
+        )
+    except BundleError as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Community overlay bundle import failed")
+        raise HTTPException(status_code=500, detail="Could not import the community overlay bundle.")
 
 
 @app.get("/api/dynamic-overlays/settings")
@@ -21797,7 +22330,7 @@ async def save_dynamic_overlays_settings_endpoint(req: DynamicOverlaysSettingsRe
             logger.error("Dynamic overlay settings did not persist for one or more requested fields.")
             return {"success": False, "error": "settings_not_persisted"}
         from overlay_sync_service import stop_overlay_change_detector_background
-        if saved.get("enabled", False) and saved.get("change_detection_enabled", True):
+        if (saved.get("enabled", False) and saved.get("change_detection_enabled", True)) or saved.get("regenerate_assets_on_title_change", False):
             from overlay_sync_service import start_overlay_change_detector_background
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
         else:

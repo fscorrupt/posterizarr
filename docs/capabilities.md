@@ -60,7 +60,7 @@ unresolved items can still need external providers.
 
 *Navigate to **Builders > Dynamic Overlays > Sync & Maintenance > Ratings Cache**, then choose **Browse Ratings** to open **Ratings Cache & Refresh**, manage the local IMDb dataset, and filter cached provider scores.*
 
-[Set up the local IMDb dataset](dynamic_overlays.md#local-imdb-dataset).
+[Set up the local IMDb dataset](dynamic_overlays_reference.md#local-imdb-dataset).
 The datasets are optional, require disk space for indexing, and are licensed by
 IMDb for non-commercial use only.
 
@@ -165,7 +165,7 @@ server plugins are optional.
 | **Plex Collection Diff & Sync**          | - Visual diffing of local collection artwork (Assets/Collections/) against Plex server collections in real-time.<br>- Displays status badges (In Sync, Update Ready, Missing on Plex, No Local Asset).<br>- Allows interactive Local vs Server artwork inspection, 1-click single-collection push, and batch pushing.                                           |
 | **Plex Asset Sync Scheduler**            | - Lightweight, pure Python background sync engine for Plex.<br>- Selectively push artwork (collections, posters, seasons, title cards, backgrounds) directly to Plex on a schedule without running full image generation scripts.<br>- Built-in SQLite change tracking prevents duplicate uploads.                                                                              |
 | **AniMetaFill**                          | - Scans anime episodes for **Canon**, **Filler**, and **Mixed** status with provider matching and manual overrides.<br>- Supports toggleable overlay categories, per-show thresholds, and optional titlecard badges rendered through Dynamic Overlays. |
-| **Asset Title Review**                   | - Compares existing text-enabled movies, shows, seasons, and episode titlecards against current media-server titles.<br>- Supports bulk dismissal (**Hide selected**), queued rebuilds, **Fast: Normal Run**, and optional automatic regeneration when titles change. |
+| **Asset Title Review**                   | - Standalone view under **Asset Management** (`/asset-title-review`) that works without enabling Dynamic Overlays.<br>- Compares existing text-enabled movies, shows, seasons, and episode titlecards against current media-server titles.<br>- Supports bulk dismissal (**Hide selected**), queued rebuilds, **Fast: Normal Run**, and optional automatic regeneration with direct upload or automatic overlay re-sync when Dynamic Overlays is active. See **[Asset Title Review](asset_title_review.md)**. |
 | **Plex Image Cleanup**                   | - Scans Plex metadata directories on a schedule or on demand to locate old, unselected uploaded artwork.<br>- Starts in **Read Only (Report)** mode by default with an optional **Quarantine** gallery for review before deletion. See the **[Plex Image Cleanup Guide](plex_image_cleanup.md)**. |
 | **Insights & System Database Browser**   | - Date-filtered runtime history (`24H`–`ALL`), aspect-aware asset thumbnails, and Sample Telemetry Preview.<br>- Includes a read-only, searchable, sortable **System Database Browser** covering Posterizarr SQLite databases (excluding `config.db` for security). |
 | **External Provider APIs**               | - Opt-in API-key-protected endpoints allowing external tools to fetch or generate isolated artwork (`/api/provider/v1/asset`) or query cached ratings (`/api/provider/v1/ratings`). See the **[External Provider API Docs](endpoints.md#external-provider-api)**. |

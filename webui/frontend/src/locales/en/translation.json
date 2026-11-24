@@ -1,9 +1,28 @@
 {
+  "assetTitleReview": {
+    "subtitle": "Monitor text-enabled posters, season posters, and episode titlecards against Plex, Jellyfin, and Emby — works standalone without Dynamic Overlays.",
+    "autoRecreateLabel": "Recreate artwork when titles change",
+    "autoRecreateHint": "Automatically checks for newly renamed titles at the configured interval and recreates & uploads text-enabled artwork. Historical ImageChoices review candidates remain manual.",
+    "intervalLabel": "Check interval",
+    "dryRunLabel": "Dry Run",
+    "dryRunHint": "Detect and log title changes without recreating files or uploading to the media server.",
+    "dryRunBadge": "DRY RUN",
+    "lastCheck": "Last automatic check",
+    "neverChecked": "Never",
+    "summary": "{{detected}} detected · {{regenerated}} recreated",
+    "standaloneBadge": "Standalone mode — direct upload to media server",
+    "overlaysActiveBadge": "Dynamic Overlays active — overlays re-sync automatically",
+    "saved": "Title check settings saved.",
+    "saveFailed": "Could not save title check settings."
+  },
   "overlayBundle": {
     "export": "Export bundle",
     "import": "Import bundle",
+    "community": "Community Gallery",
     "exportHint": "Export overlay YAML, assets, fonts, and feature settings",
     "importHint": "Review and import an overlay bundle",
+    "communityHint": "Browse and import community-shared Dynamic Overlay bundles",
+    "communitySource": "Community bundle: {{name}} by {{author}}",
     "fileLabel": "Overlay bundle ZIP file",
     "title": "Import overlay bundle",
     "stats": "Files: {{files}} / Assets: {{assets}} / Destination: {{server}}",
@@ -146,6 +165,46 @@
     "logs": "Logs"
   },
   "dynamicOverlays": {
+    "customImage": {
+      "sourcePresets": "Default Presets",
+      "sourceCustomPng": "Custom PNG Image",
+      "sourceCustomYaml": "Custom YAML File",
+      "modeLabel": "Image Source",
+      "modeUpload": "Upload PNG / Image",
+      "modeExisting": "From Overlay Builder / Assets",
+      "uploadHint": "Select a PNG, JPG, or WebP file (max 15 MB). Stored in dynamic_overlays/assets/.",
+      "chooseFile": "Choose Image File",
+      "noFileSelected": "No image selected yet",
+      "loadingSources": "Loading available images...",
+      "noExistingImages": "No custom images found yet. Upload one or create a PNG in Builders > Overlay Builder.",
+      "groupOverlayBuilder": "Overlay Builder (Overlayfiles)",
+      "groupDynamicAssets": "Dynamic Overlays Assets",
+      "selectExistingPlaceholder": "-- Choose an existing image --",
+      "ruleNameLabel": "Overlay Name (optional)",
+      "ruleNamePlaceholder": "e.g. bootlegs",
+      "placementModeLabel": "Placement Mode",
+      "modeBadge": "Corner Badge",
+      "modeFullCanvas": "Full Poster / Frame",
+      "fullCanvasHint": "Scales automatically to fill the whole poster or frame (ideal for Overlay Builder frames).",
+      "cornerLabel": "Corner / Position",
+      "cornerTopLeft": "Top Left",
+      "cornerTopRight": "Top Right",
+      "cornerBottomLeft": "Bottom Left",
+      "cornerBottomRight": "Bottom Right",
+      "cornerCenter": "Center",
+      "offsetXLabel": "Offset X (px)",
+      "offsetYLabel": "Offset Y (px)",
+      "scaleWidthLabel": "Scale Width (px, optional)",
+      "scaleWidthPlaceholder": "Auto (natural size)",
+      "artworkTypeLabel": "Artwork Type",
+      "artworkTypePoster": "Posters / Titlecards Only",
+      "artworkTypeBackdrop": "Backgrounds Only",
+      "artworkTypeBoth": "Both Posters & Backgrounds",
+      "missingUploadError": "Please choose an image file to upload.",
+      "missingExistingError": "Please choose an existing image.",
+      "addedToast": "Added custom image '{{name}}' to {{library}}!",
+      "addFailed": "Failed to add custom image overlay."
+    },
     "parentLanguageMode": {
       "label": "Show / Season Flag Selection",
       "frequency": "Most frequent",
@@ -330,7 +389,7 @@
       "renderOnlyNoPush": "Render only · no server push",
       "serverPushAllowed": "Server push allowed",
       "backgroundChecking": "Background Checking",
-      "backgroundDescription": "Periodically checks media servers for new tracks, editions, and runtimes. When titlecard recreation is enabled, also checks episode titles and automatically recreates eligible titlecards when they change, unless Dry Run is on.",
+      "backgroundDescription": "Periodically checks media servers for new tracks, editions, and runtimes.",
       "settingsNotPersisted": "Could not save the setting permanently. Check that the configuration directory is writable.",
       "checkInterval": "Check interval:",
       "every15Minutes": "Every 15 minutes",
@@ -586,7 +645,9 @@
       },
       "resetPrompts": "Reset modal prompts",
       "resetPromptsTooltip": "Restore all confirmation dialogs",
-      "promptsReset": "Run mode confirmation dialogs restored."
+      "promptsReset": "Run mode confirmation dialogs restored.",
+      "resetOrder": "Reset order",
+      "resetOrderTooltip": "Restore default quick run card order"
     },
     "logoUpdater": {
       "title": "Logo Updater Mode",
@@ -1106,6 +1167,7 @@
     "howItWorks": "How It Works",
     "autoTriggers": "Auto Triggers",
     "assetOverview": "Action Center",
+    "assetTitleReview": "Asset Title Review",
     "assetReplacer": "Asset Replacer",
     "assetsManager": "Overlay Manager",
     "manualAssets": "Manual Assets",
@@ -1301,7 +1363,39 @@
     "stopSuccess": "Script stopping...",
     "assets": "Assets to Show",
     "cores": "Cores",
-    "free": "Free"
+    "free": "Free",
+    "gettingStarted": {
+      "title": "Getting Started",
+      "subtitle": "Your configuration is ready. Follow these safe steps to style and preview your artwork before updating your media server.",
+      "quickstartLink": "5-Min Quickstart",
+      "setupWizard": "Setup Wizard",
+      "dismiss": "Dismiss getting started guide",
+      "stepLabel": "Step {{number}}",
+      "steps": {
+        "style": {
+          "title": "Choose a Poster Style",
+          "description": "Pick a 1-click preset in Blueprint Builder to set fonts, logos, borders, or textless rules.",
+          "cta": "Open Blueprint Builder"
+        },
+        "overlays": {
+          "title": "Dynamic Overlays (Optional)",
+          "description": "Add 4K/HDR, rating, and status badges in memory. Starts safely in Dry Run without server uploads.",
+          "cta": "Open Dynamic Overlays"
+        },
+        "test": {
+          "title": "Preview Safely (Testing Mode)",
+          "description": "Generate sample posters into Test Gallery using your settings — zero changes to your live library.",
+          "cta": "Run Testing Mode"
+        },
+        "run": {
+          "title": "Run Your First Job",
+          "description": "Test a single movie or show via Manual Asset, or run your configured library when ready.",
+          "cta": "Open Run Modes"
+        }
+      },
+      "schedulerWarning": "An automated schedule is already active. Run Testing Mode or verify your style before the next scheduled job runs.",
+      "manageScheduler": "Manage Scheduler"
+    }
   },
   "config": {
     "title": "Configuration",
@@ -2274,6 +2368,22 @@
     "replaceSuccess": "Asset replaced successfully!"
   },
   "configEditor": {
+    "logoSource": {
+      "clearlogo": "Clearlogo (title logo only)",
+      "clearart": "Clearart (logo with artwork)"
+    },
+    "autoChanged": {
+      "typeSelected": "Set to Clearlogo automatically: a logo needs a type, otherwise neither a logo nor the title text is drawn."
+    },
+    "dependency": {
+      "goTo": "Go to {{setting}}",
+      "titleLogo": "Title: {{type}} logo, because {{parent}} is on (Global Visuals). This switch then only matters for items without a logo, and only if Fallback to Text is on.",
+      "titleText": "Title: text, because {{parent}} is off (Global Visuals).",
+      "titleNone": "No title will be drawn: this switch and {{parent}} (Global Visuals) are both off.",
+      "seasonShowTitle": "Show name drawn as: {{style}}. Season posters follow {{parent}} (Global Visuals); there is no separate logo switch for seasons.",
+      "styleLogo": "{{type}} logo",
+      "styleText": "text"
+    },
     "skipWordsHelp": "Regex supported in /slashes/ (requires SkipTBA).",
     "skipWordsTbaExample": "Matches TBA or tba, including surrounding whitespace.",
     "skipWordsEpisodeExample": "Matches placeholders such as Folge 12, Episode #12 or Episode 12.5.",
@@ -2502,6 +2612,24 @@
     "unknownLanguage": "Unknown Language",
     "notPrimaryProvider": "Not Primary Provider",
     "truncatedText": "Truncated Text",
+    "hints": {
+      "assetsWithIssues": "Every unresolved item that has at least one of the flags counted in the other cards. Mark an item as resolved to remove it from this count.",
+      "missingAssets": "No image was found for these items on any enabled provider, so nothing was created for them.",
+      "missingAssetsAtFavProvider": "Your media server has no ID for these items at your favorite provider (for example no TMDB ID), so they could not be looked up or linked there. Each item shows this as \"Missing Link\".",
+      "nonPrimaryLang": "The image is not in the first language of your language order. A poster with a language (instead of textless) usually has its title printed on it.",
+      "nonPrimaryProvider": "The image came from a provider other than your favorite provider.",
+      "truncatedTextCategory": "The title needed a smaller font than the configured minimum font size, so it was drawn at the minimum size and may be cut off.",
+      "missingAsset": "No image was found for this item on any enabled provider, so nothing was created. Fix: use Replace to pick or upload an image, or run again once artwork exists for it.",
+      "missingLink": "Your media server has no ID for this item at your favorite provider (for example no TMDB ID), so Posterizarr could not look it up or link to it there. Fix: correct the match in your media server (Plex: Fix Match or Refresh Metadata; Jellyfin/Emby: Identify) so the ID is filled in, then run again.",
+      "notPrimaryProvider": "This image came from a provider other than your favorite provider, usually because the favorite had nothing usable. Fix: mark as resolved if it looks right, or use Replace to choose another image.",
+      "notPrimaryLanguage": "This image is in {{lang}}, not the first entry of your language order ({{primary}}). A poster with a language usually has its title printed on it. Fix: mark as resolved, use Replace, or change the language order in Configuration.",
+      "unknownLanguage": "The provider did not report a language for this image, so it may or may not contain text. Fix: check the image, then mark as resolved or use Replace.",
+      "truncated": "The title needed a smaller font than the configured minimum font size, so it was drawn at the minimum size and may be cut off. Fix: check the image; use Replace with a shorter title, or lower the minimum font size or enlarge the text box in Configuration.",
+      "logoNotPrimaryProvider": "The logo came from a provider other than your favorite provider. Fix: mark as resolved if it looks right.",
+      "logoLanguage": "The logo is in {{lang}}, not the first entry of your logo language order ({{primary}}). Fix: mark as resolved, or change the logo language order in Configuration.",
+      "logoTextFallback": "No logo was found, so the title was written as text instead (LogoTextFallback). Fix: mark as resolved if the text looks right.",
+      "textlessCode": "XX = textless"
+    },
     "manual": "Manual",
     "searchPlaceholder": "Search by title or path...",
     "allTypes": "All Types",
@@ -2719,7 +2847,52 @@
       "Are we there yet?",
       "Patience, young padawan...",
       "Loading the loading screen...",
-      "This is taking longer than expected..."
+      "This is taking longer than expected...",
+      "It worked in my Docker container",
+      "Checking if it's DNS... it's always DNS",
+      "Dividing by zero, please hold",
+      "Blaming the cache",
+      "Have you tried turning it off and on again?",
+      "Bribing TMDb for textless posters",
+      "Arguing with Plex over artwork",
+      "Hiding spoilers from your friends",
+      "Aligning badges to the sub-pixel",
+      "Keeping /assets spotless",
+      "Counting to 42",
+      "Searching for the ultimate 4K HDR banner",
+      "Waking up the NAS drives",
+      "Spinning up the RAID array",
+      "Untangling YAML indentation",
+      "Counting spaces instead of tabs",
+      "Pushing to prod on a Friday",
+      "Consulting Stack Overflow",
+      "Deploying more containers than actual movies",
+      "Replacing 480p thumbnails with dignity",
+      "Negotiating API rate limits",
+      "Enhancing... enhance... enhance",
+      "Checking under the couch for missing metadata",
+      "Pretending to transcode in 8K",
+      "Applying Dolby Atmos to a silent film",
+      "Feeding the homelab rack",
+      "Compiling pixels in RAM",
+      "Waiting for the Director's Cut",
+      "Skipping the intro",
+      "Asking Jellyfin nicely",
+      "Avoiding the dreaded 'Folge 1' title",
+      "Deleting 14,000 old Plex uploads... just kidding",
+      "Entering the Matrix",
+      "Engaging warp drive",
+      "Reversing the polarity of the neutron flow",
+      "Opening the pod bay doors",
+      "Looking for the droids you're looking for",
+      "One does not simply load faster",
+      "May the 4K be with you",
+      "Wait, let me check the logs",
+      "Still faster than a full library scan",
+      "Turning coffee into posters",
+      "Resisting the urge to reorganize the rack",
+      "Searching for Season 00 Episode 99",
+      "Checking if that show was really canceled"
     ]
   },
   "systemInfo": {
@@ -3658,6 +3831,17 @@
     "pageTitle": "Config Blueprints",
     "pageDescription": "Quickly apply pre-defined configurations to achieve specific visual styles. Applying a blueprint will instantly update your settings.",
     "export": "Export",
+    "exporting": "Exporting...",
+    "exportBundleSuccess": "Exported blueprint bundle (.zip) with {{count}} overlay/font file(s).",
+    "exportJsonSuccess": "Exported blueprint configuration (.json).",
+    "exportMissingAssets": "Referenced file(s) not found in Overlayfiles and omitted: {{files}}",
+    "bundledAssetsTitle": "Bundled Overlay & Font Files",
+    "bundledAssetNew": "New",
+    "bundledAssetSame": "Already installed",
+    "bundledAssetConflict": "Exists locally",
+    "bundledAssetKindOverlay": "overlay",
+    "bundledAssetKindFont": "font",
+    "overwriteExistingAssets": "Overwrite existing local files with the same name",
     "import": "Import",
     "importing": "Importing...",
     "apply": "Apply Blueprint",
@@ -3728,6 +3912,7 @@
       "savePreset": "Save as Preset",
       "tabPresets": "Presets",
       "tabBuilder": "Builder",
+      "tabCommunity": "Community Gallery",
       "tabBuilderDesc": "Create your own custom blueprint by mixing and matching specific overlays.",
       "categoryPoster": "Poster",
       "categorySeason": "Season",
@@ -3786,6 +3971,7 @@
     "fanartNote": "Optional supplementary provider for high-resolution logos, backgrounds, and character art.",
     "badgeActive": "Active",
     "badgeOptional": "Optional",
+    "badgeRequired": "Required (at least one)",
     "badgeFreeInstant": "Free & Instant",
     "badgeProjectOrPin": "Project Key / PIN",
     "localServerFallback": "Local Server Fallback",
@@ -3845,6 +4031,9 @@
     "preparingEnvironment": "Preparing environment...",
     "saving": "Saving...",
     "finishSetup": "Finish Setup",
+    "skipForNow": "Skip for now (add later)",
+    "skipShort": "Skip setup",
+    "skipping": "Skipping...",
     "back": "Back",
     "continue": "Continue",
     "testConnection": "Test Connection",
@@ -3906,6 +4095,93 @@
       "moveUp": "Move Up",
       "moveDown": "Move Down",
       "removeProvider": "Remove Provider"
+    },
+    "nextStep": {
+      "heading": "Where would you like to go next?",
+      "recommended": "Recommended",
+      "blueprints": {
+        "title": "Choose a Poster Style",
+        "description": "Browse visual 1-click presets in Blueprint Builder for text, logos, borders, or clean posters."
+      },
+      "dynamicOverlays": {
+        "title": "Set Up Dynamic Overlays",
+        "description": "Open the overlay Setup Wizard for ratings and resolution badges (starts safely in Dry Run)."
+      },
+      "testing": {
+        "title": "Preview Safely (Testing Mode)",
+        "description": "Generate sample artwork in Test Gallery without uploading anything to your media server."
+      },
+      "dashboard": {
+        "title": "Go to Dashboard",
+        "description": "Open the main workspace with a step-by-step Getting Started checklist."
+      }
+    }
+  },
+  "communityGallery": {
+    "tabTitle": "Community Gallery",
+    "title": "Posterizarr Community Gallery",
+    "subtitleBlueprints": "Browse user-shared visual styles and import them straight into Blueprint Builder or your config.",
+    "subtitleOverlays": "Browse sanitized Dynamic Overlay bundles and map them safely to your own libraries in Dry Run.",
+    "submitYours": "Submit yours on GitHub",
+    "searchPlaceholder": "Search presets, authors, or tags...",
+    "allTags": "All",
+    "loading": "Loading Community Gallery from GitHub...",
+    "notPublishedTitle": "Community catalog not published yet",
+    "notPublishedDesc": "The community repository does not have a published index.json on main yet, or is still private.",
+    "unavailableTitle": "Could not load Community Gallery",
+    "retry": "Retry",
+    "emptyCatalog": "No entries published in this category yet.",
+    "noMatches": "No presets match your search or tag filter.",
+    "resetFilters": "Reset filters",
+    "zoomPreview": "Click to enlarge preview",
+    "noPreview": "No preview image",
+    "previousPreview": "Previous preview",
+    "nextPreview": "Next preview",
+    "settingsCount": "{{count}} settings",
+    "bundledAssetsCount": "{{count}} bundled files",
+    "includedFiles": "Included files",
+    "showMoreFiles": "+{{count}} more",
+    "showLessFiles": "Show less",
+    "profilesCount": "{{count}} library profiles",
+    "saveAsPreset": "Save as Custom Preset",
+    "saveShort": "Save",
+    "applyAction": "Apply",
+    "downloading": "Fetching bundle...",
+    "previewAndImport": "Preview & Import Bundle",
+    "loadBlueprintError": "Failed to load community blueprint: {{message}}",
+    "downloadsCount": "{{count}} downloads",
+    "sortDefault": "Default",
+    "sortMostDownloaded": "Most downloaded"
+  },
+  "globalSearch": {
+    "triggerPlaceholder": "Search UI, settings, assets...",
+    "inputPlaceholder": "Search pages, settings, assets, overlays, logs...",
+    "clear": "Clear search",
+    "noResults": "No matches for \"{{query}}\"",
+    "noResultsHint": "Try a page name, setting key, movie/show title, overlay rule, or log filename.",
+    "searching": "Searching across Posterizarr...",
+    "recent": "Recent",
+    "quickJump": "Quick Jump",
+    "categories": {
+      "all": "All",
+      "pages": "Pages",
+      "settings": "Settings",
+      "assets": "Assets",
+      "overlays": "Overlays",
+      "blueprints": "Blueprints",
+      "logs": "Logs",
+      "actions": "Actions"
+    },
+    "actions": {
+      "openOnboarding": "Open Setup Wizard",
+      "openOnboardingDesc": "Launch the guided Posterizarr onboarding modal",
+      "switchTheme": "Switch Theme: {{name}}",
+      "switchThemeDesc": "Apply color theme immediately"
+    },
+    "hints": {
+      "navigate": "Navigate",
+      "open": "Open",
+      "close": "Close"
     }
   }
 }

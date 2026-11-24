@@ -108,4 +108,4 @@ To force Posterizarr to apply the new posters over the old ones on your media se
 
 ---
 
-*Note: You can apply many of these blueprints automatically with a single click using the "Blueprints" feature in the Posterizarr WebUI!*
+*Note: You can apply built-in presets with one click in **Builders > Blueprint Builder**, or browse and import community-shared visual styles directly from the **Community Gallery** tab ([posterizarr-community](https://github.com/fscorrupt/posterizarr-community)).*

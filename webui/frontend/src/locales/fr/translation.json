@@ -1,9 +1,28 @@
 {
+  "assetTitleReview": {
+    "subtitle": "Surveille les affiches avec texte, affiches de saison et cartons de titre par rapport à Plex, Jellyfin et Emby — fonctionne de manière autonome sans Dynamic Overlays.",
+    "autoRecreateLabel": "Recréer les images si les titres changent",
+    "autoRecreateHint": "Vérifie automatiquement les nouveaux titres renommés à l’intervalle configuré et recrée puis envoie les illustrations avec texte. Les candidats historiques ImageChoices restent manuels.",
+    "intervalLabel": "Intervalle de vérification",
+    "dryRunLabel": "Simulation",
+    "dryRunHint": "Détecte et journalise les changements de titre sans recréer de fichiers ni les envoyer au serveur multimédia.",
+    "dryRunBadge": "SIMULATION",
+    "lastCheck": "Dernière vérification automatique",
+    "neverChecked": "Jamais",
+    "summary": "{{detected}} détectés · {{regenerated}} recréés",
+    "standaloneBadge": "Mode autonome — envoi direct vers le serveur multimédia",
+    "overlaysActiveBadge": "Dynamic Overlays actif — les superpositions sont resynchronisées automatiquement",
+    "saved": "Paramètres de vérification des titres enregistrés.",
+    "saveFailed": "Impossible d’enregistrer les paramètres de vérification des titres."
+  },
   "overlayBundle": {
     "export": "Exporter le paquet",
     "import": "Importer le paquet",
+    "community": "Galerie communautaire",
     "exportHint": "Exporter les YAML, ressources, polices et paramètres des superpositions",
     "importHint": "Vérifier et importer un paquet de superpositions",
+    "communityHint": "Parcourir et importer des paquets Dynamic Overlays partagés par la communauté",
+    "communitySource": "Paquet communautaire : {{name}} par {{author}}",
     "fileLabel": "Fichier ZIP du paquet de superpositions",
     "title": "Importer un paquet de superpositions",
     "stats": "Fichiers : {{files}} / Ressources : {{assets}} / Destination : {{server}}",
@@ -146,6 +165,46 @@
     "logs": "Journaux"
   },
   "dynamicOverlays": {
+    "customImage": {
+      "sourcePresets": "Préréglages",
+      "sourceCustomPng": "Image PNG perso",
+      "sourceCustomYaml": "Fichier YAML perso",
+      "modeLabel": "Source de l'image",
+      "modeUpload": "Téléverser un PNG / image",
+      "modeExisting": "Depuis Overlay Builder / Assets",
+      "uploadHint": "Sélectionnez un fichier PNG, JPG ou WebP (max 15 Mo). Enregistré dans dynamic_overlays/assets/.",
+      "chooseFile": "Choisir un fichier image",
+      "noFileSelected": "Aucune image sélectionnée",
+      "loadingSources": "Chargement des images disponibles...",
+      "noExistingImages": "Aucune image personnalisée trouvée. Téléversez-en une ou créez un PNG dans Builders > Overlay Builder.",
+      "groupOverlayBuilder": "Overlay Builder (Overlayfiles)",
+      "groupDynamicAssets": "Ressources Dynamic Overlays",
+      "selectExistingPlaceholder": "-- Choisir une image existante --",
+      "ruleNameLabel": "Nom de la règle (optionnel)",
+      "ruleNamePlaceholder": "ex. bootlegs",
+      "placementModeLabel": "Mode de placement",
+      "modeBadge": "Badge d'angle",
+      "modeFullCanvas": "Affiche complète / Cadre",
+      "fullCanvasHint": "S'adapte automatiquement à toute l'affiche ou au cadre (idéal pour les cadres Overlay Builder).",
+      "cornerLabel": "Angle / Position",
+      "cornerTopLeft": "Haut gauche",
+      "cornerTopRight": "Haut droite",
+      "cornerBottomLeft": "Bas gauche",
+      "cornerBottomRight": "Bas droite",
+      "cornerCenter": "Centre",
+      "offsetXLabel": "Décalage X (px)",
+      "offsetYLabel": "Décalage Y (px)",
+      "scaleWidthLabel": "Largeur d'échelle (px, optionnel)",
+      "scaleWidthPlaceholder": "Auto (taille réelle)",
+      "artworkTypeLabel": "Type d'illustration",
+      "artworkTypePoster": "Affiches / Vignettes uniquement",
+      "artworkTypeBackdrop": "Arrière-plans uniquement",
+      "artworkTypeBoth": "Affiches et arrière-plans",
+      "missingUploadError": "Veuillez choisir un fichier image à téléverser.",
+      "missingExistingError": "Veuillez choisir une image existante.",
+      "addedToast": "Image personnalisée '{{name}}' ajoutée à {{library}} !",
+      "addFailed": "Impossible d'ajouter la superposition d'image personnalisée."
+    },
     "parentLanguageMode": {
       "label": "Drapeaux des séries et saisons",
       "frequency": "Les plus fréquentes",
@@ -330,7 +389,7 @@
       "renderOnlyNoPush": "Rendu uniquement · aucun envoi serveur",
       "serverPushAllowed": "Envoi vers le serveur autorisé",
       "backgroundChecking": "Vérification en arrière-plan",
-      "backgroundDescription": "Vérifie régulièrement les nouvelles pistes, éditions et durées sur les serveurs multimédias. Si la recréation des images d’épisodes est activée, vérifie aussi leurs titres et recrée automatiquement les images admissibles en cas de changement, sauf en mode simulation.",
+      "backgroundDescription": "Vérifie régulièrement les nouvelles pistes, éditions et durées sur les serveurs multimédias.",
       "settingsNotPersisted": "Impossible d’enregistrer le réglage durablement. Vérifiez que le dossier de configuration est accessible en écriture.",
       "checkInterval": "Intervalle de vérification :",
       "every15Minutes": "Toutes les 15 minutes",
@@ -586,7 +645,9 @@
       },
       "resetPrompts": "Réinitialiser les invites",
       "resetPromptsTooltip": "Restaurer toutes les boîtes de confirmation",
-      "promptsReset": "Boîtes de confirmation des modes d'exécution restaurées."
+      "promptsReset": "Boîtes de confirmation des modes d'exécution restaurées.",
+      "resetOrder": "Réinitialiser l'ordre",
+      "resetOrderTooltip": "Rétablir l'ordre par défaut des cartes de lancement rapide"
     },
     "logoUpdater": {
       "title": "Mode Mise à jour des logos",
@@ -1106,6 +1167,7 @@
     "howItWorks": "Fonctionnement",
     "autoTriggers": "Déclencheurs automatiques",
     "assetOverview": "Centre d'actions",
+    "assetTitleReview": "Vérification des titres",
     "assetReplacer": "Remplacement de ressource",
     "assetsManager": "Gestionnaire de superposition",
     "manualAssets": "Ressources manuelles",
@@ -1301,7 +1363,39 @@
     "customizeDescription": "Afficher ou masquer les sections du tableau de bord • Glisser pour réorganiser",
     "hideScrollbars": "Masquer les barres de défilement",
     "hideScrollbarsDesc": "Masquer les barres de défilement dans toute l'interface",
-    "schedulesConfigured": "planning(s)"
+    "schedulesConfigured": "planning(s)",
+    "gettingStarted": {
+      "title": "Premiers pas",
+      "subtitle": "Votre configuration est prête. Suivez ces étapes sûres pour styliser et prévisualiser vos visuels avant de modifier votre serveur multimédia.",
+      "quickstartLink": "Démarrage 5 min",
+      "setupWizard": "Assistant de configuration",
+      "dismiss": "Masquer le guide de démarrage",
+      "stepLabel": "Étape {{number}}",
+      "steps": {
+        "style": {
+          "title": "Choisir un style d'affiche",
+          "description": "Sélectionnez un préréglage en 1 clic dans Blueprint Builder pour les polices, logos, bordures ou affiches sans texte.",
+          "cta": "Ouvrir Blueprint Builder"
+        },
+        "overlays": {
+          "title": "Dynamic Overlays (Optionnel)",
+          "description": "Ajoutez des badges 4K/HDR, notes et statuts en mémoire. Démarre en mode Dry Run sans envoi vers le serveur.",
+          "cta": "Ouvrir Dynamic Overlays"
+        },
+        "test": {
+          "title": "Tester sans risque (Testing Mode)",
+          "description": "Générez des exemples dans la galerie de test avec vos réglages — aucune modification de votre bibliothèque.",
+          "cta": "Lancer Testing Mode"
+        },
+        "run": {
+          "title": "Lancer votre première tâche",
+          "description": "Testez un seul film ou série via Manual Asset, ou lancez votre bibliothèque une fois prêt.",
+          "cta": "Ouvrir Run Modes"
+        }
+      },
+      "schedulerWarning": "Une planification automatique est déjà active. Lancez un test ou vérifiez votre style avant la prochaine exécution.",
+      "manageScheduler": "Gérer le planificateur"
+    }
   },
   "config": {
     "title": "Configuration",
@@ -2274,6 +2368,22 @@
     "replaceSuccess": "Ressource remplacée avec succès !"
   },
   "configEditor": {
+    "logoSource": {
+      "clearlogo": "Clearlogo (logo titre uniquement)",
+      "clearart": "Clearart (logo avec illustration)"
+    },
+    "autoChanged": {
+      "typeSelected": "Défini automatiquement sur Clearlogo : un logo nécessite un type, sinon ni le logo ni le titre texte n'est dessiné."
+    },
+    "dependency": {
+      "goTo": "Aller à {{setting}}",
+      "titleLogo": "Titre : logo {{type}}, car {{parent}} est activé (Visuels globaux). Ce commutateur ne s'applique alors qu'aux éléments sans logo, et uniquement si le repli sur le texte est activé.",
+      "titleText": "Titre : texte, car {{parent}} est désactivé (Visuels globaux).",
+      "titleNone": "Aucun titre ne sera dessiné : ce commutateur et {{parent}} (Visuels globaux) sont tous deux désactivés.",
+      "seasonShowTitle": "Nom de la série affiché en : {{style}}. Les affiches de saison suivent {{parent}} (Visuels globaux) ; il n'existe pas de commutateur de logo distinct pour les saisons.",
+      "styleLogo": "logo {{type}}",
+      "styleText": "texte"
+    },
     "skipWordsHelp": "Regex acceptées entre /barres obliques/ (SkipTBA requis).",
     "skipWordsTbaExample": "Reconnaît TBA ou tba, avec des espaces éventuels autour.",
     "skipWordsEpisodeExample": "Reconnaît des titres provisoires comme Folge 12, Episode #12 ou Episode 12.5.",
@@ -2503,6 +2613,24 @@
     "unknownLanguage": "Langue inconnue",
     "notPrimaryProvider": "Fournisseur non principal",
     "truncatedText": "Texte tronqué",
+    "hints": {
+      "assetsWithIssues": "Chaque élément non résolu qui présente au moins un des indicateurs comptés dans les autres cartes. Marquez un élément comme résolu pour le retirer de ce compteur.",
+      "missingAssets": "Aucune image n'a été trouvée pour ces éléments chez aucun fournisseur activé, rien n'a donc été créé.",
+      "missingAssetsAtFavProvider": "Votre serveur multimédia ne dispose d'aucun identifiant pour ces éléments chez votre fournisseur favori (par exemple aucun ID TMDB), ils n'ont donc pas pu y être recherchés ni liés. Chaque élément affiche ceci comme « Lien manquant ».",
+      "nonPrimaryLang": "L'image n'est pas dans la première langue de votre ordre de langues. Une affiche avec une langue (au lieu de sans texte) comporte généralement son titre imprimé dessus.",
+      "nonPrimaryProvider": "L'image provient d'un autre fournisseur que votre fournisseur favori.",
+      "truncatedTextCategory": "Le titre nécessitait une police plus petite que la taille minimale configurée ; il a donc été dessiné à la taille minimale et peut être tronqué.",
+      "missingAsset": "Aucune image n'a été trouvée pour cet élément chez aucun fournisseur activé, rien n'a donc été créé. Solution : utilisez Remplacer pour choisir ou téléverser une image, ou relancez une fois l'illustration disponible.",
+      "missingLink": "Votre serveur multimédia ne dispose d'aucun identifiant pour cet élément chez votre fournisseur favori (par exemple aucun ID TMDB), Posterizarr n'a donc pas pu le rechercher ni s'y lier. Solution : corrigez l'association dans votre serveur multimédia (Plex : Corriger l'association ou Actualiser les métadonnées ; Jellyfin/Emby : Identifier) afin que l'ID soit renseigné, puis relancez.",
+      "notPrimaryProvider": "Cette image provient d'un autre fournisseur que votre fournisseur favori, généralement parce que ce dernier n'avait rien d'utilisable. Solution : marquez comme résolu si le rendu convient, ou utilisez Remplacer pour choisir une autre image.",
+      "notPrimaryLanguage": "Cette image est en {{lang}}, et non dans la première entrée de votre ordre de langues ({{primary}}). Une affiche avec une langue comporte généralement son titre imprimé dessus. Solution : marquez comme résolu, utilisez Remplacer ou modifiez l'ordre des langues dans Configuration.",
+      "unknownLanguage": "Le fournisseur n'a pas indiqué de langue pour cette image, elle peut donc contenir du texte ou non. Solution : vérifiez l'image, puis marquez comme résolu ou utilisez Remplacer.",
+      "truncated": "Le titre nécessitait une police plus petite que la taille minimale configurée ; il a donc été dessiné à la taille minimale et peut être tronqué. Solution : vérifiez l'image ; utilisez Remplacer avec un titre plus court, ou réduisez la taille minimale de police / agrandissez la zone de texte dans Configuration.",
+      "logoNotPrimaryProvider": "Le logo provient d'un autre fournisseur que votre fournisseur favori. Solution : marquez comme résolu si le rendu convient.",
+      "logoLanguage": "Le logo est en {{lang}}, et non dans la première entrée de votre ordre de langues des logos ({{primary}}). Solution : marquez comme résolu ou modifiez l'ordre des langues des logos dans Configuration.",
+      "logoTextFallback": "Aucun logo n'a été trouvé, le titre a donc été écrit en texte à la place (LogoTextFallback). Solution : marquez comme résolu si le texte convient.",
+      "textlessCode": "XX = sans texte"
+    },
     "manual": "Manuel",
     "searchPlaceholder": "Rechercher par titre ou chemin...",
     "allTypes": "Tous les types",
@@ -2720,7 +2848,52 @@
       "On est bientôt arrivés ?",
       "Patience, jeune padawan...",
       "Chargement de l'écran de chargement...",
-      "Cela prend plus de temps que prévu..."
+      "Cela prend plus de temps que prévu...",
+      "Ça marchait dans mon conteneur Docker",
+      "Vérification du DNS... c'est toujours le DNS",
+      "Division par zéro en cours, patientez",
+      "On va accuser le cache",
+      "Avez-vous essayé de l'éteindre et le rallumer ?",
+      "Corruption de TMDb pour des affiches sans texte",
+      "Débat houleux avec Plex sur les jaquettes",
+      "Dissimulation des spoilers pour vos amis",
+      "Alignement des badges au sous-pixel près",
+      "Maintien de /assets impeccable",
+      "Comptage jusqu'à 42",
+      "À la recherche de la bannière 4K HDR ultime",
+      "Réveil des disques du NAS",
+      "Démarrage de la grappe RAID",
+      "Démêlage de l'indentation YAML",
+      "Comptage des espaces au lieu des tabulations",
+      "Mise en prod un vendredi",
+      "Consultation de Stack Overflow",
+      "Plus de conteneurs déployés que de films",
+      "Remplacement des vignettes 480p avec dignité",
+      "Négociation des limites d'API",
+      "Zoom... encore plus net... parfait",
+      "Recherche de métadonnées sous le canapé",
+      "Simulation de transcodage en 8K",
+      "Ajout de Dolby Atmos sur un film muet",
+      "Ravitaillement du rack homelab",
+      "Compilation de pixels en RAM",
+      "En attente du Director's Cut",
+      "Saut de l'intro",
+      "Demande polie à Jellyfin",
+      "Évitement du redouté titre 'Folge 1'",
+      "Suppression de 14 000 envois Plex... je plaisante",
+      "Entrée dans la Matrice",
+      "Enclenchement de la distorsion",
+      "Inversion de la polarité du flux de neutrons",
+      "Ouverture des portes du sas, HAL",
+      "À la recherche des droïdes que vous cherchez",
+      "On ne charge pas plus vite si facilement",
+      "Que la 4K soit avec vous",
+      "Attendez, je jette un œil aux logs",
+      "Toujours plus rapide qu'un scan complet",
+      "Conversion du café en affiches",
+      "Résistance à l'envie de refaire le câblage du rack",
+      "Recherche de la Saison 00 Épisode 99",
+      "Vérification si cette série a vraiment été annulée"
     ]
   },
   "systemInfo": {
@@ -3665,6 +3838,17 @@
     "pageTitle": "Blueprints de Configuration",
     "pageDescription": "Appliquez rapidement des configurations prédéfinies pour obtenir des styles visuels spécifiques. L'application d'un blueprint mettra immédiatement à jour vos paramètres.",
     "export": "Exporter",
+    "exporting": "Exportation...",
+    "exportBundleSuccess": "Paquet blueprint (.zip) exporté avec {{count}} fichier(s) d'overlay/police.",
+    "exportJsonSuccess": "Configuration blueprint (.json) exportée.",
+    "exportMissingAssets": "Fichier(s) référencé(s) introuvable(s) dans Overlayfiles et ignoré(s) : {{files}}",
+    "bundledAssetsTitle": "Fichiers d'overlay et polices inclus",
+    "bundledAssetNew": "Nouveau",
+    "bundledAssetSame": "Déjà installé",
+    "bundledAssetConflict": "Existe localement",
+    "bundledAssetKindOverlay": "overlay",
+    "bundledAssetKindFont": "police",
+    "overwriteExistingAssets": "Remplacer les fichiers locaux existants portant le même nom",
     "import": "Importer",
     "importing": "Importation...",
     "apply": "Appliquer le Blueprint",
@@ -3735,6 +3919,7 @@
       "savePreset": "Enregistrer comme préréglage",
       "tabPresets": "Préréglages",
       "tabBuilder": "Constructeur",
+      "tabCommunity": "Galerie communautaire",
       "tabBuilderDesc": "Créez votre propre blueprint personnalisé en combinant des overlays spécifiques.",
       "categoryPoster": "Affiche",
       "categorySeason": "Saison",
@@ -3793,6 +3978,7 @@
     "fanartNote": "Fournisseur complémentaire optionnel pour les logos, arrière-plans et illustrations de personnages en haute résolution.",
     "badgeActive": "Actif",
     "badgeOptional": "Optionnel",
+    "badgeRequired": "Requis (au moins un)",
     "badgeFreeInstant": "Gratuit et instantané",
     "badgeProjectOrPin": "Clé projet / PIN",
     "localServerFallback": "Secours serveur local",
@@ -3852,6 +4038,9 @@
     "preparingEnvironment": "Préparation de l'environnement...",
     "saving": "Enregistrement...",
     "finishSetup": "Terminer la Configuration",
+    "skipForNow": "Passer pour l'instant (ajouter plus tard)",
+    "skipShort": "Passer la configuration",
+    "skipping": "Fermeture...",
     "back": "Retour",
     "continue": "Continuer",
     "testConnection": "Tester la Connexion",
@@ -3913,6 +4102,93 @@
       "moveUp": "Move Up",
       "moveDown": "Move Down",
       "removeProvider": "Remove Provider"
+    },
+    "nextStep": {
+      "heading": "Où souhaitez-vous aller ensuite ?",
+      "recommended": "Recommandé",
+      "blueprints": {
+        "title": "Choisir un style d'affiche",
+        "description": "Parcourez les préréglages en 1 clic dans Blueprint Builder pour le texte, les logos, les bordures ou un rendu épuré."
+      },
+      "dynamicOverlays": {
+        "title": "Configurer Dynamic Overlays",
+        "description": "Ouvre l'assistant Dynamic Overlays pour les badges de notes et de résolution (en mode Dry Run sûr)."
+      },
+      "testing": {
+        "title": "Tester sans risque (Testing Mode)",
+        "description": "Génère des exemples dans Test Gallery sans rien envoyer sur votre serveur multimédia."
+      },
+      "dashboard": {
+        "title": "Aller au tableau de bord",
+        "description": "Ouvre l'espace principal avec une liste de démarrage étape par étape."
+      }
+    }
+  },
+  "communityGallery": {
+    "tabTitle": "Galerie communautaire",
+    "title": "Galerie communautaire Posterizarr",
+    "subtitleBlueprints": "Parcourez les styles partagés par les utilisateurs et importez-les directement dans Blueprint Builder ou votre configuration.",
+    "subtitleOverlays": "Parcourez les paquets Dynamic Overlays nettoyés et associez-les en mode Dry Run à vos propres bibliothèques.",
+    "submitYours": "Proposer sur GitHub",
+    "searchPlaceholder": "Rechercher des préréglages, auteurs ou tags...",
+    "allTags": "Tous",
+    "loading": "Chargement de la galerie communautaire depuis GitHub...",
+    "notPublishedTitle": "Catalogue communautaire pas encore publié",
+    "notPublishedDesc": "Le dépôt communautaire n'a pas encore de fichier index.json publié sur main, ou est encore privé.",
+    "unavailableTitle": "Impossible de charger la galerie communautaire",
+    "retry": "Réessayer",
+    "emptyCatalog": "Aucune entrée publiée dans cette catégorie pour le moment.",
+    "noMatches": "Aucun préréglage ne correspond à votre recherche ou filtre.",
+    "resetFilters": "Réinitialiser les filtres",
+    "zoomPreview": "Cliquer pour agrandir l'aperçu",
+    "noPreview": "Aucune image d'aperçu",
+    "previousPreview": "Aperçu précédent",
+    "nextPreview": "Aperçu suivant",
+    "settingsCount": "{{count}} paramètres",
+    "bundledAssetsCount": "{{count}} fichiers inclus",
+    "includedFiles": "Fichiers inclus",
+    "showMoreFiles": "+{{count}} de plus",
+    "showLessFiles": "Afficher moins",
+    "profilesCount": "{{count}} profils de bibliothèque",
+    "saveAsPreset": "Enregistrer comme préréglage",
+    "saveShort": "Enregistrer",
+    "applyAction": "Appliquer",
+    "downloading": "Téléchargement du paquet...",
+    "previewAndImport": "Vérifier & Importer",
+    "loadBlueprintError": "Impossible de charger le blueprint communautaire : {{message}}",
+    "downloadsCount": "{{count}} téléchargements",
+    "sortDefault": "Par défaut",
+    "sortMostDownloaded": "Les plus téléchargés"
+  },
+  "globalSearch": {
+    "triggerPlaceholder": "Rechercher UI, paramètres, médias...",
+    "inputPlaceholder": "Rechercher pages, paramètres, médias, overlays, journaux...",
+    "clear": "Effacer la recherche",
+    "noResults": "Aucun résultat pour « {{query}} »",
+    "noResultsHint": "Essayez un nom de page, une clé de paramètre, un titre, une règle d'overlay ou un fichier journal.",
+    "searching": "Recherche dans Posterizarr...",
+    "recent": "Récents",
+    "quickJump": "Accès rapide",
+    "categories": {
+      "all": "Tout",
+      "pages": "Pages",
+      "settings": "Paramètres",
+      "assets": "Médias",
+      "overlays": "Overlays",
+      "blueprints": "Blueprints",
+      "logs": "Journaux",
+      "actions": "Actions"
+    },
+    "actions": {
+      "openOnboarding": "Ouvrir l'assistant de configuration",
+      "openOnboardingDesc": "Lancer la fenêtre guidée Posterizarr",
+      "switchTheme": "Changer de thème : {{name}}",
+      "switchThemeDesc": "Appliquer immédiatement le thème"
+    },
+    "hints": {
+      "navigate": "Naviguer",
+      "open": "Ouvrir",
+      "close": "Fermer"
     }
   }
 }

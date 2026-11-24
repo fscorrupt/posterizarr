@@ -1,4 +1,5 @@
 import copy
+from datetime import date
 import logging
 import re
 from collections import Counter
@@ -7,6 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
 from overlay_engine import DynamicOverlayCompositor, PORTRAIT_DIM, LANDSCAPE_DIM, get_coordinates
+from overlay_resolver import language_base_code, normalize_language_tag
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +189,9 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
     episode = template in ("episode_card", "titlecard")
     season = template == "season_poster"
     show = template == "show_poster" or season or episode
-    runtime = str(options.get("runtime") or "")
-    hours = re.search(r"(\d+)\s*h", runtime)
-    minutes = re.search(r"(\d+)\s*m", runtime)
+    runtime = str(options.get("runtime") or "").strip()[:64]
+    hours = re.search(r"(?<!\d)(\d{1,4})[ \t]{0,3}h", runtime, re.IGNORECASE)
+    minutes = re.search(r"(?<!\d)(\d{1,5})[ \t]{0,3}m", runtime, re.IGNORECASE)
     runtime_mins = (int(hours[1]) * 60 if hours else 0) + (int(minutes[1]) if minutes else 0)
     if not hours and not minutes and runtime.isdigit():
         runtime_mins = int(runtime)
@@ -213,10 +215,13 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
             "simkl": "8.3", "mal": "8.6",
         } if options.get("rating") else None,
         "runtime_mins": runtime_mins, "status": status,
+        "last_episode_air_date": date.today().isoformat() if status == "airing" else None,
         "resolution": options.get("resolution"),
-        "languages": [code.strip() for code in str(options.get("languages") or "").split(",") if code.strip()],
-        "audio_languages": [code.strip() for code in str(options.get("languages") or "").split(",") if code.strip()],
-        "subtitle_languages": [code.strip() for code in str(options.get("subtitle_languages") or "").split(",") if code.strip()],
+        "languages": [language_base_code(code) or code.strip().lower() for code in str(options.get("languages") or "").split(",") if code.strip()],
+        "audio_languages": [language_base_code(code) or code.strip().lower() for code in str(options.get("languages") or "").split(",") if code.strip()],
+        "audio_language_tags": [tag for tag in (normalize_language_tag(code) for code in str(options.get("languages") or "").split(",") if code.strip()) if tag],
+        "subtitle_languages": [language_base_code(code) or code.strip().lower() for code in str(options.get("subtitle_languages") or "").split(",") if code.strip()],
+        "subtitle_language_tags": [tag for tag in (normalize_language_tag(code) for code in str(options.get("subtitle_languages") or "").split(",") if code.strip()) if tag],
         "aspect_ratio": options.get("aspect_ratio"),
         "studio": options.get("studio"),
         "network": options.get("network"), "networks": [options["network"]] if options.get("network") else [],

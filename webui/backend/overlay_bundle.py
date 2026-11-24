@@ -33,9 +33,11 @@ SETTINGS_FIELDS = {
 }
 PRIVATE_BLOCKS = {
     "plex", "jellyfin", "emby", "silo", "tmdb", "mdblist", "omdb", "tautulli",
-    "radarr", "sonarr", "credentials", "connections", "servers", "authentication",
+    "radarr", "sonarr", "trakt", "mal", "anidb", "notifiarr", "gotify", "ntfy", "floppy", "github",
+    "credentials", "connections", "servers", "authentication",
     "authorization", "webhooks", "notifications", "api", "apis", "keys",
 }
+PORTABLE_MAIN_CONFIG_KEYS = {"libraries", "templates", "queues", "external_templates"}
 ANIME_FIELDS = {
     "enabled", "target_libraries", "overlay_categories", "overlay_threshold_mode",
     "overlay_threshold_value", "labels", "colors", "aesthetic", "mal_enabled",
@@ -138,6 +140,24 @@ def sanitize(value, secrets=(), depth=0):
 
 def portable_settings(settings):
     return sanitize({key: value for key, value in settings.items() if key in SETTINGS_FIELDS})
+
+
+def sanitize_portable_main_config(document):
+    if not isinstance(document, dict):
+        return {}
+    cleaned = {}
+    for key, value in document.items():
+        if key not in PORTABLE_MAIN_CONFIG_KEYS:
+            continue
+        if key == "libraries" and isinstance(value, dict):
+            cleaned["libraries"] = {
+                lib_name: {k: v for k, v in lib_cfg.items() if k in LIBRARY_FIELDS}
+                for lib_name, lib_cfg in value.items()
+                if isinstance(lib_cfg, dict)
+            }
+        else:
+            cleaned[key] = value
+    return cleaned
 
 
 def bundle_path(name):
@@ -419,6 +439,8 @@ def export_profile(config_root, overlays_dir, settings, visual, anime, library_t
             raise BundleError("Overlay files exceed the 256 MiB expanded-size limit.", "sizeLimit")
         if path.suffix.lower() in {".yml", ".yaml"}:
             document = transform_strings(documents[relative], portable_reference)
+            if relative == "configs/config.yml":
+                document = sanitize_portable_main_config(document)
             files["files/" + relative] = yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode("utf-8")
         else:
             payload = path.read_bytes()

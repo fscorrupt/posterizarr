@@ -51,6 +51,7 @@ extra_javascript:
 nav:
   - 'Home': 'index.md'
   - 'Start Here':
+    - '5-Minute Quickstart': 'quickstart.md'
     - 'First-time setup': 'getting_started.md'
     - 'Requirements': 'requirements.md'
     - 'Choose an installation method': 'installation.md'
@@ -61,10 +62,12 @@ nav:
     - 'Configuration': 'configuration.md'
     - 'Run Modes and Queue': 'modes.md'
     - 'Action Center': 'action_center.md'
+    - 'Asset Title Review': 'asset_title_review.md'
     - 'Capabilities': 'capabilities.md'
   - 'Artwork & Builders':
     - 'Artwork showcase': 'showcase.md'
     - 'Dynamic Overlays': 'dynamic_overlays.md'
+    - 'Dynamic Overlays Reference': 'dynamic_overlays_reference.md'
     - 'Blueprints and recipes': 'blueprints.md'
     - 'Manual asset naming': 'namingconvention.md'
     - 'Plex Image Cleanup': 'plex_image_cleanup.md'

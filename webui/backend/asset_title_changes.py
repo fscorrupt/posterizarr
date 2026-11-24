@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 def title_regeneration_enabled(settings):
-    return bool(settings.get("enabled") and settings.get("change_detection_enabled", True)
-                and settings.get("regenerate_assets_on_title_change", False))
+    return bool(settings.get("regenerate_assets_on_title_change", False))
 
 
 def title_regeneration_allowed(settings, manual=False):
-    return bool(settings.get("enabled") and not settings.get("change_detection_dry_run", True)
-                and (manual or title_regeneration_enabled(settings)))
+    if settings.get("title_change_dry_run", False):
+        return False
+    return bool(manual or title_regeneration_enabled(settings))
 
 
 def is_media_server_source(source, server_urls=()):
@@ -1004,10 +1004,6 @@ class EpisodeTitleReview:
                           "error": None, "scan_errors": [], "cancel_requested": False, "started_at": datetime.now().isoformat()}
 
     async def start_scan(self, base_dir, config_path):
-        from dynamic_overlays_service import get_dynamic_overlays_settings
-
-        if not get_dynamic_overlays_settings().get("enabled"):
-            raise ValueError("master_off")
         status = self.status()
         if status.get("running") and status.get("phase") == "scanning":
             return status
@@ -1033,8 +1029,6 @@ class EpisodeTitleReview:
         from dynamic_overlays_service import get_dynamic_overlays_settings
 
         settings = get_dynamic_overlays_settings()
-        if not settings.get("enabled"):
-            raise ValueError("master_off")
         if not title_regeneration_allowed(settings, manual=True):
             raise ValueError("rebuild_disabled")
         if bool(candidate_ids) == bool(all_eligible):
@@ -1116,7 +1110,7 @@ async def regenerate_changed_asset_titles(base_dir, config_path):
             current = get_dynamic_overlays_settings()
             if not title_regeneration_enabled(current):
                 break
-            if current.get("change_detection_dry_run", True):
+            if current.get("title_change_dry_run", False):
                 logger.info("[TitleChanges] DRY RUN: would regenerate %s", Path(job["asset_path"]).name)
                 continue
             try:

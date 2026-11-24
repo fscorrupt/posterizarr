@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Folder,
   ImageIcon,
@@ -29,7 +30,9 @@ const API_URL = "/api";
 
 function FolderView() {
   const { t } = useTranslation();
+  const location = useLocation();
   const { showSuccess, showError } = useToast();
+  const lastGlobalSearchTsRef = useRef(null);
 
   // Navigation and data state
   const [currentPath, setCurrentPath] = useState(""); // e.g., "Collections/Movies"
@@ -162,8 +165,31 @@ function FolderView() {
 
   // Initial load
   useEffect(() => {
-    fetchData("");
+    const initialFolder = location.state?.globalSearchFolder || "";
+    const initialTerm = location.state?.globalSearchTerm;
+    if (initialFolder || initialTerm !== undefined) {
+      lastGlobalSearchTsRef.current = location.state?.ts || `${initialFolder}:${initialTerm || ""}`;
+    }
+    if (typeof initialTerm === "string") {
+      setSearchTerm(initialTerm);
+    }
+    fetchData(initialFolder);
   }, []);
+
+  useEffect(() => {
+    const stateTerm = location.state?.globalSearchTerm;
+    const stateFolder = location.state?.globalSearchFolder;
+    if (stateTerm === undefined && stateFolder === undefined) return;
+    const jumpTs = location.state?.ts || `${stateFolder || ""}:${stateTerm || ""}`;
+    if (lastGlobalSearchTsRef.current === jumpTs) return;
+    lastGlobalSearchTsRef.current = jumpTs;
+    if (typeof stateTerm === "string") {
+      setSearchTerm(stateTerm);
+    }
+    if (typeof stateFolder === "string") {
+      fetchData(stateFolder);
+    }
+  }, [location.state]);
 
   // Enhanced navigation that handles search term persistence
   const handleNavigation = (path) => {

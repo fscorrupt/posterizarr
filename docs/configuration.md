@@ -355,7 +355,8 @@ may require adapter updates.
         - `What it is:` Clearart is a transparent PNG image that contains the logo *plus* additional artwork (e.g., characters or promotional art) - still fully transparent with no background.
         - `Example:` https://artworks.thetvdb.com/banners/v4/movie/165/clearart/61249caa0924f.png
         - `What the setting does:` When set to `true`, the system will use the Clearart image instead of the standard title text.
-    - `LogoTextFallback` : Set to `true` to fallback to `Text` if no logos are found.
+    - Clearlogo and Clearart are one choice: exactly one is used when `UseLogo` or `UseBGLogo` is `true`, shared by posters and backgrounds (in the Web UI: **Logo Type**). If logo mode is on with both `false` (e.g. a hand-edited config), Posterizarr uses Clearlogo and logs a warning, because otherwise neither a logo nor the title text would be added.
+    - `LogoTextFallback` : Set to `true` to fallback to `Text` if no logos are found. Only applies while `UseLogo`/`UseBGLogo` is `true`, and only if `AddText` is `true` for that image type.
     - `LogoExifCheck` : Set to `true` to only force replace existing logos in Logo Updater mode if they lack Posterizarr EXIF metadata (e.g. default/unwanted logos selected by Plex). Logos already created/uploaded by Posterizarr are skipped. (Default value is: `false`).
     - `TextlessPosterBypass` : Set to `true` to bypass 'Prefer Textless' and download a standard Text Poster if no logos are found.
     - `ConvertLogoColor` : Set to `true` to transform the fetched logo into a monochrome solid silhouette/flat color.

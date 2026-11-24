@@ -474,6 +474,12 @@ $UseBGLogo = "$($config.PrerequisitePart.UseBGLogo)".ToLower()
 $TextFallback = "$($config.PrerequisitePart.LogoTextFallback)".ToLower()
 $global:UseClearlogo = "$($config.PrerequisitePart.UseClearlogo)".ToLower()
 $global:UseClearart = "$($config.PrerequisitePart.UseClearart)".ToLower()
+# Logo mode needs a logo type. With neither Clearlogo nor Clearart set, no logo is searched and no
+# title text is added either, so every poster/background would end up without a title.
+if (($UseLogo -eq 'true' -or $UseBGLogo -eq 'true') -and $global:UseClearlogo -ne 'true' -and $global:UseClearart -ne 'true') {
+    Write-Entry -Subtext "UseLogo/UseBGLogo is enabled but neither UseClearlogo nor UseClearart is set - using Clearlogo." -Path $global:configLogging -Color Yellow -log Warning
+    $global:UseClearlogo = 'true'
+}
 $TextlessPosterBypass = "$($config.PrerequisitePart.TextlessPosterBypass)".ToLower()
 $global:LogoExifCheck = [bool]$(if ($LogoExifCheck -or ($MainPSBoundParameters -and $MainPSBoundParameters.ContainsKey('LogoExifCheck') -and $MainPSBoundParameters['LogoExifCheck'])) { $true } elseif ($config.PrerequisitePart.LogoExifCheck -and "$($config.PrerequisitePart.LogoExifCheck)".ToLower() -eq 'true') { $true } else { $false })
 

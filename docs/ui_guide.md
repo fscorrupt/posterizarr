@@ -125,10 +125,15 @@ commands.
 
 *Choose **Asset Management > Action Center** to filter flagged assets and resolve, replace, or delete their tracking entries.*
 
+![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)
+
+*Choose **Asset Management > Asset Title Review** (`/asset-title-review`) to compare existing text-enabled movies, shows, seasons, and titlecards against current media-server titles. Works standalone even when Dynamic Overlays is off, with its own check interval, Dry Run toggle, filters, bulk **Hide selected**, queued rebuilds, and confirmed Fast Normal Run actions.*
+
 The galleries, test output, and server export have different purposes: a gallery
 browses available artwork, Test Gallery shows Testing Mode results, and Media
 Server Export browses cached metadata records. Read the [Action Center guide](action_center.md)
-before bulk actions and the [Plex Image Cleanup guide](plex_image_cleanup.md)
+before bulk actions, the [Asset Title Review guide](asset_title_review.md) for
+renamed-title monitoring and rebuilds, and the [Plex Image Cleanup guide](plex_image_cleanup.md)
 before quarantining or removing files.
 
 ## Export Library Data
@@ -185,17 +190,10 @@ and response formats are in the [API reference](endpoints.md).
 ![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
 
 *Choose **Sync & Maintenance** for the separate **Synchronize**, **Media Changes**,
-**Asset Title Review**, **Overlay Cache**, and **Ratings Cache** views. The
-screenshot shows Synchronize with Dry Run on and illustrative library counts.*
-
-![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)
-
-*Asset Title Review compares existing text-enabled movies, shows, seasons, and
-titlecards with current media-server titles and filters by eligibility, blocking
-reason, historical/future status, or media type (`All Types`, `Episodes`,
-`Seasons`, `Movies`, `Shows`). Supports bulk **Hide selected**, queued
-rebuilds, and confirmed Fast Normal Run actions without recreating artwork on
-the initial scan.*
+**Overlay Cache**, and **Ratings Cache** views. **Asset Title Review** lives as a
+standalone page under **Asset Management** (`/asset-title-review`) so it works
+independently even without Dynamic Overlays enabled (and legacy
+`/dynamic-overlays?tab=episode-titles` links redirect there).*
 
 ![AniMetaFill titlecard badge styling, 16:9 stage preview, and Anime Classification Database](images/ui-animetafill.png)
 
@@ -204,9 +202,11 @@ Mixed episode scanning, preview 16:9 titlecard badges live, toggle overlay
 categories, set per-show thresholds, and manage manual overrides in the Anime
 Classification Database.*
 
-Start with **Dry Run** and a narrow library/item scope. The [Dynamic Overlays guide](dynamic_overlays.md)
-documents rating sources, local IMDb datasets and episode mappings, bundles,
-cache refresh, retry behavior, and Kometa compatibility limits. Other builders
+Start with **Dry Run** and a narrow library/item scope. The
+[Dynamic Overlays guide](dynamic_overlays.md) covers everyday setup, while the
+[Dynamic Overlays Reference](dynamic_overlays_reference.md) documents rating
+sources, local IMDb datasets and episode mappings, bundles, cache refresh, retry
+behavior, and Kometa compatibility limits. Other builders
 are described in [Blueprints and recipes](blueprints.md), [Logo Builder and
 logo workflows](modes.md#logo-updater), and the [capabilities guide](capabilities.md).
 

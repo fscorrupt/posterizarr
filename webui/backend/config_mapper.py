@@ -1192,7 +1192,7 @@ DISPLAY_NAMES = {
     "AutoUpdateExistingSeasonPosters": "Also Update Existing Season Posters",
     "UseLogo": "Use Logo for Posters",
     "UseBGLogo": "Use Logo for Backgrounds",
-    "UseClearlogo": "Use Clearlogo",
+    "UseClearlogo": "Logo Type",
     "UseClearart": "Use Clearart",
     "LogoTextFallback": "Fallback to Text",
     "LogoExifCheck": "Logo EXIF Check",

@@ -28,7 +28,12 @@ import {
   ArrowRight,
   Monitor,
   CalendarClock,
-  Code2
+  Code2,
+  Rocket,
+  Layers,
+  Sparkles,
+  TestTube,
+  BookOpen
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useDashboardLoading } from "../context/DashboardLoadingContext";
@@ -155,6 +160,15 @@ function Dashboard() {
   });
 
   const [draggedItem, setDraggedItem] = useState(null);
+  const [hasRuntimeHistory, setHasRuntimeHistory] = useState(null);
+  const [hasRecentAssets, setHasRecentAssets] = useState(null);
+  const [gettingStartedDismissed, setGettingStartedDismissed] = useState(() => {
+    try {
+      return localStorage.getItem("dashboard_getting_started_dismissed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const hasInitiallyLoaded = useRef(false);
 
   const fetchDashboardData = async (silent = false) => {
@@ -394,6 +408,15 @@ function Dashboard() {
   };
   const handleDragEnd = () => setDraggedItem(null);
 
+  const dismissGettingStarted = () => {
+    setGettingStartedDismissed(true);
+    try {
+      localStorage.setItem("dashboard_getting_started_dismissed", "true");
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
   const cardLabels = {
     statusCards: t("dashboard.cards.systemControlDeck"),
     runtimeStats: t("dashboard.runtimeStats"),
@@ -446,6 +469,149 @@ function Dashboard() {
   const firstVisibleCard = cardOrder.find((key) => visibleCards[key]);
   const embedDangerZoneInDeck =
     showDangerZone && firstVisibleCard === "statusCards";
+
+  const showGettingStarted =
+    Boolean(status.config_exists) &&
+    !status.running &&
+    !gettingStartedDismissed &&
+    hasRuntimeHistory === false &&
+    hasRecentAssets !== true;
+
+  const renderGettingStartedCard = () => {
+    const steps = [
+      {
+        step: "1",
+        to: "/blueprints",
+        icon: Layers,
+        title: t("dashboard.gettingStarted.steps.style.title"),
+        description: t("dashboard.gettingStarted.steps.style.description"),
+        cta: t("dashboard.gettingStarted.steps.style.cta"),
+      },
+      {
+        step: "2",
+        to: "/dynamic-overlays",
+        icon: Sparkles,
+        title: t("dashboard.gettingStarted.steps.overlays.title"),
+        description: t("dashboard.gettingStarted.steps.overlays.description"),
+        cta: t("dashboard.gettingStarted.steps.overlays.cta"),
+      },
+      {
+        step: "3",
+        to: "/run-modes?open=testing",
+        icon: TestTube,
+        title: t("dashboard.gettingStarted.steps.test.title"),
+        description: t("dashboard.gettingStarted.steps.test.description"),
+        cta: t("dashboard.gettingStarted.steps.test.cta"),
+      },
+      {
+        step: "4",
+        to: "/run-modes",
+        icon: Play,
+        title: t("dashboard.gettingStarted.steps.run.title"),
+        description: t("dashboard.gettingStarted.steps.run.description"),
+        cta: t("dashboard.gettingStarted.steps.run.cta"),
+      },
+    ];
+
+    return (
+      <div className="bg-theme-card rounded-3xl p-5 sm:p-6 border border-theme-primary/30 shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-theme-primary/15 text-theme-primary shrink-0">
+              <Rocket className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-theme-text">
+                {t("dashboard.gettingStarted.title")}
+              </h2>
+              <p className="text-xs sm:text-sm text-theme-muted mt-0.5">
+                {t("dashboard.gettingStarted.subtitle")}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 self-end sm:self-start shrink-0">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("openOnboarding"))}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-hover hover:bg-theme-primary/15 text-theme-text border border-theme hover:border-theme-primary/40 transition-colors"
+            >
+              <Rocket className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("dashboard.gettingStarted.setupWizard")}</span>
+            </button>
+            <a
+              href="https://fscorrupt.github.io/posterizarr/quickstart/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-hover hover:bg-theme-primary/15 text-theme-text border border-theme hover:border-theme-primary/40 transition-colors"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-theme-primary" />
+              <span>{t("dashboard.gettingStarted.quickstartLink")}</span>
+              <ExternalLink className="w-3 h-3 text-theme-muted" />
+            </a>
+            <button
+              type="button"
+              onClick={dismissGettingStarted}
+              aria-label={t("dashboard.gettingStarted.dismiss")}
+              title={t("dashboard.gettingStarted.dismiss")}
+              className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text hover:bg-theme-hover transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {steps.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.step}
+                to={item.to}
+                className="group flex flex-col justify-between p-4 rounded-2xl bg-theme-hover/40 hover:bg-theme-hover border border-theme hover:border-theme-primary/50 transition-all"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="p-2 rounded-lg bg-theme-primary/10 text-theme-primary">
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-theme-card border border-theme text-theme-muted">
+                      {t("dashboard.gettingStarted.stepLabel", { number: item.step })}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-theme-text group-hover:text-theme-primary transition-colors">
+                    {item.title}
+                  </h3>
+                  <p className="text-xs text-theme-muted mt-1 leading-relaxed">
+                    {item.description}
+                  </p>
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-theme/50 flex items-center justify-between text-xs font-semibold text-theme-primary">
+                  <span>{item.cta}</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {schedulerStatus.enabled && (
+          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-2.5 text-xs text-amber-200/90">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{t("dashboard.gettingStarted.schedulerWarning")}</span>
+            </div>
+            <Link
+              to="/scheduler"
+              className="inline-flex items-center gap-1 font-semibold text-amber-300 hover:text-amber-200 shrink-0"
+            >
+              <span>{t("dashboard.gettingStarted.manageScheduler")}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderControlDeck = () => {
     if (!visibleCards.statusCards) return null;
@@ -686,10 +852,18 @@ function Dashboard() {
     const cardComponents = {
       statusCards: renderControlDeck(),
       runtimeStats: visibleCards.runtimeStats && (
-        <RuntimeStats key="runtimeStats" refreshTrigger={runtimeStatsRefreshTrigger} />
+        <RuntimeStats
+          key="runtimeStats"
+          refreshTrigger={runtimeStatsRefreshTrigger}
+          onHasDataChange={setHasRuntimeHistory}
+        />
       ),
       recentAssets: visibleCards.recentAssets && (
-        <RecentAssets key="recentAssets" refreshTrigger={runtimeStatsRefreshTrigger} />
+        <RecentAssets
+          key="recentAssets"
+          refreshTrigger={runtimeStatsRefreshTrigger}
+          onHasAssetsChange={setHasRecentAssets}
+        />
       ),
       logViewer: visibleCards.logViewer && (
         <div
@@ -857,6 +1031,7 @@ function Dashboard() {
           onError={showError}
         />
       )}
+      {showGettingStarted && renderGettingStartedCard()}
       {renderDashboardCards()}
       <ConfirmDialog isOpen={deleteConfirm} onClose={() => setDeleteConfirm(false)} onConfirm={deleteRunningFile} title={t("dashboard.deleteConfirmTitle")} message={t("dashboard.deleteConfirmMessage")} confirmText={t("common.delete")} type="warning" />
       {showCardsModal && (

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import WorkspaceHeader from "./WorkspaceHeader";
-import { Loader2, Palette, Image, Layers, CheckCircle2, AlertCircle, Type, Square, Languages, Sparkles, Download, Upload, Info, Sliders, LayoutTemplate, ChevronDown, ChevronRight, Settings, ImagePlus, RotateCcw, Wand2, MousePointerClick, Trash2, Save, X } from "lucide-react";
+import { Loader2, Palette, Image, Layers, CheckCircle2, AlertCircle, Type, Square, Languages, Sparkles, Download, Upload, Info, Sliders, LayoutTemplate, ChevronDown, ChevronRight, Settings, ImagePlus, RotateCcw, Wand2, MousePointerClick, Trash2, Save, X, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../context/ToastContext";
+import CommunityGallery from "./CommunityGallery";
 
 const API_URL = "/api";
 
@@ -358,11 +360,25 @@ export default function Blueprints() {
   const [error, setError] = useState(null);
   const [displayNames, setDisplayNames] = useState({});
   const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [customPreviewImage, setCustomPreviewImage] = useState(null);
   const [overlayFiles, setOverlayFiles] = useState([]);
 
-  // Tabs: "presets" | "builder"
-  const [activeTab, setActiveTab] = useState("presets");
+  // Tabs: "presets" | "builder" | "community"
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => {
+    const initialTab = location.state?.tab;
+    return ["presets", "builder", "community"].includes(initialTab) ? initialTab : "presets";
+  });
+  const lastGlobalTabTsRef = useRef(null);
+  useEffect(() => {
+    const targetTab = location.state?.tab;
+    if (!targetTab || !["presets", "builder", "community"].includes(targetTab)) return;
+    const jumpTs = location.state?.ts || targetTab;
+    if (lastGlobalTabTsRef.current === jumpTs) return;
+    lastGlobalTabTsRef.current = jumpTs;
+    setActiveTab(targetTab);
+  }, [location.state]);
   const [showOnlyModified, setShowOnlyModified] = useState(false);
 
   // Builder State
@@ -371,6 +387,9 @@ export default function Blueprints() {
   const [previewType, setPreviewType] = useState("Poster"); // "Poster", "Season", "TitleCard", "Background", "Collection"
   const [selectedLayer, setSelectedLayer] = useState("Global");
   const [importBlueprintState, setImportBlueprintState] = useState(null);
+  const [replaceImportAssets, setReplaceImportAssets] = useState(false);
+  const [replaceSaveAssets, setReplaceSaveAssets] = useState(false);
+  const [communityBusyId, setCommunityBusyId] = useState(null);
 
   // Custom Presets State
   const [customBlueprints, setCustomBlueprints] = useState([]);
@@ -1259,32 +1278,143 @@ export default function Blueprints() {
     setSavePresetModalState({ updates });
   };
 
-  const saveCustomPreset = (title, description) => {
-    if (!title) return;
-    const newBlueprint = {
-      id: "custom_" + Date.now(),
-      titleKey: null,
-      customTitle: title,
-      customDescription: description,
-      icon: "User",
-      updates: { nested: savePresetModalState.updates }
-    };
-    const updatedBlueprints = [...customBlueprints, newBlueprint];
-    setCustomBlueprints(updatedBlueprints);
-
-    fetch("/api/custom-blueprints", {
+  const installBundledAssetsIfNeeded = async ({ assets, blueprintToken, communityEntryId, replaceAssets }) => {
+    if (!Array.isArray(assets) || assets.length === 0 || (!blueprintToken && !communityEntryId)) {
+      return null;
+    }
+    const response = await fetch(`${API_URL}/blueprints/install-assets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updatedBlueprints)
-    }).then(() => {
-      showSuccess("Custom Preset saved!");
-    }).catch(e => {
-      console.error("Failed to save blueprint to db", e);
-      showError("Failed to save preset to database.");
+      body: JSON.stringify({
+        blueprint_token: blueprintToken || null,
+        community_entry_id: communityEntryId || null,
+        replace_assets: Boolean(replaceAssets),
+      }),
     });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.detail?.message || result.detail || "Failed to install bundled overlay/font files.");
+    }
+    await fetchOverlayFiles();
+    return result;
+  };
 
-    setSavePresetModalState(null);
-    setActiveTab("presets");
+  const formatAssetSize = (bytes) => {
+    const num = Number(bytes);
+    if (!Number.isFinite(num) || num <= 0) return "";
+    if (num < 1024) return `${num} B`;
+    if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+    return `${(num / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const renderBundledAssetsSection = ({ assets, hasConflicts, replaceChecked, onToggleReplace }) => {
+    if (!Array.isArray(assets) || assets.length === 0) return null;
+    return (
+      <div className="bg-theme-bg/50 rounded-lg border border-theme p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-theme pb-2">
+          <h3 className="font-semibold text-theme-text text-sm">
+            {t("blueprints.bundledAssetsTitle", "Bundled Overlay & Font Files")} ({assets.length})
+          </h3>
+        </div>
+        <ul className="space-y-1.5 text-xs">
+          {assets.map((asset) => {
+            const statusClass =
+              asset.status === "conflict"
+                ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                : asset.status === "existing_same"
+                  ? "bg-theme-card text-theme-muted border-theme"
+                  : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
+            const statusLabel =
+              asset.status === "conflict"
+                ? t("blueprints.bundledAssetConflict", "Exists locally")
+                : asset.status === "existing_same"
+                  ? t("blueprints.bundledAssetSame", "Already installed")
+                  : t("blueprints.bundledAssetNew", "New");
+            const kindLabel =
+              asset.kind === "font"
+                ? t("blueprints.bundledAssetKindFont", "font")
+                : t("blueprints.bundledAssetKindOverlay", "overlay");
+            return (
+              <li
+                key={asset.name}
+                className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded bg-theme-card/60 border border-theme/50"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono text-theme-text truncate" title={asset.name}>
+                    {asset.name}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-theme-bg border border-theme text-[10px] text-theme-muted shrink-0">
+                    {kindLabel}
+                  </span>
+                  {asset.size > 0 && (
+                    <span className="text-[10px] text-theme-muted shrink-0">{formatAssetSize(asset.size)}</span>
+                  )}
+                </div>
+                <span className={`px-2 py-0.5 rounded border text-[10px] font-medium shrink-0 ${statusClass}`}>
+                  {statusLabel}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        {hasConflicts && (
+          <label className="flex items-center gap-2 pt-1 text-xs text-theme-text cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={replaceChecked}
+              onChange={(e) => onToggleReplace(e.target.checked)}
+              className="rounded border-theme bg-theme-bg text-theme-primary focus:ring-theme-primary"
+            />
+            <span>
+              {t(
+                "blueprints.overwriteExistingAssets",
+                "Overwrite existing local files with the same name"
+              )}
+            </span>
+          </label>
+        )}
+      </div>
+    );
+  };
+
+  const saveCustomPreset = async (title, description) => {
+    if (!title) return;
+    try {
+      await installBundledAssetsIfNeeded({
+        assets: savePresetModalState?.assets,
+        blueprintToken: savePresetModalState?.blueprintToken,
+        communityEntryId: savePresetModalState?.communityEntryId,
+        replaceAssets: replaceSaveAssets,
+      });
+
+      const newBlueprint = {
+        id: "custom_" + Date.now(),
+        titleKey: null,
+        customTitle: title,
+        customDescription: description,
+        icon: "User",
+        updates: { nested: savePresetModalState.updates }
+      };
+      const updatedBlueprints = [...customBlueprints, newBlueprint];
+
+      const saveRes = await fetch("/api/custom-blueprints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedBlueprints)
+      });
+      if (!saveRes.ok) {
+        throw new Error("Failed to save preset to database.");
+      }
+
+      setCustomBlueprints(updatedBlueprints);
+      showSuccess("Custom Preset saved!");
+      setSavePresetModalState(null);
+      setReplaceSaveAssets(false);
+      setActiveTab("presets");
+    } catch (e) {
+      console.error("Failed to save blueprint", e);
+      showError(e.message || "Failed to save preset.");
+    }
   };
 
   const deleteCustomPreset = (id) => {
@@ -1315,42 +1445,168 @@ export default function Blueprints() {
     await handleApplyBlueprint(syntheticBlueprint);
   };
 
-  const handleExportBlueprint = () => {
-    const updates = generateBlueprintUpdates();
-    const blueprintData = {
-      name: "Custom Blueprint Export",
-      updates: { nested: updates }
-    };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(blueprintData, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "custom_blueprint.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+  const handleExportBlueprint = async () => {
+    setIsExporting(true);
+    try {
+      const updates = generateBlueprintUpdates();
+      const response = await fetch(`${API_URL}/blueprints/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Custom Blueprint Export",
+          updates: { nested: updates },
+          include_current_fonts: true,
+        }),
+      });
+
+      if (!response.ok) {
+        let detail = "Failed to export blueprint.";
+        try {
+          const errData = await response.json();
+          detail = errData.detail?.message || errData.detail || detail;
+        } catch {
+          // ignore non-JSON error body
+        }
+        throw new Error(detail);
+      }
+
+      const format = response.headers.get("X-Blueprint-Format") || "json";
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+      const downloadName =
+        filenameMatch?.[1] || (format === "bundle" ? "custom_blueprint.zip" : "custom_blueprint.json");
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const downloadAnchorNode = document.createElement("a");
+      downloadAnchorNode.setAttribute("href", objectUrl);
+      downloadAnchorNode.setAttribute("download", downloadName);
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      const assetCount = parseInt(response.headers.get("X-Blueprint-Asset-Count") || "0", 10);
+      const missingAssets = (response.headers.get("X-Blueprint-Missing-Assets") || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      if (assetCount > 0) {
+        showSuccess(
+          t("blueprints.exportBundleSuccess", {
+            count: assetCount,
+            defaultValue: "Exported blueprint bundle (.zip) with {{count}} overlay/font file(s).",
+          })
+        );
+      } else {
+        showSuccess(t("blueprints.exportJsonSuccess", "Exported blueprint configuration (.json)."));
+      }
+
+      if (missingAssets.length > 0) {
+        showError(
+          t("blueprints.exportMissingAssets", {
+            files: missingAssets.join(", "),
+            defaultValue: "Referenced file(s) not found in Overlayfiles and omitted: {{files}}",
+          })
+        );
+      }
+    } catch (err) {
+      showError(err.message || "Failed to export blueprint.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleFileChange = async (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
 
+    setIsImporting(true);
     try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      if (!parsed.updates && !parsed.PosterOverlayPart) {
-        throw new Error("Invalid blueprint format. Missing updates object.");
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`${API_URL}/blueprints/inspect-upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.detail?.message || data.detail || "Invalid blueprint format.");
       }
 
-      let updates = parsed;
-      if (parsed.updates) {
-         updates = parsed.updates.nested || parsed.updates.flat || parsed.updates;
-      }
-
-      setSavePresetModalState({ updates, isImport: true });
+      setReplaceSaveAssets(false);
+      setSavePresetModalState({
+        updates: data.updates?.nested || {},
+        isImport: true,
+        defaultTitle: data.blueprint_name || "",
+        assets: data.assets || [],
+        hasConflicts: Boolean(data.has_conflicts),
+        blueprintToken: data.blueprint_token || null,
+      });
     } catch (err) {
       showError(t("blueprints.importError", { message: err.message }));
     } finally {
+      setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleCommunityBlueprintAction = async (entry, action) => {
+    setCommunityBusyId(entry.id);
+    try {
+      const response = await fetch(`${API_URL}/community-gallery/blueprint?id=${encodeURIComponent(entry.id)}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        const msg = data.detail?.message || data.detail || "Could not load community blueprint.";
+        throw new Error(msg);
+      }
+
+      if (action === "builder") {
+        if (Array.isArray(data.assets) && data.assets.some((asset) => asset.status === "new")) {
+          await installBundledAssetsIfNeeded({
+            assets: data.assets,
+            blueprintToken: data.blueprint_token,
+            communityEntryId: entry.id,
+            replaceAssets: false,
+          });
+        }
+        await handleLoadBlueprintInBuilder({
+          id: `community_${entry.id}`,
+          customTitle: entry.name,
+          updates: { nested: data.updates?.nested || {} },
+        });
+      } else if (action === "save") {
+        setReplaceSaveAssets(false);
+        setSavePresetModalState({
+          updates: data.updates?.nested || {},
+          isImport: true,
+          defaultTitle: entry.name || data.blueprint_name || "",
+          defaultDescription: entry.description || "",
+          assets: data.assets || [],
+          hasConflicts: Boolean(data.has_conflicts),
+          blueprintToken: data.blueprint_token || null,
+          communityEntryId: entry.id,
+        });
+      } else if (action === "apply") {
+        setReplaceImportAssets(false);
+        setImportBlueprintState({
+          title: entry.name || data.blueprint_name,
+          author: entry.author,
+          updates: {
+            nested: data.updates?.nested || {},
+            flat: data.flat_preview || {},
+          },
+          assets: data.assets || [],
+          hasConflicts: Boolean(data.has_conflicts),
+          blueprintToken: data.blueprint_token || null,
+          communityEntryId: entry.id,
+        });
+      }
+    } catch (err) {
+      showError(t("communityGallery.loadBlueprintError", { message: err.message }));
+    } finally {
+      setCommunityBusyId(null);
     }
   };
 
@@ -1358,8 +1614,16 @@ export default function Blueprints() {
     if (!importBlueprintState) return;
     setIsImporting(true);
     try {
+      await installBundledAssetsIfNeeded({
+        assets: importBlueprintState.assets,
+        blueprintToken: importBlueprintState.blueprintToken,
+        communityEntryId: importBlueprintState.communityEntryId,
+        replaceAssets: replaceImportAssets,
+      });
+
+      const payloadToImport = importBlueprintState.updates?.nested || importBlueprintState;
       const response = await fetch(`${API_URL}/config/import`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(importBlueprintState),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payloadToImport),
       });
 
       const result = await response.json();
@@ -1374,6 +1638,7 @@ export default function Blueprints() {
     } finally {
       setIsImporting(false);
       setImportBlueprintState(null);
+      setReplaceImportAssets(false);
     }
   };
 
@@ -1549,12 +1814,12 @@ export default function Blueprints() {
       <div className="space-y-6">
         <WorkspaceHeader icon={LayoutTemplate} title={t("blueprints.pageTitle")}>
           <div className="flex gap-3">
-            <button onClick={handleExportBlueprint} className="flex items-center gap-2 px-4 py-2 bg-theme-bg border border-theme hover:border-theme-primary/50 text-theme-text rounded-lg transition-colors">
-              <Download className="w-4 h-4" />
-              <span>{t("blueprints.export")}</span>
+            <button onClick={handleExportBlueprint} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-theme-bg border border-theme hover:border-theme-primary/50 text-theme-text rounded-lg transition-colors disabled:opacity-50">
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              <span>{isExporting ? t("blueprints.exporting", "Exporting...") : t("blueprints.export")}</span>
             </button>
             <div className="relative">
-              <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+              <input type="file" accept=".json,.zip" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
               <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="flex items-center gap-2 px-4 py-2 bg-theme-primary/10 hover:bg-theme-primary/20 text-theme-primary border border-theme-primary/30 rounded-lg transition-colors disabled:opacity-50">
                 {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 <span>{isImporting ? t("blueprints.importing") : t("blueprints.import")}</span>
@@ -1578,7 +1843,22 @@ export default function Blueprints() {
             <Sliders className="w-4 h-4" />
             {t("blueprints.builder.tabBuilder", "Builder")}
           </button>
+          <button
+            onClick={() => setActiveTab("community")}
+            className={`px-6 py-3 flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'community' ? 'border-theme-primary text-theme-primary font-medium' : 'border-transparent text-theme-muted hover:text-theme-text'}`}
+          >
+            <Globe className="w-4 h-4" />
+            {t("blueprints.builder.tabCommunity", "Community Gallery")}
+          </button>
         </div>
+
+        {activeTab === "community" && (
+          <CommunityGallery
+            kind="blueprints"
+            onSelectBlueprint={handleCommunityBlueprintAction}
+            busyEntryId={communityBusyId}
+          />
+        )}
 
         {activeTab === "presets" && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -2086,13 +2366,20 @@ export default function Blueprints() {
               <div className="space-y-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-sm font-medium text-theme-muted">Preset Title</label>
-                  <input type="text" id="presetTitleInput" placeholder="e.g. Clean Poster Layout" className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors" autoFocus />
+                  <input key={`title-${savePresetModalState.defaultTitle || "new"}`} type="text" id="presetTitleInput" defaultValue={savePresetModalState.defaultTitle || ""} placeholder="e.g. Clean Poster Layout" className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors" autoFocus />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-sm font-medium text-theme-muted">Description</label>
-                  <textarea id="presetDescInput" placeholder="Describe what this preset does..." className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors resize-none h-24" />
+                  <textarea key={`desc-${savePresetModalState.defaultTitle || "new"}`} id="presetDescInput" defaultValue={savePresetModalState.defaultDescription || ""} placeholder="Describe what this preset does..." className="bg-theme-bg border border-theme rounded-lg px-4 py-2 text-theme-text focus:border-theme-primary outline-none transition-colors resize-none h-24" />
                 </div>
               </div>
+
+              {renderBundledAssetsSection({
+                assets: savePresetModalState.assets,
+                hasConflicts: savePresetModalState.hasConflicts,
+                replaceChecked: replaceSaveAssets,
+                onToggleReplace: setReplaceSaveAssets,
+              })}
 
               <div className="bg-theme-bg/50 rounded-lg border border-theme p-4">
                 <div className="flex justify-between items-center mb-4 border-b border-theme pb-2">
@@ -2169,14 +2456,25 @@ export default function Blueprints() {
             <div className="p-6 border-b border-theme bg-theme-bg/50">
               <h2 className="text-2xl font-bold text-theme-text flex items-center gap-2">
                 <AlertCircle className="w-6 h-6 text-theme-primary" />
-                {t("blueprints.importConfirmTitle", "Confirm Blueprint Import")}
+                {importBlueprintState.title
+                  ? `${t("blueprints.importConfirmTitle", "Confirm Blueprint Import")} — ${importBlueprintState.title}`
+                  : t("blueprints.importConfirmTitle", "Confirm Blueprint Import")}
               </h2>
               <p className="text-theme-muted mt-2">
-                {t("blueprints.importConfirmDesc", "The following settings will be modified by this blueprint. Do you want to proceed?")}
+                {importBlueprintState.author
+                  ? `${t("blueprints.importConfirmDesc", "The following settings will be modified by this blueprint. Do you want to proceed?")} (${importBlueprintState.author})`
+                  : t("blueprints.importConfirmDesc", "The following settings will be modified by this blueprint. Do you want to proceed?")}
               </p>
             </div>
 
             <div className="p-6 overflow-y-auto custom-scrollbar flex-grow space-y-4">
+              {renderBundledAssetsSection({
+                assets: importBlueprintState.assets,
+                hasConflicts: importBlueprintState.hasConflicts,
+                replaceChecked: replaceImportAssets,
+                onToggleReplace: setReplaceImportAssets,
+              })}
+
               <div className="bg-theme-bg/50 rounded-lg border border-theme p-4">
                 <h3 className="font-semibold text-theme-text mb-4 border-b border-theme pb-2">Proposed Changes</h3>
                 <ul className="space-y-2 text-sm">

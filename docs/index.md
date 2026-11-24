@@ -17,14 +17,14 @@
 ## New to Posterizarr?
 
 Start with the short setup path: choose an installation method, connect one
-media-server library, and test the result before enabling uploads or automation.
+media-server library, and test one item before enabling uploads or automation.
 
 ![Dashboard with Posterizarr's main navigation and workspace](images/01-dashboard-overview.png)
 
 *Navigate to **Dashboard** in the left sidebar after the Web UI opens. Use the sidebar to reach setup, artwork, automation, and history views.*
 
 1. [Choose an installation method](installation.md) and open the Web UI.
-2. Follow [First-time setup](getting_started.md) to connect a server and configure providers.
+2. Follow the **[5-Minute Quickstart](quickstart.md)** (or the detailed [First-time setup](getting_started.md)) to connect one server, create a test poster, and push your first Dynamic Overlay.
 3. Run a safe [Testing Mode](modes.md#test-mode) sample before processing a library.
 4. Use the [Web UI map](ui_guide.md) to locate everyday tasks and the [configuration reference](configuration.md) for individual settings.
 
@@ -71,8 +71,8 @@ Use [the configuration guide](configuration.md) for every setting and
 
 | Start here | Use and maintain | Reference and integrations |
 |---|---|---|
-| [Requirements](requirements.md) · [Installation](installation.md) · [First-time setup](getting_started.md) · [Manual PowerShell walkthrough](walkthrough.md) · [Web UI from source](uiinstallation.md) | [UI map](ui_guide.md) · [Action Center](action_center.md) · [Blueprints](blueprints.md) · [Artwork showcase](showcase.md) · [Plex Image Cleanup](plex_image_cleanup.md) | [Configuration](configuration.md) · [Provider search order](searchorder.md) · [Platform & Tools](platformandtools.md) · [Networking](networking.md) · [FAQs](faqs.md) · [Telemetry](telemetry.md) |
-| [Capabilities](capabilities.md) · [Naming manual assets](namingconvention.md) | [Dynamic Overlays](dynamic_overlays.md) · [Homepage API](homepage.md) · [Agregarr](agregarrintegration.md) · [Jellyfin plugin](jellyfin_plugin.md) · [Emby plugin](emby_plugin.md) · [Kometa compatibility](kometaintegration.md) | [API endpoints](endpoints.md) · [PowerShell architecture](powershell_scripts.md) · [Backend architecture](backend_python.md) · [Frontend components](frontend_components.md) · [LLM architecture](llms.md) · [Docs preview workflow](docs_preview.md) |
+| [5-Minute Quickstart](quickstart.md) · [Requirements](requirements.md) · [Installation](installation.md) · [First-time setup](getting_started.md) · [Manual PowerShell walkthrough](walkthrough.md) · [Web UI from source](uiinstallation.md) | [UI map](ui_guide.md) · [Action Center](action_center.md) · [Asset Title Review](asset_title_review.md) · [Blueprints](blueprints.md) · [Artwork showcase](showcase.md) · [Plex Image Cleanup](plex_image_cleanup.md) | [Configuration](configuration.md) · [Provider search order](searchorder.md) · [Platform & Tools](platformandtools.md) · [Networking](networking.md) · [FAQs](faqs.md) · [Telemetry](telemetry.md) |
+| [Capabilities](capabilities.md) · [Naming manual assets](namingconvention.md) | [Dynamic Overlays](dynamic_overlays.md) · [Dynamic Overlays Reference](dynamic_overlays_reference.md) · [Homepage API](homepage.md) · [Agregarr](agregarrintegration.md) · [Jellyfin plugin](jellyfin_plugin.md) · [Emby plugin](emby_plugin.md) · [Kometa compatibility](kometaintegration.md) | [API endpoints](endpoints.md) · [PowerShell architecture](powershell_scripts.md) · [Backend architecture](backend_python.md) · [Frontend components](frontend_components.md) · [LLM architecture](llms.md) · [Docs preview workflow](docs_preview.md) |
 
 ## Supported Platforms
 

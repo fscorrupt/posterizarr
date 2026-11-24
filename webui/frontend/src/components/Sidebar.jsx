@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Activity, Play, Image, Settings, Clock, FileText, Info, Menu, X,
+  Activity, Play, Image, Settings, Clock, FileText, Info, Menu, X, Search,
   ChevronDown, ChevronRight, Film, Layers, Tv, Database, Server,
   Palette, Bell, Lock, User, FileImage, Lightbulb, AlertTriangle,
-  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer, Sparkles
+  TrendingUp, Zap, FolderKanban, GripVertical, TestTube, Archive, List,BookOpen, Heart, Globe, Hammer, Sparkles, Clapperboard
 } from "lucide-react";
 import VersionBadge from "./VersionBadge";
 import { useSidebar } from "../context/SidebarContext";
@@ -44,6 +44,8 @@ const Sidebar = () => {
   const [showPlexQuarantine, setShowPlexQuarantine] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null);
   const [hoveredItem, setHoveredItem] = useState(null);
+  const [draggedSubItem, setDraggedSubItem] = useState(null);
+  const [hoveredSubItem, setHoveredSubItem] = useState(null);
 
   React.useEffect(() => {
     if (!isMobileMenuOpen) return;
@@ -157,6 +159,7 @@ const Sidebar = () => {
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
           ...(showPlexQuarantine ? [{ path: "/image-quarantine", label: "Plex Image Quarantine", icon: Archive }] : []),
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
+          { path: "/asset-title-review", label: t("nav.assetTitleReview", "Asset Title Review"), icon: Clapperboard },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ]
         : [
@@ -168,6 +171,7 @@ const Sidebar = () => {
           { path: "/asset-backups", label: t("backupAssets.title") || "Backups", icon: Archive },
           ...(showPlexQuarantine ? [{ path: "/image-quarantine", label: "Plex Image Quarantine", icon: Archive }] : []),
           { path: "/asset-overview", label: t("nav.assetOverview"), icon: AlertTriangle, badge: missingAssetsCount, badgeColor: "red" },
+          { path: "/asset-title-review", label: t("nav.assetTitleReview", "Asset Title Review"), icon: Clapperboard },
           { path: "/test-gallery", label: t("nav.testGallery", "Test Gallery"), icon: TestTube },
         ],
     },
@@ -209,14 +213,112 @@ const Sidebar = () => {
     return defaultNavItems.map((item) => item.id);
   });
 
-  const navItems = React.useMemo(() => navOrder.map((id) => defaultNavItems.find((item) => item.id === id)).filter(Boolean), [navOrder, viewMode, missingAssetsCount, manualAssetsCount]);
+  const [subNavOrder, setSubNavOrder] = React.useState(() => {
+    const saved = localStorage.getItem("sidebar_sub_nav_order");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  });
+  const subNavOrderRef = React.useRef(subNavOrder);
+  subNavOrderRef.current = subNavOrder;
+
+  const getMergedSubPaths = (groupId, visibleSubItems, orderMap = subNavOrder) => {
+    const saved = Array.isArray(orderMap[groupId])
+      ? orderMap[groupId].filter((p) => typeof p === "string")
+      : [];
+    const seen = new Set(saved);
+    const merged = [...saved];
+    for (const sub of visibleSubItems) {
+      if (!seen.has(sub.path)) {
+        seen.add(sub.path);
+        merged.push(sub.path);
+      }
+    }
+    return merged;
+  };
+
+  const navItems = React.useMemo(
+    () =>
+      navOrder
+        .map((id) => defaultNavItems.find((item) => item.id === id))
+        .filter(Boolean)
+        .map((item) => {
+          if (!item.hasSubItems || !Array.isArray(item.subItems)) return item;
+          const byPath = new Map(item.subItems.map((sub) => [sub.path, sub]));
+          const orderedSubItems = getMergedSubPaths(item.id, item.subItems, subNavOrder)
+            .map((path) => byPath.get(path))
+            .filter(Boolean);
+          return { ...item, subItems: orderedSubItems };
+        }),
+    [navOrder, subNavOrder, viewMode, missingAssetsCount, manualAssetsCount, showPlexQuarantine, t]
+  );
 
   const saveNavOrder = (order) => { setNavOrder(order); localStorage.setItem("sidebar_nav_order", JSON.stringify(order)); };
-  const handleDragStart = (e, index) => { setDraggedItem(index); e.dataTransfer.effectAllowed = "move"; };
-  const handleDragOver = (e, index) => { e.preventDefault(); if (draggedItem === null || draggedItem === index) return; const newOrder = [...navOrder]; const draggedId = newOrder[draggedItem]; newOrder.splice(draggedItem, 1); newOrder.splice(index, 0, draggedId); setDraggedItem(index); setNavOrder(newOrder); };
+  const handleDragStart = (e, index) => {
+    if (draggedSubItem !== null) return;
+    setDraggedItem(index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", navOrder[index] || String(index));
+  };
+  const handleDragOver = (e, index) => {
+    if (draggedSubItem !== null) return;
+    e.preventDefault();
+    if (draggedItem === null || draggedItem === index) return;
+    const newOrder = [...navOrder];
+    const draggedId = newOrder[draggedItem];
+    newOrder.splice(draggedItem, 1);
+    newOrder.splice(index, 0, draggedId);
+    setDraggedItem(index);
+    setNavOrder(newOrder);
+  };
   const handleDragEnd = () => { if (draggedItem !== null) saveNavOrder(navOrder); setDraggedItem(null); };
 
-  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/image-quarantine") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
+  const saveSubNavOrder = (order) => {
+    subNavOrderRef.current = order;
+    setSubNavOrder(order);
+    localStorage.setItem("sidebar_sub_nav_order", JSON.stringify(order));
+  };
+
+  const handleSubDragStart = (e, groupId, subPath) => {
+    e.stopPropagation();
+    setDraggedItem(null);
+    setDraggedSubItem({ groupId, path: subPath });
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `${groupId}:${subPath}`);
+  };
+
+  const handleSubDragOver = (e, groupId, targetPath, visibleSubItems) => {
+    if (!draggedSubItem || draggedSubItem.groupId !== groupId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedSubItem.path === targetPath) return;
+    const merged = getMergedSubPaths(groupId, visibleSubItems, subNavOrderRef.current);
+    const fromIdx = merged.indexOf(draggedSubItem.path);
+    const toIdx = merged.indexOf(targetPath);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+    const nextList = [...merged];
+    nextList.splice(fromIdx, 1);
+    nextList.splice(toIdx, 0, draggedSubItem.path);
+    const nextOrder = { ...subNavOrderRef.current, [groupId]: nextList };
+    subNavOrderRef.current = nextOrder;
+    setSubNavOrder(nextOrder);
+  };
+
+  const handleSubDragEnd = (e) => {
+    e.stopPropagation();
+    if (draggedSubItem !== null) {
+      saveSubNavOrder(subNavOrderRef.current);
+    }
+    setDraggedSubItem(null);
+  };
+
+  const isInAssetsSection = location.pathname.startsWith("/gallery") || location.pathname.startsWith("/manual-assets") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/asset-backups") || location.pathname.startsWith("/image-quarantine") || location.pathname.startsWith("/asset-overview") || location.pathname.startsWith("/asset-title-review") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/test-gallery");
   const isInMediaServerSection = location.pathname.startsWith("/media-server-export");
   const isInConfigSection = location.pathname.startsWith("/config");
   const isInBuildersSection = location.pathname.startsWith("/media-server-collections") || location.pathname.startsWith("/media-server-logos") || location.pathname.startsWith("/assets-manager") || location.pathname.startsWith("/dynamic-overlays") || location.pathname.startsWith("/blueprints");
@@ -271,48 +373,76 @@ const Sidebar = () => {
                 const isGroupActive = isInSection;
 
                 return (
-                  <div key={item.id} draggable={!isCollapsed} onDragStart={(e) => handleDragStart(e, index)} onDragOver={(e) => handleDragOver(e, index)} onDragEnd={handleDragEnd} onMouseEnter={() => setHoveredItem(index)} onMouseLeave={() => setHoveredItem(null)} className={`relative ${isDragging ? "opacity-50" : ""}`}>
-                    <button
-                      onClick={toggleExpanded}
-                      className={`w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between px-4"} py-3 rounded-xl text-sm font-medium transition-all duration-200 group relative overflow-hidden ${isGroupActive && !isExpanded ? "bg-theme-primary/10 text-theme-primary border border-theme-primary/20" : inactiveClass}`}
-                      title={isCollapsed ? item.label : ""}
+                  <div key={item.id} onDragOver={(e) => handleDragOver(e, index)} onDragEnd={handleDragEnd} className={`relative ${isDragging ? "opacity-50" : ""}`}>
+                    <div
+                      draggable={!isCollapsed}
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onMouseEnter={() => setHoveredItem(index)}
+                      onMouseLeave={() => setHoveredItem(null)}
+                      className="relative"
                     >
-                      <div className="flex items-center relative z-10">
-                        <Icon className={`w-5 h-5 flex-shrink-0 ${isGroupActive ? "text-theme-primary" : ""}`} />
-                        {!isCollapsed && <span className="ml-3 font-medium">{item.label}</span>}
-                      </div>
-                      <div className="flex items-center gap-1 relative z-10">
-                        {!isCollapsed && (
-                          <>
-                            {hoveredItem === index && <GripVertical className="w-4 h-4 text-theme-muted opacity-60 cursor-grab active:cursor-grabbing" />}
-                            {isExpanded ? <ChevronDown className="w-4 h-4 opacity-70" /> : <ChevronRight className="w-4 h-4 opacity-70" />}
-                          </>
-                        )}
-                      </div>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={toggleExpanded}
+                        className={`w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between px-4"} py-3 rounded-xl text-sm font-medium transition-all duration-200 group relative overflow-hidden ${isGroupActive && !isExpanded ? "bg-theme-primary/10 text-theme-primary border border-theme-primary/20" : inactiveClass}`}
+                        title={isCollapsed ? item.label : ""}
+                      >
+                        <div className="flex items-center relative z-10">
+                          <Icon className={`w-5 h-5 flex-shrink-0 ${isGroupActive ? "text-theme-primary" : ""}`} />
+                          {!isCollapsed && <span className="ml-3 font-medium">{item.label}</span>}
+                        </div>
+                        <div className="flex items-center gap-1 relative z-10">
+                          {!isCollapsed && (
+                            <>
+                              {hoveredItem === index && <GripVertical className="w-4 h-4 text-theme-muted opacity-60 cursor-grab active:cursor-grabbing" />}
+                              {isExpanded ? <ChevronDown className="w-4 h-4 opacity-70" /> : <ChevronRight className="w-4 h-4 opacity-70" />}
+                            </>
+                          )}
+                        </div>
+                      </button>
+                    </div>
 
                     {isExpanded && !isCollapsed && (
                       <div className="ml-5 mt-1 space-y-1 pl-4 border-l-2 border-theme/50 animate-in slide-in-from-top-1 duration-200">
                         {item.subItems.map((subItem) => {
                           const SubIcon = subItem.icon;
                           const isSubActive = location.pathname === subItem.path;
+                          const subHoverKey = `${item.id}:${subItem.path}`;
+                          const isSubDragging =
+                            draggedSubItem?.groupId === item.id && draggedSubItem?.path === subItem.path;
                           return (
-                            <Link
+                            <div
                               key={subItem.path}
-                              to={subItem.path}
-                              aria-current={isSubActive ? "page" : undefined}
-                              className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${isSubActive ? activeClass : "text-theme-muted hover:bg-theme-hover hover:text-theme-text"}`}
+                              draggable={!isCollapsed}
+                              onDragStart={(e) => handleSubDragStart(e, item.id, subItem.path)}
+                              onDragOver={(e) => handleSubDragOver(e, item.id, subItem.path, item.subItems)}
+                              onDragEnd={handleSubDragEnd}
+                              onMouseEnter={() => setHoveredSubItem(subHoverKey)}
+                              onMouseLeave={() => setHoveredSubItem(null)}
+                              className={`relative ${isSubDragging ? "opacity-50" : ""}`}
                             >
-                              <div className="flex items-center">
-                                <SubIcon className="w-4 h-4 flex-shrink-0" />
-                                <span className="ml-3">{subItem.label}</span>
-                              </div>
-                              {subItem.badge !== undefined && subItem.badge > 0 && (
-                                <span className={`${subItem.badgeColor === "green" ? "bg-green-500" : "bg-red-500"} text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm`}>
-                                  {subItem.badge}
-                                </span>
-                              )}
-                            </Link>
+                              <Link
+                                to={subItem.path}
+                                draggable={false}
+                                aria-current={isSubActive ? "page" : undefined}
+                                className={`flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${isSubActive ? activeClass : "text-theme-muted hover:bg-theme-hover hover:text-theme-text"}`}
+                              >
+                                <div className="flex items-center min-w-0">
+                                  <SubIcon className="w-4 h-4 flex-shrink-0" />
+                                  <span className="ml-3">{subItem.label}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {subItem.badge !== undefined && subItem.badge > 0 && (
+                                    <span className={`${subItem.badgeColor === "green" ? "bg-green-500" : "bg-red-500"} text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm`}>
+                                      {subItem.badge}
+                                    </span>
+                                  )}
+                                  {hoveredSubItem === subHoverKey && (
+                                    <GripVertical className={`w-3.5 h-3.5 cursor-grab active:cursor-grabbing ${isSubActive ? "text-white/75" : "text-theme-muted opacity-60"}`} />
+                                  )}
+                                </div>
+                              </Link>
+                            </div>
                           );
                         })}
                       </div>
@@ -401,6 +531,18 @@ const Sidebar = () => {
             <span className="ml-3 text-lg font-bold text-theme-primary tracking-tight">Posterizarr</span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                setIsThemeDropdownOpen(false);
+                window.dispatchEvent(new Event("openGlobalSearch"));
+              }}
+              aria-label={t("globalSearch.triggerPlaceholder", "Search UI, settings, assets...")}
+              className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"
+            >
+              <Search className="w-5 h-5" />
+            </button>
             <div className="relative">
               <button onClick={() => { setIsThemeDropdownOpen(!isThemeDropdownOpen); setIsMobileMenuOpen(false); }} aria-label="Change theme" aria-expanded={isThemeDropdownOpen} className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-theme-hover transition-colors text-theme-text"><Palette className="w-5 h-5" /></button>
               {isThemeDropdownOpen && (

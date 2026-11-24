@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronRight, ChevronLeft, Save, Server, Key, Settings, Bell, Rocket, Shield, Activity, HardDrive, Database, ExternalLink, Loader2, Clock, Calendar, Zap, RefreshCw, Grid, X, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronRight, ChevronLeft, Save, Server, Key, Settings, Bell, Rocket, Shield, Activity, HardDrive, Database, ExternalLink, Loader2, Clock, Calendar, Zap, RefreshCw, Grid, X, Eye, EyeOff, Layers, Sparkles, TestTube } from "lucide-react";
 import SiloSupportNotice from "./SiloSupportNotice";
 
 const ClearableInput = ({ value, onChange, placeholder, isPassword }) => {
@@ -130,6 +130,7 @@ const runModes = [
   const [newMode, setNewMode] = useState("normal");
   const [newTime, setNewTime] = useState("03:00");
   const [enableDynamicOverlays, setEnableDynamicOverlays] = useState(false);
+  const [nextDestination, setNextDestination] = useState("blueprints");
   const [logoLibrary, setLogoLibrary] = useState("all");
   const [logoForceReplace, setLogoForceReplace] = useState(false);
   const [logoExifCheck, setLogoExifCheck] = useState(false);
@@ -187,6 +188,7 @@ const runModes = [
     UptimeKumaUrl: "",
   });
   const [saving, setSaving] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const hasTmdb = Boolean(config.tmdbtoken?.trim());
@@ -340,7 +342,9 @@ const runModes = [
         body: JSON.stringify({ config: finalConfig }),
       });
 
-      if (enableDynamicOverlays) {
+      const shouldEnableDynamicOverlays = enableDynamicOverlays || nextDestination === "dynamic-overlays";
+
+      if (shouldEnableDynamicOverlays) {
         const overlaysResponse = await fetch("/api/dynamic-overlays/settings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -404,11 +408,33 @@ const runModes = [
         headers: { "Content-Type": "application/json" }
       });
 
-      onComplete(enableDynamicOverlays);
+      const destinationRoutes = {
+        blueprints: "/blueprints",
+        "dynamic-overlays": "/dynamic-overlays?setupWizard=1",
+        testing: "/run-modes?open=testing",
+        dashboard: "/",
+      };
+
+      onComplete(destinationRoutes[nextDestination] || "/");
     } catch (err) {
       console.error("Failed to complete onboarding", err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSkipSetup = async () => {
+    setSkipping(true);
+    try {
+      await fetch("/api/onboarding/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      console.error("Failed to mark onboarding complete on skip", err);
+    } finally {
+      setSkipping(false);
+      onComplete("/");
     }
   };
 
@@ -1009,7 +1035,20 @@ const runModes = [
                 <p className="text-sm text-theme-muted">{t("onboarding.dynamicOverlaysDescription")}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input type="checkbox" className="sr-only peer" checked={enableDynamicOverlays} onChange={event => setEnableDynamicOverlays(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={enableDynamicOverlays}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setEnableDynamicOverlays(checked);
+                    if (checked) {
+                      setNextDestination("dynamic-overlays");
+                    } else if (nextDestination === "dynamic-overlays") {
+                      setNextDestination("blueprints");
+                    }
+                  }}
+                />
                 <div className="w-11 h-6 bg-theme-bg peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-primary"></div>
               </label>
             </div>
@@ -1140,18 +1179,95 @@ const runModes = [
             </div>
           </div>
         );
-      case 8: // Finish
+      case 8: { // Finish
+        const nextDestinations = [
+          {
+            id: "blueprints",
+            icon: Layers,
+            recommended: !enableDynamicOverlays,
+            title: t("onboarding.nextStep.blueprints.title"),
+            description: t("onboarding.nextStep.blueprints.description"),
+          },
+          {
+            id: "dynamic-overlays",
+            icon: Sparkles,
+            recommended: enableDynamicOverlays,
+            title: t("onboarding.nextStep.dynamicOverlays.title"),
+            description: t("onboarding.nextStep.dynamicOverlays.description"),
+          },
+          {
+            id: "testing",
+            icon: TestTube,
+            recommended: false,
+            title: t("onboarding.nextStep.testing.title"),
+            description: t("onboarding.nextStep.testing.description"),
+          },
+          {
+            id: "dashboard",
+            icon: Activity,
+            recommended: false,
+            title: t("onboarding.nextStep.dashboard.title"),
+            description: t("onboarding.nextStep.dashboard.description"),
+          },
+        ];
+
         return (
-          <div className="flex flex-col items-center justify-center text-center space-y-6 animate-fade-in py-10">
-            <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mb-4 text-green-500 ring-4 ring-green-500/10">
-              <Check className="w-10 h-10" />
+          <div className="flex flex-col items-center text-center space-y-5 animate-fade-in py-4">
+            <div className="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center text-green-500 ring-4 ring-green-500/10">
+              <Check className="w-7 h-7" />
             </div>
-            <h2 className="text-3xl font-bold text-white">{t("onboarding.allSet")}</h2>
-            <p className="text-theme-muted max-w-md">{t("onboarding.yourConfigurationHasBeenPrepared")}</p>
-            <div className="mt-8 p-4 bg-theme-bg/50 rounded-xl border border-theme-border text-sm text-theme-muted inline-flex items-center">
-              <Shield className="w-4 h-4 mr-2 text-theme-primary" />{t("onboarding.changeSettingsAnytime")}</div>
+            <div className="space-y-1.5">
+              <h2 className="text-2xl sm:text-3xl font-bold text-white">{t("onboarding.allSet")}</h2>
+              <p className="text-sm text-theme-muted max-w-lg">{t("onboarding.yourConfigurationHasBeenPrepared")}</p>
+            </div>
+
+            <div className="w-full max-w-2xl space-y-2.5 text-left">
+              <p className="text-xs font-semibold uppercase tracking-wider text-theme-muted text-center">
+                {t("onboarding.nextStep.heading")}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {nextDestinations.map((dest) => {
+                  const Icon = dest.icon;
+                  const isSelected = nextDestination === dest.id;
+                  return (
+                    <button
+                      key={dest.id}
+                      type="button"
+                      onClick={() => setNextDestination(dest.id)}
+                      aria-pressed={isSelected}
+                      className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
+                        isSelected
+                          ? "bg-theme-primary/15 border-theme-primary ring-1 ring-theme-primary/40 shadow-sm"
+                          : "bg-theme-bg/50 border-theme-border/60 hover:border-theme-primary/50"
+                      }`}
+                    >
+                      <div className={`p-2 rounded-lg shrink-0 ${isSelected ? "bg-theme-primary/20 text-theme-primary" : "bg-theme-bg-dark text-theme-muted"}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold text-white">{dest.title}</span>
+                          {dest.recommended && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-theme-primary/20 text-theme-primary shrink-0">
+                              {t("onboarding.nextStep.recommended")}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-theme-muted mt-1 leading-relaxed">{dest.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-3 bg-theme-bg/50 rounded-xl border border-theme-border text-xs sm:text-sm text-theme-muted inline-flex items-center">
+              <Shield className="w-4 h-4 mr-2 text-theme-primary shrink-0" />
+              <span>{t("onboarding.changeSettingsAnytime")}</span>
+            </div>
           </div>
         );
+      }
       default:
         return null;
     }
@@ -1240,31 +1356,55 @@ const runModes = [
 
             {/* Footer Actions */}
             <div className="app-dialog-actions px-4 sm:px-6 py-3 sm:py-4 bg-theme-bg-dark border-t border-theme-border/30 flex flex-wrap gap-2 justify-between items-center shrink-0">
-              <button
-                onClick={handlePrev}
-                disabled={currentStep === 0 || saving}
-                className={`flex items-center px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
-                  currentStep === 0
-                    ? "opacity-0 cursor-default"
-                    : "text-theme-muted hover:text-white hover:bg-theme-bg"
-                }`}
-              >
-                <ChevronLeft className="w-4 h-4 mr-1" />{t("onboarding.back")}</button>
-
-              {currentStep < STEPS.length - 1 ? (
+              {currentStep === 0 ? (
                 <button
-                  onClick={handleNext}
-                  disabled={
-                    (currentStep === 1 && !({ plex: plexValidated && plexLibsValid, jellyfin: jellyfinValidated && jellyfinLibsValid, emby: embyValidated && embyLibsValid, silo: siloValidated && siloLibsValid && config.SiloUrl && config.SiloAPIKey }[primaryServer])) ||
-                    (currentStep === 2 && !hasAnyMetadataProvider)
-                  }
-                  className="flex items-center px-5 py-2 bg-theme-primary text-black rounded-lg font-semibold shadow-md shadow-theme-primary/20 hover:bg-theme-accent hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                >{t("onboarding.continue")}<ChevronRight className="w-4 h-4 ml-1" />
+                  type="button"
+                  onClick={handleSkipSetup}
+                  disabled={saving || skipping}
+                  className="flex items-center px-3 py-2 rounded-lg font-medium transition-colors text-sm text-theme-muted hover:text-white hover:bg-theme-bg disabled:opacity-50"
+                >
+                  {skipping ? t("onboarding.skipping") : t("onboarding.skipForNow")}
                 </button>
               ) : (
                 <button
+                  type="button"
+                  onClick={handlePrev}
+                  disabled={saving || skipping}
+                  className="flex items-center px-4 py-2 rounded-lg font-medium transition-colors text-sm text-theme-muted hover:text-white hover:bg-theme-bg disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />{t("onboarding.back")}
+                </button>
+              )}
+
+              {currentStep < STEPS.length - 1 ? (
+                <div className="flex items-center gap-3">
+                  {currentStep > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSkipSetup}
+                      disabled={saving || skipping}
+                      className="px-3 py-2 rounded-lg font-medium transition-colors text-xs sm:text-sm text-theme-muted hover:text-white hover:bg-theme-bg disabled:opacity-50"
+                    >
+                      {skipping ? t("onboarding.skipping") : t("onboarding.skipShort")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={
+                      saving || skipping ||
+                      (currentStep === 1 && !({ plex: plexValidated && plexLibsValid, jellyfin: jellyfinValidated && jellyfinLibsValid, emby: embyValidated && embyLibsValid, silo: siloValidated && siloLibsValid && config.SiloUrl && config.SiloAPIKey }[primaryServer])) ||
+                      (currentStep === 2 && !hasAnyMetadataProvider)
+                    }
+                    className="flex items-center px-5 py-2 bg-theme-primary text-black rounded-lg font-semibold shadow-md shadow-theme-primary/20 hover:bg-theme-accent hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >{t("onboarding.continue")}<ChevronRight className="w-4 h-4 ml-1" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
                   onClick={handleFinish}
-                  disabled={saving}
+                  disabled={saving || skipping}
                   className="flex items-center px-6 py-2 bg-gradient-to-r from-theme-primary to-theme-accent text-black rounded-lg font-bold shadow-md shadow-theme-primary/30 hover:shadow-theme-primary/50 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                   {saving ? (
