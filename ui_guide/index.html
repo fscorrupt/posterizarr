@@ -313,6 +313,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  5-Minute Quickstart
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../getting_started/" class="md-nav__link">
         
   
@@ -754,6 +781,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../asset_title_review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Asset Title Review
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../capabilities/" class="md-nav__link">
         
   
@@ -875,6 +929,33 @@
     
   
   Dynamic Overlays
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dynamic_overlays_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Dynamic Overlays Reference
 
     
   </span>
@@ -1869,10 +1950,13 @@ commands.</p>
 <p><em>Choose <strong>Asset Management &gt; Backup Assets</strong> to browse saved artwork backups.</em></p>
 <p><img alt="Action Center review filters and actions" src="../images/07-action-center.png" /></p>
 <p><em>Choose <strong>Asset Management &gt; Action Center</strong> to filter flagged assets and resolve, replace, or delete their tracking entries.</em></p>
+<p><img alt="Asset Title Review comparing current media-server titles against existing artwork" src="../images/ui-asset-title-review.png" /></p>
+<p><em>Choose <strong>Asset Management &gt; Asset Title Review</strong> (<code>/asset-title-review</code>) to compare existing text-enabled movies, shows, seasons, and titlecards against current media-server titles. Works standalone even when Dynamic Overlays is off, with its own check interval, Dry Run toggle, filters, bulk <strong>Hide selected</strong>, queued rebuilds, and confirmed Fast Normal Run actions.</em></p>
 <p>The galleries, test output, and server export have different purposes: a gallery
 browses available artwork, Test Gallery shows Testing Mode results, and Media
 Server Export browses cached metadata records. Read the <a href="../action_center/">Action Center guide</a>
-before bulk actions and the <a href="../plex_image_cleanup/">Plex Image Cleanup guide</a>
+before bulk actions, the <a href="../asset_title_review/">Asset Title Review guide</a> for
+renamed-title monitoring and rebuilds, and the <a href="../plex_image_cleanup/">Plex Image Cleanup guide</a>
 before quarantining or removing files.</p>
 <h2 id="export-library-data">Export Library Data</h2>
 <p><img alt="Plex library records and filters" src="../images/09-plex-library-export.png" /></p>
@@ -1902,23 +1986,20 @@ and response formats are in the <a href="../endpoints/">API reference</a>.</p>
 <p><em>Choose <strong>Live Preview</strong> to inspect sample artwork and adjust badge placement. Previewing does not upload artwork.</em></p>
 <p><img alt="Dynamic Overlays Synchronize view with separate maintenance tabs" src="../images/22-overlay-sync-cache.png" /></p>
 <p><em>Choose <strong>Sync &amp; Maintenance</strong> for the separate <strong>Synchronize</strong>, <strong>Media Changes</strong>,
-<strong>Asset Title Review</strong>, <strong>Overlay Cache</strong>, and <strong>Ratings Cache</strong> views. The
-screenshot shows Synchronize with Dry Run on and illustrative library counts.</em></p>
-<p><img alt="Asset Title Review comparing current media-server titles against existing artwork" src="../images/ui-asset-title-review.png" /></p>
-<p><em>Asset Title Review compares existing text-enabled movies, shows, seasons, and
-titlecards with current media-server titles and filters by eligibility, blocking
-reason, historical/future status, or media type (<code>All Types</code>, <code>Episodes</code>,
-<code>Seasons</code>, <code>Movies</code>, <code>Shows</code>). Supports bulk <strong>Hide selected</strong>, queued
-rebuilds, and confirmed Fast Normal Run actions without recreating artwork on
-the initial scan.</em></p>
+<strong>Overlay Cache</strong>, and <strong>Ratings Cache</strong> views. <strong>Asset Title Review</strong> lives as a
+standalone page under <strong>Asset Management</strong> (<code>/asset-title-review</code>) so it works
+independently even without Dynamic Overlays enabled (and legacy
+<code>/dynamic-overlays?tab=episode-titles</code> links redirect there).</em></p>
 <p><img alt="AniMetaFill titlecard badge styling, 16:9 stage preview, and Anime Classification Database" src="../images/ui-animetafill.png" /></p>
 <p><em>Choose <strong>AniMetaFill</strong> under Dynamic Overlays to configure Canon, Filler, and
 Mixed episode scanning, preview 16:9 titlecard badges live, toggle overlay
 categories, set per-show thresholds, and manage manual overrides in the Anime
 Classification Database.</em></p>
-<p>Start with <strong>Dry Run</strong> and a narrow library/item scope. The <a href="../dynamic_overlays/">Dynamic Overlays guide</a>
-documents rating sources, local IMDb datasets and episode mappings, bundles,
-cache refresh, retry behavior, and Kometa compatibility limits. Other builders
+<p>Start with <strong>Dry Run</strong> and a narrow library/item scope. The
+<a href="../dynamic_overlays/">Dynamic Overlays guide</a> covers everyday setup, while the
+<a href="../dynamic_overlays_reference/">Dynamic Overlays Reference</a> documents rating
+sources, local IMDb datasets and episode mappings, bundles, cache refresh, retry
+behavior, and Kometa compatibility limits. Other builders
 are described in <a href="../blueprints/">Blueprints and recipes</a>, <a href="../modes/#logo-updater">Logo Builder and
 logo workflows</a>, and the <a href="../capabilities/">capabilities guide</a>.</p>
 <h2 id="schedule-trigger-and-diagnose">Schedule, Trigger, and Diagnose</h2>

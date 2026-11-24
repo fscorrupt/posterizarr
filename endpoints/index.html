@@ -313,6 +313,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  5-Minute Quickstart
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../getting_started/" class="md-nav__link">
         
   
@@ -615,6 +642,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../asset_title_review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Asset Title Review
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../capabilities/" class="md-nav__link">
         
   
@@ -736,6 +790,33 @@
     
   
   Dynamic Overlays
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dynamic_overlays_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Dynamic Overlays Reference
 
     
   </span>
@@ -6795,7 +6876,7 @@ variables, authenticate, map item IDs and consume this API. Existing Kometa
 configurations are unaffected.</p>
 <hr />
 <h2 id="dynamic-overlays">Dynamic Overlays</h2>
-<p>The <code>/api/dynamic-overlays/episode-title-changes*</code> endpoints power <strong>Asset Title Review</strong> across all configured text-enabled artwork types (<code>episode</code>, <code>season</code>, <code>movie</code>, and <code>show</code>).</p>
+<p>The <code>/api/dynamic-overlays/episode-title-changes*</code> endpoints power the standalone <strong><a href="../asset_title_review/">Asset Title Review</a></strong> page (<code>/asset-title-review</code>) across all configured text-enabled artwork types (<code>episode</code>, <code>season</code>, <code>movie</code>, and <code>show</code>). They work independently even when the Dynamic Overlays Master Switch (<code>enabled</code>) is off.</p>
 <table>
 <thead>
 <tr>
@@ -6823,6 +6904,14 @@ configurations are unaffected.</p>
 <tr>
 <td><code>POST /api/dynamic-overlays/episode-title-changes/fast-normal-run</code></td>
 <td>Confirmed Fast Normal Run over <code>candidate_ids</code> or <code>all_eligible</code>, using the same search and filters. Optional <code>force_unknown_text: true</code> includes safe uncertain-text candidates.</td>
+</tr>
+<tr>
+<td><code>GET /api/dynamic-overlays/custom-image-sources</code></td>
+<td>Lists available custom image files from <strong>Overlay Builder</strong> (<code>Overlayfiles/</code>) and <code>Overlayfiles/dynamic_overlays/assets/</code> (excluding built-in default subdirectories).</td>
+</tr>
+<tr>
+<td><code>POST /api/dynamic-overlays/rules/add-custom-image</code></td>
+<td>Multipart upload (<code>file</code>) or existing-image reuse (<code>existing_source</code> + <code>existing_image</code>) that copies/validates the image, writes a <code>custom_&lt;name&gt;.yml</code> (<code>plex_all: true</code>) rule, and attaches it to a single library in <code>config.yml</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -6861,7 +6950,7 @@ bundle contains credential fields with blank/null/masked values. Invalid bundles
 so clients can translate the error. Preview responses also include
 <code>warning_codes</code> alongside the existing readable <code>warnings</code> list. An active
 sync/classification/import returns <code>409</code>. See the
-<a href="../dynamic_overlays/#share-a-complete-overlay-bundle">bundle workflow and limits</a>.</p>
+<a href="../dynamic_overlays_reference/#share-a-complete-overlay-bundle">bundle workflow and limits</a>.</p>
 <p><code>official_dependency_count</code> in the preview reports omitted downloadable defaults.
 Export returns <code>503</code> with code <code>officialCatalogUnavailable</code> if the official
 Kometa catalog cannot be verified; it does not silently export the whole catalog.</p>

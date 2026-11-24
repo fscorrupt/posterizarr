@@ -12,7 +12,7 @@
       
       
       
-        <link rel="prev" href="./..">
+        <link rel="prev" href="../quickstart/">
       
       
         <link rel="next" href="../requirements/">
@@ -307,6 +307,33 @@
 
             </label>
             <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  5-Minute Quickstart
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
               
                 
                   
@@ -749,6 +776,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../asset_title_review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Asset Title Review
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../capabilities/" class="md-nav__link">
         
   
@@ -870,6 +924,33 @@
     
   
   Dynamic Overlays
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dynamic_overlays_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Dynamic Overlays Reference
 
     
   </span>
@@ -1741,6 +1822,11 @@
 <h1 id="first-time-setup">First-time setup</h1>
 <p>This guide is for someone opening Posterizarr for the first time. Follow it in
 order; you do not need to understand every setting before getting started.</p>
+<div class="admonition tip">
+<p class="admonition-title">Want the fastest path to your first overlaid poster?</p>
+<p>Once Posterizarr is running, jump straight to the <strong><a href="../quickstart/">5-Minute Quickstart</a></strong>
+for a condensed 5-step walkthrough from fresh install to a live Dynamic Overlay.</p>
+</div>
 <p><img alt="Posterizarr Dashboard and main navigation" src="../images/01-dashboard-overview.png" /></p>
 <p><em>After opening the Web UI, start at <strong>Dashboard</strong> in the left sidebar. The sidebar remains the main route to configuration, runs, assets, builders, and automation.</em></p>
 <h2 id="1-choose-how-to-install">1. Choose how to install</h2>
@@ -1777,10 +1863,13 @@ to get through setup; begin with one test library.</p>
 <p><img alt="First-run wizard at the Media Server step" src="../images/41-first-run-wizard.png" /></p>
 <p><em>The wizard appears automatically while the initial configuration is incomplete. Choose a primary server, validate its connection, and select libraries before continuing.</em></p>
 <p>The wizard is a nine-step modal, not a sidebar page. It opens automatically
-when Posterizarr has not recorded setup as complete. <strong>Finish Setup</strong> saves its
-configuration; before then, form edits remain in the wizard. Continue is gated
-on a validated server/library selection and on entering at least one primary
-metadata provider key (TMDb or TheTVDB).</p>
+when Posterizarr has not recorded setup as complete. You can click <strong>Skip for now
+(add later)</strong> at any time before finishing to explore the Web UI first without
+changing your config, and add your server or API keys later in <strong>Configuration</strong>
+or by reopening the <strong>Setup Wizard</strong> from the Dashboard. <strong>Finish Setup</strong> saves
+its configuration; before then, form edits remain in the wizard. Continue is
+gated on a validated server/library selection and on entering at least one
+primary metadata provider key (TMDb or TheTVDB).</p>
 <table>
 <thead>
 <tr>
@@ -1823,7 +1912,7 @@ metadata provider key (TMDb or TheTVDB).</p>
 </tr>
 <tr>
 <td>Ready</td>
-<td>Save the configuration and complete onboarding. If scheduling was enabled, the wizard enables the scheduler and creates the selected job. If Dynamic Overlays was enabled, its Setup Wizard opens; otherwise the wizard opens <strong>How It Works</strong>.</td>
+<td>Save the configuration and complete onboarding. If scheduling was enabled, the wizard enables the scheduler and creates the selected job. Choose where to go next: <strong>Blueprint Builder</strong>, <strong>Dynamic Overlays Setup Wizard</strong> (in Dry Run), safe <strong>Testing Mode</strong>, or <strong>Dashboard</strong> (fresh installs also display a dismissible <strong>Getting Started</strong> checklist on the Dashboard until the first run completes).</td>
 </tr>
 </tbody>
 </table>
@@ -1900,7 +1989,7 @@ schedule or an integration such as Sonarr, Radarr, or Tautulli. See
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="./.." class="md-footer__link md-footer__link--prev" aria-label="Previous: Home">
+          <a href="../quickstart/" class="md-footer__link md-footer__link--prev" aria-label="Previous: 5-Minute Quickstart">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1910,7 +1999,7 @@ schedule or an integration such as Sonarr, Radarr, or Tautulli. See
                 Previous
               </span>
               <div class="md-ellipsis">
-                Home
+                5-Minute Quickstart
               </div>
             </div>
           </a>
