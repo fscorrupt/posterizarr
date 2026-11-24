@@ -229,6 +229,8 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         "audio_codec": options.get("audio_codec"),
         "filepath": str(options.get("video_format") or ""),
         "anime_tag": options.get("anime_tag"),
+        "tmdb_keywords": ["aftercreditsstinger", "duringcreditsstinger"] if not show else [],
+        "_preview_ribbon_key": "imdb",
     }
     if options.get("streaming"):
         from overlay_sync_service import STREAMING_PROVIDER_BADGES

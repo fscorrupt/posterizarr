@@ -632,7 +632,8 @@ guessed meaning. Reading or clicking an info icon does not change the setting.
 | **Common Sense Media** | `default: commonsense` | `movie` | Age rating badge (e.g., `10+`, `14+`, `18+`). |
 | **4K Quality Ribbon** | `default: resolution` or `file: config/overlays_movies.yml` | `movie` or `episode` | 4K UHD, 1080p, HDR badges/ribbons. |
 | **Anime Filler Tag** | `file: config/anime_overlays.yml` | `episode` | Canon / Filler / Mixed tag on anime episode titlecards. |
-| **Corner Ribbon** | `default: ribbon` | `movie` | Corner ribbon badge for resolution or editions. |
+| **Corner Ribbon** | `default: ribbon` | `movie` or `show` | Kometa award & chart corner ribbons (`IMDb Top 250`, `Oscars`, `Golden Globes`, `Emmys`, `Rotten Tomatoes Certified Fresh`, `Metacritic Must See`, etc.). |
+| **MediaStinger** | `default: mediastinger` | `movie` | Post/mid-credits scene indicator matched via TMDb keywords (`aftercreditsstinger`, `duringcreditsstinger`). |
 | **Streaming Platform**| `default: streaming` | `show` or `movie` | Streaming service badge (Netflix, Prime, Max, etc.). |
 | **Audio Codec** | `default: audio_codec` | `movie` or `episode` | Audio codec badge (Dolby Atmos, TrueHD, DTS:X). |
 

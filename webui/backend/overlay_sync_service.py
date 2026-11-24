@@ -52,6 +52,7 @@ from overlay_resolver import (
     _language_target_matches,
 )
 from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
+from overlay_external_lists import resolve_tmdb_keywords, resolve_external_lists_for_library
 from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
 from plex_push_service import get_asset_path_from_config
 from silo_client import SiloClient, get_silo_credentials
@@ -4425,6 +4426,8 @@ async def _run_overlay_sync_task(
                 write_log(f"Processing {len(media_items)} items on {s_type.upper()} (Concurrency: {concurrency}, Debug Logging: {debug_log_enabled})...")
 
                 dir_cache: Dict[str, Any] = {}
+                external_lists_run_state: Dict[str, Any] = {}
+                external_lists_lock = asyncio.Lock()
                 server_stats = {"synced": 0, "skipped": 0, "failed": 0}
                 stats_lock = asyncio.Lock()
                 skip_timing_samples = {"count": 0}
@@ -4486,6 +4489,13 @@ async def _run_overlay_sync_task(
                     ) or _rule_files_mention(overlays_dir, lib_rules, "rating")
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
+                    has_mediastinger_default = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "mediastinger" for rule in lib_rules)
+                    has_custom_keyword_rule = _rule_files_mention(overlays_dir, lib_rules, "tmdb_keyword")
+                    needs_keywords = (has_mediastinger_default and m_type == "movie") or has_custom_keyword_rule
+                    needs_external_lists = (
+                        any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "ribbon" for rule in lib_rules)
+                        or any(_rule_files_mention(overlays_dir, lib_rules, kw) for kw in ("imdb_chart", "imdb_award", "mdblist_list"))
+                    )
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
                     needs_parent_stream_aggregation = (_parent_stream_aggregation_requested(lib_rules) or needs_resolution) and not episode_only_targets
                     provider_rules = [rule for rule in lib_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("rating", "ratings")]
@@ -4676,9 +4686,13 @@ async def _run_overlay_sync_task(
                         # Skip detailed XML fetch if rules do NOT require audio streams, languages, HDR, or ratings
                         if needs_streaming and not item.get("tmdb_id"):
                             need_plex_detail = True
+                        if needs_keywords and not item.get("tmdb_id"):
+                            need_plex_detail = True
+                        if needs_external_lists and not (item.get("imdb_id") or item.get("tmdb_id")):
+                            need_plex_detail = True
                         if needs_media_path:
                             need_plex_detail = True
-                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh or needs_streaming or needs_media_path):
+                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh or needs_streaming or needs_keywords or needs_external_lists or needs_media_path):
                             need_plex_detail = False
 
                         if need_plex_detail:
@@ -4890,6 +4904,27 @@ async def _run_overlay_sync_task(
                             await _inc_stats(failed=1)
                             write_log(f"  [!] {w_tag}'{title}' ({lib_name}): {provider_error}")
                             return
+                    if needs_keywords:
+                        try:
+                            item["tmdb_keywords"] = await resolve_tmdb_keywords(
+                                item.get("tmdb_id"), m_type, creds.get("tmdb_token"), http_client, ratings_cache
+                            )
+                        except RuntimeError as kw_error:
+                            await _inc_stats(failed=1)
+                            write_log(f"  [!] {w_tag}'{title}' ({lib_name}): {kw_error}")
+                            return
+                    if needs_external_lists:
+                        item["_external_lists"] = await resolve_external_lists_for_library(
+                            _get_overlay_config_engine(overlays_dir),
+                            lib_rules,
+                            m_type,
+                            http_client,
+                            ratings_cache,
+                            mdblist_api_key=mdblist_key,
+                            run_state=external_lists_run_state,
+                            run_lock=external_lists_lock,
+                            write_log=write_log,
+                        )
                     # Resolve multi-source ratings only if ratings overlays are configured for this library
                     multi_ratings = {}
                     server_rating_missing = not (item.get("audience_rating") or item.get("rating"))

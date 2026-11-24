@@ -796,14 +796,14 @@ class DynamicOverlayCompositor:
                     if not resolved_ip:
                         ip = Path(img_path)
                         ip_name = ip.name
-                        streaming_parts = [index for index, part in enumerate(ip.parts) if part.lower() == "streaming"]
-                        streaming_path = Path(*ip.parts[streaming_parts[-1]:]) if streaming_parts else None
+                        preserved_parts = [index for index, part in enumerate(ip.parts) if part.lower() in ("streaming", "ribbon")]
+                        preserved_subpath = Path(*ip.parts[preserved_parts[-1]:]) if preserved_parts else None
                         for ad in candidate_asset_dirs:
-                            cand_str = _safe_join_within(ad, streaming_path if streaming_path is not None else ip_name)
+                            cand_str = _safe_join_within(ad, preserved_subpath if preserved_subpath is not None else ip_name)
                             if cand_str and os.path.isfile(cand_str):
                                 resolved_ip = cand_str
                                 break
-                            if streaming_path is not None:
+                            if preserved_subpath is not None:
                                 continue
                             for sub in ["rating", "flag/square", "flags/square", "flag/round", "flags/round", "resolution", "commonsense", "ribbon"]:
                                 cand_sub_str = _safe_join_within(ad, os.path.join(sub, ip_name))
@@ -817,7 +817,13 @@ class DynamicOverlayCompositor:
                             # Attempt on-demand download from official Kometa raw repository
                             try:
                                 from overlay_resolver import resolve_official_kometa_image_url, is_safe_remote_url, safe_sync_get, KOMETA_IMAGES_RAW
-                                raw_target = str(ip).replace("\\", "/")
+                                if preserved_subpath is not None:
+                                    raw_target = preserved_subpath.as_posix()
+                                else:
+                                    raw_target = str(ip).replace("\\", "/")
+                                    assets_idx = raw_target.lower().rfind("/assets/")
+                                    if assets_idx != -1:
+                                        raw_target = raw_target[assets_idx + len("/assets/"):]
                                 raw_url = resolve_official_kometa_image_url(raw_target) or resolve_official_kometa_image_url(ip.name)
                                 if raw_url and is_safe_remote_url(raw_url):
                                     import httpx
@@ -832,18 +838,19 @@ class DynamicOverlayCompositor:
                                                 os.makedirs(os.path.dirname(save_path_str), exist_ok=True)
                                                 with open(save_path_str, "wb") as f_out:
                                                     f_out.write(r_resp.content)
-                                                base_path_str = _safe_join_within(save_dir, ip.name)
-                                                if (
-                                                    base_path_str
-                                                    and base_path_str.startswith(save_base + os.sep)
-                                                    and save_path_str != base_path_str
-                                                    and not os.path.exists(base_path_str)
-                                                ):
-                                                    try:
-                                                        with open(base_path_str, "wb") as f_base:
-                                                            f_base.write(r_resp.content)
-                                                    except Exception:
-                                                        pass
+                                                if preserved_subpath is None:
+                                                    base_path_str = _safe_join_within(save_dir, ip.name)
+                                                    if (
+                                                        base_path_str
+                                                        and base_path_str.startswith(save_base + os.sep)
+                                                        and save_path_str != base_path_str
+                                                        and not os.path.exists(base_path_str)
+                                                    ):
+                                                        try:
+                                                            with open(base_path_str, "wb") as f_base:
+                                                                f_base.write(r_resp.content)
+                                                        except Exception:
+                                                            pass
                                                 resolved_ip = save_path_str
                             except Exception as e_ondemand:
                                 logger.debug(f"[OverlayEngine] On-demand asset fetch error: {e_ondemand}")

@@ -4517,10 +4517,10 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                     }
                                 }
-                                elseif ($global:seasonId) {
+                                elseif ($UseOtherMediaServer -eq 'true' -and $global:SeasonRatingKey) {
                                     Write-Entry -Message "Starting Existing Asset Upload..." -Path $global:configLogging -Color Green -log Info
                                     Write-Entry -Subtext "Searching for $Titletext Artwork on Media Server." -Path $global:configLogging -Color Cyan -log Info
-                                    UploadOtherMediaServerArtwork -itemId $global:seasonId -imageType "Primary" -imagePath $SeasonImageoriginal
+                                    UploadOtherMediaServerArtwork -itemId $global:SeasonRatingKey -imageType "Primary" -imagePath $SeasonImageoriginal
                                 }
                                 if (Test-Path $SeasonImage -ErrorAction SilentlyContinue) {
                                     Remove-Item -LiteralPath $SeasonImage | Out-Null

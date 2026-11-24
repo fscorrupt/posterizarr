@@ -23,6 +23,13 @@ from pathlib import Path, PurePosixPath
 from typing import Optional, Dict, Any, List, Set, Union, Tuple
 import httpx
 
+from overlay_external_lists import (
+    _matches_library_type_value,
+    _overlay_enabled_for_library,
+    matches_external_builders,
+    overlay_has_external_builders,
+)
+
 # ==============================================================================
 # DYNAMIC OVERLAY RESOLUTION ENGINE:
 # Handles template resolution, coordinate placement, asset fetching, and layout.
@@ -336,6 +343,11 @@ OFFICIAL_KOMETA_ROOT_IMAGES = {
     "flame.png", "flame2.png", "multi_audio.png", "multi_subs.png",
     "versions.png"
 }
+OFFICIAL_KOMETA_ROOT_IMAGE_CASING = {
+    "commonsense.png": "Commonsense.png",
+    "direct-play.png": "Direct-Play.png",
+    "mediastinger.png": "Mediastinger.png",
+}
 
 RATING_SOURCE_IMAGE_FILES = {
     "imdb": ("IMDb.png",),
@@ -564,9 +576,11 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
         fn = normalized if normalized.lower().endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{normalized}.png"
         return f"{KOMETA_IMAGES_RAW}/{fn}"
 
-    # 3. Known root images (e.g. ribbon.png, etc.)
+    # 3. Known root images (e.g. Mediastinger.png, etc.)
+    root_lookup = clean_lower if clean_lower.endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{clean_lower}.png"
     if clean_lower in OFFICIAL_KOMETA_ROOT_IMAGES or f"{clean_lower}.png" in OFFICIAL_KOMETA_ROOT_IMAGES:
         fn = clean if clean.lower().endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{clean}.png"
+        fn = OFFICIAL_KOMETA_ROOT_IMAGE_CASING.get(root_lookup, fn)
         return f"{KOMETA_IMAGES_RAW}/{fn}"
 
     # 4. Standalone resolution keywords (e.g. 4k, 1080p, 720p, hdr, dv, dolby_vision, imax)
@@ -2997,7 +3011,10 @@ def _kometa_evaluate_conditionals(
                 if clean_k.endswith(".exists"):
                     target_k = clean_k[:-7]
                     should_exist = str(clean_exp).lower() in ("true", "1", "yes")
-                    exists = target_k in variables and variables[target_k] not in (None, "", False)
+                    if target_k.startswith("use_"):
+                        exists = target_k in variables and variables[target_k] not in (None, "")
+                    else:
+                        exists = target_k in variables and variables[target_k] not in (None, "", False)
                     if should_exist != exists:
                         passed = False
                         break
@@ -3177,6 +3194,30 @@ class OverlayConfigEngine:
             if official_url:
                 return self.assets_dir / "flag" / flag_style / Path(official_url).name
             return None
+
+        is_ribbon_subpath = p_str.replace("\\", "/").lower().startswith("ribbon/")
+        if ("/" in p_str or "\\" in p_str) and not os.path.isabs(p_str):
+            rel_posix = p_str.replace("\\", "/")
+            rel_parent = str(PurePosixPath(rel_posix).parent)
+            rel_name = PurePosixPath(rel_posix).name.lower()
+            for base_asset_dir in self.candidate_asset_dirs:
+                cand1 = base_asset_dir / rel_posix
+                if cand1.exists():
+                    return cand1
+                parent_dir = base_asset_dir if rel_parent in ("", ".") else (base_asset_dir / rel_parent)
+                if parent_dir.exists() and parent_dir.is_dir():
+                    try:
+                        for f in parent_dir.iterdir():
+                            if f.is_file() and f.name.lower() in (rel_name, target_name_with_ext):
+                                return f
+                    except Exception:
+                        pass
+            if is_ribbon_subpath:
+                official_url = resolve_official_kometa_image_url(p_str)
+                if official_url:
+                    target_sub = official_url[len(KOMETA_IMAGES_RAW) + 1:] if official_url.startswith(f"{KOMETA_IMAGES_RAW}/") else Path(p_str).name
+                    return self.assets_dir / target_sub
+                return None
 
         sub_dirs = [
             "",
@@ -3388,6 +3429,7 @@ class OverlayConfigEngine:
         queue_lang_order: Dict[str, List[str]] = {}
 
         media_type = str(item_metadata.get("media_type", "movie")).lower()
+        library_type = "show" if media_type in ("show", "series", "season", "episode") else "movie"
         is_season = (item_metadata.get("season_number") is not None and media_type != "episode") or (media_type == "season")
         is_episode = (media_type == "episode") or bool(item_metadata.get("is_episode"))
 
@@ -3410,6 +3452,7 @@ class OverlayConfigEngine:
             if not res or len(res) < 4:
                 continue
             file_overlays, file_queues, file_templates, file_vars = res
+            file_vars = {**file_vars, "library_type": library_type}
             subtitle_rule = str(file_vars.get("use_subtitles", False)).lower() in ("true", "1")
             queue_prefix = "subtitle_" if subtitle_rule else ""
             definitions_key = dumps([file_overlays, file_templates, file_vars])
@@ -3498,16 +3541,11 @@ class OverlayConfigEngine:
                 if not matches_artwork_type(expanded_ov, item_metadata):
                     continue
 
-                # Check run_definition if present (Kometa default: run_this / allowed_libraries)
-                run_def = expanded_ov.get("run_definition")
-                if run_def is not None:
-                    if isinstance(run_def, list):
-                        if any(str(r).strip().lower() in ("false", "none", "", "0") or r is False for r in run_def):
-                            continue
-                    elif str(run_def).strip().lower() in ("false", "none", "", "0") or run_def is False:
-                        continue
+                # Check allowed_libraries and run_definition (Kometa default: run_this / allowed_libraries)
+                if not _overlay_enabled_for_library(expanded_ov, library_type):
+                    continue
 
-                # Check plex_search, plex_all and secondary filters
+                # Check plex_search, plex_all, external builders, and secondary filters
                 matches = False
                 p_all = str(expanded_ov.get("plex_all") or ov_def.get("plex_all") or "").lower()
                 search_block = None
@@ -3519,6 +3557,8 @@ class OverlayConfigEngine:
                 elif "plex_search" in ov_def:
                     search_block = ov_def["plex_search"]
                     matches = self._match_filters(search_block, item_metadata, empty_match=False)
+                elif overlay_has_external_builders(expanded_ov):
+                    matches = matches_external_builders(expanded_ov, item_metadata)
 
                 sec_filters = expanded_ov.get("filters") or ov_def.get("filters")
                 if matches and sec_filters:
@@ -3774,6 +3814,7 @@ class OverlayConfigEngine:
         from pickle import dumps
 
         media_type = str(item_metadata.get("media_type", "movie")).lower()
+        library_type = "show" if media_type in ("show", "series", "season", "episode") else "movie"
         is_season = (item_metadata.get("season_number") is not None and media_type != "episode") or (media_type == "season")
         is_episode = (media_type == "episode") or bool(item_metadata.get("is_episode"))
         item_audio_tags = get_item_language_tags(item_metadata, is_subtitle=False)
@@ -3788,6 +3829,7 @@ class OverlayConfigEngine:
             if not res or len(res) < 4:
                 continue
             file_overlays, _, file_templates, file_vars = res
+            file_vars = {**file_vars, "library_type": library_type}
             definitions_key = dumps([file_overlays, file_templates, file_vars])
             if not hasattr(self, "_expanded_rules_cache"):
                 self._expanded_rules_cache = {}
@@ -3826,12 +3868,8 @@ class OverlayConfigEngine:
                 expanded_ov = expanded_definitions[definition_key]
                 if not expanded_ov or not matches_artwork_type(expanded_ov, item_metadata):
                     continue
-                run_def = expanded_ov.get("run_definition")
-                if run_def is not None:
-                    if isinstance(run_def, list) and any(str(r).strip().lower() in ("false", "none", "", "0") or r is False for r in run_def):
-                        continue
-                    if not isinstance(run_def, list) and (str(run_def).strip().lower() in ("false", "none", "", "0") or run_def is False):
-                        continue
+                if not _overlay_enabled_for_library(expanded_ov, library_type):
+                    continue
 
                 matches = False
                 p_all = str(expanded_ov.get("plex_all") or ov_def.get("plex_all") or "").lower()
@@ -3844,6 +3882,8 @@ class OverlayConfigEngine:
                 elif "plex_search" in ov_def:
                     search_block = ov_def["plex_search"]
                     matches = self._match_filters(search_block, item_metadata, empty_match=False)
+                elif overlay_has_external_builders(expanded_ov):
+                    matches = matches_external_builders(expanded_ov, item_metadata)
 
                 sec_filters = expanded_ov.get("filters") or ov_def.get("filters")
                 if matches and sec_filters:
@@ -3960,6 +4000,10 @@ class OverlayConfigEngine:
         ov_vars = {**file_vars, "overlay_name": str(key), "key": str(key)}
         if "variables" in ov_def:
             ov_vars.update(ov_def["variables"])
+        merged_def["_overlay_key"] = str(ov_vars.get("key") or key)
+        allowed_ov = ov_vars.get("allowed_libraries")
+        if allowed_ov not in (None, "") and not (isinstance(allowed_ov, str) and "<<" in allowed_ov and ">>" in allowed_ov):
+            merged_def.setdefault("allowed_libraries", allowed_ov)
 
         # Dynamically evaluate nested token definitions in ov_vars (e.g. text_<<key>>: <<text>>)
         for _ in range(3):
@@ -4002,6 +4046,10 @@ class OverlayConfigEngine:
                         for dk, dv in resolved_defaults.items():
                             resolved_defaults[dk] = _kometa_replace_var(dv, [curr_vars, resolved_defaults])
 
+                    allowed_call = curr_vars.get("allowed_libraries")
+                    if allowed_call not in (None, "") and not (isinstance(allowed_call, str) and "<<" in allowed_call and ">>" in allowed_call):
+                        merged_def.setdefault("allowed_libraries", allowed_call)
+
                     expanded = _kometa_substitute_vars_deep(tpl_body, [curr_vars, resolved_defaults])
                     for mk, mv in expanded.items():
                         if mk not in ("default", "conditionals", "optional"):
@@ -4010,6 +4058,8 @@ class OverlayConfigEngine:
                                     merged_def["overlay"] = {}
                                 merged_def["overlay"].update(mv)
                             elif mk not in merged_def:
+                                if isinstance(mv, str) and "<<" in mv and ">>" in mv:
+                                    continue
                                 merged_def[mk] = mv
 
         final_def = _kometa_substitute_vars_deep(merged_def, [ov_vars, file_vars])
@@ -4302,6 +4352,15 @@ class OverlayConfigEngine:
             elif k.endswith(".lt"):
                 return cnt < v_num
             return cnt == v_num
+        if k in ("tmdb_keyword", "tmdb_keywords", "tmdb_keyword.any", "tmdb_keyword.all", "tmdb_keywords.all", "tmdb_keyword.not", "tmdb_keywords.not"):
+            raw_targets = v if isinstance(v, (list, tuple, set)) else str(v or "").split(",")
+            targets = [str(x).strip().lower() for x in raw_targets if x is not None and str(x).strip()]
+            item_kws = {str(x).strip().lower() for x in (meta.get("tmdb_keywords") or []) if str(x).strip()}
+            if k.endswith(".not"):
+                return not any(t in item_kws for t in targets)
+            if k.endswith(".all"):
+                return bool(targets) and all(t in item_kws for t in targets)
+            return bool(targets) and any(t in item_kws for t in targets)
         return True
 
     def _convert_to_layer(self, ov: Dict[str, Any], meta: Dict[str, Any]) -> Optional[Dict[str, Any]]:

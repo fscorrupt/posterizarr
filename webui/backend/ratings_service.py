@@ -234,6 +234,22 @@ class RatingsCacheManager:
                             expires_at TEXT NOT NULL
                         )
                     """)
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS tmdb_keywords_cache (
+                            media_type TEXT NOT NULL,
+                            tmdb_id TEXT NOT NULL,
+                            keywords TEXT NOT NULL,
+                            expires_at TEXT NOT NULL,
+                            PRIMARY KEY (media_type, tmdb_id)
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS external_list_cache (
+                            cache_key TEXT PRIMARY KEY,
+                            payload TEXT NOT NULL,
+                            expires_at TEXT NOT NULL
+                        )
+                    """)
                     for col_sql in [
                         "ALTER TABLE media_ratings_cache ADD COLUMN simkl_rating REAL;",
                         "ALTER TABLE media_ratings_cache ADD COLUMN mal_rating REAL;",
@@ -279,6 +295,48 @@ class RatingsCacheManager:
                         "INSERT INTO streaming_provider_cache (media_type, tmdb_id, provider_results, expires_at) VALUES (?, ?, ?, ?) "
                         "ON CONFLICT(media_type, tmdb_id) DO UPDATE SET provider_results = excluded.provider_results, expires_at = excluded.expires_at",
                         (media_type, str(tmdb_id), json.dumps(results, sort_keys=True), (datetime.now() + timedelta(days=1)).isoformat())
+                    )
+
+    def get_tmdb_keywords(self, media_type: str, tmdb_id: str, allow_stale: bool = False) -> Optional[List[str]]:
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                row = connection.execute(
+                    "SELECT keywords, expires_at FROM tmdb_keywords_cache WHERE media_type = ? AND tmdb_id = ?",
+                    (media_type, str(tmdb_id))
+                ).fetchone()
+            if row is None or (not allow_stale and datetime.fromisoformat(row["expires_at"]) <= datetime.now()):
+                return None
+            return json.loads(row["keywords"])
+
+    def save_tmdb_keywords(self, media_type: str, tmdb_id: str, keywords: List[str], ttl_days: int = 7) -> None:
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                with connection:
+                    connection.execute(
+                        "INSERT INTO tmdb_keywords_cache (media_type, tmdb_id, keywords, expires_at) VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(media_type, tmdb_id) DO UPDATE SET keywords = excluded.keywords, expires_at = excluded.expires_at",
+                        (media_type, str(tmdb_id), json.dumps(keywords), (datetime.now() + timedelta(days=ttl_days)).isoformat())
+                    )
+
+    def get_external_list(self, cache_key: str, allow_stale: bool = False) -> Optional[Any]:
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                row = connection.execute(
+                    "SELECT payload, expires_at FROM external_list_cache WHERE cache_key = ?",
+                    (cache_key,)
+                ).fetchone()
+            if row is None or (not allow_stale and datetime.fromisoformat(row["expires_at"]) <= datetime.now()):
+                return None
+            return json.loads(row["payload"])
+
+    def save_external_list(self, cache_key: str, payload: Any, ttl_hours: int = 24) -> None:
+        with self.lock:
+            with closing(self._get_connection()) as connection:
+                with connection:
+                    connection.execute(
+                        "INSERT INTO external_list_cache (cache_key, payload, expires_at) VALUES (?, ?, ?) "
+                        "ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload, expires_at = excluded.expires_at",
+                        (cache_key, json.dumps(payload, sort_keys=True), (datetime.now() + timedelta(hours=ttl_hours)).isoformat())
                     )
 
     def get_cached_ratings(self, server_type: str, item_id: str, allow_stale: bool = False) -> Optional[Dict[str, Any]]:
